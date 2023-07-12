@@ -1,0 +1,21 @@
+{
+  "Version": 3,
+  "ListAllProjects": false,
+  "MultiProjectConfigurations": {
+    "Host Sample": {
+      "Projects": {
+        "Tharga.MongoDB.HostSample": {}
+      }
+    },
+    "Console Sample": {
+      "Projects": {
+        "Tharga.MongoDB.ConsoleSample": {}
+      }
+    },
+    "Simple Console Demo": {
+      "Projects": {
+        "Tharga.MongoDB.SimpleConsoleDemo": {}
+      }
+    }
+  }
+}

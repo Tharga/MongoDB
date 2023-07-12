@@ -1,0 +1,79 @@
+trigger:
+- master
+
+name: 1.10.$(Rev:r)
+
+pool:
+  vmImage: 'windows-latest'
+
+variables:
+  buildPlatform: 'Any CPU'
+  buildConfiguration: 'Release'
+  BQC.ForceNewBaseline: true
+
+steps:
+- task: UseDotNet@2
+  displayName: 'Use .NET 7'
+  inputs:
+    version: 7.0.x
+    includePreviewVersions: false
+
+- task: NuGetToolInstaller@1
+
+- task: DotNetCoreCLI@2
+  displayName: 'Restore nuget packages'
+  inputs:
+    command: 'restore'
+    projects: '**/*.csproj'
+    feedsToUse: 'select'
+
+- task: DotNetCoreCLI@2
+  displayName: 'Build'
+  inputs:
+    command: 'build'
+    projects: '**/*.csproj'
+    arguments: '-c Release /p:NoWarn=0618'
+    versioningScheme: 'byBuildNumber'
+
+- task: DotNetCoreCLI@2
+  displayName: 'Test'
+  inputs:
+    command: 'test'
+    projects: '**/*.Tests.csproj'
+    arguments: '--collect "Code coverage" --configuration $(buildConfiguration) --filter "Category!=Database"'
+
+#- task: BuildQualityChecks@8
+#  displayName: 'Build Quality Checks'
+#  inputs:
+#    checkWarnings: true
+#    warningFailOption: 'build'
+#    allowWarningVariance: true
+#    warningVariance: '1'
+#    checkCoverage: true
+#    coverageFailOption: 'build'
+#    coverageType: 'blocks'
+#    allowCoverageVariance: true
+#    coverageVariance: '1'
+
+- task: DotNetCoreCLI@2
+  displayName: 'Pack Tharga.MongoDb'
+  inputs:
+    command: 'pack'
+    packagesToPack: '**/Tharga.MongoDb.csproj'
+    versioningScheme: 'byBuildNumber'
+
+- task: DotNetCoreCLI@2
+  displayName: 'Push nuget packages locally'
+  inputs:
+    command: 'push'
+    packagesToPush: '$(Build.ArtifactStagingDirectory)/*.nupkg'
+    nuGetFeedType: 'internal'
+    publishVstsFeed: 'df4b267e-c55c-4a36-8fe3-8e98d5d8dbbb/5cea672d-cb79-44f6-beb8-2eaba59e670d'
+
+- task: NuGetCommand@2
+  displayName: 'Push nuget packages to nuget.org'
+  inputs:
+    command: 'push'
+    packagesToPush: '$(Build.ArtifactStagingDirectory)/**/*.nupkg;!$(Build.ArtifactStagingDirectory)/**/*.symbols.nupkg'
+    nuGetFeedType: 'external'
+    publishFeedCredentials: 'Nuget.org'
