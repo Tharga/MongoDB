@@ -14,7 +14,7 @@ internal static class Program
         var services = new ServiceCollection();
         services.AddMongoDB(o =>
         {
-            o.ConnectionStringLoader = _ => "mongodb://localhost:27017/Tharga_MongoDb_ConsoleSample{part}";
+            o.ConnectionStringLoader = _ => "mongodb://localhost:27017/Tharga_MongoDB_ConsoleSample{part}";
             o.ActionEvent = data => { Console.WriteLine($"---> {data.Action.Message}"); };
             //o.AutoRegisterCollections = true;
         });

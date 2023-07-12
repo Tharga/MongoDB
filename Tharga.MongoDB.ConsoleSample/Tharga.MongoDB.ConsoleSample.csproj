@@ -12,7 +12,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Tharga.MongoDb\Tharga.MongoDb.csproj" />
+    <ProjectReference Include="..\Tharga.MongoDB\Tharga.MongoDB.csproj" />
   </ItemGroup>
 
 </Project>

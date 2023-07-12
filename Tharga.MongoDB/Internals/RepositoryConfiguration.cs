@@ -50,10 +50,10 @@ internal class RepositoryConfiguration : IRepositoryConfiguration
         var c2 = _mongoDbConfiguration as MongoDbConfiguration;
 
         //Configured as named parameter
-        var c3 = GetConfigValue<MongoDbConfiguration>($"MongoDb:{_databaseContext.Value?.ConfigurationName}");
+        var c3 = GetConfigValue<MongoDbConfiguration>($"MongoDB:{_databaseContext.Value?.ConfigurationName}");
 
         //Configured as general parameter
-        var c4 = GetConfigValue<MongoDbConfiguration>("MongoDb");
+        var c4 = GetConfigValue<MongoDbConfiguration>("MongoDB");
 
         configuration = new MongoDbConfig
         {

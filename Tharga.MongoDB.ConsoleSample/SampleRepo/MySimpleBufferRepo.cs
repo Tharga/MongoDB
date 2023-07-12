@@ -8,7 +8,6 @@ using Tharga.MongoDB.Buffer;
 namespace Tharga.MongoDB.ConsoleSample.SampleRepo;
 
 public class MySimpleBufferRepo : BufferRepositoryCollectionBase<MyBaseEntity, ObjectId>, IMyRepo
-//public class MySimpleBufferRepo : DiskRepositoryCollectionBase<MyBaseEntity, ObjectId>, IMyRepo
 {
     public MySimpleBufferRepo(IMongoDbServiceFactory mongoDbServiceFactory, ILogger<MySimpleBufferRepo> logger, string collectionName)
         : base(mongoDbServiceFactory, logger, new DatabaseContext { CollectionName = collectionName })

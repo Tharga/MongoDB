@@ -56,10 +56,10 @@ steps:
 #    coverageVariance: '1'
 
 - task: DotNetCoreCLI@2
-  displayName: 'Pack Tharga.MongoDb'
+  displayName: 'Pack Tharga.MongoDB'
   inputs:
     command: 'pack'
-    packagesToPack: '**/Tharga.MongoDb.csproj'
+    packagesToPack: '**/Tharga.MongoDB.csproj'
     versioningScheme: 'byBuildNumber'
 
 - task: DotNetCoreCLI@2

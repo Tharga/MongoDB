@@ -64,8 +64,8 @@ public record DatabaseOptions
     /// Configuration order:
     /// 1. Named values from Configurations.
     /// 2. Values from the root in Configuration.
-    /// 3. Named values from MongoDb-section in appsettings.json.
-    /// 4. Values from the root in MongoDb-section in appsettings.json.
+    /// 3. Named values from MongoDB-section in appsettings.json.
+    /// 4. Values from the root in MongoDB-section in appsettings.json.
     /// 5. Default values.
     /// </summary>
     public MongoDbConfigurationTree Configuration { get; set; }

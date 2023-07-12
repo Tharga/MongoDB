@@ -12,7 +12,7 @@ public class Startup
     public void ConfigureServices(IServiceCollection services)
     {
         services.AddControllers();
-        services.AddSwaggerGen(c => { c.SwaggerDoc("v1", new OpenApiInfo { Title = "Tharga.MongoDb.HostSample", Version = "v1" }); });
+        services.AddSwaggerGen(c => { c.SwaggerDoc("v1", new OpenApiInfo { Title = "Tharga.MongoDB.HostSample", Version = "v1" }); });
 
         services.AddMongoDB(o =>
         {
@@ -34,7 +34,7 @@ public class Startup
         {
             app.UseDeveloperExceptionPage();
             app.UseSwagger();
-            app.UseSwaggerUI(c => c.SwaggerEndpoint("/swagger/v1/swagger.json", "Tharga.MongoDb.HostSample v1"));
+            app.UseSwaggerUI(c => c.SwaggerEndpoint("/swagger/v1/swagger.json", "Tharga.MongoDB.HostSample v1"));
         }
 
         app.UseHttpsRedirection();

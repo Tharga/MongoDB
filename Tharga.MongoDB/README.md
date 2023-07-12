@@ -1,24 +1,24 @@
-# Tharga.MongoDb
+# Tharga MongoDB
 This package was broken out of a product that needs the possibility of dynamic naming of databases and collections.
 I also helps with structuring what functions are to be accessed for different types.
 
 It also have some aditional features for Atlas MongoDB like limiting the size of the responses and opening the firewall.
 
 ## Get started
-Install the nuget package `Tharga.MongoDb`.
+Install the nuget package `Tharga.MongoDB`.
 
 ### Register to use
-Register this package at startup by calling `AddMongoDb` as an extension to `IServiceCollection`.
+Register this package at startup by calling `AddMongoDB` as an extension to `IServiceCollection`.
 
 ```
 public void ConfigureServices(IServiceCollection services)
 {
-    services.AddMongoDb();
+    services.AddMongoDB();
 }
 ```
 
 By default the configuration setting `ConnectionStrings:Default` is used to get the connection string.
-Customize by providing `DatabaseOptions` to `AddMongoDb`.
+Customize by providing `DatabaseOptions` to `AddMongoDB`.
 
 ### Create entities, repositories and collections.
 
@@ -88,17 +88,17 @@ public record MyEntity : EntityBase<ObjectId>
 ## Simple Console Sample
 This is a simple demo for a console application written in .NET 7.
 The following nuget packages are used.
-- Tharga.MongoDb
+- Tharga.MongoDB
 - Microsoft.Extensions.Hosting
 
 ```
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Bson;
-using Tharga.MongoDb;
-using Tharga.MongoDb.Disk;
+using Tharga.MongoDB;
+using Tharga.MongoDB.Disk;
 
 var services = new ServiceCollection();
-services.AddMongoDb(o => o.ConnectionStringLoader = _ => "mongodb://localhost:27017/SimpleConsoleSample");
+services.AddMongoDB(o => o.ConnectionStringLoader = _ => "mongodb://localhost:27017/SimpleConsoleSample");
 
 var serviceProvider = services.BuildServiceProvider();
 
@@ -146,7 +146,7 @@ The 'Default' database will have the firewall opened, if hosted in Atlas MongoDB
     "Default": "mongodb://localhost:27017/Tharga{environment}_Sample{part}",
     "Other": "mongodb://localhost:27017/Tharga{environment}_Sample_Other{part}"
   },
-  "MongoDb": {
+  "MongoDB": {
     "Default": {
       "AccessInfo": {
         "PublicKey": "[PublicKey]",
@@ -171,7 +171,7 @@ The 'Default' database will have the firewall opened, if hosted in Atlas MongoDB
 #### Example of configuration by code.
 This would be the same configuration as from the example above.
 ```
-        services.AddMongoDb(o =>
+        services.AddMongoDB(o =>
         {
             o.ConnectionStringLoader = name =>
             {
@@ -271,7 +271,7 @@ For large result-sets, use the method `GetPageAsync` to get the `ResultLimit` on
 
 ```
 {
-  "MongoDb": {
+  "MongoDB": {
     "ResultLimit": 500
   }
 }
