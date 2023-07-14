@@ -64,15 +64,24 @@ public abstract class BufferRepositoryCollectionBase<TEntity, TKey> : Repository
         throw new NotSupportedException();
     }
 
-    public override async Task<TEntity> GetOneAsync(Expression<Func<TEntity, bool>> predicate, CancellationToken cancellationToken = default)
+    public override async Task<TEntity> GetOneAsync(TKey id, CancellationToken cancellationToken = default)
     {
+        var buffer = await GetBufferAsync();
+        var data = buffer.Values.FirstOrDefault(x => x.Id.Equals(id));
+        return data;
+    }
+
+    public override async Task<TEntity> GetOneAsync(Expression<Func<TEntity, bool>> predicate, SortDefinition<TEntity> sort = default, CancellationToken cancellationToken = default)
+    {
+        if (sort != default) throw new NotSupportedException("The sort is not supported for buffer collections.");
         var buffer = await GetBufferAsync();
         var data = buffer.Values.Where(x => predicate.Compile().Invoke(x));
         return data.FirstOrDefault();
     }
 
-    public override async Task<T> GetOneAsync<T>(Expression<Func<T, bool>> predicate = null, CancellationToken cancellationToken = default)
+    public override async Task<T> GetOneAsync<T>(Expression<Func<T, bool>> predicate = null, SortDefinition<T> sort = default, CancellationToken cancellationToken = default)
     {
+        if (sort != default) throw new NotSupportedException("The sort is not supported for buffer collections.");
         var buffer = await GetBufferAsync();
         var data = buffer.Values
             .Where(x => x.GetType() == typeof(T))
@@ -94,8 +103,7 @@ public abstract class BufferRepositoryCollectionBase<TEntity, TKey> : Repository
     public override async Task<EntityChangeResult<TEntity>> AddOrReplaceAsync(TEntity entity)
     {
         var result = await Disk.AddOrReplaceAsync(entity);
-        //_bufferCollection.Data.AddOrUpdate(entity.Id, entity, (_, _) => entity); //TODO: Make sure that this works before it is used.
-        await InvalidateBufferAsync();
+        _bufferCollection.Data.AddOrUpdate(entity.Id, entity, (_, _) => entity);
         return result;
     }
 
@@ -106,9 +114,9 @@ public abstract class BufferRepositoryCollectionBase<TEntity, TKey> : Repository
         return result;
     }
 
-    public override async Task<EntityChangeResult<TEntity>> UpdateOneAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update)
+    public override async Task<EntityChangeResult<TEntity>> UpdateOneAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update, FindOneAndUpdateOptions<TEntity> options = default)
     {
-        var result = await Disk.UpdateOneAsync(filter, update);
+        var result = await Disk.UpdateOneAsync(filter, update, options);
         await InvalidateBufferAsync();
         return result;
     }

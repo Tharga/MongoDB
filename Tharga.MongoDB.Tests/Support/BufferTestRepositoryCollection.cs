@@ -5,8 +5,8 @@ namespace Tharga.MongoDB.Tests.Support;
 
 public class BufferTestRepositoryCollection : BufferRepositoryCollectionBase<TestEntity, ObjectId>
 {
-    public BufferTestRepositoryCollection(IMongoDbServiceFactory mongoDbServiceFactory)
-        : base(mongoDbServiceFactory)
+    public BufferTestRepositoryCollection(IMongoDbServiceFactory mongoDbServiceFactory, DatabaseContext databaseContext)
+        : base(mongoDbServiceFactory, null, databaseContext)
     {
     }
 

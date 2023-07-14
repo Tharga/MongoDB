@@ -148,22 +148,32 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         }
     }
 
-    public override async Task<TEntity> GetOneAsync(Expression<Func<TEntity, bool>> predicate, CancellationToken cancellationToken = default)
+    public override async Task<TEntity> GetOneAsync(TKey id, CancellationToken cancellationToken = default)
     {
         return await Execute(nameof(GetOneAsync), async () =>
         {
-            var item = await Collection.Find(predicate).Limit(1).SingleOrDefaultAsync(cancellationToken);
+            var filter = Builders<TEntity>.Filter.Eq(x => x.Id, id);
+            var item = await Collection.Find(filter).Limit(1).SingleOrDefaultAsync(cancellationToken);
             return await CleanEntityAsync(item);
         }, false);
     }
 
-    public override async Task<T> GetOneAsync<T>(Expression<Func<T, bool>> predicate = null, CancellationToken cancellationToken = default)
+    public override async Task<TEntity> GetOneAsync(Expression<Func<TEntity, bool>> predicate, SortDefinition<TEntity> sort = default, CancellationToken cancellationToken = default)
+    {
+        return await Execute(nameof(GetOneAsync), async () =>
+        {
+            var item = await Collection.Find(predicate).Sort(sort).Limit(1).SingleOrDefaultAsync(cancellationToken);
+            return await CleanEntityAsync(item);
+        }, false);
+    }
+
+    public override async Task<T> GetOneAsync<T>(Expression<Func<T, bool>> predicate = null, SortDefinition<T> sort = default, CancellationToken cancellationToken = default)
     {
         return await Execute(nameof(GetOneAsync), async () =>
         {
             var typeFilter = Builders<T>.Filter.And(Builders<T>.Filter.OfType<T>(), new ExpressionFilterDefinition<T>(predicate ?? (_ => true)));
             var collection = _mongoDbService.GetCollection<T>(ProtectedCollectionName);
-            var item = await collection.Find(typeFilter).Limit(1).SingleOrDefaultAsync(cancellationToken);
+            var item = await collection.Find(typeFilter).Sort(sort).Limit(1).SingleOrDefaultAsync(cancellationToken);
             return item;
         }, false);
     }
@@ -215,11 +225,12 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         }, true);
     }
 
-    public override async Task<EntityChangeResult<TEntity>> UpdateOneAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update)
+    public override async Task<EntityChangeResult<TEntity>> UpdateOneAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update, FindOneAndUpdateOptions<TEntity> options = default)
     {
         return await Execute(nameof(UpdateOneAsync), async () =>
         {
-            var options = new FindOneAndUpdateOptions<TEntity> { ReturnDocument = ReturnDocument.Before };
+            options ??= new FindOneAndUpdateOptions<TEntity> { ReturnDocument = ReturnDocument.Before };
+            if (options.ReturnDocument != ReturnDocument.Before) throw new InvalidOperationException($"The ReturnDocument option has to be set to {ReturnDocument.Before}. To get the '{ReturnDocument.After}', call method '{nameof(EntityChangeResult<TEntity>.GetAfterAsync)}()' on the result.");
             var before = await Collection.FindOneAndUpdateAsync(filter, update, options);
             if (before == null) return new EntityChangeResult<TEntity>(default, default(TEntity));
             return new EntityChangeResult<TEntity>(before, async () =>
