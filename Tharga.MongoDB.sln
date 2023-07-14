@@ -15,11 +15,11 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution 
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Sample", "Sample", "{4CAA06CB-6FB9-48D7-9145-DDCA261FA870}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Tharga.MongoDB.SimpleConsoleDemo", "Tharga.MongoDB.SimpleConsoleDemo\Tharga.MongoDB.SimpleConsoleDemo.csproj", "{79841BCD-AE44-4F76-80BA-65ECED6CD7B7}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "SimpleConsoleDemo", "Sample\SimpleConsoleDemo\SimpleConsoleDemo.csproj", "{79841BCD-AE44-4F76-80BA-65ECED6CD7B7}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Tharga.MongoDB.HostSample", "Tharga.MongoDB.HostSample\Tharga.MongoDB.HostSample.csproj", "{C686B58A-FCD8-4D4F-B87B-2DDE584F959A}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "HostSample", "Sample\HostSample\HostSample.csproj", "{C686B58A-FCD8-4D4F-B87B-2DDE584F959A}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Tharga.MongoDB.ConsoleSample", "Tharga.MongoDB.ConsoleSample\Tharga.MongoDB.ConsoleSample.csproj", "{A51E4D23-7908-4E55-BF12-543FEE826761}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ConsoleSample", "Sample\ConsoleSample\ConsoleSample.csproj", "{A51E4D23-7908-4E55-BF12-543FEE826761}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

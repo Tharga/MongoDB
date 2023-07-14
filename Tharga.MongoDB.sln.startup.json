@@ -4,17 +4,17 @@
   "MultiProjectConfigurations": {
     "Host Sample": {
       "Projects": {
-        "Tharga.MongoDB.HostSample": {}
+        "HostSample": {}
       }
     },
     "Console Sample": {
       "Projects": {
-        "Tharga.MongoDB.ConsoleSample": {}
+        "ConsoleSample": {}
       }
     },
     "Simple Console Demo": {
       "Projects": {
-        "Tharga.MongoDB.SimpleConsoleDemo": {}
+        "SimpleConsoleDemo": {}
       }
     }
   }

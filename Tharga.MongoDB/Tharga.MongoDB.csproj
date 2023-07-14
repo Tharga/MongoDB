@@ -7,6 +7,7 @@
 		<Authors>Daniel Bohlin</Authors>
 		<Company>Thargelion AB</Company>
 		<Product>Tharga MongoDB</Product>
+		<Description>Dynamic names for databases and collections.</Description>
 		<PackageIconUrl>http://thargelion.se/wp-content/uploads/2019/11/Thargelion-White-Icon-150.png</PackageIconUrl>
 		<GenerateDocumentationFile>True</GenerateDocumentationFile>
 		<PackageReadmeFile>README.md</PackageReadmeFile>
@@ -33,7 +34,7 @@
 		<PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="7.0.0" />
 		<PackageReference Include="MongoDB.Driver" Version="2.20.0" />
 		<PackageReference Include="System.Linq.Async" Version="6.0.1" />
-		<PackageReference Include="Tharga.Toolkit" Version="1.10.5" />
+		<PackageReference Include="Tharga.Toolkit" Version="1.10.9" />
 	</ItemGroup>
 
 	<ItemGroup>

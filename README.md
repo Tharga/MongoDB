@@ -1,7 +1,7 @@
 # Tharga MongoDB
 
 ## Get started
-Install the nuget package `Tharga.MongoDB`.
+Install the nuget package `Tharga.MongoDB`. It is available at [nuget.org](#https://www.nuget.org/packages/Tharga.MongoDB).
 
 ### Register to use
 Register this package at startup by calling `AddMongoDB` as an extension to `IServiceCollection`.
