@@ -133,6 +133,16 @@ public abstract class BufferRepositoryCollectionBase<TEntity, TKey> : Repository
         return result;
     }
 
+    public override async Task<DeleteResult> DeleteManyAsync(Expression<Func<TEntity, bool>> predicate)
+    {
+        var result = await Disk.DeleteManyAsync(predicate);
+        if (result.DeletedCount > 0)
+        {
+            await InvalidateBufferAsync();
+        }
+        return result;
+    }
+
     public override async Task DropCollectionAsync()
     {
         await Disk.DropCollectionAsync();

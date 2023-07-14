@@ -45,6 +45,6 @@ public class SlimDiskRepoController : ControllerBase
     public async Task<IActionResult> Delete(string key)
     {
         var id = await _repository.DeleteOneAsync(x => x.Id == new ObjectId(key));
-        return Ok();
+        return Ok(id.ToString());
     }
 }
