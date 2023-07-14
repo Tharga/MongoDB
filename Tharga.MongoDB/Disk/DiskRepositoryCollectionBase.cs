@@ -270,13 +270,13 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         }, false);
     }
 
-    public override async Task<DeleteResult> DeleteManyAsync(Expression<Func<TEntity, bool>> predicate)
+    public override async Task<long> DeleteManyAsync(Expression<Func<TEntity, bool>> predicate)
     {
         return await Execute(nameof(DeleteManyAsync), async () =>
         {
             var item = await Collection.DeleteManyAsync(predicate);
             await DropEmpty(Collection);
-            return item;
+            return item.DeletedCount;
         }, false);
     }
 

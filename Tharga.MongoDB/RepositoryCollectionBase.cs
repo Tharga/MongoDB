@@ -66,7 +66,7 @@ public abstract class RepositoryCollectionBase<TEntity, TKey> : RepositoryCollec
     public abstract Task<EntityChangeResult<TEntity>> UpdateOneAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update, FindOneAndUpdateOptions<TEntity> options = default);
     public abstract Task<TEntity> DeleteOneAsync(TKey id);
     public abstract Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate, FindOneAndDeleteOptions<TEntity, TEntity> options = default);
-    public abstract Task<DeleteResult> DeleteManyAsync(Expression<Func<TEntity, bool>> predicate);
+    public abstract Task<long> DeleteManyAsync(Expression<Func<TEntity, bool>> predicate);
     public abstract Task DropCollectionAsync();
 
     public abstract Task<long> CountAsync(Expression<Func<TEntity, bool>> predicate);
