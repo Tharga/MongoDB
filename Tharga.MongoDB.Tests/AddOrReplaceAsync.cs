@@ -3,6 +3,7 @@ using System.Threading.Tasks;
 using AutoFixture;
 using FluentAssertions;
 using MongoDB.Bson;
+using MongoDB.Driver;
 using Tharga.MongoDB.Tests.Support;
 using Xunit;
 
@@ -53,6 +54,28 @@ public class AddOrReplaceAsync : GenericBufferRepositoryCollectionBaseTestBase
         //Assert
         result.Before.Should().BeNull();
         (await sut.GetAsync(x => x.Id == newEntity.Id).ToArrayAsync()).First().Should().Be(newEntity);
+        await VerifyContentAsync(sut);
+    }
+
+    [Theory]
+    [Trait("Category", "Database")]
+    [MemberData(nameof(Data))]
+    public async Task FailedToAdd(CollectionType collectionType)
+    {
+        //Arrange
+        var id = ObjectId.GenerateNewId();
+        var newEntity = new Fixture().Build<TestEntity>()
+            .With(x => x.Id, id)
+            .With(x => x.Value, InitialData.First().Value)
+            .Create();
+        var sut = await GetCollection(collectionType);
+
+        //Act
+        var act = () => sut.AddOrReplaceAsync(newEntity);
+
+        //Assert
+        await act.Should().ThrowAsync<MongoWriteException>();
+        (await sut.GetAsync(x => x.Id == newEntity.Id).ToArrayAsync()).Should().BeEmpty();
         await VerifyContentAsync(sut);
     }
 }

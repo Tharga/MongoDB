@@ -17,7 +17,7 @@ public class DiskTestRepositoryCollection : DiskRepositoryCollectionBase<TestEnt
 
     public override IEnumerable<CreateIndexModel<TestEntity>> Indicies => new[]
     {
-        new CreateIndexModel<TestEntity>(Builders<TestEntity>.IndexKeys.Ascending(f => f.Value), new CreateIndexOptions { Unique = false, Name = nameof(TestEntity.Value) })
+        new CreateIndexModel<TestEntity>(Builders<TestEntity>.IndexKeys.Ascending(f => f.Value), new CreateIndexOptions { Unique = true, Name = nameof(TestEntity.Value) })
     };
 
     public override IEnumerable<Type> Types => new[] { typeof(TestSubEntity), typeof(TestEntity) };

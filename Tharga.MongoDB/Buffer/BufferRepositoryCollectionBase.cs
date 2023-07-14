@@ -100,6 +100,31 @@ public abstract class BufferRepositoryCollectionBase<TEntity, TKey> : Repository
         return true;
     }
 
+    public override async Task AddManyAsync(IEnumerable<TEntity> entities)
+    {
+        try
+        {
+            var array = entities as TEntity[] ?? entities.ToArray();
+
+            await Disk.AddManyAsync(array);
+
+            var buffer = await GetBufferAsync();
+            foreach (var entity in array)
+            {
+                if (!buffer.TryAdd(entity.Id, entity))
+                {
+                    await InvalidateBufferAsync();
+                    return;
+                }
+            }
+        }
+        catch
+        {
+            await InvalidateBufferAsync();
+            throw;
+        }
+    }
+
     public override async Task<EntityChangeResult<TEntity>> AddOrReplaceAsync(TEntity entity)
     {
         var result = await Disk.AddOrReplaceAsync(entity);

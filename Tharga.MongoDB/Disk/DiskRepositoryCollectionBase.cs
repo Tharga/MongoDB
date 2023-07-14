@@ -188,6 +188,15 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         }, true);
     }
 
+    public override async Task AddManyAsync(IEnumerable<TEntity> entities)
+    {
+        await Execute(nameof(AddManyAsync), async () =>
+        {
+            await Collection.InsertManyAsync(entities);
+            return true;
+        }, true);
+    }
+
     public override async Task<EntityChangeResult<TEntity>> AddOrReplaceAsync(TEntity entity)
     {
         return await Execute(nameof(AddOrReplaceAsync), async () =>

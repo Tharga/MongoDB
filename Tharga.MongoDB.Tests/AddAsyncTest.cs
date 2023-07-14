@@ -10,6 +10,14 @@ namespace Tharga.MongoDB.Tests;
 
 public class AddAsyncTest : GenericBufferRepositoryCollectionBaseTestBase
 {
+    public AddAsyncTest()
+    {
+        Prepare(new[]
+        {
+            new Fixture().Build<TestEntity>().With(x => x.Id, ObjectId.GenerateNewId()).Create(),
+        });
+    }
+
     [Theory]
     [Trait("Category", "Database")]
     [MemberData(nameof(Data))]
@@ -47,45 +55,20 @@ public class AddAsyncTest : GenericBufferRepositoryCollectionBaseTestBase
         await VerifyContentAsync(sut);
     }
 
-    //[Theory(Skip = "skip")]
-    //[MemberData(nameof(Data))]
-    //public async Task ColdStart(CollectionType collectionType)
-    //{
-    //    //Arrange
-    //    var id = Guid.NewGuid().ToString();
-    //    var newEntity = Mock.Of<TestEntity>(x => x.Id == id && x.Value == Guid.NewGuid().ToString());
-    //    var sut = await GetCollection(collectionType, async x =>
-    //    {
-    //        var testEntity = Mock.Of<TestEntity>(z => z.Id == Guid.NewGuid().ToString());
-    //        var xxx = await x.BaseCollection.AddOrReplaceAsync(testEntity);
-    //        Debug.WriteLine(await xxx.Before.Value);
-    //    });
+    [Theory]
+    [Trait("Category", "Database")]
+    [MemberData(nameof(Data))]
+    public async Task AddFailed(CollectionType collectionType)
+    {
+        //Arrange
+        var sut = await GetCollection(collectionType);
 
-    //    //Act
-    //    var result = await sut.AddAsync(newEntity);
+        //Act
+        var result = await sut.AddAsync(InitialData.First());
 
-    //    //Assert
-    //    result.Should().BeTrue();
-    //    (await sut.GetAsync(x => x.Id == id).ToArrayAsync()).Should().HaveCount(1);
-    //    await VerifyContentAsync(sut);
-    //}
-
-    //[Theory(Skip = "skip")]
-    //[MemberData(nameof(Data))]
-    //public async Task AddAreadyExisting(CollectionType collectionType)
-    //{
-    //    //Arrange
-    //    var id = Guid.NewGuid().ToString();
-    //    var newEntity = Mock.Of<TestEntity>(x => x.Id == id && x.Value == Guid.NewGuid().ToString());
-    //    var sut = await GetCollection(collectionType);
-    //    await sut.AddAsync(Mock.Of<TestEntity>(x => x.Id == id));
-
-    //    //Act
-    //    var result = await sut.AddAsync(newEntity);
-
-    //    //Assert
-    //    result.Should().BeFalse();
-    //    (await sut.GetAsync(x => x.Id == id).ToArrayAsync()).Should().HaveCount(1);
-    //    await VerifyContentAsync(sut);
-    //}
+        //Assert
+        result.Should().BeFalse();
+        (await sut.GetAsync(x => x.Id == InitialData.First().Id).ToArrayAsync()).Should().HaveCount(1);
+        await VerifyContentAsync(sut);
+    }
 }
