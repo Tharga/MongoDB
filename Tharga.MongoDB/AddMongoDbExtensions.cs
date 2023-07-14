@@ -58,15 +58,15 @@ public static class AddMongoDbExtensions
         {
             _actionEvent?.Invoke(new ActionEventArgs(new ActionEventArgs.ActionData
             {
-                Message = $"Looking for assemblies in {string.Join(", ", AssemblyService.GetAssemblies(databaseOptions.AutoRegistrationAssemblies).Select(x => x.GetName().Name).ToArray())}.",
+                Message = $"Looking for assemblies in {string.Join(", ", (databaseOptions.AutoRegistrationAssemblies ?? AssemblyService.GetAssemblies()).Select(x => x.GetName().Name).ToArray())}.",
                 Level = LogLevel.Debug
             }, new ActionEventArgs.ContextData()));
         }
 
         if (databaseOptions.AutoRegisterRepositories)
         {
-            var currentDomainDefinedTypes = AssemblyService.GetCurrentDomainDefinedTypes<IRepository>(databaseOptions.AutoRegistrationAssemblies).ToArray();
-            foreach (var repositoryType in currentDomainDefinedTypes.Where(x => !x.IsGenericType))
+            var currentDomainDefinedTypes = AssemblyService.GetTypes<IRepository>(x => !x.IsGenericType, databaseOptions.AutoRegistrationAssemblies).ToArray();
+            foreach (var repositoryType in currentDomainDefinedTypes)
             {
                 var serviceTypes = repositoryType.ImplementedInterfaces.Where(x => x.IsInterface && !x.IsGenericType && x != typeof(IRepository)).ToArray();
                 if (serviceTypes.Length > 1) throw new InvalidOperationException($"There are {serviceTypes.Length} interfaces for repository type '{repositoryType.Name}' ({string.Join(", ", serviceTypes.Select(x => x.Name))}).");
@@ -98,8 +98,8 @@ public static class AddMongoDbExtensions
 
         if (databaseOptions.AutoRegisterCollections)
         {
-            var currentDomainDefinedTypes = AssemblyService.GetCurrentDomainDefinedTypes<IRepositoryCollection>(databaseOptions.AutoRegistrationAssemblies).ToArray();
-            foreach (var collectionType in currentDomainDefinedTypes.Where(x => !x.IsGenericType))
+            var currentDomainDefinedTypes = AssemblyService.GetTypes<IRepositoryCollection>(x => !x.IsGenericType, databaseOptions.AutoRegistrationAssemblies).ToArray();
+            foreach (var collectionType in currentDomainDefinedTypes)
             {
                 var serviceTypes = collectionType.ImplementedInterfaces.Where(x => x.IsInterface && !x.IsGenericType && x != typeof(IRepositoryCollection)).ToArray();
                 if (serviceTypes.Length > 1) throw new InvalidOperationException($"There are {serviceTypes.Length} interfaces for collection type '{collectionType.Name}' ({string.Join(", ", serviceTypes.Select(x => x.Name))}).");

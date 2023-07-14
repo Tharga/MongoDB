@@ -240,11 +240,11 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         }, false);
     }
 
-    public override async Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate)
+    public override async Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate, FindOneAndDeleteOptions<TEntity, TEntity> options = default)
     {
         return await Execute(nameof(DeleteOneAsync), async () =>
         {
-            var item = await Collection.FindOneAndDeleteAsync(predicate);
+            var item = await Collection.FindOneAndDeleteAsync(predicate, options);
             await DropEmpty(Collection);
             return item;
         }, false);
@@ -297,7 +297,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                         await DropEmpty(collection);
                     }
 
-                    await InitiateAsync(collection);
+                    await InitAsync(collection);
                     _logger?.LogTrace($"Initiate {{collection}} is completed. [action: Database, operation: {nameof(FetchCollectionAsync)}]", ProtectedCollectionName);
                     InvokeAction(new ActionEventArgs.ActionData { Operation = nameof(FetchCollectionAsync), Message = "Initiation completed.", Level = LogLevel.Trace });
                 }

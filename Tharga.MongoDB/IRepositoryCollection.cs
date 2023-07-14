@@ -33,6 +33,6 @@ public interface IRepositoryCollection<TEntity, TKey> : IRepositoryCollection
     Task<EntityChangeResult<TEntity>> UpdateOneAsync(TKey id, UpdateDefinition<TEntity> update);
     Task<EntityChangeResult<TEntity>> UpdateOneAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update);
     Task<TEntity> DeleteOneAsync(TKey id);
-    Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate);
+    Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate, FindOneAndDeleteOptions<TEntity, TEntity> options = default);
     Task<long> CountAsync(Expression<Func<TEntity, bool>> predicate);
 }

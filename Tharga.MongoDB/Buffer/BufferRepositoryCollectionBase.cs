@@ -123,9 +123,9 @@ public abstract class BufferRepositoryCollectionBase<TEntity, TKey> : Repository
         return result;
     }
 
-    public override async Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate)
+    public override async Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate, FindOneAndDeleteOptions<TEntity, TEntity> options = default)
     {
-        var result = await Disk.DeleteOneAsync(predicate);
+        var result = await Disk.DeleteOneAsync(predicate, options);
         if (!_bufferCollection.Data.TryRemove(result.Id, out _))
         {
             await InvalidateBufferAsync();
