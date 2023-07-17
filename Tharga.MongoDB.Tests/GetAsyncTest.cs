@@ -1,6 +1,4 @@
-﻿using System;
-using System.Linq;
-using System.Linq.Expressions;
+﻿using System.Linq;
 using System.Threading.Tasks;
 using AutoFixture;
 using FluentAssertions;
@@ -43,12 +41,26 @@ public class GetAsyncTest : GenericBufferRepositoryCollectionBaseTestBase
     [Theory]
     [Trait("Category", "Database")]
     [MemberData(nameof(Data))]
-    public async Task BasicWithFilter(CollectionType collectionType)
+    public async Task Default(CollectionType collectionType)
     {
-        if (collectionType == CollectionType.Buffer) return;
-
         //Arrange
         var sut = await GetCollection(collectionType);
+
+        //Act
+        var result = await sut.GetAsync().ToArrayAsync();
+
+        //Assert
+        result.Should().NotBeNull();
+        result.Length.Should().Be(3);
+        await VerifyContentAsync(sut);
+    }
+
+    [Fact]
+    [MemberData(nameof(Data))]
+    public async Task BasicWithFilterFromDisk()
+    {
+        //Arrange
+        var sut = await GetCollection(CollectionType.Disk);
 
         //Act
         var filter = Builders<TestEntity>.Filter.Empty;
@@ -57,6 +69,23 @@ public class GetAsyncTest : GenericBufferRepositoryCollectionBaseTestBase
         //Assert
         result.Should().NotBeNull();
         result.Length.Should().Be(3);
+        await VerifyContentAsync(sut);
+    }
+
+    [Fact(Skip = "Implement")]
+    [Trait("Category", "Database")]
+    public async Task BasicWithFilterFromBuffer()
+    {
+        //Arrange
+        var sut = await GetCollection(CollectionType.Buffer);
+
+        //Act
+        var filter = Builders<TestEntity>.Filter.Empty;
+        var act = () => sut.GetAsync(filter);
+
+        //Assert
+        act.Should().Throw<MongoBulkWriteException>();
+        //await act.Should().throwa
         await VerifyContentAsync(sut);
     }
 }

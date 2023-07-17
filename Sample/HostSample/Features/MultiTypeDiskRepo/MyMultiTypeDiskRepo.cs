@@ -1,6 +1,7 @@
 ﻿using System.Collections.Generic;
 using System.Threading.Tasks;
 using HostSample.Entities;
+using MongoDB.Bson;
 using MongoDB.Driver;
 
 namespace HostSample.Features.MultiTypeDiskRepo;

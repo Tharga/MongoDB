@@ -38,7 +38,7 @@ public abstract class BufferRepositoryCollectionBase<TEntity, TKey> : Repository
     internal override IRepositoryCollection<TEntity, TKey> BaseCollection => _diskConnected ? Disk : this;
     private RepositoryCollectionBase<TEntity, TKey> Disk => _diskConnected ? _disk ??= new GenericDiskRepositoryCollection<TEntity, TKey>(_mongoDbServiceFactory, _databaseContext ?? new DatabaseContext { CollectionName = CollectionName, DatabasePart = DatabasePart, ConfigurationName = ConfigurationName }, _logger, this) : null;
 
-    public override async IAsyncEnumerable<TEntity> GetAsync(Expression<Func<TEntity, bool>> predicate, Options<TEntity> options = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    public override async IAsyncEnumerable<TEntity> GetAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         if (options != null) throw new NotSupportedException($"Parameter {nameof(options)} is not supported for {nameof(BufferRepositoryCollectionBase<TEntity, TKey>)}.");
 
@@ -46,7 +46,7 @@ public abstract class BufferRepositoryCollectionBase<TEntity, TKey> : Repository
         sw.Start();
 
         var buffer = await GetBufferAsync();
-        var data = buffer.Values.Where(x => predicate.Compile().Invoke(x));
+        var data = buffer.Values.Where(x => predicate?.Compile().Invoke(x) ?? true);
         var count = 0;
         foreach (var entity in data)
         {
@@ -64,7 +64,7 @@ public abstract class BufferRepositoryCollectionBase<TEntity, TKey> : Repository
         throw new NotSupportedException();
     }
 
-    public override IAsyncEnumerable<ResultPage<TEntity, TKey>> GetPageAsync(Expression<Func<TEntity, bool>> predicate, Options<TEntity> options = null, CancellationToken cancellationToken = default)
+    public override IAsyncEnumerable<ResultPage<TEntity, TKey>> GetPageAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default)
     {
         throw new NotSupportedException();
     }
@@ -76,12 +76,17 @@ public abstract class BufferRepositoryCollectionBase<TEntity, TKey> : Repository
         return data;
     }
 
-    public override async Task<TEntity> GetOneAsync(Expression<Func<TEntity, bool>> predicate, SortDefinition<TEntity> sort = default, CancellationToken cancellationToken = default)
+    public override async Task<TEntity> GetOneAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default)
     {
-        if (sort != default) throw new NotSupportedException("The sort is not supported for buffer collections.");
+        if (options != null) throw new NotSupportedException("The options parameter is not supported for buffer collections.");
         var buffer = await GetBufferAsync();
-        var data = buffer.Values.Where(x => predicate.Compile().Invoke(x));
+        var data = buffer.Values.Where(x => predicate?.Compile().Invoke(x) ?? true);
         return data.FirstOrDefault();
+    }
+
+    public override Task<TEntity> GetOneAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default)
+    {
+        throw new NotSupportedException();
     }
 
     public override async Task<T> GetOneAsync<T>(Expression<Func<T, bool>> predicate = null, SortDefinition<T> sort = default, CancellationToken cancellationToken = default)
@@ -161,7 +166,7 @@ public abstract class BufferRepositoryCollectionBase<TEntity, TKey> : Repository
         return result;
     }
 
-    public override async Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate, FindOneAndDeleteOptions<TEntity, TEntity> options = default)
+    public override async Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate = null, FindOneAndDeleteOptions<TEntity, TEntity> options = default)
     {
         var result = await Disk.DeleteOneAsync(predicate, options);
         if (!_bufferCollection.Data.TryRemove(result.Id, out _))

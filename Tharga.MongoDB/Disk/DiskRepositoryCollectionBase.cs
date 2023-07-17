@@ -55,7 +55,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         }
     }
 
-    public override async IAsyncEnumerable<TEntity> GetAsync(Expression<Func<TEntity, bool>> predicate, Options<TEntity> options = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    public override async IAsyncEnumerable<TEntity> GetAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         var sw = new Stopwatch();
         sw.Start();
@@ -75,7 +75,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         InvokeAction(new ActionEventArgs.ActionData { Operation = nameof(GetAsync), Elapsed = sw.Elapsed, ItemCount = count });
     }
 
-    public override async IAsyncEnumerable<TEntity> GetAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default)
+    public override async IAsyncEnumerable<TEntity> GetAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         var sw = new Stopwatch();
         sw.Start();
@@ -95,7 +95,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         InvokeAction(new ActionEventArgs.ActionData { Operation = nameof(GetAsync), Elapsed = sw.Elapsed, ItemCount = count });
     }
 
-    public override async IAsyncEnumerable<ResultPage<TEntity, TKey>> GetPageAsync(Expression<Func<TEntity, bool>> predicate, Options<TEntity> options = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    public override async IAsyncEnumerable<ResultPage<TEntity, TKey>> GetPageAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         if (ResultLimit == null) throw new InvalidOperationException("Cannot use GetPageAsync when no result limit has been configured.");
         if (ResultLimit <= 0) throw new InvalidOperationException("GetPageAsync has to be a number greater than 0.");
@@ -138,7 +138,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         IAsyncCursor<TEntity> cursor;
         try
         {
-            cursor = await collection.FindAsync(filter, options, cancellationToken);
+            cursor = await collection.FindAsync(filter ?? FilterDefinition<TEntity>.Empty, options, cancellationToken);
         }
         catch (Exception e)
         {
@@ -178,12 +178,25 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         }, false);
     }
 
-    public override async Task<TEntity> GetOneAsync(Expression<Func<TEntity, bool>> predicate, SortDefinition<TEntity> sort = default, CancellationToken cancellationToken = default)
+    public override Task<TEntity> GetOneAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default)
     {
+        var filter = predicate == null ? FilterDefinition<TEntity>.Empty : new ExpressionFilterDefinition<TEntity>(predicate);
+        return GetOneAsync(filter, options, cancellationToken);
+    }
+
+    public override async Task<TEntity> GetOneAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default)
+    {
+        if (options?.Limit != null && options.Limit != 1) throw new InvalidOperationException("Limit needs to be 1 for option.");
+
         return await Execute(nameof(GetOneAsync), async () =>
         {
-            var item = await Collection.Find(predicate).Sort(sort).Limit(1).SingleOrDefaultAsync(cancellationToken);
-            return await CleanEntityAsync(item);
+            var o = options == null
+                ? new FindOptions<TEntity, TEntity> { Limit = 1 }
+                : new FindOptions<TEntity, TEntity> { Projection = options.Projection, Sort = options.Sort, Limit = 1 };
+            var cursor = await FindAsync(Collection, filter, cancellationToken, o);
+            if (!await cursor.MoveNextAsync(cancellationToken)) return null;
+            var item = await CleanEntityAsync(cursor.Current.SingleOrDefault());
+            return item;
         }, false);
     }
 
@@ -281,7 +294,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         }, false);
     }
 
-    public override async Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate, FindOneAndDeleteOptions<TEntity, TEntity> options = default)
+    public override async Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate = null, FindOneAndDeleteOptions<TEntity, TEntity> options = default)
     {
         return await Execute(nameof(DeleteOneAsync), async () =>
         {
