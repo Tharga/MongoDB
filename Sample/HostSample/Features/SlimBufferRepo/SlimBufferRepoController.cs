@@ -37,7 +37,7 @@ public class SlimBufferRepoController : ControllerBase
     public async Task<IActionResult> CreateRandom()
     {
         var id = await _repository.CreateRandom();
-        return Created(new Uri($"{Request.Scheme}://{Request.Host}/SlimBufferRepo/{id}"), id);
+        return Created(new Uri($"{Request.Scheme}://{Request.Host}/{nameof(SlimBufferRepoController).Replace("Controller", "")}/{id}"), id);
     }
 
     [HttpDelete]

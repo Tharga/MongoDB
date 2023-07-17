@@ -55,6 +55,7 @@ public abstract class RepositoryCollectionBase<TEntity, TKey> : RepositoryCollec
     public virtual IEnumerable<Type> Types => null;
 
     public abstract IAsyncEnumerable<TEntity> GetAsync(Expression<Func<TEntity, bool>> predicate, Options<TEntity> options = null, CancellationToken cancellationToken = default);
+    //public abstract IAsyncEnumerable<T> GetAsync<T>(Expression<Func<T, bool>> predicate, Options<TEntity> options = null, CancellationToken cancellationToken = default) where T : TEntity;
     public abstract IAsyncEnumerable<ResultPage<TEntity, TKey>> GetPageAsync(Expression<Func<TEntity, bool>> predicate, Options<TEntity> options = null, CancellationToken cancellationToken = default);
     public abstract Task<TEntity> GetOneAsync(TKey id, CancellationToken cancellationToken = default);
     public abstract Task<TEntity> GetOneAsync(Expression<Func<TEntity, bool>> predicate, SortDefinition<TEntity> sort = default, CancellationToken cancellationToken = default);

@@ -5,6 +5,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.OpenApi.Models;
 using Tharga.MongoDB;
+using Tharga.Toolkit.TypeService;
 
 namespace HostSample;
 
@@ -20,6 +21,7 @@ public class Startup
             o.ConfigurationName = "Default"; //"Other";
             o.ActionEvent += e => { System.Console.WriteLine($"---> {e.Action.Message}"); };
         });
+        services.AddAssemblyService(); //TODO: Include this in MongoDB registration
         services.AddLogging(x =>
         {
             x.AddConsole();

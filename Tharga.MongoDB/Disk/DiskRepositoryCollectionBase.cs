@@ -172,6 +172,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         return await Execute(nameof(GetOneAsync), async () =>
         {
             var typeFilter = Builders<T>.Filter.And(Builders<T>.Filter.OfType<T>(), new ExpressionFilterDefinition<T>(predicate ?? (_ => true)));
+            //TODO: Initiate this collection too...
             var collection = _mongoDbService.GetCollection<T>(ProtectedCollectionName);
             var item = await collection.Find(typeFilter).Sort(sort).Limit(1).SingleOrDefaultAsync(cancellationToken);
             return item;
@@ -357,10 +358,11 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 
     private void RegisterTypes()
     {
-        if ((typeof(TEntity).IsInterface || typeof(TEntity).IsAbstract) && !Types.Any())
+        if ((typeof(TEntity).IsInterface || typeof(TEntity).IsAbstract) && (Types == null || !Types.Any()))
         {
+            //TODO: Can this be done automatically?
             var kind = typeof(TEntity).IsInterface ? "an interface" : "an abstract class";
-            throw new InvalidOperationException($"Types has to be provided since '{typeof(TEntity).Name}' it is {kind}. Do this by overriding the the Types property in '{GetType().Name}'.");
+            throw new InvalidOperationException($"Types has to be provided since '{typeof(TEntity).Name}' it is {kind}. Do this by overriding the the Types property in '{GetType().Name}' and provide the requested type.");
         }
 
         foreach (var type in Types ?? Array.Empty<Type>())
