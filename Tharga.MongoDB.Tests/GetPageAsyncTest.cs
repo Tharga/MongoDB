@@ -1,4 +1,5 @@
-﻿using System.Linq;
+﻿using System;
+using System.Linq;
 using System.Threading.Tasks;
 using AutoFixture;
 using FluentAssertions;
@@ -48,7 +49,8 @@ public class GetPageAsyncTest : GenericBufferRepositoryCollectionBaseTestBase
         var act = () => sut.GetPageAsync(x => true);
 
         //Assert
-        act.Should().Throw<MongoBulkWriteException>();
+        throw new NotImplementedException();
+        //await act.Should().ThrowAsync<MongoBulkWriteException>();
         await VerifyContentAsync(sut);
     }
 }

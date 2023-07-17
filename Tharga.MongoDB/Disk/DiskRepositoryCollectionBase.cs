@@ -95,6 +95,39 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         InvokeAction(new ActionEventArgs.ActionData { Operation = nameof(GetAsync), Elapsed = sw.Elapsed, ItemCount = count });
     }
 
+    public override async IAsyncEnumerable<T> GetAsync<T>(Expression<Func<T, bool>> predicate = null, Options<T> options = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        var sw = new Stopwatch();
+        sw.Start();
+
+        var filter = Builders<T>.Filter.And(Builders<T>.Filter.OfType<T>(), new ExpressionFilterDefinition<T>(predicate ?? (_ => true)));
+        var o = options == null ? null : new FindOptions<T, T> { Projection = options.Projection, Sort = options.Sort, Limit = options.Limit };
+
+        _ = Collection ?? throw new InvalidOperationException("Unable to initiate collection.");
+
+        var collection = _mongoDbService.GetCollection<T>(ProtectedCollectionName);
+        var cursor = await collection.FindAsync(filter ?? FilterDefinition<T>.Empty, o, cancellationToken);
+
+        var count = 0;
+        while (await cursor.MoveNextAsync(cancellationToken))
+        {
+            foreach (var current in cursor.Current)
+            {
+                count++;
+                if (ResultLimit != null && count > ResultLimit)
+                {
+                    throw new ResultLimitException(ResultLimit.Value);
+                }
+
+                yield return await CleanEntityAsync(collection, current);
+            }
+        }
+
+        sw.Stop();
+        _logger?.LogInformation($"Executed {{repositoryType}} took {{elapsed}} ms and returned {{itemCount}} items. [action: Database, operation: {nameof(GetAsync)}]", "DiskRepository", sw.Elapsed.TotalMilliseconds, count);
+        InvokeAction(new ActionEventArgs.ActionData { Operation = $"{nameof(GetAsync)}<{typeof(T).Name}>", Elapsed = sw.Elapsed, ItemCount = count });
+    }
+
     public override async IAsyncEnumerable<ResultPage<TEntity, TKey>> GetPageAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         if (ResultLimit == null) throw new InvalidOperationException("Cannot use GetPageAsync when no result limit has been configured.");
@@ -200,15 +233,22 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         }, false);
     }
 
-    public override async Task<T> GetOneAsync<T>(Expression<Func<T, bool>> predicate = null, SortDefinition<T> sort = default, CancellationToken cancellationToken = default)
+    public override async Task<T> GetOneAsync<T>(Expression<Func<T, bool>> predicate = null, Options<T> options = null, CancellationToken cancellationToken = default)
     {
-        return await Execute(nameof(GetOneAsync), async () =>
+        if (options?.Limit != null && options.Limit != 1) throw new InvalidOperationException("Limit needs to be 1 for option.");
+
+        return await Execute($"{nameof(GetOneAsync)}<{typeof(T).Name}>", async () =>
         {
-            var typeFilter = Builders<T>.Filter.And(Builders<T>.Filter.OfType<T>(), new ExpressionFilterDefinition<T>(predicate ?? (_ => true)));
-            //TODO: Initiate this collection too...
+            var filter = Builders<T>.Filter.And(Builders<T>.Filter.OfType<T>(), new ExpressionFilterDefinition<T>(predicate ?? (_ => true)));
+            var o = options == null ? new FindOptions<T, T> { Limit = 1 } : new FindOptions<T, T> { Projection = options.Projection, Sort = options.Sort, Limit = 1 };
+
+            _ = Collection ?? throw new InvalidOperationException("Unable to initiate collection.");
+
             var collection = _mongoDbService.GetCollection<T>(ProtectedCollectionName);
-            var item = await collection.Find(typeFilter).Sort(sort).Limit(1).SingleOrDefaultAsync(cancellationToken);
-            return item;
+            var cursor = await collection.FindAsync(filter ?? FilterDefinition<T>.Empty, o, cancellationToken);
+            if (!await cursor.MoveNextAsync(cancellationToken)) return default;
+            var item = cursor.Current.SingleOrDefault();
+            return await CleanEntityAsync(collection, item);
         }, false);
     }
 
@@ -456,8 +496,6 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         var sw = new Stopwatch();
         sw.Start();
 
-        //TODO: Does empty filter return all?
-        //var typeFilter = Builders<TEntity>.Filter.And(Builders<TEntity>.Filter.OfType<TEntity>(), new ExpressionFilterDefinition<TEntity>((_ => true)));
         var filter = Builders<TEntity>.Filter.Empty;
 
         var cursor = await FindAsync(collection, filter, CancellationToken.None, null);
@@ -499,7 +537,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         return await CleanEntityAsync(Collection, item);
     }
 
-    private async Task<TEntity> CleanEntityAsync(IMongoCollection<TEntity> collection, TEntity item)
+    private async Task<T> CleanEntityAsync<T>(IMongoCollection<T> collection, T item) where T : TEntity
     {
         if (item == null) return null;
 
@@ -507,7 +545,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         {
             if (AutoClean)
             {
-                var filter = Builders<TEntity>.Filter.Eq(x => x.Id, item.Id);
+                var filter = Builders<T>.Filter.Eq(x => x.Id, item.Id);
                 await collection.FindOneAndReplaceAsync(filter, item);
                 _logger?.LogInformation($"Entity {{id}} of type {{entityType}} in collection {{collection}} has been cleaned. [action: Database, operation: {nameof(CleanEntityAsync)}]", item.Id, typeof(TEntity), ProtectedCollectionName);
                 InvokeAction(new ActionEventArgs.ActionData { Operation = nameof(CleanEntityAsync), Message = "Entity cleaned.", Data = new Dictionary<string, object> { { "id", item.Id } } });

@@ -21,7 +21,6 @@ public class Startup
             o.ConfigurationName = "Default"; //"Other";
             o.ActionEvent += e => { System.Console.WriteLine($"---> {e.Action.Message}"); };
         });
-        services.AddAssemblyService(); //TODO: Include this in MongoDB registration
         services.AddLogging(x =>
         {
             x.AddConsole();

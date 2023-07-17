@@ -31,6 +31,8 @@ public static class AddMongoDbExtensions
 
         RepositoryCollectionBase.ActionEvent += (_, e) => { _actionEvent?.Invoke(e); };
 
+        services.AddAssemblyService();
+
         services.AddTransient<IMongoDbServiceFactory, MongoDbServiceFactory>();
         services.AddTransient<IRepositoryConfigurationLoader>(serviceProvider =>
         {

@@ -19,11 +19,12 @@ public interface IRepositoryCollection<TEntity, TKey> : IRepositoryCollection
 {
     IAsyncEnumerable<TEntity> GetAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default);
     IAsyncEnumerable<TEntity> GetAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default);
+    IAsyncEnumerable<T> GetAsync<T>(Expression<Func<T, bool>> predicate = null, Options<T> options = null, CancellationToken cancellationToken = default) where T : TEntity;
     IAsyncEnumerable<ResultPage<TEntity, TKey>> GetPageAsync(Expression<Func<TEntity, bool>> predicate, Options<TEntity> options = null, CancellationToken cancellationToken = default);
     Task<TEntity> GetOneAsync(TKey id, CancellationToken cancellationToken = default);
     Task<TEntity> GetOneAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default);
     Task<TEntity> GetOneAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default);
-    Task<T> GetOneAsync<T>(Expression<Func<T, bool>> predicate = null, SortDefinition<T> sort = default, CancellationToken cancellationToken = default) where T : TEntity;
+    Task<T> GetOneAsync<T>(Expression<Func<T, bool>> predicate = null, Options<T> options = null, CancellationToken cancellationToken = default) where T : TEntity;
     Task<bool> AddAsync(TEntity entity);
     Task AddManyAsync(IEnumerable<TEntity> entities);
     Task<EntityChangeResult<TEntity>> AddOrReplaceAsync(TEntity entity);

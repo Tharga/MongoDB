@@ -64,6 +64,19 @@ public abstract class BufferRepositoryCollectionBase<TEntity, TKey> : Repository
         throw new NotSupportedException();
     }
 
+    public override async IAsyncEnumerable<T> GetAsync<T>(Expression<Func<T, bool>> predicate = null, Options<T> options = null, CancellationToken cancellationToken = default)
+    {
+        if (options != default) throw new NotSupportedException("The options parameter is not supported for buffer collections.");
+        var buffer = await GetBufferAsync();
+        var data = buffer.Values
+            .Where(x => x.GetType() == typeof(T))
+            .Where(x => (predicate ?? (_ => true)).Compile().Invoke(x as T));
+        foreach (var entity in data)
+        {
+            yield return entity as T;
+        }
+    }
+
     public override IAsyncEnumerable<ResultPage<TEntity, TKey>> GetPageAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default)
     {
         throw new NotSupportedException();
@@ -89,9 +102,9 @@ public abstract class BufferRepositoryCollectionBase<TEntity, TKey> : Repository
         throw new NotSupportedException();
     }
 
-    public override async Task<T> GetOneAsync<T>(Expression<Func<T, bool>> predicate = null, SortDefinition<T> sort = default, CancellationToken cancellationToken = default)
+    public override async Task<T> GetOneAsync<T>(Expression<Func<T, bool>> predicate = null, Options<T> options = null, CancellationToken cancellationToken = default)
     {
-        if (sort != default) throw new NotSupportedException("The sort is not supported for buffer collections.");
+        if (options != default) throw new NotSupportedException("The options parameter is not supported for buffer collections.");
         var buffer = await GetBufferAsync();
         var data = buffer.Values
             .Where(x => x.GetType() == typeof(T))
