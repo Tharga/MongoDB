@@ -13,7 +13,6 @@ public class MyBasicDiskRepoCollection : DiskRepositoryCollectionBase<MyEntity, 
     {
     }
 
-    //public override string ConfigurationName => "Other";
     public override string DatabasePart => "MyDatabasePart";
     public override string CollectionName => "MyCollection";
 }

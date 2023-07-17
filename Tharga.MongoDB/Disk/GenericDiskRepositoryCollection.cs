@@ -1,7 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq.Expressions;
-using System.Threading;
 using Microsoft.Extensions.Logging;
 using MongoDB.Driver;
 using Tharga.MongoDB.Buffer;

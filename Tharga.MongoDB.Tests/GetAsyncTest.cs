@@ -1,8 +1,11 @@
-﻿using System.Linq;
+﻿using System;
+using System.Linq;
+using System.Linq.Expressions;
 using System.Threading.Tasks;
 using AutoFixture;
 using FluentAssertions;
 using MongoDB.Bson;
+using MongoDB.Driver;
 using Tharga.MongoDB.Tests.Support;
 using Xunit;
 
@@ -30,6 +33,26 @@ public class GetAsyncTest : GenericBufferRepositoryCollectionBaseTestBase
 
         //Act
         var result = await sut.GetAsync(x => true).ToArrayAsync();
+
+        //Assert
+        result.Should().NotBeNull();
+        result.Length.Should().Be(3);
+        await VerifyContentAsync(sut);
+    }
+
+    [Theory]
+    [Trait("Category", "Database")]
+    [MemberData(nameof(Data))]
+    public async Task BasicWithFilter(CollectionType collectionType)
+    {
+        if (collectionType == CollectionType.Buffer) return;
+
+        //Arrange
+        var sut = await GetCollection(collectionType);
+
+        //Act
+        var filter = Builders<TestEntity>.Filter.Empty;
+        var result = await sut.GetAsync(filter).ToArrayAsync();
 
         //Assert
         result.Should().NotBeNull();

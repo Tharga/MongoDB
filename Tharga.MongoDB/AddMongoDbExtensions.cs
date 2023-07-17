@@ -12,8 +12,8 @@ namespace Tharga.MongoDB;
 
 public static class AddMongoDbExtensions
 {
-    private static readonly ConcurrentDictionary<Type, Type> RegisteredRepositories = new();
-    private static readonly ConcurrentDictionary<Type, Type> RegisteredCollections = new();
+    private static readonly ConcurrentDictionary<Type, Type> _registeredRepositories = new();
+    private static readonly ConcurrentDictionary<Type, Type> _registeredCollections = new();
     private static Action<ActionEventArgs> _actionEvent;
 
     public static IServiceCollection AddMongoDB(this IServiceCollection services, Action<DatabaseOptions> options = null)
@@ -49,7 +49,7 @@ public static class AddMongoDbExtensions
                 return service;
             }, type =>
             {
-                RegisteredCollections.TryGetValue(type, out var implementationType);
+                _registeredCollections.TryGetValue(type, out var implementationType);
                 return implementationType;
             });
         });
@@ -73,9 +73,9 @@ public static class AddMongoDbExtensions
                 var implementationType = repositoryType.AsType();
                 var serviceType = serviceTypes.Length == 0 ? implementationType : serviceTypes.Single();
 
-                if (!RegisteredRepositories.TryAdd(serviceType, implementationType))
+                if (!_registeredRepositories.TryAdd(serviceType, implementationType))
                 {
-                    RegisteredRepositories.TryGetValue(serviceType, out var other);
+                    _registeredRepositories.TryGetValue(serviceType, out var other);
                     throw new InvalidOperationException($"There are multiple implementations for interface '{serviceType.Name}' ({implementationType.Name} and {other?.Name}). {nameof(DatabaseOptions.AutoRegisterRepositories)} in {nameof(DatabaseOptions)} cannot be used.");
                 }
                 services.AddTransient(serviceType, implementationType);
@@ -115,9 +115,9 @@ public static class AddMongoDbExtensions
 
     private static void RegisterCollection(IServiceCollection services, Type serviceType, Type implementationType, string regTypeName)
     {
-        if (!RegisteredCollections.TryAdd(serviceType, implementationType))
+        if (!_registeredCollections.TryAdd(serviceType, implementationType))
         {
-            if (RegisteredCollections.TryGetValue(serviceType, out var other))
+            if (_registeredCollections.TryGetValue(serviceType, out var other))
             {
                 if (other == implementationType)
                 {

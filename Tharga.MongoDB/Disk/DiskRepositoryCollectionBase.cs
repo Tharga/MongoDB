@@ -75,6 +75,26 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         InvokeAction(new ActionEventArgs.ActionData { Operation = nameof(GetAsync), Elapsed = sw.Elapsed, ItemCount = count });
     }
 
+    public override async IAsyncEnumerable<TEntity> GetAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default)
+    {
+        var sw = new Stopwatch();
+        sw.Start();
+
+        var o = options == null ? null : new FindOptions<TEntity, TEntity> { Projection = options.Projection, Sort = options.Sort, Limit = options.Limit };
+        var cursor = await FindAsync(Collection, filter, cancellationToken, o);
+
+        var count = 0;
+        await foreach (var item in BuildList(cursor, cancellationToken).WithCancellation(cancellationToken))
+        {
+            count++;
+            yield return item;
+        }
+
+        sw.Stop();
+        _logger?.LogInformation($"Executed {{repositoryType}} took {{elapsed}} ms and returned {{itemCount}} items. [action: Database, operation: {nameof(GetAsync)}]", "DiskRepository", sw.Elapsed.TotalMilliseconds, count);
+        InvokeAction(new ActionEventArgs.ActionData { Operation = nameof(GetAsync), Elapsed = sw.Elapsed, ItemCount = count });
+    }
+
     public override async IAsyncEnumerable<ResultPage<TEntity, TKey>> GetPageAsync(Expression<Func<TEntity, bool>> predicate, Options<TEntity> options = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         if (ResultLimit == null) throw new InvalidOperationException("Cannot use GetPageAsync when no result limit has been configured.");
@@ -113,12 +133,12 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         InvokeAction(new ActionEventArgs.ActionData { Operation = nameof(GetPageAsync), Elapsed = sw.Elapsed, ItemCount = totalCount, Data = new Dictionary<string, object> { { "pages", pages } } });
     }
 
-    private async Task<IAsyncCursor<TEntity>> FindAsync(IMongoCollection<TEntity> collection, Expression<Func<TEntity, bool>> predicate, CancellationToken cancellationToken, FindOptions<TEntity, TEntity> options)
+    private async Task<IAsyncCursor<TEntity>> FindAsync(IMongoCollection<TEntity> collection, FilterDefinition<TEntity> filter, CancellationToken cancellationToken, FindOptions<TEntity, TEntity> options)
     {
         IAsyncCursor<TEntity> cursor;
         try
         {
-            cursor = await collection.FindAsync(predicate, options, cancellationToken);
+            cursor = await collection.FindAsync(filter, options, cancellationToken);
         }
         catch (Exception e)
         {
@@ -423,7 +443,11 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         var sw = new Stopwatch();
         sw.Start();
 
-        var cursor = await FindAsync(collection, x => true, CancellationToken.None, null);
+        //TODO: Does empty filter return all?
+        //var typeFilter = Builders<TEntity>.Filter.And(Builders<TEntity>.Filter.OfType<TEntity>(), new ExpressionFilterDefinition<TEntity>((_ => true)));
+        var filter = Builders<TEntity>.Filter.Empty;
+
+        var cursor = await FindAsync(collection, filter, CancellationToken.None, null);
         var allItems = await cursor.ToListAsync();
         var items = allItems.Where(x => x.NeedsCleaning());
         var totalCount = allItems.Count;

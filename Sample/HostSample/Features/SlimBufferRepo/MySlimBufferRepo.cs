@@ -15,7 +15,6 @@ public class MySlimBufferRepo : BufferRepositoryCollectionBase<MyEntity, ObjectI
     {
     }
 
-    //public override string ConfigurationName => "Other";
     public override string DatabasePart => "MyDatabasePart";
     public override string CollectionName => "MyCollection";
 

@@ -44,6 +44,6 @@ public class DynamicDiskRepoController : ControllerBase
     public async Task<IActionResult> Count(string key, [FromQuery] string configurationName = "Default", [FromQuery] string collectionName = "MyCollection", [FromQuery] string databasePart = "MyDatabasePart")
     {
         var item = await _repository.Count(new ObjectId(key), configurationName, collectionName, databasePart);
-        return Ok();
+        return Ok(item);
     }
 }
