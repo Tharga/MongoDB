@@ -65,7 +65,7 @@ public static class AddMongoDbExtensions
 
         if (databaseOptions.AutoRegisterRepositories)
         {
-            var currentDomainDefinedTypes = AssemblyService.GetTypes<IRepository>(x => !x.IsGenericType, databaseOptions.AutoRegistrationAssemblies).ToArray();
+            var currentDomainDefinedTypes = AssemblyService.GetTypes<IRepository>(x => !x.IsGenericType && !x.IsInterface, databaseOptions.AutoRegistrationAssemblies).ToArray();
             foreach (var repositoryType in currentDomainDefinedTypes)
             {
                 var serviceTypes = repositoryType.ImplementedInterfaces.Where(x => x.IsInterface && !x.IsGenericType && x != typeof(IRepository)).ToArray();
@@ -98,7 +98,7 @@ public static class AddMongoDbExtensions
 
         if (databaseOptions.AutoRegisterCollections)
         {
-            var currentDomainDefinedTypes = AssemblyService.GetTypes<IRepositoryCollection>(x => !x.IsGenericType, databaseOptions.AutoRegistrationAssemblies).ToArray();
+            var currentDomainDefinedTypes = AssemblyService.GetTypes<IRepositoryCollection>(x => !x.IsGenericType && !x.IsInterface, databaseOptions.AutoRegistrationAssemblies).ToArray();
             foreach (var collectionType in currentDomainDefinedTypes)
             {
                 var serviceTypes = collectionType.ImplementedInterfaces.Where(x => x.IsInterface && !x.IsGenericType && x != typeof(IRepositoryCollection)).ToArray();
