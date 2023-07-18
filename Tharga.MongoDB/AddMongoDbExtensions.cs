@@ -135,15 +135,14 @@ public static class AddMongoDbExtensions
             throw new InvalidOperationException($"There are multiple implementations for interface '{serviceType.Name}' ({implementationType.Name} and {other?.Name}). {nameof(DatabaseOptions.AutoRegisterCollections)} in {nameof(DatabaseOptions)} cannot be used.");
         }
 
-        string message;
+        string message = null;
         if (implementationType.GetConstructors().Any(x => x.GetParameters().All(y => y.ParameterType != typeof(DatabaseContext))))
         {
             services.AddTransient(serviceType, implementationType);
-            message = " Also in IOC, can be injected.";
         }
         else
         {
-            message = " But not in ICO (Requires ICollectionProvider).";
+            message = " Not registered in IOC (IServiceCollection), can not be injected in constructor because it requires ICollectionProvider.";
         }
 
         _actionEvent?.Invoke(new ActionEventArgs(new ActionEventArgs.ActionData
