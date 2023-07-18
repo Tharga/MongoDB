@@ -211,43 +211,58 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         }, false);
     }
 
-    public override Task<TEntity> GetOneAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default)
+    public override Task<TEntity> GetOneAsync(Expression<Func<TEntity, bool>> predicate = null, OneOption<TEntity> options = null, CancellationToken cancellationToken = default)
     {
         var filter = predicate == null ? FilterDefinition<TEntity>.Empty : new ExpressionFilterDefinition<TEntity>(predicate);
         return GetOneAsync(filter, options, cancellationToken);
     }
 
-    public override async Task<TEntity> GetOneAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default)
+    public override async Task<TEntity> GetOneAsync(FilterDefinition<TEntity> filter, OneOption<TEntity> options = null, CancellationToken cancellationToken = default)
     {
-        if (options?.Limit != null && options.Limit != 1) throw new InvalidOperationException("Limit needs to be 1 for option.");
-
         return await Execute(nameof(GetOneAsync), async () =>
         {
-            var o = options == null
-                ? new FindOptions<TEntity, TEntity> { Limit = 1 }
-                : new FindOptions<TEntity, TEntity> { Projection = options.Projection, Sort = options.Sort, Limit = 1 };
-            var cursor = await FindAsync(Collection, filter, cancellationToken, o);
-            if (!await cursor.MoveNextAsync(cancellationToken)) return null;
-            var item = await CleanEntityAsync(cursor.Current.SingleOrDefault());
-            return item;
+            var sort = options?.Sort;
+            var findFluent = Collection.Find(filter).Sort(sort).Limit(2);
+            TEntity item;
+            switch (options?.Mode)
+            {
+                case null:
+                case EMode.Single:
+                    item = await findFluent.SingleOrDefaultAsync(cancellationToken: cancellationToken);
+                    break;
+                case EMode.First:
+                    item = await findFluent.FirstOrDefaultAsync(cancellationToken: cancellationToken);
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException();
+            }
+            return await CleanEntityAsync(item);
         }, false);
     }
 
-    public override async Task<T> GetOneAsync<T>(Expression<Func<T, bool>> predicate = null, Options<T> options = null, CancellationToken cancellationToken = default)
+    public override async Task<T> GetOneAsync<T>(Expression<Func<T, bool>> predicate = null, OneOption<T> options = null, CancellationToken cancellationToken = default)
     {
-        if (options?.Limit != null && options.Limit != 1) throw new InvalidOperationException("Limit needs to be 1 for option.");
-
         return await Execute($"{nameof(GetOneAsync)}<{typeof(T).Name}>", async () =>
         {
             var filter = Builders<T>.Filter.And(Builders<T>.Filter.OfType<T>(), new ExpressionFilterDefinition<T>(predicate ?? (_ => true)));
-            var o = options == null ? new FindOptions<T, T> { Limit = 1 } : new FindOptions<T, T> { Projection = options.Projection, Sort = options.Sort, Limit = 1 };
 
             _ = Collection ?? throw new InvalidOperationException("Unable to initiate collection.");
 
             var collection = _mongoDbService.GetCollection<T>(ProtectedCollectionName);
-            var cursor = await collection.FindAsync(filter ?? FilterDefinition<T>.Empty, o, cancellationToken);
-            if (!await cursor.MoveNextAsync(cancellationToken)) return default;
-            var item = cursor.Current.SingleOrDefault();
+            var findFluent = collection.Find(filter).Sort(options?.Sort).Limit(2);
+            T item;
+            switch (options?.Mode)
+            {
+                case null:
+                case EMode.Single:
+                    item = await findFluent.SingleOrDefaultAsync(cancellationToken: cancellationToken);
+                    break;
+                case EMode.First:
+                    item = await findFluent.FirstOrDefaultAsync(cancellationToken: cancellationToken);
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException();
+            }
             return await CleanEntityAsync(collection, item);
         }, false);
     }
@@ -522,7 +537,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         }
     }
 
-    protected async Task DropEmpty(IMongoCollection<TEntity> collection)
+    protected virtual async Task DropEmpty(IMongoCollection<TEntity> collection)
     {
         if (!DropEmptyCollections) return;
 

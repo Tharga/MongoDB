@@ -64,7 +64,7 @@ public abstract class BufferRepositoryCollectionBase<TEntity, TKey> : Repository
         throw new NotSupportedException();
     }
 
-    public override async IAsyncEnumerable<T> GetAsync<T>(Expression<Func<T, bool>> predicate = null, Options<T> options = null, CancellationToken cancellationToken = default)
+    public override async IAsyncEnumerable<T> GetAsync<T>(Expression<Func<T, bool>> predicate = null, Options<T> options = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         if (options != default) throw new NotSupportedException("The options parameter is not supported for buffer collections.");
         var buffer = await GetBufferAsync();
@@ -89,27 +89,47 @@ public abstract class BufferRepositoryCollectionBase<TEntity, TKey> : Repository
         return data;
     }
 
-    public override async Task<TEntity> GetOneAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default)
+    public override async Task<TEntity> GetOneAsync(Expression<Func<TEntity, bool>> predicate = null, OneOption<TEntity> options = null, CancellationToken cancellationToken = default)
     {
-        if (options != null) throw new NotSupportedException("The options parameter is not supported for buffer collections.");
+        if (options?.Sort != null) throw new NotSupportedException("The sort part of the options parameter is not supported for buffer collections.");
         var buffer = await GetBufferAsync();
         var data = buffer.Values.Where(x => predicate?.Compile().Invoke(x) ?? true);
-        return data.FirstOrDefault();
+
+        switch (options?.Mode)
+        {
+            case null:
+            case EMode.Single:
+                return data.SingleOrDefault();
+            case EMode.First:
+                return data.FirstOrDefault();
+            default:
+                throw new ArgumentOutOfRangeException($"Unknown mode '{options.Mode}'.");
+        }
     }
 
-    public override Task<TEntity> GetOneAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default)
+    public override Task<TEntity> GetOneAsync(FilterDefinition<TEntity> filter, OneOption<TEntity> options = null, CancellationToken cancellationToken = default)
     {
         throw new NotSupportedException();
     }
 
-    public override async Task<T> GetOneAsync<T>(Expression<Func<T, bool>> predicate = null, Options<T> options = null, CancellationToken cancellationToken = default)
+    public override async Task<T> GetOneAsync<T>(Expression<Func<T, bool>> predicate = null, OneOption<T> options = null, CancellationToken cancellationToken = default)
     {
-        if (options != default) throw new NotSupportedException("The options parameter is not supported for buffer collections.");
+        if (options?.Sort != null) throw new NotSupportedException("The sort part of the options parameter is not supported for buffer collections.");
         var buffer = await GetBufferAsync();
         var data = buffer.Values
             .Where(x => x.GetType() == typeof(T))
             .Where(x => (predicate ?? (_ => true)).Compile().Invoke(x as T));
-        return data.FirstOrDefault() as T;
+
+        switch (options?.Mode)
+        {
+            case null:
+            case EMode.Single:
+                return data.SingleOrDefault() as T;
+            case EMode.First:
+                return data.FirstOrDefault() as T;
+            default:
+                throw new ArgumentOutOfRangeException($"Unknown mode '{options.Mode}'.");
+        }
     }
 
     public override async Task<bool> AddAsync(TEntity entity)

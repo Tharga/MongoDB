@@ -1,6 +1,6 @@
 ﻿using MongoDB.Driver;
 
-namespace Tharga.MongoDB.Disk;
+namespace Tharga.MongoDB;
 
 public record Options<TEntity>
 {

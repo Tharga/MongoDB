@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Data;
 using System.Linq;
 using System.Threading.Tasks;
 using AutoFixture;
@@ -58,7 +57,7 @@ public class GetAsyncTest : GenericBufferRepositoryCollectionBaseTestBase
     }
 
     [Fact]
-    [MemberData(nameof(Data))]
+    [Trait("Category", "Database")]
     public async Task BasicWithFilterFromDisk()
     {
         //Arrange

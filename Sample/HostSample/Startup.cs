@@ -5,7 +5,6 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.OpenApi.Models;
 using Tharga.MongoDB;
-using Tharga.Toolkit.TypeService;
 
 namespace HostSample;
 
