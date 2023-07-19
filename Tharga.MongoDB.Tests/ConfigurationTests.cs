@@ -28,11 +28,11 @@ public class ConfigurationTests
         hostEnvironmentMock.SetupGet(x => x.EnvironmentName).Returns(environment);
         var connectionStringBuilder = new MongoUrlBuilder(hostEnvironmentMock.Object);
         var connectionStringBuilderLoaderMock = new Mock<IMongoUrlBuilderLoader>(MockBehavior.Strict);
-        var databaseContext = Mock.Of<DatabaseContext>(x => x.DatabasePart == part);
-        var mongoDbConfiguration = Mock.Of<MongoDbConfigurationTree>();
         connectionStringBuilderLoaderMock.Setup(x => x.GetConnectionStringBuilder(It.IsAny<DatabaseContext>()))
             .Returns((DatabaseContext _) => (connectionStringBuilder, () => "mongodb://localhost:27017/Tharga{environment}{part}"));
-        var sut = new RepositoryConfiguration(configurationMock.Object, connectionStringBuilderLoaderMock.Object, mongoDbConfiguration, () => databaseContext, environment);
+        var databaseContext = Mock.Of<DatabaseContext>(x => x.DatabasePart == part);
+        var databaseOptions = Mock.Of<DatabaseOptions> ();
+        var sut = new RepositoryConfiguration(configurationMock.Object, connectionStringBuilderLoaderMock.Object, databaseOptions, () => databaseContext, environment);
 
         //Act
         var result = sut.GetDatabaseUrl();

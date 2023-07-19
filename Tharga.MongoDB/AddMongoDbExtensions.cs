@@ -40,7 +40,7 @@ public static class AddMongoDbExtensions
         {
             var configuration = serviceProvider.GetService<IConfiguration>();
             var connectionStringBuilderLoader = serviceProvider.GetService<IMongoUrlBuilderLoader>();
-            return new RepositoryConfigurationLoader(configuration, connectionStringBuilderLoader, databaseOptions.Configuration);
+            return new RepositoryConfigurationLoader(configuration, connectionStringBuilderLoader, databaseOptions);
         });
         services.AddTransient<IMongoUrlBuilderLoader>(serviceProvider => new MongoUrlBuilderLoader(serviceProvider, databaseOptions));
 

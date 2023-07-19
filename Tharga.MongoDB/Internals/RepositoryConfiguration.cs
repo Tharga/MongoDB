@@ -10,47 +10,49 @@ internal class RepositoryConfiguration : IRepositoryConfiguration
 {
     private readonly IConfiguration _configuration;
     private readonly IMongoUrlBuilderLoader _mongoUrlBuilderLoader;
-    private readonly MongoDbConfigurationTree _mongoDbConfiguration;
+    private readonly DatabaseOptions _databaseOptions;
     private readonly string _environmentName;
     private readonly Lazy<DatabaseContext> _databaseContext;
 
-    private static readonly ConcurrentDictionary<string, MongoDbConfig> ConfigurationCache = new();
-    private static readonly ConcurrentDictionary<string, MongoUrl> DatabaseUrlCache = new();
+    private static readonly ConcurrentDictionary<string, MongoDbConfig> _configurationCache = new();
+    private static readonly ConcurrentDictionary<string, MongoUrl> _databaseUrlCache = new();
 
-    public RepositoryConfiguration(IConfiguration configuration, IMongoUrlBuilderLoader mongoUrlBuilderLoader, MongoDbConfigurationTree mongoDbConfiguration, Func<DatabaseContext> databaseContextLoader, string environmentName = null)
+    public RepositoryConfiguration(IConfiguration configuration, IMongoUrlBuilderLoader mongoUrlBuilderLoader, DatabaseOptions databaseOptions, Func<DatabaseContext> databaseContextLoader, string environmentName = null)
     {
         _configuration = configuration;
         _mongoUrlBuilderLoader = mongoUrlBuilderLoader;
-        _mongoDbConfiguration = mongoDbConfiguration;
+        _databaseOptions = databaseOptions;
         _environmentName = environmentName;
         _databaseContext = new Lazy<DatabaseContext>(() => databaseContextLoader?.Invoke());
     }
 
     public MongoUrl GetDatabaseUrl()
     {
-        var key = $"{_environmentName}.{_databaseContext.Value?.ConfigurationName}.{_databaseContext.Value?.CollectionName}.{_databaseContext.Value?.DatabasePart}";
-        if (DatabaseUrlCache.TryGetValue(key, out var mongoUrl)) return mongoUrl;
+        var configurationName = _databaseContext.Value?.ConfigurationName ?? _databaseOptions.ConfigurationName ?? "Default";
+        var key = $"{_environmentName}.{configurationName}.{_databaseContext.Value?.CollectionName}.{_databaseContext.Value?.DatabasePart}";
+        if (_databaseUrlCache.TryGetValue(key, out var mongoUrl)) return mongoUrl;
 
         var result = _mongoUrlBuilderLoader.GetConnectionStringBuilder(_databaseContext.Value);
         mongoUrl = result.Builder.Build(result.ConnectionStringLoader(), _databaseContext.Value?.DatabasePart);
-        DatabaseUrlCache.TryAdd(key, mongoUrl);
+        _databaseUrlCache.TryAdd(key, mongoUrl);
         return mongoUrl;
     }
 
     public MongoDbConfig GetConfiguration()
     {
-        var key = $"{_databaseContext.Value?.ConfigurationName}.{_databaseContext.Value?.CollectionName}";
-        if (ConfigurationCache.TryGetValue(key, out var configuration)) return configuration;
+        var configurationName = _databaseContext.Value?.ConfigurationName ?? _databaseOptions.ConfigurationName ?? "Default";
+        var key = $"{configurationName}.{_databaseContext.Value?.CollectionName}";
+        if (_configurationCache.TryGetValue(key, out var configuration)) return configuration;
 
         //Provided as named parameter
         MongoDbConfiguration c1 = null;
-        _mongoDbConfiguration?.Configurations?.TryGetValue(_databaseContext.Value?.ConfigurationName ?? string.Empty, out c1);
+        _databaseOptions.Configuration?.Configurations?.TryGetValue(configurationName, out c1);
 
         //Provided as general parameter
-        var c2 = _mongoDbConfiguration as MongoDbConfiguration;
+        var c2 = _databaseOptions.Configuration as MongoDbConfiguration;
 
         //Configured as named parameter
-        var c3 = GetConfigValue<MongoDbConfiguration>($"MongoDB:{_databaseContext.Value?.ConfigurationName}");
+        var c3 = GetConfigValue<MongoDbConfiguration>($"MongoDB:{configurationName}");
 
         //Configured as general parameter
         var c4 = GetConfigValue<MongoDbConfiguration>("MongoDB");
@@ -64,7 +66,7 @@ internal class RepositoryConfiguration : IRepositoryConfiguration
             DropEmptyCollections = c1?.DropEmptyCollections ?? c2?.DropEmptyCollections ?? c3?.DropEmptyCollections ?? c4?.DropEmptyCollections ?? true
         };
 
-        ConfigurationCache.TryAdd(key, configuration);
+        _configurationCache.TryAdd(key, configuration);
         return configuration;
     }
 
