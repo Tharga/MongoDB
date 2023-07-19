@@ -63,7 +63,9 @@ internal class AtlasAdministrationService
         var content = new StringContent(ser, Encoding.UTF8, "application/json");
         var r = httpClient.PostAsync($"groups/{access.GroupId}/accessList", content).GetAwaiter().GetResult();
         r.EnsureSuccessStatusCode();
-        ActionEvent?.Invoke(this, new ActionEventArgs(new ActionEventArgs.ActionData { Level = LogLevel.Information, Message = $"Firewall opened for ip {ipAddress} with comment '{comment}'." }, null));
+        var message = $"Firewall opened for ip '{ipAddress}' with comment '{comment}'.";
+        _logger.LogInformation(message);
+        ActionEvent?.Invoke(this, new ActionEventArgs(new ActionEventArgs.ActionData { Level = LogLevel.Information, Message = message }, null));
     }
 
     public IPAddress GetExternalIpAddress()
@@ -91,15 +93,18 @@ internal class AtlasAdministrationService
 
     public IPAddress AssureAccess(string comment = null)
     {
+        IPAddress externalIp = null;
         try
         {
-            var externalIp = GetExternalIpAddress();
+            externalIp = GetExternalIpAddress();
             var machineName = comment ?? Environment.MachineName;
 
             var items = GetWhitelist();
             if (items.Any(x => x.CidrBlock.StartsWith(externalIp.ToString())))
             {
-                ActionEvent?.Invoke(this, new ActionEventArgs(new ActionEventArgs.ActionData { Level = LogLevel.Information, Message = $"Firewall already open for ip {externalIp}." }, null));
+                var message = $"Firewall already open for ip '{externalIp}'.";
+                _logger?.LogTrace(message);
+                ActionEvent?.Invoke(this, new ActionEventArgs(new ActionEventArgs.ActionData { Level = LogLevel.Information, Message = message }, null));
                 return externalIp;
             }
 
@@ -109,7 +114,7 @@ internal class AtlasAdministrationService
         }
         catch (Exception e)
         {
-            var message = $"Unable to AsureAccess for Atlas MongoDB. {e.Message}";
+            var message = $"Unable to AsureAccess to Atlas MongoDB for ip '{externalIp}'. {e.Message}";
             _logger?.LogError(e, message);
             ActionEvent?.Invoke(this, new ActionEventArgs(new ActionEventArgs.ActionData { Level = LogLevel.Error, Message = message }, null));
             return null;
