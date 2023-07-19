@@ -260,6 +260,17 @@ services.AddTransient<IMongoUrlBuilder, MyMongoUrlBuilder>();
 
 ---
 
+## Atlas MongoDB Firewall
+When configuring the `AccessInfo` and the database is accessing a database other than localhost the firewall will be opened automatically for the current IP.
+There are more details on the [mongodb.com](https://www.mongodb.com/docs/atlas/configure-api-access/#std-label-create-org-api-key) site.
+
+### Public- and PrivateKey
+To create a key-pair, select *Access Manager* for the *organization*. Then Select the tab *API Keys*. Here you can create keys with the correct access.
+
+#### GroupId
+The *GroupId* can be found as part of the URL on the *Atlas MongoDB* website.
+Example. `https://cloud.mongodb.com/v2/[GroupId]`
+
 ## MongoDB Result Limit
 It is possible to se t a hard limit for the number of documents returned. If the limit is reached `ResultLimitException` is thrown.
 For large result-sets, use the method `GetPageAsync` to get the `ResultLimit` on each page of the result.

@@ -4,6 +4,7 @@ using System.Linq;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Tharga.MongoDB.Atlas;
 using Tharga.MongoDB.Configuration;
 using Tharga.MongoDB.Internals;
 using Tharga.Toolkit.TypeService;
@@ -30,6 +31,7 @@ public static class AddMongoDbExtensions
         _actionEvent = databaseOptions.ActionEvent;
 
         RepositoryCollectionBase.ActionEvent += (_, e) => { _actionEvent?.Invoke(e); };
+        AtlasAdministrationService.ActionEvent += (_, e) => { _actionEvent?.Invoke(e); };
 
         services.AddAssemblyService();
 

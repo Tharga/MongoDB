@@ -6,6 +6,7 @@ using System.Net.Http;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 using Tharga.MongoDB.Configuration;
 
 namespace Tharga.MongoDB.Atlas;
@@ -18,11 +19,15 @@ internal class AtlasAdministrationService
     //- https://www.mongodb.com/docs/atlas/configure-api-access/#std-label-create-org-api-key
 
     private readonly MongoDbApiAccess _access;
+    private readonly ILogger _logger;
 
-    public AtlasAdministrationService(MongoDbApiAccess access = null)
+    public AtlasAdministrationService(MongoDbApiAccess access = null, ILogger logger = null)
     {
         _access = access;
+        _logger = logger;
     }
+
+    public static event EventHandler<ActionEventArgs> ActionEvent;
 
     public IEnumerable<WhiteListItem> GetWhitelist(MongoDbApiAccess access = null)
     {
@@ -30,11 +35,11 @@ internal class AtlasAdministrationService
 
         using var httpClient = GetHttpClient(access);
 
-        var r = httpClient.GetAsync($"groups/{access.ClusterId}/accessList").GetAwaiter().GetResult();
+        var r = httpClient.GetAsync($"groups/{access.GroupId}/accessList").GetAwaiter().GetResult();
         r.EnsureSuccessStatusCode();
         var rb = r.Content.ReadAsStringAsync().GetAwaiter().GetResult();
 
-        var result = JsonSerializer.Deserialize<WhiteListResult>(rb, new JsonSerializerOptions { PropertyNameCaseInsensitive = false });
+        var result = JsonSerializer.Deserialize<WhiteListResult>(rb, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
         return result?.Results ?? Array.Empty<WhiteListItem>();
     }
 
@@ -56,8 +61,9 @@ internal class AtlasAdministrationService
         var payload = new[] { new { cidrBlock = $"{ipAddress}/32", comment } };
         var ser = JsonSerializer.Serialize(payload);
         var content = new StringContent(ser, Encoding.UTF8, "application/json");
-        var r = httpClient.PostAsync($"groups/{access.ClusterId}/accessList", content).GetAwaiter().GetResult();
+        var r = httpClient.PostAsync($"groups/{access.GroupId}/accessList", content).GetAwaiter().GetResult();
         r.EnsureSuccessStatusCode();
+        ActionEvent?.Invoke(this, new ActionEventArgs(new ActionEventArgs.ActionData { Level = LogLevel.Information, Message = $"Firewall opened for ip {ipAddress} with comment '{comment}'." }, null));
     }
 
     public IPAddress GetExternalIpAddress()
@@ -85,15 +91,29 @@ internal class AtlasAdministrationService
 
     public IPAddress AssureAccess(string comment = null)
     {
-        var externalIp = GetExternalIpAddress();
-        var machineName = comment ?? Environment.MachineName;
+        try
+        {
+            var externalIp = GetExternalIpAddress();
+            var machineName = comment ?? Environment.MachineName;
 
-        var items = GetWhitelist();
-        if (items.Any(x => x.CidrBlock.StartsWith(externalIp.ToString()))) return externalIp;
+            var items = GetWhitelist();
+            if (items.Any(x => x.CidrBlock.StartsWith(externalIp.ToString())))
+            {
+                ActionEvent?.Invoke(this, new ActionEventArgs(new ActionEventArgs.ActionData { Level = LogLevel.Information, Message = $"Firewall already open for ip {externalIp}." }, null));
+                return externalIp;
+            }
 
-        RemoveWhitelist(machineName);
-        SetWhitelist(machineName, externalIp.ToString());
-        return externalIp;
+            RemoveWhitelist(machineName);
+            SetWhitelist(machineName, externalIp.ToString());
+            return externalIp;
+        }
+        catch (Exception e)
+        {
+            var message = $"Unable to AsureAccess for Atlas MongoDB. {e.Message}";
+            _logger?.LogError(e, message);
+            ActionEvent?.Invoke(this, new ActionEventArgs(new ActionEventArgs.ActionData { Level = LogLevel.Error, Message = message }, null));
+            return null;
+        }
     }
 
     public void RemoveWhitelist(string comment, MongoDbApiAccess access = null)
@@ -104,7 +124,7 @@ internal class AtlasAdministrationService
 
         foreach (var item in GetWhitelist().Where(x => x.Comment == comment))
         {
-            var r = httpClient.DeleteAsync($"groups/{access.ClusterId}/accessList/{item.IpAddress}").GetAwaiter().GetResult();
+            var r = httpClient.DeleteAsync($"groups/{access.GroupId}/accessList/{item.IpAddress}").GetAwaiter().GetResult();
             r.EnsureSuccessStatusCode();
         }
     }

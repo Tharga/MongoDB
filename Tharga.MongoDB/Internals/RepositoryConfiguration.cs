@@ -44,7 +44,7 @@ internal class RepositoryConfiguration : IRepositoryConfiguration
 
         //Provided as named parameter
         MongoDbConfiguration c1 = null;
-        _mongoDbConfiguration?.Configurations.TryGetValue(_databaseContext.Value?.ConfigurationName ?? string.Empty, out c1);
+        _mongoDbConfiguration?.Configurations?.TryGetValue(_databaseContext.Value?.ConfigurationName ?? string.Empty, out c1);
 
         //Provided as general parameter
         var c2 = _mongoDbConfiguration as MongoDbConfiguration;

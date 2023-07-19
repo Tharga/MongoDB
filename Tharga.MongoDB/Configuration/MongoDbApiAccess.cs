@@ -13,7 +13,7 @@ public record MongoDbApiAccess
     public string PrivateKey { get; init; }
 
     /// <summary>
-    /// Value of the ClusterId in Atlas MongoDB.
+    /// Value of the GroupId in Atlas MongoDB.
     /// </summary>
-    public string ClusterId { get; init; }
+    public string GroupId { get; init; }
 }

@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
 using MongoDB.Driver;
@@ -12,13 +13,15 @@ namespace Tharga.MongoDB.Internals;
 internal class MongoDbService : IMongoDbService
 {
     private readonly IRepositoryConfiguration _configuration;
+    private readonly ILogger _logger;
     private readonly MongoClient _mongoClient;
     private readonly IMongoDatabase _mongoDatabase;
     private string _externalIpAddressAccess;
 
-    public MongoDbService(IRepositoryConfiguration configuration)
+    public MongoDbService(IRepositoryConfiguration configuration, ILogger logger)
     {
         _configuration = configuration;
+        _logger = logger;
         var mongoUrl = configuration.GetDatabaseUrl() ?? throw new NullReferenceException("MongoUrl not found in configuration.");
         _mongoClient = new MongoClient(mongoUrl);
         var settings = new MongoDatabaseSettings { WriteConcern = WriteConcern.WMajority };
@@ -35,8 +38,8 @@ internal class MongoDbService : IMongoDbService
         var accessInfo = _configuration.GetConfiguration().AccessInfo;
         if (accessInfo != null)
         {
-            var service = new AtlasAdministrationService(accessInfo);
-            _externalIpAddressAccess = service.AssureAccess($"{Environment.MachineName}-Auto").ToString();
+            var service = new AtlasAdministrationService(accessInfo, _logger);
+            _externalIpAddressAccess = service.AssureAccess($"{Environment.MachineName}-Auto")?.ToString();
         }
     }
 
