@@ -27,11 +27,6 @@ public record DatabaseOptions
     /// </summary>
     public Func<ConfigurationName, IServiceProvider, Task<ConnectionString>> ConnectionStringLoader { get; set; }
 
-    ///// <summary>
-    ///// Provide a custom version of ConnectionStringBuilder, otherwise a built in version is used.
-    ///// </summary>
-    //public Func<string, MongoUrl> ConnectionStringBuilder { get; set; }
-
     /// <summary>
     /// If true, all classes inheriting from IRepository will be registered. This value is default true.
     /// Use IServiceCollection to register repositories manually.
