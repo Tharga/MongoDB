@@ -94,7 +94,7 @@ using Tharga.MongoDB;
 using Tharga.MongoDB.Disk;
 
 var services = new ServiceCollection();
-services.AddMongoDB(o => o.ConnectionStringLoader = _ => "mongodb://localhost:27017/SimpleConsoleSample");
+services.AddMongoDB(o.ConnectionStringLoader = (_,_) => Task.FromResult<ConnectionString>("mongodb://localhost:27017/SimpleDemo"));
 
 var serviceProvider = services.BuildServiceProvider();
 
@@ -167,50 +167,102 @@ The 'Default' database will have the firewall opened, if hosted in Atlas MongoDB
 #### Example of configuration by code.
 This would be the same configuration as from the example above.
 ```
-        services.AddMongoDB(o =>
+services.AddMongoDB(o =>
+{
+    o.ConnectionStringLoader = async (name, provider) =>
+    {
+        return (string)name switch
         {
-            o.ConnectionStringLoader = name =>
+            "Default" => "mongodb://localhost:27017/Tharga{environment}_Sample{part}",
+            "Other" => "mongodb://localhost:27017/Tharga{environment}_Sample_Other{part}",
+            _ => throw new ArgumentException($"Unknown configuration name '{name}'.")
+        };
+    };
+    o.Configuration = new MongoDbConfigurationTree
+    {
+        Configurations = new Dictionary<ConfigurationName, MongoDbConfiguration>
+        {
             {
-                return (string)name switch
+                "Default", new MongoDbConfiguration
                 {
-                    "Default" => "mongodb://localhost:27017/Tharga{environment}_Sample{part}",
-                    "Other" => "mongodb://localhost:27017/Tharga{environment}_Sample_Other{part}",
-                    _ => throw new ArgumentException($"Unknown configuration name '{name}'.")
-                };
-            };
-            o.Configuration = new MongoDbConfigurationTree
-            {
-                Configurations = new Dictionary<ConfigurationName, MongoDbConfiguration>
-                {
+                    AccessInfo = new MongoDbApiAccess
                     {
-                        "Default", new MongoDbConfiguration
-                        {
-                            AccessInfo = new MongoDbApiAccess
-                            {
-                                PublicKey = "[PublicKey]",
-                                PrivateKey = "[PrivateKey]",
-                                ClusterId = "[ClusterId]"
-                            },
-                            ResultLimit = 100,
-                            AutoClean = true,
-                            CleanOnStartup = true,
-                            DropEmptyCollections = true
-                        }
+                        PublicKey = "[PublicKey]",
+                        PrivateKey = "[PrivateKey]",
+                        ClusterId = "[ClusterId]"
                     },
-                    {
-                        "Other", new MongoDbConfiguration
-                        {
-                            ResultLimit = 200
-                        }
-                    }
-                },
-                ResultLimit = 1000,
-                AutoClean = false,
-                CleanOnStartup = false,
-                DropEmptyCollections = false
-            };
-        });
+                    ResultLimit = 100,
+                    AutoClean = true,
+                    CleanOnStartup = true,
+                    DropEmptyCollections = true
+                }
+            },
+            {
+                "Other", new MongoDbConfiguration
+                {
+                    ResultLimit = 200
+                }
+            }
+        },
+        ResultLimit = 1000,
+        AutoClean = false,
+        CleanOnStartup = false,
+        DropEmptyCollections = false
+    };
+});
 ```
+
+## ConnectionStringLoader
+To dynamically use connectionstrings depending on *ConfigurationName* or other parameters it is possible to create a custom implementation of *ConnectionStringLoader*.
+If it is not implemented, or returns null, then the configuration in *IConfiguration* will be used.
+
+After the *ConnectionStringLoader* is called the [MongoUrl Builder](#mongourlbuilder) will run. This means you can provide any variables (Values between '\{' and '\}') that your *MongoUrl Builder* can handle
+
+This is the simplest version to be implemented.
+```
+services.AddMongoDB(o.ConnectionStringLoader = (_,_) => Task.FromResult<ConnectionString>("mongodb://localhost:27017/MyDatabase{part}"));
+```
+
+You can also implement your own class for this.
+```
+public void ConfigureServices(IServiceCollection services)
+{
+    services.AddTransient<ConnectionStringLoader>();
+    services.AddMongoDB(o =>
+    {
+        o.ConnectionStringLoader = async (name, provider) => await provider.GetService<ConnectionStringLoader>().GetConnectionString(name);
+    });
+}
+
+public class ConnectionStringLoader
+{
+    private readonly ISomeDependency _someDependency;
+
+    public ConnectionStringLoader(ISomeDependency someDependency)
+    {
+        _someDependency = someDependency;
+    }
+
+    public async Task<string> GetConnectionString(string configurationName)
+    {
+        switch (configurationName)
+        {
+            case "A":
+                //Load value from other location
+                return await _someDependency.GetValueAsync();
+            case "B":
+                //Build string dynamically
+                return $"mongodb://localhost:27017/Tharga_{Environment.MachineName}{{part}}";
+            case "C":
+                //Use IConfiguration
+                return null;
+            default:
+                throw new ArgumentOutOfRangeException($"Unknown configurationName '{configurationName}'.");
+        }
+    }
+}
+```
+
 
 ### Customize collections
 Properties for classes deriving from `RepositoryCollectionBase<,>` can be customised directly by overriding the default behaviour of the code or configuration.

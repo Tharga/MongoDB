@@ -27,11 +27,11 @@ internal class MongoUrlBuilderLoader : IMongoUrlBuilderLoader
         return ((IMongoUrlBuilder)_serviceProvider.GetService(typeof(IMongoUrlBuilder)) ?? builder.Value, () => GetConnectionString(databaseContext, _databaseOptions, _serviceProvider));
     }
 
-    private static string GetConnectionString(DatabaseContext databaseContext, DatabaseOptions databaseOptions, IServiceProvider provider)
+    private string GetConnectionString(DatabaseContext databaseContext, DatabaseOptions databaseOptions, IServiceProvider provider)
     {
         var configurationName = databaseContext?.ConfigurationName?.Value.NullIfEmpty() ?? databaseOptions.ConfigurationName.Value;
 
-        var providedConnectionString = databaseOptions.ConnectionStringLoader?.Invoke(configurationName);
+        var providedConnectionString = databaseOptions.ConnectionStringLoader?.Invoke(configurationName, _serviceProvider)?.GetAwaiter().GetResult();
         if (!string.IsNullOrEmpty(providedConnectionString?.Value))
         {
             return providedConnectionString?.Value;

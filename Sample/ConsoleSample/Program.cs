@@ -1,10 +1,14 @@
 ﻿using System;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
 using ConsoleSample.SampleRepo;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Tharga.MongoDB;
+using Tharga.MongoDB.Configuration;
 
 namespace ConsoleSample;
 
@@ -13,9 +17,18 @@ internal static class Program
     private static async Task Main(string[] args)
     {
         var services = new ServiceCollection();
+
+        //services.AddTransient<ISomeDependency, SomeDependency>();
+
+        //services.AddTransient<ConnectionStringLoader>();
+        //services.AddMongoDB(o =>
+        //{
+        //    o.ConnectionStringLoader = async (name, provider) => await provider.GetService<ConnectionStringLoader>().GetConnectionString(name);
+        //});
+
         services.AddMongoDB(o =>
         {
-            o.ConnectionStringLoader = _ => "mongodb://localhost:27017/Tharga_MongoDB_ConsoleSample{part}";
+            o.ConnectionStringLoader = (_, _) => Task.FromResult<ConnectionString>("mongodb://localhost:27017/Tharga_MongoDB_ConsoleSample{part}");
             o.ActionEvent = data => { Console.WriteLine($"---> {data.Action.Message}"); };
             //o.AutoRegisterCollections = true;
         });
@@ -58,3 +71,44 @@ internal static class Program
     //    return all2;
     //}
 }
+
+//public class SomeDependency : ISomeDependency
+//{
+//    public Task<string> GetValueAsync()
+//    {
+//        throw new NotImplementedException();
+//    }
+//}
+
+//public interface ISomeDependency
+//{
+//    Task<string> GetValueAsync();
+//}
+
+//public class ConnectionStringLoader
+//{
+//    private readonly ISomeDependency _someDependency;
+
+//    public ConnectionStringLoader(ISomeDependency someDependency)
+//    {
+//        _someDependency = someDependency;
+//    }
+
+//    public async Task<string> GetConnectionString(string configurationName)
+//    {
+//        switch (configurationName)
+//        {
+//            case "A":
+//                //Load value from other location
+//                return await _someDependency.GetValueAsync();
+//            case "B":
+//                //Build string dynamically
+//                return $"mongodb://localhost:27017/Tharga_{Environment.MachineName}{{part}}";
+//            case "C":
+//                //Use IConfiguration
+//                return null;
+//            default:
+//                throw new ArgumentOutOfRangeException($"Unknown configurationName '{configurationName}'.");
+//        }
+//    }
+//}

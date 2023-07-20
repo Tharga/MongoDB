@@ -2,12 +2,13 @@
 using MongoDB.Bson;
 using SimpleConsoleDemo;
 using Tharga.MongoDB;
+using Tharga.MongoDB.Configuration;
 using Tharga.MongoDB.Disk;
 
 var services = new ServiceCollection();
 services.AddMongoDB(o =>
 {
-    o.ConnectionStringLoader = _ => "mongodb://localhost:27017/SimpleDemo";
+    o.ConnectionStringLoader = (_,_) => Task.FromResult<ConnectionString>("mongodb://localhost:27017/SimpleDemo");
     o.ActionEvent = e => { Console.WriteLine((string?)e.Action.Message); };
 });
 

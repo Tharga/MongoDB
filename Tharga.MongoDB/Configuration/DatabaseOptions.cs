@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Threading.Tasks;
 using Tharga.MongoDB.Internals;
 
 namespace Tharga.MongoDB.Configuration;
@@ -22,8 +23,9 @@ public record DatabaseOptions
 
     /// <summary>
     /// This function can be provided to dynamically provide a connection string for a specific configuration.
+    /// If it is not assigned or returns null, the configuration will be read from IConfiguration.
     /// </summary>
-    public Func<ConfigurationName, ConnectionString> ConnectionStringLoader { get; set; }
+    public Func<ConfigurationName, IServiceProvider, Task<ConnectionString>> ConnectionStringLoader { get; set; }
 
     ///// <summary>
     ///// Provide a custom version of ConnectionStringBuilder, otherwise a built in version is used.
