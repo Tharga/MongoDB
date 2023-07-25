@@ -4,5 +4,5 @@ namespace Tharga.MongoDB.Internals;
 
 internal interface IRepositoryConfigurationLoader
 {
-    public IRepositoryConfiguration GetConfiguration(Func<DatabaseContext> databaseContextLoader);
+    public IRepositoryConfigurationInternal GetConfiguration(Func<DatabaseContext> databaseContextLoader);
 }

@@ -65,5 +65,5 @@ public record DatabaseOptions
     /// 4. Values from the root in MongoDB-section in appsettings.json.
     /// 5. Default values.
     /// </summary>
-    public MongoDbConfigurationTree Configuration { get; set; }
+    public Func<IServiceProvider, Task<MongoDbConfigurationTree>> ConfigurationLoader { get; set; }
 }

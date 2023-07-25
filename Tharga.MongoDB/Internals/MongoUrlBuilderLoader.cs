@@ -34,7 +34,7 @@ internal class MongoUrlBuilderLoader : IMongoUrlBuilderLoader
         var providedConnectionString = databaseOptions.ConnectionStringLoader?.Invoke(configurationName, _serviceProvider)?.GetAwaiter().GetResult();
         if (!string.IsNullOrEmpty(providedConnectionString?.Value))
         {
-            return providedConnectionString?.Value;
+            return providedConnectionString.Value;
         }
 
         var configuration = (IConfiguration)provider.GetService(typeof(IConfiguration)) ?? throw new NullReferenceException("Cannot get instance of IConfiguration.");

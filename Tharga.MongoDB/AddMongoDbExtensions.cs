@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Linq;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Tharga.MongoDB.Atlas;
@@ -38,11 +37,12 @@ public static class AddMongoDbExtensions
         services.AddTransient<IMongoDbServiceFactory, MongoDbServiceFactory>();
         services.AddTransient<IRepositoryConfigurationLoader>(serviceProvider =>
         {
-            var configuration = serviceProvider.GetService<IConfiguration>();
-            var connectionStringBuilderLoader = serviceProvider.GetService<IMongoUrlBuilderLoader>();
-            return new RepositoryConfigurationLoader(configuration, connectionStringBuilderLoader, databaseOptions);
+            var mongoUrlBuilderLoader = serviceProvider.GetService<IMongoUrlBuilderLoader>();
+            var repositoryConfiguration = serviceProvider.GetService<IRepositoryConfiguration>();
+            return new RepositoryConfigurationLoader(mongoUrlBuilderLoader, repositoryConfiguration, databaseOptions);
         });
         services.AddTransient<IMongoUrlBuilderLoader>(serviceProvider => new MongoUrlBuilderLoader(serviceProvider, databaseOptions));
+        services.AddTransient<IRepositoryConfiguration>(serviceProvider => new RepositoryConfiguration(serviceProvider, databaseOptions));
 
         services.AddTransient<ICollectionProvider, CollectionProvider>(provider =>
         {

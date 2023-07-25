@@ -12,13 +12,13 @@ namespace Tharga.MongoDB.Internals;
 
 internal class MongoDbService : IMongoDbService
 {
-    private readonly IRepositoryConfiguration _configuration;
+    private readonly IRepositoryConfigurationInternal _configuration;
     private readonly ILogger _logger;
     private readonly MongoClient _mongoClient;
     private readonly IMongoDatabase _mongoDatabase;
     private string _externalIpAddressAccess;
 
-    public MongoDbService(IRepositoryConfiguration configuration, ILogger logger)
+    public MongoDbService(IRepositoryConfigurationInternal configuration, ILogger logger)
     {
         _configuration = configuration;
         _logger = logger;

@@ -147,7 +147,7 @@ The 'Default' database will have the firewall opened, if hosted in Atlas MongoDB
       "AccessInfo": {
         "PublicKey": "[PublicKey]",
         "PrivateKey": "[PrivateKey]",
-        "ClusterId": "[ClusterId]"
+        "GroupId": "[GroupId]"
       },
       "ResultLimit": 100,
       "AutoClean": true,
@@ -178,7 +178,7 @@ services.AddMongoDB(o =>
             _ => throw new ArgumentException($"Unknown configuration name '{name}'.")
         };
     };
-    o.Configuration = new MongoDbConfigurationTree
+    o.ConfigurationLoader = async () => new MongoDbConfigurationTree
     {
         Configurations = new Dictionary<ConfigurationName, MongoDbConfiguration>
         {
@@ -189,7 +189,7 @@ services.AddMongoDB(o =>
                     {
                         PublicKey = "[PublicKey]",
                         PrivateKey = "[PrivateKey]",
-                        ClusterId = "[ClusterId]"
+                        GroupId = "[GroupId]"
                     },
                     ResultLimit = 100,
                     AutoClean = true,

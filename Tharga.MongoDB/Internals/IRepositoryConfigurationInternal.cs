@@ -1,8 +1,9 @@
 ﻿using MongoDB.Driver;
+using Tharga.MongoDB.Configuration;
 
 namespace Tharga.MongoDB.Internals;
 
-public interface IRepositoryConfiguration
+internal interface IRepositoryConfigurationInternal
 {
     MongoUrl GetDatabaseUrl();
     MongoDbConfig GetConfiguration();

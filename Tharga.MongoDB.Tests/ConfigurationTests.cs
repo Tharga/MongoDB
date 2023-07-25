@@ -27,12 +27,13 @@ public class ConfigurationTests
         var hostEnvironmentMock = new Mock<IHostEnvironment>(MockBehavior.Strict);
         hostEnvironmentMock.SetupGet(x => x.EnvironmentName).Returns(environment);
         var connectionStringBuilder = new MongoUrlBuilder(hostEnvironmentMock.Object);
-        var connectionStringBuilderLoaderMock = new Mock<IMongoUrlBuilderLoader>(MockBehavior.Strict);
-        connectionStringBuilderLoaderMock.Setup(x => x.GetConnectionStringBuilder(It.IsAny<DatabaseContext>()))
+        var mongoUrlBuilderLoaderMock = new Mock<IMongoUrlBuilderLoader>(MockBehavior.Strict);
+        mongoUrlBuilderLoaderMock.Setup(x => x.GetConnectionStringBuilder(It.IsAny<DatabaseContext>()))
             .Returns((DatabaseContext _) => (connectionStringBuilder, () => "mongodb://localhost:27017/Tharga{environment}{part}"));
+        var repositoryConfiguration = new Mock<IRepositoryConfiguration>(MockBehavior.Strict);
         var databaseContext = Mock.Of<DatabaseContext>(x => x.DatabasePart == part);
         var databaseOptions = Mock.Of<DatabaseOptions> ();
-        var sut = new RepositoryConfiguration(configurationMock.Object, connectionStringBuilderLoaderMock.Object, databaseOptions, () => databaseContext, environment);
+        var sut = new RepositoryConfigurationInternal(mongoUrlBuilderLoaderMock.Object, repositoryConfiguration.Object, databaseOptions, () => databaseContext, environment);
 
         //Act
         var result = sut.GetDatabaseUrl();

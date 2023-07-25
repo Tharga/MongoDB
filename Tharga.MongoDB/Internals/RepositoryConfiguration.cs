@@ -1,72 +1,55 @@
 ﻿using System;
-using System.Collections.Concurrent;
 using Microsoft.Extensions.Configuration;
-using MongoDB.Driver;
+using Microsoft.Extensions.DependencyInjection;
 using Tharga.MongoDB.Configuration;
 
 namespace Tharga.MongoDB.Internals;
 
 internal class RepositoryConfiguration : IRepositoryConfiguration
 {
+    private readonly IServiceProvider _serviceProvider;
     private readonly IConfiguration _configuration;
-    private readonly IMongoUrlBuilderLoader _mongoUrlBuilderLoader;
     private readonly DatabaseOptions _databaseOptions;
-    private readonly string _environmentName;
-    private readonly Lazy<DatabaseContext> _databaseContext;
 
-    private static readonly ConcurrentDictionary<string, MongoDbConfig> _configurationCache = new();
-    private static readonly ConcurrentDictionary<string, MongoUrl> _databaseUrlCache = new();
-
-    public RepositoryConfiguration(IConfiguration configuration, IMongoUrlBuilderLoader mongoUrlBuilderLoader, DatabaseOptions databaseOptions, Func<DatabaseContext> databaseContextLoader, string environmentName = null)
+    internal RepositoryConfiguration(IServiceProvider serviceProvider, DatabaseOptions databaseOptions)
     {
-        _configuration = configuration;
-        _mongoUrlBuilderLoader = mongoUrlBuilderLoader;
+        _serviceProvider = serviceProvider;
+        _configuration = serviceProvider.GetService<IConfiguration>();
         _databaseOptions = databaseOptions;
-        _environmentName = environmentName;
-        _databaseContext = new Lazy<DatabaseContext>(() => databaseContextLoader?.Invoke());
     }
 
-    public MongoUrl GetDatabaseUrl()
+    public string GetRawDatabaseUrl(string configurationName)
     {
-        var configurationName = _databaseContext.Value?.ConfigurationName ?? _databaseOptions.ConfigurationName ?? "Default";
-        var key = $"{_environmentName}.{configurationName}.{_databaseContext.Value?.CollectionName}.{_databaseContext.Value?.DatabasePart}";
-        if (_databaseUrlCache.TryGetValue(key, out var mongoUrl)) return mongoUrl;
-
-        var result = _mongoUrlBuilderLoader.GetConnectionStringBuilder(_databaseContext.Value);
-        mongoUrl = result.Builder.Build(result.ConnectionStringLoader(), _databaseContext.Value?.DatabasePart);
-        _databaseUrlCache.TryAdd(key, mongoUrl);
-        return mongoUrl;
+        var r = _databaseOptions.ConnectionStringLoader?.Invoke(configurationName, _serviceProvider).GetAwaiter().GetResult();
+        if (r == null) _configuration.GetConnectionString(configurationName);
+        return r;
     }
 
-    public MongoDbConfig GetConfiguration()
+    public MongoDbConfig GetConfiguration(string configurationName)
     {
-        var configurationName = _databaseContext.Value?.ConfigurationName ?? _databaseOptions.ConfigurationName ?? "Default";
-        var key = $"{configurationName}.{_databaseContext.Value?.CollectionName}";
-        if (_configurationCache.TryGetValue(key, out var configuration)) return configuration;
-
         //Provided as named parameter
         MongoDbConfiguration c1 = null;
-        _databaseOptions.Configuration?.Configurations?.TryGetValue(configurationName, out c1);
+        var configurationTree = _databaseOptions.ConfigurationLoader?.Invoke(_serviceProvider)?.GetAwaiter().GetResult();
+        configurationTree?.Configurations?.TryGetValue(configurationName, out c1);
 
         //Provided as general parameter
-        var c2 = _databaseOptions.Configuration as MongoDbConfiguration;
+        var c2 = configurationTree as MongoDbConfiguration;
 
         //Configured as named parameter
-        var c3 = GetConfigValue<MongoDbConfiguration>($"MongoDB:{configurationName}");
+        var c3 = new Lazy<MongoDbConfiguration>(() => GetConfigValue<MongoDbConfiguration>($"MongoDB:{configurationName}"));
 
         //Configured as general parameter
-        var c4 = GetConfigValue<MongoDbConfiguration>("MongoDB");
+        var c4 = new Lazy<MongoDbConfiguration>(() => GetConfigValue<MongoDbConfiguration>("MongoDB"));
 
-        configuration = new MongoDbConfig
+        var configuration = new MongoDbConfig
         {
-            AccessInfo = c1?.AccessInfo ?? c2?.AccessInfo ?? c3?.AccessInfo ?? c4?.AccessInfo,
-            ResultLimit = c1?.ResultLimit ?? c2?.ResultLimit ?? c3?.ResultLimit ?? c4?.ResultLimit,
-            AutoClean = c1?.AutoClean ?? c2?.AutoClean ?? c3?.AutoClean ?? c4?.AutoClean ?? true,
-            CleanOnStartup = c1?.CleanOnStartup ?? c2?.CleanOnStartup ?? c3?.CleanOnStartup ?? c4?.CleanOnStartup ?? false,
-            DropEmptyCollections = c1?.DropEmptyCollections ?? c2?.DropEmptyCollections ?? c3?.DropEmptyCollections ?? c4?.DropEmptyCollections ?? true
+            AccessInfo = c1?.AccessInfo ?? c2?.AccessInfo ?? c3.Value?.AccessInfo ?? c4.Value?.AccessInfo,
+            ResultLimit = c1?.ResultLimit ?? c2?.ResultLimit ?? c3.Value?.ResultLimit ?? c4.Value?.ResultLimit,
+            AutoClean = c1?.AutoClean ?? c2?.AutoClean ?? c3.Value?.AutoClean ?? c4.Value?.AutoClean ?? true,
+            CleanOnStartup = c1?.CleanOnStartup ?? c2?.CleanOnStartup ?? c3.Value?.CleanOnStartup ?? c4.Value?.CleanOnStartup ?? false,
+            DropEmptyCollections = c1?.DropEmptyCollections ?? c2?.DropEmptyCollections ?? c3.Value?.DropEmptyCollections ?? c4.Value?.DropEmptyCollections ?? true
         };
 
-        _configurationCache.TryAdd(key, configuration);
         return configuration;
     }
 

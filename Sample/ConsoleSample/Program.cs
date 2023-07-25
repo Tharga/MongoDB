@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
@@ -30,6 +31,37 @@ internal static class Program
         {
             o.ConnectionStringLoader = (_, _) => Task.FromResult<ConnectionString>("mongodb://localhost:27017/Tharga_MongoDB_ConsoleSample{part}");
             o.ActionEvent = data => { Console.WriteLine($"---> {data.Action.Message}"); };
+            o.ConfigurationLoader = async provider => new MongoDbConfigurationTree
+            {
+                Configurations = new Dictionary<ConfigurationName, MongoDbConfiguration>
+                {
+                    {
+                        "Default", new MongoDbConfiguration
+                        {
+                            AccessInfo = new MongoDbApiAccess
+                            {
+                                PublicKey = "[PublicKey]",
+                                PrivateKey = "[PrivateKey]",
+                                GroupId = "[GroupId]"
+                            },
+                            ResultLimit = 100,
+                            AutoClean = true,
+                            CleanOnStartup = true,
+                            DropEmptyCollections = true
+                        }
+                    },
+                    {
+                        "Other", new MongoDbConfiguration
+                        {
+                            ResultLimit = 200
+                        }
+                    }
+                },
+                ResultLimit = 1000,
+                AutoClean = false,
+                CleanOnStartup = false,
+                DropEmptyCollections = false
+            };
             //o.AutoRegisterCollections = true;
         });
         services.AddLogging(x =>

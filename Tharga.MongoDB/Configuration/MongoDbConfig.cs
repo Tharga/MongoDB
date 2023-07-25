@@ -1,6 +1,4 @@
-﻿using Tharga.MongoDB.Configuration;
-
-namespace Tharga.MongoDB.Internals;
+﻿namespace Tharga.MongoDB.Configuration;
 
 public record MongoDbConfig
 {
