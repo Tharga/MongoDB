@@ -18,15 +18,19 @@ internal class RepositoryConfiguration : IRepositoryConfiguration
         _databaseOptions = databaseOptions;
     }
 
-    public string GetRawDatabaseUrl(string configurationName)
+    public string GetRawDatabaseUrl(string configurationName = null)
     {
+        configurationName ??= "Default";
+
         var r = _databaseOptions.ConnectionStringLoader?.Invoke(configurationName, _serviceProvider).GetAwaiter().GetResult();
-        if (r == null) _configuration.GetConnectionString(configurationName);
+        if (r == null) return _configuration.GetConnectionString(configurationName);
         return r;
     }
 
-    public MongoDbConfig GetConfiguration(string configurationName)
+    public MongoDbConfig GetConfiguration(string configurationName = null)
     {
+        configurationName ??= "Default";
+
         //Provided as named parameter
         MongoDbConfiguration c1 = null;
         var configurationTree = _databaseOptions.ConfigurationLoader?.Invoke(_serviceProvider)?.GetAwaiter().GetResult();

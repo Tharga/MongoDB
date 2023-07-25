@@ -4,6 +4,6 @@ namespace Tharga.MongoDB;
 
 public interface IRepositoryConfiguration
 {
-    string GetRawDatabaseUrl(string configurationName);
-    MongoDbConfig GetConfiguration(string configurationName);
+    string GetRawDatabaseUrl(string configurationName = null);
+    MongoDbConfig GetConfiguration(string configurationName = null);
 }

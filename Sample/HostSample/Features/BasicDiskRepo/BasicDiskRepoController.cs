@@ -1,6 +1,7 @@
 ﻿using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
+using Tharga.MongoDB;
 
 namespace HostSample.Features.BasicDiskRepo;
 
@@ -10,7 +11,7 @@ public class BasicDiskRepoController : ControllerBase
 {
     private readonly IMyBasicDiskRepo _repository;
 
-    public BasicDiskRepoController(IMyBasicDiskRepo repository)
+    public BasicDiskRepoController(IMyBasicDiskRepo repository, IRepositoryConfiguration configuration)
     {
         _repository = repository;
     }

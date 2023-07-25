@@ -18,6 +18,7 @@ public class Startup
         services.AddMongoDB(o =>
         {
             o.ConfigurationName = "Default"; //"Other";
+            //o.ConnectionStringLoader = (_, _) => Task.FromResult<ConnectionString>("mongodb://localhost:27017/Tharga{environment}_HostSample{part}");
             o.ActionEvent += e => { System.Console.WriteLine($"---> {e.Action.Message}"); };
         });
         services.AddLogging(x =>
