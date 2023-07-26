@@ -20,27 +20,24 @@ internal class RepositoryConfiguration : IRepositoryConfiguration
 
     public string GetRawDatabaseUrl(string configurationName = null)
     {
-        configurationName ??= "Default";
-
-        var r = _databaseOptions.ConnectionStringLoader?.Invoke(configurationName, _serviceProvider).GetAwaiter().GetResult();
-        if (r == null) return _configuration.GetConnectionString(configurationName);
-        return r;
+        var name = configurationName ?? "Default";
+        return _databaseOptions.ConnectionStringLoader?.Invoke(name, _serviceProvider).GetAwaiter().GetResult() ?? _configuration.GetConnectionString(name);
     }
 
     public MongoDbConfig GetConfiguration(string configurationName = null)
     {
-        configurationName ??= "Default";
+        var name = configurationName ?? "Default";
 
         //Provided as named parameter
         MongoDbConfiguration c1 = null;
         var configurationTree = _databaseOptions.ConfigurationLoader?.Invoke(_serviceProvider)?.GetAwaiter().GetResult();
-        configurationTree?.Configurations?.TryGetValue(configurationName, out c1);
+        configurationTree?.Configurations?.TryGetValue(name, out c1);
 
         //Provided as general parameter
         var c2 = configurationTree as MongoDbConfiguration;
 
         //Configured as named parameter
-        var c3 = new Lazy<MongoDbConfiguration>(() => GetConfigValue<MongoDbConfiguration>($"MongoDB:{configurationName}"));
+        var c3 = new Lazy<MongoDbConfiguration>(() => GetConfigValue<MongoDbConfiguration>($"MongoDB:{name}"));
 
         //Configured as general parameter
         var c4 = new Lazy<MongoDbConfiguration>(() => GetConfigValue<MongoDbConfiguration>("MongoDB"));
