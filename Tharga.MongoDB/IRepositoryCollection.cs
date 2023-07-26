@@ -33,4 +33,5 @@ public interface IRepositoryCollection<TEntity, TKey> : IRepositoryCollection
     Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate = null, FindOneAndDeleteOptions<TEntity, TEntity> options = default);
     Task<long> DeleteManyAsync(Expression<Func<TEntity, bool>> predicate);
     Task<long> CountAsync(Expression<Func<TEntity, bool>> predicate);
+    Task<long> CountAsync(FilterDefinition<TEntity> filter);
 }

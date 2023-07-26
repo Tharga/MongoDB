@@ -232,6 +232,11 @@ public abstract class BufferRepositoryCollectionBase<TEntity, TKey> : Repository
         return data.Count();
     }
 
+    public override Task<long> CountAsync(FilterDefinition<TEntity> filter)
+    {
+        throw new NotSupportedException();
+    }
+
     public override Task<long> GetSizeAsync()
     {
         return Disk.GetSizeAsync();

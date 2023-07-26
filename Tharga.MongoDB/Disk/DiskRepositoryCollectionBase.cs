@@ -387,6 +387,15 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         }, false);
     }
 
+    public override async Task<long> CountAsync(FilterDefinition<TEntity> filter)
+    {
+        return await Execute(nameof(CountAsync), async () =>
+        {
+            var count = await Collection.CountDocumentsAsync(filter);
+            return count;
+        }, false);
+    }
+
     public override async Task<long> GetSizeAsync()
     {
         return await Execute(nameof(GetSizeAsync), () => Task.FromResult(_mongoDbService.GetSize(ProtectedCollectionName)), false);
