@@ -4,6 +4,6 @@ using Tharga.MongoDB;
 
 namespace HostSample.Features.MultiTypeDiskRepo;
 
-public interface IMyMultiTypeDiskRepoCollection : IRepositoryCollection<MyEntityBase, ObjectId>
+public interface IMyMultiTypeDiskRepoCollection : IDiskRepositoryCollection<MyEntityBase, ObjectId>
 {
 }

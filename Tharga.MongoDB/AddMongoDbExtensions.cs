@@ -102,11 +102,22 @@ public static class AddMongoDbExtensions
 
         if (databaseOptions.AutoRegisterCollections)
         {
-            var currentDomainDefinedTypes = AssemblyService.GetTypes<IRepositoryCollection>(x => !x.IsGenericType && !x.IsInterface, databaseOptions.AutoRegistrationAssemblies).ToArray();
+            var currentDomainDefinedTypes = AssemblyService.GetTypes<IRepositoryCollection>(x =>
+                !x.IsGenericType
+                && !x.IsAbstract
+                && !x.IsInterface, databaseOptions.AutoRegistrationAssemblies).ToArray();
             foreach (var collectionType in currentDomainDefinedTypes)
             {
-                var serviceTypes = collectionType.ImplementedInterfaces.Where(x => x.IsInterface && !x.IsGenericType && x != typeof(IRepositoryCollection)).ToArray();
-                if (serviceTypes.Length > 1) throw new InvalidOperationException($"There are {serviceTypes.Length} interfaces for collection type '{collectionType.Name}' ({string.Join(", ", serviceTypes.Select(x => x.Name))}).");
+                var serviceTypes = collectionType.ImplementedInterfaces
+                    .Where(x => x.IsInterface
+                                && !x.IsGenericType
+                                && x != typeof(IRepositoryCollection)
+                                && x.IsOfType<IRepositoryCollection>()
+                    ).ToArray();
+                if (serviceTypes.Length > 1)
+                {
+                    throw new InvalidOperationException($"There are {serviceTypes.Length} interfaces for collection type '{collectionType.Name}' ({string.Join(", ", serviceTypes.Select(x => x.Name))}).");
+                }
                 var implementationType = collectionType.AsType();
                 var serviceType = serviceTypes.Length == 0 ? implementationType : serviceTypes.Single();
 
