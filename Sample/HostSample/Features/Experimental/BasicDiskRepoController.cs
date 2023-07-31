@@ -1,65 +1,8 @@
-﻿using System.Collections.Generic;
-using System.Linq;
+﻿using System.Linq;
 using System.Threading.Tasks;
-using HostSample.Entities;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Logging;
-using MongoDB.Bson;
-using MongoDB.Driver;
-using Tharga.MongoDB;
 
 namespace HostSample.Features.Experimental;
-
-public interface IExperimentalDiskRepo : IRepository
-{
-    IAsyncEnumerable<MyEntity> GetAll();
-    Task ResetAllCounters();
-    Task IncreaseAllCounters();
-}
-
-public interface IExperimentalDiskRepoCollection : IDiskRepositoryCollection<MyEntity, ObjectId>
-{
-}
-
-public class ExperimentalDiskRepoCollection : Tharga.MongoDB.Experimental.ReadWriteDiskRepositoryCollectionBase<MyEntity, ObjectId>, IExperimentalDiskRepoCollection
-{
-    public ExperimentalDiskRepoCollection(IMongoDbServiceFactory mongoDbServiceFactory, ILogger<ExperimentalDiskRepoCollection> logger)
-        : base(mongoDbServiceFactory, logger)
-    {
-    }
-
-    public override string DatabasePart => "MyDatabasePart";
-    public override string CollectionName => "MyCollection";
-}
-
-public class ExperimentalDiskRepo : IExperimentalDiskRepo
-{
-    private readonly IExperimentalDiskRepoCollection _collection;
-
-    public ExperimentalDiskRepo(IExperimentalDiskRepoCollection collection)
-    {
-        _collection = collection;
-    }
-
-    public IAsyncEnumerable<MyEntity> GetAll()
-    {
-        return _collection.GetAsync(x => true);
-    }
-
-    public Task ResetAllCounters()
-    {
-        var filter = FilterDefinition<MyEntity>.Empty;
-        var update = new UpdateDefinitionBuilder<MyEntity>().Set(x => x.Counter, 0);
-        return _collection.UpdateAsync(filter, update);
-    }
-
-    public Task IncreaseAllCounters()
-    {
-        var filter = FilterDefinition<MyEntity>.Empty;
-        var update = new UpdateDefinitionBuilder<MyEntity>().Inc(x => x.Counter, 1);
-        return _collection.UpdateAsync(filter, update);
-    }
-}
 
 [ApiController]
 [Route("[controller]")]

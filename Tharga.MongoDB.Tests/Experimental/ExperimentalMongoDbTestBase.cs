@@ -5,15 +5,15 @@ using Moq;
 using Tharga.MongoDB.Configuration;
 using Tharga.MongoDB.Internals;
 
-namespace Tharga.MongoDB.Tests.Support;
+namespace Tharga.MongoDB.Tests.Experimental;
 
-public abstract class MongoDbTestBase : IDisposable
+public abstract class ExperimentalMongoDbTestBase : IDisposable
 {
     private readonly Mock<IRepositoryConfigurationInternal> _configurationMock;
     private readonly IMongoDbServiceFactory _mongoDbServiceFactory;
     private readonly DatabaseContext _databaseContext;
 
-    protected MongoDbTestBase()
+    protected ExperimentalMongoDbTestBase()
     {
         _databaseContext = Mock.Of<DatabaseContext>(x => x.DatabasePart == Guid.NewGuid().ToString());
         _configurationMock = new Mock<IRepositoryConfigurationInternal>(MockBehavior.Strict);
