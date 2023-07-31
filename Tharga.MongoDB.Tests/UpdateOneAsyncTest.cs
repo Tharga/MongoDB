@@ -4,7 +4,6 @@ using AutoFixture;
 using FluentAssertions;
 using MongoDB.Bson;
 using MongoDB.Driver;
-using Tharga.MongoDB.Internals;
 using Tharga.MongoDB.Tests.Support;
 using Xunit;
 

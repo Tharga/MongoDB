@@ -13,12 +13,7 @@ public class GetPageAsyncTest : GenericBufferRepositoryCollectionBaseTestBase
 {
     public GetPageAsyncTest()
     {
-        Prepare(new[]
-        {
-            new Fixture().Build<TestEntity>().With(x => x.Id, ObjectId.GenerateNewId()).Create(),
-            new Fixture().Build<TestSubEntity>().With(x => x.Id, ObjectId.GenerateNewId()).Create(),
-            new Fixture().Build<TestEntity>().With(x => x.Id, ObjectId.GenerateNewId()).Create()
-        });
+        Prepare(Enumerable.Range(0, 6).Select(_ => new Fixture().Build<TestEntity>().With(x => x.Id, ObjectId.GenerateNewId()).Create()));
     }
 
     [Fact]
@@ -27,29 +22,66 @@ public class GetPageAsyncTest : GenericBufferRepositoryCollectionBaseTestBase
     {
         //Arrange
         var sut = await GetCollection(CollectionType.Disk);
+        sut.ResultLimit.Should().BeLessThan(InitialData.Length);
+        InitialData.Length.Should().Be((int)await sut.CountAsync(x => true));
+        sut.ResultLimit.Should().Be(5);
+
+        //Act
+        var result = await sut.GetPageAsync(x => true).ToArrayAsync();
+
+        //Assert
+        result.Should().NotBeNull();
+        result.Length.Should().Be(2);
+        foreach (var page in result)
+        {
+            (await page.Items.ToArrayAsync()).Length.Should().BeLessOrEqualTo(5);
+        }
+    }
+
+    [Fact]
+    [Trait("Category", "Database")]
+    public async Task BasicFromDiskShouldReturnAllITems()
+    {
+        //Arrange
+        var sut = await GetCollection(CollectionType.Disk);
+        sut.ResultLimit.Should().BeLessThan(InitialData.Length);
+        InitialData.Length.Should().Be((int)await sut.CountAsync(x => true));
 
         //Act
         var result = await sut.GetPageAsync(x => true).SelectMany(x => x.Items).ToArrayAsync();
 
         //Assert
         result.Should().NotBeNull();
-        result.Length.Should().Be(3);
-        await VerifyContentAsync(sut);
+        result.Length.Should().Be(InitialData.Length);
     }
 
-    [Fact(Skip = "Implement")]
+    [Fact]
     [Trait("Category", "Database")]
-    public async Task BasicFromBuffer()
+    public async Task GetTooManyRecordsShouldThrow()
+    {
+        //Arrange
+        var sut = await GetCollection(CollectionType.Disk);
+        sut.ResultLimit.Should().BeLessThan(InitialData.Length);
+        InitialData.Length.Should().Be((int)await sut.CountAsync(x => true));
+
+        //Act
+        var act = async () => await sut.GetAsync(x => true).ToArrayAsync();
+
+        //Assert
+        await act.Should().ThrowAsync<ResultLimitException>();
+    }
+
+    [Fact]
+    [Trait("Category", "Database")]
+    public async Task BasicFromBufferShouldThrow()
     {
         //Arrange
         var sut = await GetCollection(CollectionType.Buffer);
 
         //Act
-        var act = () => sut.GetPageAsync(x => true);
+        var act = async () => await sut.GetPageAsync(x => true).ToArrayAsync();
 
         //Assert
-        throw new NotImplementedException();
-        //await act.Should().ThrowAsync<MongoBulkWriteException>();
-        await VerifyContentAsync(sut);
+        await act.Should().ThrowAsync<NotSupportedException>();
     }
 }

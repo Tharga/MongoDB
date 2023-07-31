@@ -5,4 +5,5 @@ namespace Tharga.MongoDB.Tests.Support;
 public record TestEntity : EntityBase<ObjectId>
 {
     public string Value { get; set; }
+    public string ExtraValue { get; set; }
 }

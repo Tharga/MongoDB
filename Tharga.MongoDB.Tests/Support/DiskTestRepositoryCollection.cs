@@ -14,6 +14,7 @@ public class DiskTestRepositoryCollection : DiskRepositoryCollectionBase<TestEnt
     }
 
     public override string CollectionName => "Test";
+    public override int? ResultLimit => 5;
 
     public override IEnumerable<CreateIndexModel<TestEntity>> Indicies => new[]
     {

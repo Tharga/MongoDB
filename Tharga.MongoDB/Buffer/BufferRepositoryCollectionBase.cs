@@ -61,12 +61,12 @@ public abstract class BufferRepositoryCollectionBase<TEntity, TKey> : Repository
 
     public override IAsyncEnumerable<TEntity> GetAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default)
     {
-        throw new NotSupportedException();
+        throw new NotSupportedException($"{nameof(GetAsync)} with {nameof(filter)} is not supported for {nameof(BufferRepositoryCollectionBase<TEntity, TKey>)}");
     }
 
     public override async IAsyncEnumerable<T> GetAsync<T>(Expression<Func<T, bool>> predicate = null, Options<T> options = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        if (options != default) throw new NotSupportedException("The options parameter is not supported for buffer collections.");
+        if (options != default) throw new NotSupportedException($"The {nameof(options)} parameter is not supported for {nameof(BufferRepositoryCollectionBase<TEntity, TKey>)}.");
         var buffer = await GetBufferAsync();
         var data = buffer.Values
             .Where(x => x.GetType() == typeof(T))
@@ -79,7 +79,7 @@ public abstract class BufferRepositoryCollectionBase<TEntity, TKey> : Repository
 
     public override IAsyncEnumerable<ResultPage<TEntity, TKey>> GetPageAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default)
     {
-        throw new NotSupportedException();
+        throw new NotSupportedException($"{nameof(GetPageAsync)} is not supported for {nameof(BufferRepositoryCollectionBase<TEntity, TKey>)}");
     }
 
     public override async Task<TEntity> GetOneAsync(TKey id, CancellationToken cancellationToken = default)
@@ -91,7 +91,8 @@ public abstract class BufferRepositoryCollectionBase<TEntity, TKey> : Repository
 
     public override async Task<TEntity> GetOneAsync(Expression<Func<TEntity, bool>> predicate = null, OneOption<TEntity> options = null, CancellationToken cancellationToken = default)
     {
-        if (options?.Sort != null) throw new NotSupportedException("The sort part of the options parameter is not supported for buffer collections.");
+        if (options?.Sort != null) throw new NotSupportedException($"The {nameof(options.Sort)} part of the {nameof(options)} parameter is not supported for {nameof(BufferRepositoryCollectionBase<TEntity, TKey>)}.");
+
         var buffer = await GetBufferAsync();
         var data = buffer.Values.Where(x => predicate?.Compile().Invoke(x) ?? true);
 
@@ -109,12 +110,13 @@ public abstract class BufferRepositoryCollectionBase<TEntity, TKey> : Repository
 
     public override Task<TEntity> GetOneAsync(FilterDefinition<TEntity> filter, OneOption<TEntity> options = null, CancellationToken cancellationToken = default)
     {
-        throw new NotSupportedException();
+        throw new NotSupportedException($"{nameof(GetOneAsync)} with {nameof(filter)} is not supported for {nameof(BufferRepositoryCollectionBase<TEntity, TKey>)}");
     }
 
     public override async Task<T> GetOneAsync<T>(Expression<Func<T, bool>> predicate = null, OneOption<T> options = null, CancellationToken cancellationToken = default)
     {
-        if (options?.Sort != null) throw new NotSupportedException("The sort part of the options parameter is not supported for buffer collections.");
+        if (options?.Sort != null) throw new NotSupportedException($"The {nameof(options.Sort)} part of the {nameof(options)} parameter is not supported for {nameof(BufferRepositoryCollectionBase<TEntity, TKey>)}.");
+
         var buffer = await GetBufferAsync();
         var data = buffer.Values
             .Where(x => x.GetType() == typeof(T))
@@ -173,6 +175,11 @@ public abstract class BufferRepositoryCollectionBase<TEntity, TKey> : Repository
         var result = await Disk.AddOrReplaceAsync(entity);
         _bufferCollection.Data.AddOrUpdate(entity.Id, entity, (_, _) => entity);
         return result;
+    }
+
+    public override Task<long> UpdateAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update)
+    {
+        throw new NotSupportedException($"{nameof(UpdateAsync)} with {nameof(filter)} is not supported for {nameof(BufferRepositoryCollectionBase<TEntity, TKey>)}");
     }
 
     public override async Task<EntityChangeResult<TEntity>> UpdateOneAsync(TKey id, UpdateDefinition<TEntity> update)
@@ -234,7 +241,7 @@ public abstract class BufferRepositoryCollectionBase<TEntity, TKey> : Repository
 
     public override Task<long> CountAsync(FilterDefinition<TEntity> filter)
     {
-        throw new NotSupportedException();
+        throw new NotSupportedException($"{nameof(CountAsync)} with {nameof(filter)} is not supported for {nameof(BufferRepositoryCollectionBase<TEntity, TKey>)}");
     }
 
     public override Task<long> GetSizeAsync()

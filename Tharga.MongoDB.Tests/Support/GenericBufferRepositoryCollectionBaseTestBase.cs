@@ -40,7 +40,10 @@ public abstract class GenericBufferRepositoryCollectionBaseTestBase : MongoDbTes
             _prepared = true;
             foreach (var data in InitialData)
             {
-                await _disk.AddAsync(data);
+                if (!await _disk.AddAsync(data))
+                {
+                    throw new InvalidOperationException($"Unable to insert item {data.Id}.");
+                }
             }
         }
 
