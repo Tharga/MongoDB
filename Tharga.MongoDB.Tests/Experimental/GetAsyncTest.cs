@@ -6,6 +6,9 @@ using System.Linq;
 using System.Threading.Tasks;
 using Xunit;
 using System;
+using FluentAssertions;
+using MongoDB.Driver;
+using Tharga.MongoDB.Experimental;
 
 namespace Tharga.MongoDB.Tests.Experimental;
 
@@ -98,7 +101,14 @@ public abstract class ExperimentalRepositoryCollectionBaseTestBase : Experimenta
             new object[] { CollectionType.ReadOnlyBuffer },
         };
 
-    protected async Task<Tharga.MongoDB.Experimental.RepositoryCollectionBase<TestEntity, ObjectId>> GetCollection(CollectionType collectionType/*, Func<RepositoryCollectionBase<TestEntity, ObjectId>, Task> action = null, bool disconnectDisk = false*/)
+    public static IEnumerable<object[]> DiskCollectionTypes =>
+        new List<object[]>
+        {
+            new object[] { CollectionType.Disk },
+            new object[] { CollectionType.ReadOnlyDisk },
+        };
+
+    protected async Task<Tharga.MongoDB.Experimental.RepositoryCollectionBase<TestEntity, ObjectId>> GetCollection(CollectionType collectionType, bool disconnectDisk = false /*, Func<RepositoryCollectionBase<TestEntity, ObjectId>, Task> action = null, bool disconnectDisk = false*/)
     {
         if (!_prepared && InitialData != null && InitialData.Any())
         {
@@ -136,14 +146,14 @@ public abstract class ExperimentalRepositoryCollectionBaseTestBase : Experimenta
         //    await action.Invoke(sut);
         //}
 
-        //if (sut is BufferTestRepositoryCollection collection)
-        //{
-        //    await collection.InvalidateBufferAsync();
-        //    if (disconnectDisk)
-        //    {
-        //        await collection.DisconnectDiskAsync();
-        //    }
-        //}
+        if (sut is ReadOnlyBufferRepositoryCollectionBase<TestEntity, ObjectId> bufferCollection)
+        {
+            await bufferCollection.InvalidateBufferAsync();
+            if (disconnectDisk)
+            {
+                await bufferCollection.DisconnectDiskAsync();
+            }
+        }
 
         return sut;
     }
@@ -153,6 +163,24 @@ public abstract class ExperimentalRepositoryCollectionBaseTestBase : Experimenta
     protected void Prepare(IEnumerable<TestEntity> data)
     {
         InitialData = data.ToArray();
+    }
+
+    protected async Task VerifyContentAsync(Tharga.MongoDB.Experimental.RepositoryCollectionBase<TestEntity, ObjectId> sut)
+    {
+        if (sut is ReadOnlyBufferRepositoryCollectionBase<TestEntity, ObjectId> bufferCollection)
+        {
+            var allDisk = await bufferCollection.Disk.GetAsync(x => true).ToArrayAsync();
+            var allBuffer = await sut.GetAsync(x => true).ToArrayAsync();
+
+            allDisk.Should().HaveSameCount(allBuffer);
+            allDisk.Select(x => x.Id).OrderBy(x => x).SequenceEqual(allBuffer.Select(x => x.Id).OrderBy(x => x)).Should().BeTrue();
+
+            foreach (var diskItem in allDisk)
+            {
+                var bufferItrem = allBuffer.SingleOrDefault(x => x.Id == diskItem.Id);
+                diskItem.Should().Be(bufferItrem);
+            }
+        }
     }
 }
 
@@ -179,60 +207,43 @@ public class GetAsyncTest : ExperimentalRepositoryCollectionBaseTestBase
         //Act
         var result = await sut.GetAsync(x => true).ToArrayAsync();
 
-        ////Assert
-        //result.Should().NotBeNull();
-        //result.Length.Should().Be(3);
-        //await VerifyContentAsync(sut);
+        //Assert
+        result.Should().NotBeNull();
+        result.Length.Should().Be(3);
+        await VerifyContentAsync(sut);
     }
 
-    //[Theory]
-    //[Trait("Category", "Database")]
-    //[MemberData(nameof(Data))]
-    //public async Task Default(CollectionType collectionType)
-    //{
-    //    //Arrange
-    //    var sut = await GetCollection(collectionType);
+    [Theory]
+    [Trait("Category", "Database")]
+    [MemberData(nameof(AllCollectionTypes))]
+    public async Task Default(CollectionType collectionType)
+    {
+        //Arrange
+        var sut = await GetCollection(collectionType);
 
-    //    //Act
-    //    var result = await sut.GetAsync().ToArrayAsync();
+        //Act
+        var result = await sut.GetAsync().ToArrayAsync();
 
-    //    //Assert
-    //    result.Should().NotBeNull();
-    //    result.Length.Should().Be(3);
-    //    await VerifyContentAsync(sut);
-    //}
+        //Assert
+        result.Should().NotBeNull();
+        result.Length.Should().Be(3);
+        await VerifyContentAsync(sut);
+    }
 
-    //[Fact]
-    //[Trait("Category", "Database")]
-    //public async Task BasicWithFilterFromDisk()
-    //{
-    //    //Arrange
-    //    var sut = await GetCollection(CollectionType.Disk);
+    [Theory]
+    [Trait("Category", "Database")]
+    [MemberData(nameof(DiskCollectionTypes))]
+    public async Task BasicWithFilterFromDisk(CollectionType collectionType)
+    {
+        //Arrange
+        var sut = await GetCollection(collectionType) as IReadOnlyDiskRepositoryCollection<TestEntity, ObjectId>;
 
-    //    //Act
-    //    var filter = Builders<TestEntity>.Filter.Empty;
-    //    var result = await sut.GetAsync(filter).ToArrayAsync();
+        //Act
+        var filter = Builders<TestEntity>.Filter.Empty;
+        var result = await sut.GetAsync(filter).ToArrayAsync();
 
-    //    //Assert
-    //    result.Should().NotBeNull();
-    //    result.Length.Should().Be(3);
-    //    await VerifyContentAsync(sut);
-    //}
-
-    //[Fact(Skip = "Implement")]
-    //[Trait("Category", "Database")]
-    //public async Task BasicWithFilterFromBuffer()
-    //{
-    //    //Arrange
-    //    var sut = await GetCollection(CollectionType.Buffer);
-
-    //    //Act
-    //    var filter = Builders<TestEntity>.Filter.Empty;
-    //    var act = () => sut.GetAsync(filter);
-
-    //    //Assert
-    //    throw new NotImplementedException();
-    //    //await act.Should().ThrowAsync<MongoBulkWriteException>();
-    //    await VerifyContentAsync(sut);
-    //}
+        //Assert
+        result.Should().NotBeNull();
+        result.Length.Should().Be(3);
+    }
 }

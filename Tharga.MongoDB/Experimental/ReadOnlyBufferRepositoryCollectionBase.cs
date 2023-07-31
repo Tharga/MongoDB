@@ -121,7 +121,7 @@ public abstract class RepositoryCollectionBase<TEntity, TKey> : RepositoryCollec
     }
 }
 
-public abstract class ReadOnlyBufferRepositoryCollectionBase<TEntity, TKey> : RepositoryCollectionBase<TEntity, TKey>, IReadOnlyRepositoryCollection<TEntity, TKey>
+public abstract class ReadOnlyBufferRepositoryCollectionBase<TEntity, TKey> : RepositoryCollectionBase<TEntity, TKey>, IReadOnlyBufferRepositoryCollection<TEntity, TKey>
     where TEntity : EntityBase<TKey>
 {
     private readonly IMongoDbServiceFactory _mongoDbServiceFactory;
@@ -138,7 +138,7 @@ public abstract class ReadOnlyBufferRepositoryCollectionBase<TEntity, TKey> : Re
     }
 
     //internal override IRepositoryCollection<TEntity, TKey> BaseCollection => _diskConnected ? Disk : this;
-    private ReadOnlyDiskRepositoryCollectionBase<TEntity, TKey> Disk => _diskConnected ? _disk ??= new GenericReadOnlyDiskRepositoryCollection<TEntity, TKey>(_mongoDbServiceFactory, _databaseContext ?? new DatabaseContext { CollectionName = CollectionName, DatabasePart = DatabasePart, ConfigurationName = ConfigurationName }, _logger, this) : null;
+    internal ReadOnlyDiskRepositoryCollectionBase<TEntity, TKey> Disk => _diskConnected ? _disk ??= new GenericReadOnlyDiskRepositoryCollection<TEntity, TKey>(_mongoDbServiceFactory, _databaseContext ?? new DatabaseContext { CollectionName = CollectionName, DatabasePart = DatabasePart, ConfigurationName = ConfigurationName }, _logger, this) : null;
 
     public override async IAsyncEnumerable<TEntity> GetAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default)
     {
@@ -186,6 +186,15 @@ public abstract class ReadOnlyBufferRepositoryCollectionBase<TEntity, TKey> : Re
         throw new NotImplementedException();
     }
 
+    /// <summary>
+    /// Reloads the database content into memory.
+    /// </summary>
+    /// <returns></returns>
+    public async Task InvalidateBufferAsync()
+    {
+        await GetBufferAsync(true);
+    }
+
     private async ValueTask<ConcurrentDictionary<TKey, TEntity>> GetBufferAsync(bool forceReload = false)
     {
         if (!forceReload && _bufferCollection.Data != null) return _bufferCollection.Data;
@@ -218,9 +227,21 @@ public abstract class ReadOnlyBufferRepositoryCollectionBase<TEntity, TKey> : Re
 
         return _bufferCollection.Data;
     }
+
+    internal Task DisconnectDiskAsync()
+    {
+        _diskConnected = false;
+        return Task.CompletedTask;
+    }
+
+    internal Task ReconnectDiskAsync()
+    {
+        _diskConnected = true;
+        return Task.CompletedTask;
+    }
 }
 
-public abstract class ReadWriteBufferRepositoryCollectionBase<TEntity, TKey> : ReadOnlyBufferRepositoryCollectionBase<TEntity, TKey>, IRepositoryCollection<TEntity, TKey>
+public abstract class ReadWriteBufferRepositoryCollectionBase<TEntity, TKey> : ReadOnlyBufferRepositoryCollectionBase<TEntity, TKey>, IBufferRepositoryCollection<TEntity, TKey>
     where TEntity : EntityBase<TKey>
 {
     protected ReadWriteBufferRepositoryCollectionBase(IMongoDbServiceFactory mongoDbServiceFactory, ILogger<ReadWriteBufferRepositoryCollectionBase<TEntity, TKey>> logger = null, DatabaseContext databaseContext = null)
@@ -435,6 +456,11 @@ public abstract class ReadOnlyDiskRepositoryCollectionBase<TEntity, TKey> : Repo
                 }
 
                 return collection;
+            }
+            catch (Exception e)
+            {
+                _logger.LogError(e, e.Message);
+                throw;
             }
             finally
             {

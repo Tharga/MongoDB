@@ -40,6 +40,17 @@ public interface IRepositoryCollection<TEntity, in TKey> : IReadOnlyRepositoryCo
     Task<long> DeleteManyAsync(Expression<Func<TEntity, bool>> predicate);
 }
 
+public interface IReadOnlyBufferRepositoryCollection<TEntity, TKey> : IReadOnlyRepositoryCollection<TEntity, TKey>
+    where TEntity : EntityBase<TKey>
+{
+    Task InvalidateBufferAsync();
+}
+
+public interface IBufferRepositoryCollection<TEntity, TKey> : IRepositoryCollection<TEntity, TKey>, IReadOnlyBufferRepositoryCollection<TEntity, TKey>
+    where TEntity : EntityBase<TKey>
+{
+}
+
 public interface IReadOnlyDiskRepositoryCollection<TEntity, TKey> : IReadOnlyRepositoryCollection<TEntity, TKey>
     where TEntity : EntityBase<TKey>
 {
