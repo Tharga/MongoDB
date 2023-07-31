@@ -4,6 +4,7 @@ using AutoFixture;
 using FluentAssertions;
 using MongoDB.Bson;
 using MongoDB.Driver;
+using Tharga.MongoDB.Disk;
 using Tharga.MongoDB.Tests.Support;
 using Xunit;
 
@@ -28,7 +29,7 @@ public class UpdateAsyncTest : GenericBufferRepositoryCollectionBaseTestBase
         var filter = new FilterDefinitionBuilder<TestEntity>().Empty;
         var updatedValue = new Fixture().Create<string>();
         var update = new UpdateDefinitionBuilder<TestEntity>().Set(x => x.ExtraValue, updatedValue);
-        var sut = await GetCollection(CollectionType.Disk);
+        var sut = await GetCollection(CollectionType.Disk) as DiskRepositoryCollectionBase<TestEntity, ObjectId>;
 
         //Act
         var result = await sut.UpdateAsync(filter, update);

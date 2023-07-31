@@ -33,6 +33,14 @@ public abstract class GenericBufferRepositoryCollectionBaseTestBase : MongoDbTes
             new object[] { CollectionType.Buffer }
         };
 
+    //protected async Task<T> GetCollection<T>(CollectionType collectionType, Func<RepositoryCollectionBase<TestEntity, ObjectId>, Task> action = null, bool disconnectDisk = false)
+    //    //where T : IRepositoryCollection<TestEntity, ObjectId>
+    //    where T : class
+    //{
+    //    var collection = GetCollection(collectionType, action, disconnectDisk);
+    //    return collection as T ?? throw new InvalidOperationException($"Cannot cast {collection.GetType().Name} to {typeof(T).Name}.");
+    //}
+
     protected async Task<RepositoryCollectionBase<TestEntity, ObjectId>> GetCollection(CollectionType collectionType, Func<RepositoryCollectionBase<TestEntity, ObjectId>, Task> action = null, bool disconnectDisk = false)
     {
         if (!_prepared && InitialData != null && InitialData.Any())

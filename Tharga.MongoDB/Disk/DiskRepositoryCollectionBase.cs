@@ -13,7 +13,7 @@ using Tharga.MongoDB.Internals;
 
 namespace Tharga.MongoDB.Disk;
 
-public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCollectionBase<TEntity, TKey>
+public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCollectionBase<TEntity, TKey>, IDiskRepositoryCollection<TEntity, TKey>
     where TEntity : EntityBase<TKey>
 {
     private readonly SemaphoreSlim _lock = new(1, 1);
@@ -308,7 +308,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         }, true);
     }
 
-    public override async Task<long> UpdateAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update)
+    public async Task<long> UpdateAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update)
     {
         return await Execute(nameof(UpdateAsync), async () =>
         {

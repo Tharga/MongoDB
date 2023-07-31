@@ -177,10 +177,10 @@ public abstract class BufferRepositoryCollectionBase<TEntity, TKey> : Repository
         return result;
     }
 
-    public override Task<long> UpdateAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update)
-    {
-        throw new NotSupportedException($"{nameof(UpdateAsync)} with {nameof(filter)} is not supported for {nameof(BufferRepositoryCollectionBase<TEntity, TKey>)}");
-    }
+    //public override Task<long> UpdateAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update)
+    //{
+    //    throw new NotSupportedException($"{nameof(UpdateAsync)} with {nameof(filter)} is not supported for {nameof(BufferRepositoryCollectionBase<TEntity, TKey>)}");
+    //}
 
     public override async Task<EntityChangeResult<TEntity>> UpdateOneAsync(TKey id, UpdateDefinition<TEntity> update)
     {
