@@ -12,60 +12,64 @@ using Tharga.MongoDB.Experimental;
 
 namespace Tharga.MongoDB.Tests.Experimental;
 
-public class BufferTestRepositoryCollection : Tharga.MongoDB.Experimental.ReadWriteBufferRepositoryCollectionBase<TestEntity, ObjectId>
+public class BufferTestRepositoryCollection : ReadWriteBufferRepositoryCollectionBase<TestEntity, ObjectId>
 {
     public BufferTestRepositoryCollection(IMongoDbServiceFactory mongoDbServiceFactory, DatabaseContext databaseContext)
-        : base(mongoDbServiceFactory, null/*, databaseContext*/)
+        : base(mongoDbServiceFactory, null, databaseContext)
     {
     }
 
-    //public override string CollectionName => "Test";
+    public override string CollectionName => "Test";
+
+    public override IEnumerable<CreateIndexModel<TestEntity>> Indicies => new[]
+    {
+        new CreateIndexModel<TestEntity>(Builders<TestEntity>.IndexKeys.Ascending(f => f.Value), new CreateIndexOptions { Unique = true, Name = nameof(TestEntity.Value) })
+    };
+
+    public override IEnumerable<Type> Types => new[] { typeof(TestSubEntity), typeof(TestEntity) };
 }
 
-public class ReadOnlyBufferTestRepositoryCollection : Tharga.MongoDB.Experimental.ReadOnlyBufferRepositoryCollectionBase<TestEntity, ObjectId>
+public class ReadOnlyBufferTestRepositoryCollection : ReadOnlyBufferRepositoryCollectionBase<TestEntity, ObjectId>
 {
     public ReadOnlyBufferTestRepositoryCollection(IMongoDbServiceFactory mongoDbServiceFactory, DatabaseContext databaseContext)
-        : base(mongoDbServiceFactory, null/*, databaseContext*/)
+        : base(mongoDbServiceFactory, null, databaseContext)
     {
     }
 
-    //public override string CollectionName => "Test";
+    public override string CollectionName => "Test";
+
+    public override IEnumerable<Type> Types => new[] { typeof(TestSubEntity), typeof(TestEntity) };
 }
 
-public class DiskTestRepositoryCollection : Tharga.MongoDB.Experimental.ReadWriteDiskRepositoryCollectionBase<TestEntity, ObjectId>
+public class DiskTestRepositoryCollection : ReadWriteDiskRepositoryCollectionBase<TestEntity, ObjectId>
 {
     public DiskTestRepositoryCollection(IMongoDbServiceFactory mongoDbServiceFactory, DatabaseContext databaseContext)
-        : base(mongoDbServiceFactory, null/*, databaseContext*/)
+        : base(mongoDbServiceFactory, null, databaseContext)
     {
     }
 
-    //public override string CollectionName => "Test";
-    //public override int? ResultLimit => 5;
+    public override string CollectionName => "Test";
+    public override int? ResultLimit => 5;
 
-    //public override IEnumerable<CreateIndexModel<TestEntity>> Indicies => new[]
-    //{
-    //    new CreateIndexModel<TestEntity>(Builders<TestEntity>.IndexKeys.Ascending(f => f.Value), new CreateIndexOptions { Unique = true, Name = nameof(TestEntity.Value) })
-    //};
+    public override IEnumerable<CreateIndexModel<TestEntity>> Indicies => new[]
+    {
+        new CreateIndexModel<TestEntity>(Builders<TestEntity>.IndexKeys.Ascending(f => f.Value), new CreateIndexOptions { Unique = true, Name = nameof(TestEntity.Value) })
+    };
 
-    //public override IEnumerable<Type> Types => new[] { typeof(TestSubEntity), typeof(TestEntity) };
+    public override IEnumerable<Type> Types => new[] { typeof(TestSubEntity), typeof(TestEntity) };
 }
 
-public class ReadOnlyDiskTestRepositoryCollection : Tharga.MongoDB.Experimental.ReadOnlyDiskRepositoryCollectionBase<TestEntity, ObjectId>
+public class ReadOnlyDiskTestRepositoryCollection : ReadOnlyDiskRepositoryCollectionBase<TestEntity, ObjectId>
 {
     public ReadOnlyDiskTestRepositoryCollection(IMongoDbServiceFactory mongoDbServiceFactory, DatabaseContext databaseContext)
-        : base(mongoDbServiceFactory, null/*, databaseContext*/)
+        : base(mongoDbServiceFactory, null, databaseContext)
     {
     }
 
-    //public override string CollectionName => "Test";
-    //public override int? ResultLimit => 5;
+    public override string CollectionName => "Test";
+    public override int? ResultLimit => 5;
 
-    //public override IEnumerable<CreateIndexModel<TestEntity>> Indicies => new[]
-    //{
-    //    new CreateIndexModel<TestEntity>(Builders<TestEntity>.IndexKeys.Ascending(f => f.Value), new CreateIndexOptions { Unique = true, Name = nameof(TestEntity.Value) })
-    //};
-
-    //public override IEnumerable<Type> Types => new[] { typeof(TestSubEntity), typeof(TestEntity) };
+    public override IEnumerable<Type> Types => new[] { typeof(TestSubEntity), typeof(TestEntity) };
 }
 
 public abstract class ExperimentalRepositoryCollectionBaseTestBase : ExperimentalMongoDbTestBase
@@ -108,7 +112,7 @@ public abstract class ExperimentalRepositoryCollectionBaseTestBase : Experimenta
             new object[] { CollectionType.ReadOnlyDisk },
         };
 
-    protected async Task<Tharga.MongoDB.Experimental.RepositoryCollectionBase<TestEntity, ObjectId>> GetCollection(CollectionType collectionType, bool disconnectDisk = false /*, Func<RepositoryCollectionBase<TestEntity, ObjectId>, Task> action = null, bool disconnectDisk = false*/)
+    protected async Task<Tharga.MongoDB.Experimental.RepositoryCollectionBase<TestEntity, ObjectId>> GetCollection(CollectionType collectionType, bool disconnectDisk = false)
     {
         if (!_prepared && InitialData != null && InitialData.Any())
         {
@@ -140,11 +144,6 @@ public abstract class ExperimentalRepositoryCollectionBaseTestBase : Experimenta
             default:
                 throw new ArgumentOutOfRangeException($"Unknown collection type {collectionType}.");
         }
-
-        //if (action != null)
-        //{
-        //    await action.Invoke(sut);
-        //}
 
         if (sut is ReadOnlyBufferRepositoryCollectionBase<TestEntity, ObjectId> bufferCollection)
         {

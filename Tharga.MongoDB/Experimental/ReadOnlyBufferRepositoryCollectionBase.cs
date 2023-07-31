@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -12,8 +11,6 @@ using Microsoft.Extensions.Logging;
 using MongoDB.Bson.Serialization;
 using MongoDB.Driver;
 using Tharga.MongoDB.Buffer;
-using Tharga.MongoDB.Configuration;
-using Tharga.MongoDB.Disk;
 using Tharga.MongoDB.Internals;
 using static Tharga.MongoDB.ActionEventArgs;
 
@@ -34,9 +31,9 @@ public abstract class RepositoryCollectionBase<TEntity, TKey> : RepositoryCollec
 {
     private readonly Lazy<ActionEventArgs.ContextData> _contextData;
 
-    protected readonly ILogger<RepositoryCollectionBase<TEntity, TKey>> _logger;
-    protected readonly DatabaseContext _databaseContext;
-    protected readonly IMongoDbService _mongoDbService;
+    internal readonly ILogger<RepositoryCollectionBase<TEntity, TKey>> _logger;
+    internal readonly DatabaseContext _databaseContext;
+    internal readonly IMongoDbService _mongoDbService;
 
     protected RepositoryCollectionBase(IMongoDbServiceFactory mongoDbServiceFactory, ILogger<RepositoryCollectionBase<TEntity, TKey>> logger, DatabaseContext databaseContext)
     {
@@ -47,7 +44,6 @@ public abstract class RepositoryCollectionBase<TEntity, TKey> : RepositoryCollec
         _contextData = new Lazy<ActionEventArgs.ContextData>(BuildContextData);
     }
 
-    //internal virtual IRepositoryCollection<TEntity, TKey> BaseCollection => this;
     private string DefaultCollectionName => typeof(TEntity).Name;
     protected string ProtectedCollectionName => CollectionName.ProtectCollectionName();
 
@@ -59,7 +55,7 @@ public abstract class RepositoryCollectionBase<TEntity, TKey> : RepositoryCollec
     public virtual int? ResultLimit => _mongoDbService.GetResultLimit();
     public virtual IEnumerable<Type> Types => null;
 
-    protected virtual async Task<T> Execute<T>(string functionName, Func<Task<T>> action, bool assureIndex)
+    internal async Task<T> Execute<T>(string functionName, Func<Task<T>> action, bool assureIndex)
     {
         var sw = new Stopwatch();
         sw.Start();
@@ -76,27 +72,24 @@ public abstract class RepositoryCollectionBase<TEntity, TKey> : RepositoryCollec
             sw.Stop();
 
             _logger?.LogInformation($"Executed {{repositoryType}} took {{elapsed}} ms. [action: Database, operation: {functionName}]", "DiskRepository", sw.Elapsed.TotalMilliseconds);
-            InvokeAction(new ActionEventArgs.ActionData { Operation = functionName, Elapsed = sw.Elapsed });
+            InvokeAction(new ActionData { Operation = functionName, Elapsed = sw.Elapsed });
 
             return result;
         }
         catch (Exception e)
         {
             _logger?.LogError(e, $"Exception {{repositoryType}}. [action: Database, operation: {functionName}]", "DiskRepository");
-            InvokeAction(new ActionEventArgs.ActionData { Operation = functionName, Exception = e });
+            InvokeAction(new ActionData { Operation = functionName, Exception = e });
             throw;
         }
     }
 
-    internal void InvokeAction(ActionEventArgs.ActionData actionData)
+    internal void InvokeAction(ActionData actionData)
     {
         InvokeAction(actionData, _contextData.Value);
     }
-    public Task<long> GetSizeAsync()
-    {
-        throw new NotImplementedException();
-    }
 
+    public abstract Task<long> GetSizeAsync();
     public abstract IAsyncEnumerable<TEntity> GetAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default);
     public abstract IAsyncEnumerable<T> GetAsync<T>(Expression<Func<T, bool>> predicate = null, Options<T> options = null, CancellationToken cancellationToken = default) where T : TEntity;
     public abstract Task<TEntity> GetOneAsync(TKey id, CancellationToken cancellationToken = default);
@@ -104,7 +97,7 @@ public abstract class RepositoryCollectionBase<TEntity, TKey> : RepositoryCollec
     public abstract Task<T> GetOneAsync<T>(Expression<Func<T, bool>> predicate = null, OneOption<T> options = null, CancellationToken cancellationToken = default) where T : TEntity;
     public abstract Task<long> CountAsync(Expression<Func<TEntity, bool>> predicate);
 
-    private ActionEventArgs.ContextData BuildContextData()
+    private ContextData BuildContextData()
     {
         return new ActionEventArgs.ContextData
         {
@@ -122,11 +115,11 @@ public abstract class RepositoryCollectionBase<TEntity, TKey> : RepositoryCollec
 public abstract class ReadOnlyBufferRepositoryCollectionBase<TEntity, TKey> : RepositoryCollectionBase<TEntity, TKey>, IReadOnlyBufferRepositoryCollection<TEntity, TKey>
     where TEntity : EntityBase<TKey>
 {
-    private readonly IMongoDbServiceFactory _mongoDbServiceFactory;
+    protected readonly IMongoDbServiceFactory _mongoDbServiceFactory;
     private readonly IBufferCollection<TEntity, TKey> _bufferCollection;
     private readonly SemaphoreSlim _bufferLoadLock = new(1, 1);
-    private ReadOnlyDiskRepositoryCollectionBase<TEntity, TKey> _disk;
-    private bool _diskConnected = true;
+    private ReadOnlyDiskRepositoryCollectionBase<TEntity, TKey> _readOnlydisk;
+    internal bool _diskConnected = true;
 
     protected ReadOnlyBufferRepositoryCollectionBase(IMongoDbServiceFactory mongoDbServiceFactory, ILogger<ReadOnlyBufferRepositoryCollectionBase<TEntity, TKey>> logger = null, DatabaseContext databaseContext = null)
         : base(mongoDbServiceFactory, logger, databaseContext)
@@ -135,8 +128,12 @@ public abstract class ReadOnlyBufferRepositoryCollectionBase<TEntity, TKey> : Re
         _bufferCollection = BufferLibrary.GetBufferCollection<TEntity, TKey>();
     }
 
-    //internal override IRepositoryCollection<TEntity, TKey> BaseCollection => _diskConnected ? Disk : this;
-    internal ReadOnlyDiskRepositoryCollectionBase<TEntity, TKey> Disk => _diskConnected ? _disk ??= new GenericReadOnlyDiskRepositoryCollection<TEntity, TKey>(_mongoDbServiceFactory, _databaseContext ?? new DatabaseContext { CollectionName = CollectionName, DatabasePart = DatabasePart, ConfigurationName = ConfigurationName }, _logger, this) : null;
+    internal virtual ReadOnlyDiskRepositoryCollectionBase<TEntity, TKey> Disk => _diskConnected ? _readOnlydisk ??= new GenericReadOnlyDiskRepositoryCollection<TEntity, TKey>(_mongoDbServiceFactory, _databaseContext ?? new DatabaseContext { CollectionName = CollectionName, DatabasePart = DatabasePart, ConfigurationName = ConfigurationName }, _logger, this) : null;
+
+    public override Task<long> GetSizeAsync()
+    {
+        throw new NotImplementedException();
+    }
 
     public override async IAsyncEnumerable<TEntity> GetAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default)
     {
@@ -226,6 +223,11 @@ public abstract class ReadOnlyBufferRepositoryCollectionBase<TEntity, TKey> : Re
         return _bufferCollection.Data;
     }
 
+    internal override Task AssureIndex()
+    {
+        return Task.CompletedTask;
+    }
+
     internal Task DisconnectDiskAsync()
     {
         _diskConnected = false;
@@ -237,20 +239,24 @@ public abstract class ReadOnlyBufferRepositoryCollectionBase<TEntity, TKey> : Re
         _diskConnected = true;
         return Task.CompletedTask;
     }
-
-    internal override Task AssureIndex()
-    {
-        return Task.CompletedTask;
-    }
 }
 
 public abstract class ReadWriteBufferRepositoryCollectionBase<TEntity, TKey> : ReadOnlyBufferRepositoryCollectionBase<TEntity, TKey>, IBufferRepositoryCollection<TEntity, TKey>
     where TEntity : EntityBase<TKey>
 {
+    private GenericReadWriteDiskRepositoryCollection<TEntity, TKey> _readWritedisk;
+
     protected ReadWriteBufferRepositoryCollectionBase(IMongoDbServiceFactory mongoDbServiceFactory, ILogger<ReadWriteBufferRepositoryCollectionBase<TEntity, TKey>> logger = null, DatabaseContext databaseContext = null)
         : base(mongoDbServiceFactory, logger, databaseContext)
     {
     }
+
+    public virtual bool AutoClean => _mongoDbService.GetAutoClean();
+    public virtual bool CleanOnStartup => _mongoDbService.GetCleanOnStartup();
+    public virtual bool DropEmptyCollections => _mongoDbService.DropEmptyCollections();
+    public virtual IEnumerable<CreateIndexModel<TEntity>> Indicies => null;
+
+    internal override ReadOnlyDiskRepositoryCollectionBase<TEntity, TKey> Disk => _diskConnected ? _readWritedisk ??= new GenericReadWriteDiskRepositoryCollection<TEntity, TKey>(_mongoDbServiceFactory, _databaseContext ?? new DatabaseContext { CollectionName = CollectionName, DatabasePart = DatabasePart, ConfigurationName = ConfigurationName }, _logger, this) : null;
 
     public Task DropCollectionAsync()
     {
@@ -306,6 +312,11 @@ public abstract class ReadOnlyDiskRepositoryCollectionBase<TEntity, TKey> : Repo
 
     internal IMongoCollection<TEntity> Collection => _collection ??= Task.Run(async () => await FetchCollectionAsync()).Result;
 
+    public override Task<long> GetSizeAsync()
+    {
+        throw new NotImplementedException();
+    }
+
     public override async IAsyncEnumerable<TEntity> GetAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default)
     {
         var sw = new Stopwatch();
@@ -331,7 +342,6 @@ public abstract class ReadOnlyDiskRepositoryCollectionBase<TEntity, TKey> : Repo
     {
         throw new NotImplementedException();
     }
-
 
     internal async Task<IAsyncCursor<TEntity>> FindAsync(IMongoCollection<TEntity> collection, FilterDefinition<TEntity> filter, CancellationToken cancellationToken, FindOptions<TEntity, TEntity> options)
     {
@@ -490,42 +500,6 @@ public abstract class ReadOnlyDiskRepositoryCollectionBase<TEntity, TKey> : Repo
         }
     }
 
-    //private async Task AssureIndex(IMongoCollection<TEntity> collection)
-    //{
-    //    if (InitiationLibrary.ShouldInitiateIndex(ServerName, DatabaseName, ProtectedCollectionName))
-    //    {
-    //        await collection.Indexes.CreateOneAsync(new CreateIndexModel<TEntity>(Builders<TEntity>.IndexKeys.Ascending(x => x.Id).Ascending("_t"), new CreateIndexOptions()));
-    //        await UpdateIndiciesAsync(collection);
-    //    }
-    //}
-
-    //private async Task UpdateIndiciesAsync(IMongoCollection<TEntity> collection)
-    //{
-    //    if (Indicies == null) return;
-
-    //    if (Indicies.Any(x => string.IsNullOrEmpty(x.Options.Name))) throw new InvalidOperationException("Indicies needs to have a name.");
-
-    //    //NOTE: Drop indexes not in list
-    //    var indicies = (await collection.Indexes.ListAsync()).ToList();
-    //    foreach (var index in indicies)
-    //    {
-    //        var indexName = index.GetValue("name").AsString;
-    //        if (!indexName.StartsWith("_id_"))
-    //        {
-    //            if (Indicies.All(x => x.Options.Name != indexName))
-    //            {
-    //                await collection.Indexes.DropOneAsync(indexName);
-    //            }
-    //        }
-    //    }
-
-    //    //NOTE: Create indexes in the list
-    //    foreach (var index in Indicies)
-    //    {
-    //        await collection.Indexes.CreateOneAsync(index);
-    //    }
-    //}
-
     internal override Task AssureIndex()
     {
         return AssureIndex(Collection);
@@ -555,7 +529,7 @@ public abstract class ReadOnlyDiskRepositoryCollectionBase<TEntity, TKey> : Repo
 public abstract class ReadWriteDiskRepositoryCollectionBase<TEntity, TKey> : ReadOnlyDiskRepositoryCollectionBase<TEntity, TKey>, IDiskRepositoryCollection<TEntity, TKey>
     where TEntity : EntityBase<TKey>
 {
-    protected ReadWriteDiskRepositoryCollectionBase(IMongoDbServiceFactory mongoDbServiceFactory, ILogger<ReadWriteDiskRepositoryCollectionBase<TEntity, TKey>> logger = null, DatabaseContext databaseContext = null)
+    protected ReadWriteDiskRepositoryCollectionBase(IMongoDbServiceFactory mongoDbServiceFactory, ILogger<RepositoryCollectionBase<TEntity, TKey>> logger = null, DatabaseContext databaseContext = null)
         : base(mongoDbServiceFactory, logger, databaseContext)
     {
     }
@@ -642,7 +616,7 @@ public abstract class ReadWriteDiskRepositoryCollectionBase<TEntity, TKey> : Rea
         if (!AutoClean)
         {
             _logger?.LogWarning($"Both CleanOnStartup and AutoClean for collection {{collectionName}} has to be true for cleaning to run on startup. [action: Database, operation: {nameof(CleanAsync)}]", ProtectedCollectionName);
-            InvokeAction(new ActionEventArgs.ActionData { Operation = nameof(CleanAsync), Message = "Both CleanOnStartup and AutoClean for has to be true for cleaning to run on startup.", Level = LogLevel.Warning });
+            InvokeAction(new ActionData { Operation = nameof(CleanAsync), Message = "Both CleanOnStartup and AutoClean for has to be true for cleaning to run on startup.", Level = LogLevel.Warning });
             return;
         }
 
@@ -666,12 +640,12 @@ public abstract class ReadWriteDiskRepositoryCollectionBase<TEntity, TKey> : Rea
         if (count == 0)
         {
             _logger?.LogTrace($"Nothing to clean in collection {{collection}} in {{repositoryType}}. [action: Database, operation: {nameof(CleanAsync)}]", ProtectedCollectionName, "DiskRepository");
-            InvokeAction(new ActionEventArgs.ActionData { Operation = nameof(CleanAsync), Message = "Nothing to clean.", Level = LogLevel.Trace });
+            InvokeAction(new ActionData { Operation = nameof(CleanAsync), Message = "Nothing to clean.", Level = LogLevel.Trace });
         }
         else
         {
             _logger?.LogInformation($"Cleaned {{count}} of {{totalCount}} took {{elapsed}} ms in collection {{collection}} in {{repositoryType}}. [action: Database, operation: {nameof(CleanAsync)}]", count, totalCount, sw.Elapsed.TotalMilliseconds, ProtectedCollectionName, "DiskRepository");
-            InvokeAction(new ActionEventArgs.ActionData { Operation = nameof(CleanAsync), Message = "Cleaned completed.", ItemCount = count, Elapsed = sw.Elapsed });
+            InvokeAction(new ActionData { Operation = nameof(CleanAsync), Message = "Cleaned completed.", ItemCount = count, Elapsed = sw.Elapsed });
         }
     }
 
@@ -728,12 +702,12 @@ public abstract class ReadWriteDiskRepositoryCollectionBase<TEntity, TKey> : Rea
                 var filter = Builders<T>.Filter.Eq(x => x.Id, item.Id);
                 await collection.FindOneAndReplaceAsync(filter, item);
                 _logger?.LogInformation($"Entity {{id}} of type {{entityType}} in collection {{collection}} has been cleaned. [action: Database, operation: {nameof(CleanEntityAsync)}]", item.Id, typeof(TEntity), ProtectedCollectionName);
-                InvokeAction(new ActionEventArgs.ActionData { Operation = nameof(CleanEntityAsync), Message = "Entity cleaned.", Data = new Dictionary<string, object> { { "id", item.Id } } });
+                InvokeAction(new ActionData { Operation = nameof(CleanEntityAsync), Message = "Entity cleaned.", Data = new Dictionary<string, object> { { "id", item.Id } } });
             }
             else
             {
                 _logger?.LogWarning($"Entity {{id}} of type {{entityType}} in collection {{collection}} needs cleaning. [action: Database, operation: {nameof(CleanEntityAsync)}]", item.Id, typeof(TEntity), ProtectedCollectionName);
-                InvokeAction(new ActionEventArgs.ActionData { Operation = nameof(CleanEntityAsync), Message = "Entity needs cleaning.", Level = LogLevel.Warning, Data = new Dictionary<string, object> { { "id", item.Id } } });
+                InvokeAction(new ActionData { Operation = nameof(CleanEntityAsync), Message = "Entity needs cleaning.", Level = LogLevel.Warning, Data = new Dictionary<string, object> { { "id", item.Id } } });
             }
         }
 
@@ -757,10 +731,30 @@ internal class GenericReadOnlyDiskRepositoryCollection<TEntity, TKey> : ReadOnly
     public override string CollectionName => _buffer?.CollectionName ?? base.CollectionName;
     public override string DatabasePart => _buffer?.DatabasePart ?? base.DatabasePart;
     public override string ConfigurationName => _buffer?.ConfigurationName ?? base.ConfigurationName;
-    //public override bool AutoClean => _buffer?.AutoClean ?? base.AutoClean;
-    //public override bool CleanOnStartup => _buffer?.CleanOnStartup ?? base.CleanOnStartup;
-    //public override bool DropEmptyCollections => _buffer?.DropEmptyCollections ?? base.DropEmptyCollections;
     public override int? ResultLimit => _buffer?.ResultLimit ?? base.ResultLimit;
-    //public override IEnumerable<CreateIndexModel<TEntity>> Indicies => _buffer?.Indicies ?? base.Indicies;
+    public override IEnumerable<Type> Types => _buffer?.Types ?? base.Types;
+}
+
+internal class GenericReadWriteDiskRepositoryCollection<TEntity, TKey> : ReadWriteDiskRepositoryCollectionBase<TEntity, TKey>
+    where TEntity : EntityBase<TKey>
+{
+    private readonly ReadWriteBufferRepositoryCollectionBase<TEntity, TKey> _buffer;
+
+    public GenericReadWriteDiskRepositoryCollection(IMongoDbServiceFactory mongoDbServiceFactory, DatabaseContext databaseContext, ILogger<RepositoryCollectionBase<TEntity, TKey>> logger, ReadWriteBufferRepositoryCollectionBase<TEntity, TKey> buffer)
+        : base(mongoDbServiceFactory, logger, databaseContext)
+    {
+        _buffer = buffer;
+    }
+
+    internal override string ServerName => _buffer?.ServerName ?? base.ServerName;
+    internal override string DatabaseName => _buffer?.DatabaseName ?? base.DatabaseName;
+    public override string CollectionName => _buffer?.CollectionName ?? base.CollectionName;
+    public override string DatabasePart => _buffer?.DatabasePart ?? base.DatabasePart;
+    public override string ConfigurationName => _buffer?.ConfigurationName ?? base.ConfigurationName;
+    public override bool AutoClean => _buffer?.AutoClean ?? base.AutoClean;
+    public override bool CleanOnStartup => _buffer?.CleanOnStartup ?? base.CleanOnStartup;
+    public override bool DropEmptyCollections => _buffer?.DropEmptyCollections ?? base.DropEmptyCollections;
+    public override int? ResultLimit => _buffer?.ResultLimit ?? base.ResultLimit;
+    public override IEnumerable<CreateIndexModel<TEntity>> Indicies => _buffer?.Indicies ?? base.Indicies;
     public override IEnumerable<Type> Types => _buffer?.Types ?? base.Types;
 }

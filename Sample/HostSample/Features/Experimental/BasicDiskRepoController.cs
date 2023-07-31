@@ -1,17 +1,12 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
-using System.Linq.Expressions;
-using System.Threading;
 using System.Threading.Tasks;
 using HostSample.Entities;
-using HostSample.Features.BasicDiskRepo;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Tharga.MongoDB;
-using Tharga.MongoDB.Disk;
 
 namespace HostSample.Features.Experimental;
 
@@ -33,8 +28,8 @@ public class ExperimentalDiskRepoCollection : Tharga.MongoDB.Experimental.ReadWr
     {
     }
 
-    //TODO: public override string DatabasePart => "MyDatabasePart";
-    //TODO: public override string CollectionName => "MyCollection";
+    public override string DatabasePart => "MyDatabasePart";
+    public override string CollectionName => "MyCollection";
 }
 
 public class ExperimentalDiskRepo : IExperimentalDiskRepo
