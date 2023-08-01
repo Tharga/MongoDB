@@ -70,9 +70,13 @@ public abstract class ReadWriteDiskRepositoryCollectionBase<TEntity, TKey> : Rea
         throw new NotImplementedException();
     }
 
-    public Task<long> UpdateAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update)
+    public async Task<long> UpdateAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update)
     {
-        throw new NotImplementedException();
+        return await Execute(nameof(UpdateAsync), async () =>
+        {
+            var result = await Collection.UpdateManyAsync(filter, update);
+            return result.ModifiedCount;
+        }, true);
     }
 
     public Task<EntityChangeResult<TEntity>> UpdateOneAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update, FindOneAndUpdateOptions<TEntity> options = default)
