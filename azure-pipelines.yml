@@ -25,6 +25,14 @@ stages:
         version: 7.0.x
         includePreviewVersions: false
 
+    - task: PowerShell@2
+      displayName: 'Set version environment variable'
+      inputs:
+        filePath: 'setVersionEnvironmentVariable.ps1'
+      env:
+        SOURCE_BRANCH_NAME: $(Build.SourceBranchName)
+        BUILD_NUMBER: $(Build.BuildNumber)
+
     - task: NuGetToolInstaller@1
 
     - task: DotNetCoreCLI@2
@@ -49,18 +57,18 @@ stages:
         projects: '**/Tharga.MongoDB*.Tests.csproj'
         arguments: '--collect "Code coverage" --configuration $(buildConfiguration) --filter "Category!=Database"'
 
-    #- task: BuildQualityChecks@8
-    #  displayName: 'Build Quality Checks'
-    #  inputs:
-    #    checkWarnings: true
-    #    warningFailOption: 'build'
-    #    allowWarningVariance: true
-    #    warningVariance: '1'
-    #    checkCoverage: true
-    #    coverageFailOption: 'build'
-    #    coverageType: 'blocks'
-    #    allowCoverageVariance: true
-    #    coverageVariance: '1'
+    - task: BuildQualityChecks@8
+      displayName: 'Build Quality Checks'
+      inputs:
+        checkWarnings: true
+        warningFailOption: 'build'
+        allowWarningVariance: true
+        warningVariance: '1'
+        checkCoverage: true
+        coverageFailOption: 'build'
+        coverageType: 'blocks'
+        allowCoverageVariance: true
+        coverageVariance: '5'
 
     - task: DotNetCoreCLI@2
       displayName: 'Pack Tharga.MongoDB'
@@ -69,13 +77,13 @@ stages:
         packagesToPack: '**/Tharga.MongoDB.csproj'
         versioningScheme: 'byBuildNumber'
 
-    #- task: DotNetCoreCLI@2
-    #  displayName: 'Push nuget packages locally'
-    #  inputs:
-    #    command: 'push'
-    #    packagesToPush: '$(Build.ArtifactStagingDirectory)/*.nupkg'
-    #    nuGetFeedType: 'internal'
-    #    publishVstsFeed: 'df4b267e-c55c-4a36-8fe3-8e98d5d8dbbb/5cea672d-cb79-44f6-beb8-2eaba59e670d'
+    - task: DotNetCoreCLI@2
+      displayName: 'Push nuget packages locally'
+      inputs:
+        command: 'push'
+        packagesToPush: '$(Build.ArtifactStagingDirectory)/*.nupkg'
+        nuGetFeedType: 'internal'
+        publishVstsFeed: 'df4b267e-c55c-4a36-8fe3-8e98d5d8dbbb/5cea672d-cb79-44f6-beb8-2eaba59e670d'
 
     - task: PublishBuildArtifacts@1
       displayName: 'Publish artifacts'
