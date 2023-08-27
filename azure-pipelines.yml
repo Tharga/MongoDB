@@ -47,8 +47,9 @@ stages:
       inputs:
         command: 'build'
         projects: '**/Tharga.MongoDB*.csproj'
-        arguments: '-c Release /p:NoWarn=0618'
-        versioningScheme: 'byBuildNumber'
+        arguments: '-c Release --no-restore /p:Version=$(Build.BuildNumber) /p:NoWarn=0618'
+        versioningScheme: 'byEnvVar'
+        versionEnvVar: 'messagesPackageVersion'
 
     - task: DotNetCoreCLI@2
       displayName: 'Test'
