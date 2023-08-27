@@ -31,7 +31,7 @@ public class MultiRepository : IMultiRepository
         //    yield return b as MyEntity;
         //}
 
-        var collectionC = _provider.GetCollection<IMyRepo, MyBaseEntity, ObjectId>("C", "c");
+        var collectionC = _provider.GetCollection<IMyRepo, MyBaseEntity, ObjectId>(new DatabaseContext { CollectionName = "C", DatabasePart = "c" });
         await collectionC.AddAsync(new MyEntity());
         var allC = collectionC.GetAsync(x => true);
         await foreach (var c in allC)

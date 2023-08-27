@@ -1,12 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
 using ConsoleSample.SampleRepo;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Tharga.MongoDB;
 using Tharga.MongoDB.Configuration;
@@ -31,7 +28,7 @@ internal static class Program
         {
             o.ConnectionStringLoader = (_, _) => Task.FromResult<ConnectionString>("mongodb://localhost:27017/Tharga_MongoDB_ConsoleSample{part}");
             o.ActionEvent = data => { Console.WriteLine($"---> {data.Action.Message}"); };
-            o.ConfigurationLoader = async provider => new MongoDbConfigurationTree
+            o.ConfigurationLoader = _ => Task.FromResult(new MongoDbConfigurationTree
             {
                 Configurations = new Dictionary<ConfigurationName, MongoDbConfiguration>
                 {
@@ -61,7 +58,7 @@ internal static class Program
                 AutoClean = false,
                 CleanOnStartup = false,
                 DropEmptyCollections = false
-            };
+            });
             //o.AutoRegisterCollections = true;
         });
         services.AddLogging(x =>

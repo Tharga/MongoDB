@@ -2,10 +2,6 @@
 
 public record MongoDbConfig
 {
-    internal MongoDbConfig()
-    {
-    }
-
     public MongoDbApiAccess AccessInfo { get; init; }
     public int? ResultLimit { get; init; }
     public bool AutoClean { get; init; }
