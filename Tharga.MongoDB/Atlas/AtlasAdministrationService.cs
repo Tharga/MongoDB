@@ -71,7 +71,7 @@ internal class AtlasAdministrationService
     public IPAddress GetExternalIpAddress()
     {
         using var httpClient = new HttpClient();
-        var r = httpClient.GetAsync(new Uri("http://icanhazip.com")).GetAwaiter().GetResult();
+        var r = httpClient.GetAsync(new Uri("https://ipv4.icanhazip.com/")).GetAwaiter().GetResult();
         r.EnsureSuccessStatusCode();
         var externalIpString = r.Content.ReadAsStringAsync().GetAwaiter().GetResult().Replace("\\r\\n", "").Replace("\\n", "").Trim();
         var externalIp = IPAddress.Parse(externalIpString);
