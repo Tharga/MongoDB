@@ -20,47 +20,24 @@ internal class CollectionProvider : ICollectionProvider
         _typeLoader = typeLoader;
     }
 
-    [Obsolete($"Use GetDiskCollection<TEntity, TKey> with {nameof(DatabaseContext)} instead.")]
-    public IRepositoryCollection<TEntity, TKey> GetDiskCollection<TEntity, TKey>(string collectionName, string databasePart)
-        where TEntity : EntityBase<TKey>
+    public IRepositoryCollection<TEntity, TKey> GetGenericDiskCollection<TEntity, TKey>(DatabaseContext databaseContext) where TEntity : EntityBase<TKey>
     {
-        var databaseContext = new DatabaseContext { CollectionName = collectionName, DatabasePart = databasePart };
-        return GetDiskCollection<TEntity, TKey>(databaseContext);
-    }
-
-    public IRepositoryCollection<TEntity, TKey> GetDiskCollection<TEntity, TKey>(DatabaseContext databaseContext) where TEntity : EntityBase<TKey>
-    {
-        if (typeof(TEntity).IsInterface) throw new NotSupportedException($"{nameof(GetDiskCollection)} is not supported for interface '{typeof(TEntity).Name}'. Create a custom collection that implements '{nameof(IRepositoryCollection<TEntity, TKey>)}<{typeof(TEntity).Name},{typeof(TKey).Name}>' and call '{nameof(GetCollection)}' instead.");
-        if (typeof(TEntity).IsAbstract) throw new NotSupportedException($"{nameof(GetDiskCollection)} is not supported for abstract type '{typeof(TEntity).Name}'. Create a custom collection that implements '{nameof(IRepositoryCollection<TEntity, TKey>)}<{typeof(TEntity).Name},{typeof(TKey).Name}>' and call '{nameof(GetCollection)}' instead.");
+        if (typeof(TEntity).IsInterface) throw new NotSupportedException($"{nameof(GetGenericDiskCollection)} is not supported for interface '{typeof(TEntity).Name}'. Create a custom collection that implements '{nameof(IRepositoryCollection<TEntity, TKey>)}<{typeof(TEntity).Name},{typeof(TKey).Name}>' and call '{nameof(GetCollection)}' instead.");
+        if (typeof(TEntity).IsAbstract) throw new NotSupportedException($"{nameof(GetGenericDiskCollection)} is not supported for abstract type '{typeof(TEntity).Name}'. Create a custom collection that implements '{nameof(IRepositoryCollection<TEntity, TKey>)}<{typeof(TEntity).Name},{typeof(TKey).Name}>' and call '{nameof(GetCollection)}' instead.");
 
         var logger = _serviceLoader(typeof(ILogger<RepositoryCollectionBase<TEntity, TKey>>)) as ILogger<RepositoryCollectionBase<TEntity, TKey>>;
         var collection = new GenericDiskRepositoryCollection<TEntity, TKey>(_mongoDbServiceFactory, databaseContext, logger, null);
         return collection;
     }
 
-    [Obsolete($"Use GetBufferCollection<TEntity, TKey> with {nameof(DatabaseContext)} instead.")]
-    public IRepositoryCollection<TEntity, TKey> GetBufferCollection<TEntity, TKey>(string collectionName = null, string databasePart = null) where TEntity : EntityBase<TKey>
+    public IRepositoryCollection<TEntity, TKey> GetGenericBufferCollection<TEntity, TKey>(DatabaseContext databaseContext) where TEntity : EntityBase<TKey>
     {
-        var databaseContext = new DatabaseContext { CollectionName = collectionName, DatabasePart = databasePart };
-        return GetBufferCollection<TEntity, TKey>(databaseContext);
-    }
-
-    public IRepositoryCollection<TEntity, TKey> GetBufferCollection<TEntity, TKey>(DatabaseContext databaseContext) where TEntity : EntityBase<TKey>
-    {
-        if (typeof(TEntity).IsInterface) throw new NotSupportedException($"{nameof(GetDiskCollection)} is not supported for interface '{typeof(TEntity).Name}'. Create a custom collection that implements '{nameof(IRepositoryCollection<TEntity, TKey>)}<{typeof(TEntity).Name},{typeof(TKey).Name}>' and call '{nameof(GetCollection)}' instead.");
-        if (typeof(TEntity).IsAbstract) throw new NotSupportedException($"{nameof(GetDiskCollection)} is not supported for abstract type '{typeof(TEntity).Name}'. Create a custom collection that implements '{nameof(IRepositoryCollection<TEntity, TKey>)}<{typeof(TEntity).Name},{typeof(TKey).Name}>' and call '{nameof(GetCollection)}' instead.");
+        if (typeof(TEntity).IsInterface) throw new NotSupportedException($"{nameof(GetGenericDiskCollection)} is not supported for interface '{typeof(TEntity).Name}'. Create a custom collection that implements '{nameof(IRepositoryCollection<TEntity, TKey>)}<{typeof(TEntity).Name},{typeof(TKey).Name}>' and call '{nameof(GetCollection)}' instead.");
+        if (typeof(TEntity).IsAbstract) throw new NotSupportedException($"{nameof(GetGenericDiskCollection)} is not supported for abstract type '{typeof(TEntity).Name}'. Create a custom collection that implements '{nameof(IRepositoryCollection<TEntity, TKey>)}<{typeof(TEntity).Name},{typeof(TKey).Name}>' and call '{nameof(GetCollection)}' instead.");
 
         var logger = _serviceLoader(typeof(ILogger<BufferRepositoryCollectionBase<TEntity, TKey>>)) as ILogger<BufferRepositoryCollectionBase<TEntity, TKey>>;
         var collection = new GenericBufferRepositoryCollection<TEntity, TKey>(_mongoDbServiceFactory, logger, databaseContext);
         return collection;
-    }
-
-    [Obsolete($"Use GetCollection with {nameof(DatabaseContext)} instead.")]
-    public TCollection GetCollection<TCollection, TEntity, TKey>(string collectionName, string databasePart)
-        where TCollection : IRepositoryCollection<TEntity, TKey>
-        where TEntity : EntityBase<TKey>
-    {
-        return GetCollection<TCollection, TEntity, TKey>(new DatabaseContext { CollectionName = collectionName, DatabasePart = databasePart });
     }
 
     public TCollection GetCollection<TCollection, TEntity, TKey>(DatabaseContext databaseContext)

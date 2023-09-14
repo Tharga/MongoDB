@@ -1,28 +1,35 @@
-﻿using System;
-
-namespace Tharga.MongoDB;
+﻿namespace Tharga.MongoDB;
 
 public interface ICollectionProvider
 {
-    [Obsolete($"Use GetDiskCollection<TEntity, TKey> with {nameof(DatabaseContext)} instead.")]
-    IRepositoryCollection<TEntity, TKey> GetDiskCollection<TEntity, TKey>(string collectionName = null, string databaseNamePart = null)
+    /// <summary>
+    /// This method will return a generic collection with the requested types. If you want to apply indexes, use GetCollection and provide a specific implementation instead.
+    /// </summary>
+    /// <typeparam name="TEntity"></typeparam>
+    /// <typeparam name="TKey"></typeparam>
+    /// <param name="databaseContext"></param>
+    /// <returns></returns>
+    IRepositoryCollection<TEntity, TKey> GetGenericDiskCollection<TEntity, TKey>(DatabaseContext databaseContext = null)
         where TEntity : EntityBase<TKey>;
 
-    IRepositoryCollection<TEntity, TKey> GetDiskCollection<TEntity, TKey>(DatabaseContext databaseContext = null)
+    /// <summary>
+    /// This method will return a generic collection with the requested types. If you want to apply indexes, use GetCollection and provide a specific implementation instead.
+    /// </summary>
+    /// <typeparam name="TEntity"></typeparam>
+    /// <typeparam name="TKey"></typeparam>
+    /// <param name="databaseContext"></param>
+    /// <returns></returns>
+    IRepositoryCollection<TEntity, TKey> GetGenericBufferCollection<TEntity, TKey>(DatabaseContext databaseContext = null)
         where TEntity : EntityBase<TKey>;
 
-    [Obsolete($"Use GetBufferCollection<TEntity, TKey> with {nameof(DatabaseContext)} instead.")]
-    IRepositoryCollection<TEntity, TKey> GetBufferCollection<TEntity, TKey>(string collectionName = null, string databaseNamePart = null)
-        where TEntity : EntityBase<TKey>;
-
-    IRepositoryCollection<TEntity, TKey> GetBufferCollection<TEntity, TKey>(DatabaseContext databaseContext = null)
-        where TEntity : EntityBase<TKey>;
-
-    [Obsolete($"Use GetCollection with {nameof(DatabaseContext)} instead.")]
-    TCollection GetCollection<TCollection, TEntity, TKey>(string collectionName = null, string databasePart = null)
-        where TCollection : IRepositoryCollection<TEntity, TKey>
-        where TEntity : EntityBase<TKey>;
-
+    /// <summary>
+    /// Returns a defined collection.
+    /// </summary>
+    /// <typeparam name="TCollection"></typeparam>
+    /// <typeparam name="TEntity"></typeparam>
+    /// <typeparam name="TKey"></typeparam>
+    /// <param name="databaseContext"></param>
+    /// <returns></returns>
     TCollection GetCollection<TCollection, TEntity, TKey>(DatabaseContext databaseContext = null)
         where TCollection : IRepositoryCollection<TEntity, TKey>
         where TEntity : EntityBase<TKey>;
