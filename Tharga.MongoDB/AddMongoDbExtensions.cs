@@ -34,7 +34,12 @@ public static class AddMongoDbExtensions
 
         services.AddAssemblyService();
 
-        services.AddTransient<IMongoDbServiceFactory, MongoDbServiceFactory>();
+        services.AddTransient<IMongoDbServiceFactory>(serviceProvider =>
+        {
+            var repositoryConfigurationLoader = serviceProvider.GetService<IRepositoryConfigurationLoader>();
+            var logger = serviceProvider.GetService<ILogger<MongoDbServiceFactory>>();
+            return new MongoDbServiceFactory(repositoryConfigurationLoader, logger);
+        });
         services.AddTransient<IRepositoryConfigurationLoader>(serviceProvider =>
         {
             var mongoUrlBuilderLoader = serviceProvider.GetService<IMongoUrlBuilderLoader>();

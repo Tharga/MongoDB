@@ -6,6 +6,8 @@ using System.Net.Http;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Tharga.MongoDB.Configuration;
 
@@ -20,6 +22,7 @@ internal class AtlasAdministrationService
 
     private readonly MongoDbApiAccess _access;
     private readonly ILogger _logger;
+    private readonly string[] _uris = { "https://some.crap.address", "http://icanhazip.com", "" };
 
     public AtlasAdministrationService(MongoDbApiAccess access = null, ILogger logger = null)
     {
@@ -68,14 +71,38 @@ internal class AtlasAdministrationService
         ActionEvent?.Invoke(this, new ActionEventArgs(new ActionEventArgs.ActionData { Level = LogLevel.Information, Message = message }, null));
     }
 
-    public IPAddress GetExternalIpAddress()
+    private async Task<IPAddress> GetExternalIpAddress()
     {
-        using var httpClient = new HttpClient();
-        var r = httpClient.GetAsync(new Uri("http://icanhazip.com")).GetAwaiter().GetResult();
-        r.EnsureSuccessStatusCode();
-        var externalIpString = r.Content.ReadAsStringAsync().GetAwaiter().GetResult().Replace("\\r\\n", "").Replace("\\n", "").Trim();
-        var externalIp = IPAddress.Parse(externalIpString);
-        return externalIp;
+        try
+        {
+            using var httpClient = new HttpClient();
+            httpClient.Timeout = TimeSpan.FromSeconds(10);
+            using var tokenSource = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            foreach (var uri in _uris)
+            {
+                try
+                {
+                    var result = await httpClient.GetAsync(new Uri(uri), tokenSource.Token);
+                    if (result.IsSuccessStatusCode)
+                    {
+                        var externalIpString = (await result.Content.ReadAsStringAsync(CancellationToken.None)).Replace("\\r\\n", "").Replace("\\n", "").Trim();
+                        var externalIp = IPAddress.Parse(externalIpString);
+                        return externalIp;
+                    }
+                }
+                catch (HttpRequestException e)
+                {
+                    _logger.LogWarning(e, e.Message);
+                }
+            }
+
+            return null;
+        }
+        catch (Exception e)
+        {
+            _logger.LogError(e, e.Message);
+            throw;
+        }
     }
 
     internal record WhiteListResult
@@ -91,12 +118,12 @@ internal class AtlasAdministrationService
         public string GroupId { get; init; }
     }
 
-    public IPAddress AssureAccess(string comment = null)
+    public async Task<IPAddress> AssureAccess(string comment = null)
     {
         IPAddress externalIp = null;
         try
         {
-            externalIp = GetExternalIpAddress();
+            externalIp = await GetExternalIpAddress();
             var machineName = comment ?? Environment.MachineName;
 
             var items = GetWhitelist();
@@ -108,7 +135,7 @@ internal class AtlasAdministrationService
                 return externalIp;
             }
 
-            RemoveWhitelist(machineName);
+            await RemoveWhitelist(machineName);
             SetWhitelist(machineName, externalIp.ToString());
             return externalIp;
         }
@@ -121,7 +148,7 @@ internal class AtlasAdministrationService
         }
     }
 
-    public void RemoveWhitelist(string comment, MongoDbApiAccess access = null)
+    public async Task RemoveWhitelist(string comment, MongoDbApiAccess access = null)
     {
         access ??= _access ?? throw new InvalidOleVariantTypeException("Provide access info.");
 
@@ -129,7 +156,7 @@ internal class AtlasAdministrationService
 
         foreach (var item in GetWhitelist().Where(x => x.Comment == comment))
         {
-            var r = httpClient.DeleteAsync($"groups/{access.GroupId}/accessList/{item.IpAddress}").GetAwaiter().GetResult();
+            var r = await httpClient.DeleteAsync($"groups/{access.GroupId}/accessList/{item.IpAddress}");
             r.EnsureSuccessStatusCode();
         }
     }

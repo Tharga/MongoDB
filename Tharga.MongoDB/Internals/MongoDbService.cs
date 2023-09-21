@@ -27,10 +27,10 @@ internal class MongoDbService : IMongoDbService
         var settings = new MongoDatabaseSettings { WriteConcern = WriteConcern.WMajority };
         _mongoDatabase = _mongoClient.GetDatabase(mongoUrl.DatabaseName, settings);
 
-        OpenMongoDbFirewall();
+        Task.Run(OpenMongoDbFirewall);
     }
 
-    private void OpenMongoDbFirewall()
+    private async Task OpenMongoDbFirewall()
     {
         if (GetDatabaseAddress().Contains("localhost")) return;
         if (!string.IsNullOrEmpty(_externalIpAddressAccess)) return;
@@ -39,12 +39,18 @@ internal class MongoDbService : IMongoDbService
         if (accessInfo != null)
         {
             var service = new AtlasAdministrationService(accessInfo, _logger);
-            _externalIpAddressAccess = service.AssureAccess($"{Environment.MachineName}-Auto")?.ToString();
+            _externalIpAddressAccess = (await service.AssureAccess($"{Environment.MachineName}-Auto"))?.ToString();
         }
     }
 
     public IMongoCollection<T> GetCollection<T>(string collectionName)
     {
+        //TODO: Look into this. //https://www.youtube.com/watch?v=gNyTYAPaFpw
+        //_mongoDatabase.CreateCollection("datapoints", new CreateCollectionOptions
+        //{
+        //    TimeSeriesOptions = new TimeSeriesOptions("timestamp", "Fingerprint", TimeSeriesGranularity.Seconds),
+        //});
+
         return _mongoDatabase.GetCollection<T>(collectionName);
     }
 
