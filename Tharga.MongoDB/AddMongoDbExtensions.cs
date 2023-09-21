@@ -149,6 +149,7 @@ public static class AddMongoDbExtensions
         }
         else
         {
+            //TODO: Add note about what parameters (like DatabaseContext) makes it not beeing registered in IOC)
             message = " Not registered in IOC (IServiceCollection), can not be injected in constructor because it requires ICollectionProvider.";
         }
 

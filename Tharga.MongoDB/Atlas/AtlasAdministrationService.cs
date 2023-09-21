@@ -22,7 +22,7 @@ internal class AtlasAdministrationService
 
     private readonly MongoDbApiAccess _access;
     private readonly ILogger _logger;
-    private readonly string[] _uris = { "https://some.crap.address", "http://icanhazip.com", "" };
+    private readonly string[] _uris = { "https://ipv4.icanhazip.com", "http://icanhazip.com" };
 
     public AtlasAdministrationService(MongoDbApiAccess access = null, ILogger logger = null)
     {
