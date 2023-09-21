@@ -22,7 +22,7 @@ internal class AtlasAdministrationService
 
     private readonly MongoDbApiAccess _access;
     private readonly ILogger _logger;
-    private readonly string[] _uris = { "https://ipv4.icanhazip.com", "http://icanhazip.com" };
+    private readonly string[] _uris = { "https://quilt4net.com/api/IpAddress", "https://app-eplicta-aggregator-prod.azurewebsites.net/api/IpAddress", "https://ipv4.icanhazip.com", "http://icanhazip.com" };
 
     public AtlasAdministrationService(MongoDbApiAccess access = null, ILogger logger = null)
     {
