@@ -60,7 +60,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         var sw = new Stopwatch();
         sw.Start();
 
-        var o = options == null ? null : new FindOptions<TEntity, TEntity> { Projection = options.Projection, Sort = options.Sort, Limit = options.Limit };
+        var o = BuildOptions(options);
         var cursor = await FindAsync(Collection, predicate, cancellationToken, o);
 
         var count = 0;
@@ -73,6 +73,21 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         sw.Stop();
         _logger?.LogInformation($"Executed {{repositoryType}} took {{elapsed}} ms and returned {{itemCount}} items. [action: Database, operation: {nameof(GetAsync)}]", "DiskRepository", sw.Elapsed.TotalMilliseconds, count);
         InvokeAction(new ActionEventArgs.ActionData { Operation = nameof(GetAsync), Elapsed = sw.Elapsed, ItemCount = count });
+    }
+
+    private static FindOptions<TEntity, TEntity> BuildOptions(Options<TEntity> options)
+    {
+        FindOptions<TEntity, TEntity> o = null;
+        if (options != null)
+        {
+            o = new FindOptions<TEntity, TEntity> { Sort = options.Sort, Limit = options.Limit };
+            if (options.Projection != null)
+            {
+                o.Projection = options.Projection;
+            }
+        }
+
+        return o;
     }
 
     public override async IAsyncEnumerable<TEntity> GetAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
