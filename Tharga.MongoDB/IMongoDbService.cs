@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using MongoDB.Driver;
 
@@ -6,7 +7,9 @@ namespace Tharga.MongoDB;
 
 public interface IMongoDbService
 {
-    IMongoCollection<T> GetCollection<T>(string collectionName);
+    //[Obsolete("Use GetCollectionAsync to get the firewall feature.")]
+    //IMongoCollection<T> GetCollection<T>(string collectionName);
+    Task<IMongoCollection<T>> GetCollectionAsync<T>(string collectionName);
     string GetDatabaseName();
     string GetDatabaseAddress();
     string GetDatabaseHostName();

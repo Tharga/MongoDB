@@ -2,6 +2,7 @@
 using System.Collections.Concurrent;
 using System.Linq;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Tharga.MongoDB.Atlas;
 using Tharga.MongoDB.Configuration;
@@ -15,6 +16,17 @@ public static class AddMongoDbExtensions
     private static readonly ConcurrentDictionary<Type, Type> _registeredRepositories = new();
     private static readonly ConcurrentDictionary<Type, Type> _registeredCollections = new();
     private static Action<ActionEventArgs> _actionEvent;
+
+    public static void UseMongoDB(this IHost host)
+    {
+        //var repositoryConfigurationLoader = host.Services.GetService<IRepositoryConfigurationLoader>();
+        var repositoryConfigurationLoader = host.Services.GetService<IRepositoryConfigurationLoader>();
+        //var cfg = repositoryConfigurationLoader.GetConfiguration(() => {  });
+        //IMongoDbServiceFactory
+        //var mongoDbFirewallService = host.Services.GetService<IMongoDbFirewallService>();
+        //var result = mongoDbFirewallService.OpenMongoDbFirewall(repositoryConfigurationInternal.GetConfiguration().AccessInfo);
+        throw new NotImplementedException();
+    }
 
     public static IServiceCollection AddMongoDB(this IServiceCollection services, Action<DatabaseOptions> options = null)
     {
@@ -34,11 +46,13 @@ public static class AddMongoDbExtensions
 
         services.AddAssemblyService();
 
+        services.AddSingleton<IMongoDbFirewallService, MongoDbFirewallService>();
         services.AddTransient<IMongoDbServiceFactory>(serviceProvider =>
         {
             var repositoryConfigurationLoader = serviceProvider.GetService<IRepositoryConfigurationLoader>();
+            var mongoDbFirewallService = serviceProvider.GetService<IMongoDbFirewallService>();
             var logger = serviceProvider.GetService<ILogger<MongoDbServiceFactory>>();
-            return new MongoDbServiceFactory(repositoryConfigurationLoader, logger);
+            return new MongoDbServiceFactory(repositoryConfigurationLoader, mongoDbFirewallService, logger);
         });
         services.AddTransient<IRepositoryConfigurationLoader>(serviceProvider =>
         {

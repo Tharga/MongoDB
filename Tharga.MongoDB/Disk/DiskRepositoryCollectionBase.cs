@@ -105,7 +105,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 
         _ = Collection ?? throw new InvalidOperationException("Unable to initiate collection.");
 
-        var collection = _mongoDbService.GetCollection<T>(ProtectedCollectionName);
+        var collection = await _mongoDbService.GetCollectionAsync<T>(ProtectedCollectionName);
         var cursor = await collection.FindAsync(filter ?? FilterDefinition<T>.Empty, o, cancellationToken);
 
         var count = 0;
@@ -248,7 +248,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 
             _ = Collection ?? throw new InvalidOperationException("Unable to initiate collection.");
 
-            var collection = _mongoDbService.GetCollection<T>(ProtectedCollectionName);
+            var collection = await _mongoDbService.GetCollectionAsync<T>(ProtectedCollectionName);
             var findFluent = collection.Find(filter).Sort(options?.Sort).Limit(2);
             T item;
             switch (options?.Mode)
@@ -418,7 +418,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             {
                 await _lock.WaitAsync();
 
-                var collection = _mongoDbService.GetCollection<TEntity>(ProtectedCollectionName);
+                var collection = await _mongoDbService.GetCollectionAsync<TEntity>(ProtectedCollectionName);
                 var exists = _mongoDbService.DoesCollectionExist(ProtectedCollectionName);
 
                 if (InitiationLibrary.ShouldInitiate(ServerName, DatabaseName, ProtectedCollectionName))

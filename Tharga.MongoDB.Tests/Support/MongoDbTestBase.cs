@@ -2,6 +2,7 @@
 using Microsoft.Extensions.Logging;
 using MongoDB.Driver;
 using Moq;
+using Tharga.MongoDB.Atlas;
 using Tharga.MongoDB.Configuration;
 using Tharga.MongoDB.Internals;
 
@@ -24,7 +25,9 @@ public abstract class MongoDbTestBase : IDisposable
         configurationLoaderMock.Setup(x => x.GetConfiguration(It.IsAny<Func<DatabaseContext>>())).Returns(_configurationMock.Object);
         var loggerMock = new Mock<ILogger<MongoDbServiceFactory>>();
 
-        _mongoDbServiceFactory = new MongoDbServiceFactory(configurationLoaderMock.Object, loggerMock.Object);
+        var repositoryConfigurationLoader = new Mock<IMongoDbFirewallService>(MockBehavior.Strict);
+
+        _mongoDbServiceFactory = new MongoDbServiceFactory(configurationLoaderMock.Object, repositoryConfigurationLoader.Object, loggerMock.Object);
     }
 
     protected IMongoDbServiceFactory MongoDbServiceFactory => _mongoDbServiceFactory;

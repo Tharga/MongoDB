@@ -13,43 +13,32 @@ namespace Tharga.MongoDB.Internals;
 internal class MongoDbService : IMongoDbService
 {
     private readonly IRepositoryConfigurationInternal _configuration;
-    private readonly ILogger _logger;
+    private readonly IMongoDbFirewallService _mongoDbFirewallService;
     private readonly MongoClient _mongoClient;
     private readonly IMongoDatabase _mongoDatabase;
-    private string _externalIpAddressAccess;
 
-    public MongoDbService(IRepositoryConfigurationInternal configuration, ILogger logger)
+    public MongoDbService(IRepositoryConfigurationInternal configuration, IMongoDbFirewallService mongoDbFirewallService, ILogger logger)
     {
         _configuration = configuration;
-        _logger = logger;
+        _mongoDbFirewallService = mongoDbFirewallService;
         var mongoUrl = configuration.GetDatabaseUrl() ?? throw new NullReferenceException("MongoUrl not found in configuration.");
         _mongoClient = new MongoClient(mongoUrl);
         var settings = new MongoDatabaseSettings { WriteConcern = WriteConcern.WMajority };
         _mongoDatabase = _mongoClient.GetDatabase(mongoUrl.DatabaseName, settings);
-
-        Task.Run(OpenMongoDbFirewall);
     }
 
-    private async Task OpenMongoDbFirewall()
-    {
-        if (GetDatabaseAddress().Contains("localhost")) return;
-        if (!string.IsNullOrEmpty(_externalIpAddressAccess)) return;
+    //[Obsolete("Use GetCollectionAsync to get the firewall feature.")]
+    //public IMongoCollection<T> GetCollection<T>(string collectionName)
+    //{
+    //    return _mongoDatabase.GetCollection<T>(collectionName);
+    //}
 
-        var accessInfo = _configuration.GetConfiguration().AccessInfo;
-        if (accessInfo != null)
+    public async Task<IMongoCollection<T>> GetCollectionAsync<T>(string collectionName)
+    {
+        if (!_configuration.GetDatabaseUrl().Server.Host.Contains("localhost", StringComparison.InvariantCultureIgnoreCase))
         {
-            var service = new AtlasAdministrationService(accessInfo, _logger);
-            _externalIpAddressAccess = (await service.AssureAccess($"{Environment.MachineName}-Auto"))?.ToString();
+            await _mongoDbFirewallService.OpenMongoDbFirewall(_configuration.GetConfiguration().AccessInfo);
         }
-    }
-
-    public IMongoCollection<T> GetCollection<T>(string collectionName)
-    {
-        //TODO: Look into this. //https://www.youtube.com/watch?v=gNyTYAPaFpw
-        //_mongoDatabase.CreateCollection("datapoints", new CreateCollectionOptions
-        //{
-        //    TimeSeriesOptions = new TimeSeriesOptions("timestamp", "Fingerprint", TimeSeriesGranularity.Seconds),
-        //});
 
         return _mongoDatabase.GetCollection<T>(collectionName);
     }

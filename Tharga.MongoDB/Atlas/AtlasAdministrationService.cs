@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
@@ -66,9 +67,8 @@ internal class AtlasAdministrationService
         var content = new StringContent(ser, Encoding.UTF8, "application/json");
         var r = httpClient.PostAsync($"groups/{access.GroupId}/accessList", content).GetAwaiter().GetResult();
         r.EnsureSuccessStatusCode();
-        var message = $"Firewall opened for ip '{ipAddress}' with comment '{comment}'.";
-        _logger.LogInformation(message);
-        ActionEvent?.Invoke(this, new ActionEventArgs(new ActionEventArgs.ActionData { Level = LogLevel.Information, Message = message }, null));
+        _logger.LogInformation("Firewall opened for ip '{ipAddress}' with comment '{comment}'.", ipAddress, comment);
+        ActionEvent?.Invoke(this, new ActionEventArgs(new ActionEventArgs.ActionData { Level = LogLevel.Information, Message = $"Firewall opened for ip '{ipAddress}' with comment '{comment}'." }, null));
     }
 
     private async Task<IPAddress> GetExternalIpAddress()
@@ -77,11 +77,11 @@ internal class AtlasAdministrationService
         {
             using var httpClient = new HttpClient();
             httpClient.Timeout = TimeSpan.FromSeconds(10);
-            using var tokenSource = new CancellationTokenSource(TimeSpan.FromSeconds(10));
             foreach (var uri in _uris)
             {
                 try
                 {
+                    using var tokenSource = new CancellationTokenSource(TimeSpan.FromSeconds(10));
                     var result = await httpClient.GetAsync(new Uri(uri), tokenSource.Token);
                     if (result.IsSuccessStatusCode)
                     {
@@ -90,9 +90,18 @@ internal class AtlasAdministrationService
                         return externalIp;
                     }
                 }
+                catch (TaskCanceledException e)
+                {
+                    _logger.LogWarning(e, $"Failed to call '{{uri}}'. {e.Message}", uri);
+                }
                 catch (HttpRequestException e)
                 {
-                    _logger.LogWarning(e, e.Message);
+                    _logger.LogWarning(e, $"Failed to call '{{uri}}'. {e.Message}", uri);
+                }
+                catch (Exception e)
+                {
+                    Debugger.Break();
+                    throw;
                 }
             }
 
@@ -141,9 +150,8 @@ internal class AtlasAdministrationService
         }
         catch (Exception e)
         {
-            var message = $"Unable to AsureAccess to Atlas MongoDB for ip '{externalIp}'. {e.Message}";
-            _logger?.LogError(e, message);
-            ActionEvent?.Invoke(this, new ActionEventArgs(new ActionEventArgs.ActionData { Level = LogLevel.Error, Message = message }, null));
+            _logger?.LogError(e, "Unable to AsureAccess to Atlas MongoDB for ip '{externalIp}'. {details}", externalIp, e.Message);
+            ActionEvent?.Invoke(this, new ActionEventArgs(new ActionEventArgs.ActionData { Level = LogLevel.Error, Message = $"Unable to AsureAccess to Atlas MongoDB for ip '{externalIp}'. {e.Message}" }, null));
             return null;
         }
     }
