@@ -5,5 +5,5 @@ namespace Tharga.MongoDB.Atlas;
 
 internal interface IMongoDbFirewallService
 {
-    Task<bool> OpenMongoDbFirewall(MongoDbApiAccess mongoDbApiAccess);
+    Task OpenMongoDbFirewallAsync(MongoDbApiAccess mongoDbApiAccess);
 }

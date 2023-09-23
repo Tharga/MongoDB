@@ -31,7 +31,7 @@ internal class MongoDbService : IMongoDbService
     {
         if (!_configuration.GetDatabaseUrl().Server.Host.Contains("localhost", StringComparison.InvariantCultureIgnoreCase))
         {
-            await _mongoDbFirewallService.OpenMongoDbFirewall(_configuration.GetConfiguration().AccessInfo);
+            await _mongoDbFirewallService.OpenMongoDbFirewallAsync(_configuration.GetConfiguration().AccessInfo);
         }
 
         return _mongoDatabase.GetCollection<T>(collectionName);

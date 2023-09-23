@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Linq;
+using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -19,11 +21,14 @@ public static class AddMongoDbExtensions
 
     public static void UseMongoDB(this IHost host)
     {
-        var mongoDbFirewallService = host.Services.GetService<IMongoDbFirewallService>();
-        var repositoryConfigurationLoader = host.Services.GetService<IRepositoryConfigurationLoader>();
-        //TODO: Rewrite to take care of all different configurations for other database-contexts.
-        var configuration = repositoryConfigurationLoader.GetConfiguration(() => null);
-        var result = mongoDbFirewallService.OpenMongoDbFirewall(configuration.GetConfiguration().AccessInfo);
+        Task.Run(async () =>
+        {
+            var mongoDbFirewallService = host.Services.GetService<IMongoDbFirewallService>();
+            var repositoryConfigurationLoader = host.Services.GetService<IRepositoryConfigurationLoader>();
+            //TODO: Rewrite to take care of all different configurations for other database-contexts.
+            var configuration = repositoryConfigurationLoader.GetConfiguration(() => null);
+            await mongoDbFirewallService.OpenMongoDbFirewallAsync(configuration.GetConfiguration().AccessInfo);
+        });
     }
 
     public static IServiceCollection AddMongoDB(this IServiceCollection services, Action<DatabaseOptions> options = null)

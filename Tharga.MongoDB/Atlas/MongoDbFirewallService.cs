@@ -16,18 +16,17 @@ internal class MongoDbFirewallService : IMongoDbFirewallService
         _logger = logger;
     }
 
-    public async Task<bool> OpenMongoDbFirewall(MongoDbApiAccess mongoDbApiAccess)
+    public async Task OpenMongoDbFirewallAsync(MongoDbApiAccess mongoDbApiAccess)
     {
-        if (!string.IsNullOrEmpty($"{_ipAddress}")) return false;
+        if (!string.IsNullOrEmpty($"{_ipAddress}")) return;
         if (string.IsNullOrEmpty(mongoDbApiAccess?.PublicKey) || string.IsNullOrEmpty(mongoDbApiAccess.PrivateKey) || string.IsNullOrEmpty(mongoDbApiAccess.GroupId))
         {
             _logger.LogTrace("No firewall configuration, cannot open MongoDB Atlas firewall.");
-            return false;
+            return;
         }
 
         var service = new AtlasAdministrationService(mongoDbApiAccess, _logger);
         //TODO: Have a way to provide name
         _ipAddress = await service.AssureAccess($"{Environment.MachineName}-Auto");
-        return true;
     }
 }
