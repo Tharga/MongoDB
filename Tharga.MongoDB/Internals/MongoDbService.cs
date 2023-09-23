@@ -27,12 +27,6 @@ internal class MongoDbService : IMongoDbService
         _mongoDatabase = _mongoClient.GetDatabase(mongoUrl.DatabaseName, settings);
     }
 
-    //[Obsolete("Use GetCollectionAsync to get the firewall feature.")]
-    //public IMongoCollection<T> GetCollection<T>(string collectionName)
-    //{
-    //    return _mongoDatabase.GetCollection<T>(collectionName);
-    //}
-
     public async Task<IMongoCollection<T>> GetCollectionAsync<T>(string collectionName)
     {
         if (!_configuration.GetDatabaseUrl().Server.Host.Contains("localhost", StringComparison.InvariantCultureIgnoreCase))

@@ -21,14 +21,4 @@ internal class MongoDbServiceFactory : IMongoDbServiceFactory
     {
         return new MongoDbService(_repositoryConfigurationLoader.GetConfiguration(databaseContextLoader), _mongoDbFirewallService, _logger);
     }
-
-    public IMongoDbService GetMongoDbService(string databasePart)
-    {
-        return new MongoDbService(_repositoryConfigurationLoader.GetConfiguration(() => new DatabaseContext { DatabasePart = databasePart }), _mongoDbFirewallService, _logger);
-    }
-
-    public IMongoDbService GetMongoDbService()
-    {
-        return new MongoDbService(_repositoryConfigurationLoader.GetConfiguration(null), _mongoDbFirewallService, _logger);
-    }
 }

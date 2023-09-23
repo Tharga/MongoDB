@@ -19,13 +19,11 @@ public static class AddMongoDbExtensions
 
     public static void UseMongoDB(this IHost host)
     {
-        //var repositoryConfigurationLoader = host.Services.GetService<IRepositoryConfigurationLoader>();
+        var mongoDbFirewallService = host.Services.GetService<IMongoDbFirewallService>();
         var repositoryConfigurationLoader = host.Services.GetService<IRepositoryConfigurationLoader>();
-        //var cfg = repositoryConfigurationLoader.GetConfiguration(() => {  });
-        //IMongoDbServiceFactory
-        //var mongoDbFirewallService = host.Services.GetService<IMongoDbFirewallService>();
-        //var result = mongoDbFirewallService.OpenMongoDbFirewall(repositoryConfigurationInternal.GetConfiguration().AccessInfo);
-        throw new NotImplementedException();
+        //TODO: Rewrite to take care of all different configurations for other database-contexts.
+        var configuration = repositoryConfigurationLoader.GetConfiguration(() => null);
+        var result = mongoDbFirewallService.OpenMongoDbFirewall(configuration.GetConfiguration().AccessInfo);
     }
 
     public static IServiceCollection AddMongoDB(this IServiceCollection services, Action<DatabaseOptions> options = null)

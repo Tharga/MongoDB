@@ -36,6 +36,6 @@ public abstract class MongoDbTestBase : IDisposable
     public void Dispose()
     {
         var databaseName = _configurationMock.Object.GetDatabaseUrl().DatabaseName;
-        _mongoDbServiceFactory.GetMongoDbService().DropDatabase(databaseName);
+        _mongoDbServiceFactory.GetMongoDbService(() => null).DropDatabase(databaseName);
     }
 }
