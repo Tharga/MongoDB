@@ -80,7 +80,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         FindOptions<TEntity, TEntity> o = null;
         if (options != null)
         {
-            o = new FindOptions<TEntity, TEntity> { Sort = options.Sort, Limit = options.Limit };
+            o = new FindOptions<TEntity, TEntity> { Sort = options.Sort, Limit = options.Limit, Skip = options.Skip };
             if (options.Projection != null)
             {
                 o.Projection = options.Projection;
@@ -95,7 +95,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         var sw = new Stopwatch();
         sw.Start();
 
-        var o = options == null ? null : new FindOptions<TEntity, TEntity> { Projection = options.Projection, Sort = options.Sort, Limit = options.Limit };
+        var o = options == null ? null : new FindOptions<TEntity, TEntity> { Projection = options.Projection, Sort = options.Sort, Limit = options.Limit, Skip = options.Skip };
         var cursor = await FindAsync(Collection, filter, cancellationToken, o);
 
         var count = 0;
@@ -116,7 +116,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         sw.Start();
 
         var filter = Builders<T>.Filter.And(Builders<T>.Filter.OfType<T>(), new ExpressionFilterDefinition<T>(predicate ?? (_ => true)));
-        var o = options == null ? null : new FindOptions<T, T> { Projection = options.Projection, Sort = options.Sort, Limit = options.Limit };
+        var o = options == null ? null : new FindOptions<T, T> { Projection = options.Projection, Sort = options.Sort, Limit = options.Limit, Skip = options.Skip };
 
         _ = Collection ?? throw new InvalidOperationException("Unable to initiate collection.");
 
@@ -147,6 +147,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
     {
         if (ResultLimit == null) throw new InvalidOperationException("Cannot use GetPageAsync when no result limit has been configured.");
         if (ResultLimit <= 0) throw new InvalidOperationException("GetPageAsync has to be a number greater than 0.");
+        if (options?.Skip != null) throw new NotImplementedException("Skip while using page has not yet been implemented.");
 
         var sw = new Stopwatch();
         sw.Start();
