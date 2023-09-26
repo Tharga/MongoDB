@@ -1,10 +1,9 @@
 ﻿using System;
 using System.Collections.Concurrent;
-using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Tharga.MongoDB.Atlas;
 using Tharga.MongoDB.Configuration;
@@ -19,15 +18,34 @@ public static class AddMongoDbExtensions
     private static readonly ConcurrentDictionary<Type, Type> _registeredCollections = new();
     private static Action<ActionEventArgs> _actionEvent;
 
-    public static void UseMongoDB(this IHost host)
+    public static void UseMongoDB(this IApplicationBuilder applicationBuilder, Action<DatabaseUsage> options = null)
     {
+        var repositoryConfiguration = applicationBuilder.ApplicationServices.GetService<IRepositoryConfiguration>();
+
+        var databaseOptions = new DatabaseUsage
+        {
+            FirewallConfigurationNames = repositoryConfiguration.GetDatabaseConfigurationNames().ToArray()
+        };
+
+        options?.Invoke(databaseOptions);
+
+        var mongoDbFirewallStateService = applicationBuilder.ApplicationServices.GetService<IMongoDbFirewallStateService>();
+        var mongoDbServiceFactory = applicationBuilder.ApplicationServices.GetService<IMongoDbServiceFactory>();
+
         Task.Run(async () =>
         {
-            var mongoDbFirewallService = host.Services.GetService<IMongoDbFirewallService>();
-            var repositoryConfigurationLoader = host.Services.GetService<IRepositoryConfigurationLoader>();
-            //TODO: Rewrite to take care of all different configurations for other database-contexts.
-            var configuration = repositoryConfigurationLoader.GetConfiguration(() => null);
-            await mongoDbFirewallService.OpenMongoDbFirewallAsync(configuration.GetConfiguration().AccessInfo);
+            foreach (var configurationName in databaseOptions.FirewallConfigurationNames)
+            {
+                var configuration = repositoryConfiguration.GetConfiguration(configurationName);
+                if (configuration.AccessInfo.HasMongoDbApiAccess())
+                {
+                    var mongoDbService = mongoDbServiceFactory.GetMongoDbService(() => new DatabaseContext { ConfigurationName = configurationName });
+                    if (!mongoDbService.GetDatabaseHostName().Contains("localhost", StringComparison.InvariantCultureIgnoreCase))
+                    {
+                        await mongoDbFirewallStateService.AssureFirewallAccessAsync(configuration.AccessInfo);
+                    }
+                }
+            }
         });
     }
 
@@ -45,17 +63,24 @@ public static class AddMongoDbExtensions
         _actionEvent = databaseOptions.ActionEvent;
 
         RepositoryCollectionBase.ActionEvent += (_, e) => { _actionEvent?.Invoke(e); };
-        AtlasAdministrationService.ActionEvent += (_, e) => { _actionEvent?.Invoke(e); };
+        //TODO: Fix
+        //AtlasAdministrationService.ActionEvent += (_, e) => { _actionEvent?.Invoke(e); };
+        //MongoDbFirewallService.ActionEvent += (_, e) => { _actionEvent?.Invoke(e); };
+        //ExternalIpAddressService.ActionEvent += (_, e) => { _actionEvent?.Invoke(e); };
 
         services.AddAssemblyService();
 
-        services.AddSingleton<IMongoDbFirewallService, MongoDbFirewallService>();
+        services.AddHttpClient();
+
+        services.AddTransient<IExternalIpAddressService, ExternalIpAddressService>();
+        services.AddTransient<IMongoDbFirewallService, MongoDbFirewallService>();
+        services.AddSingleton<IMongoDbFirewallStateService, MongoDbFirewallStateService>();
         services.AddTransient<IMongoDbServiceFactory>(serviceProvider =>
         {
             var repositoryConfigurationLoader = serviceProvider.GetService<IRepositoryConfigurationLoader>();
-            var mongoDbFirewallService = serviceProvider.GetService<IMongoDbFirewallService>();
+            var mongoDbFirewallStateService = serviceProvider.GetService<IMongoDbFirewallStateService> ();
             var logger = serviceProvider.GetService<ILogger<MongoDbServiceFactory>>();
-            return new MongoDbServiceFactory(repositoryConfigurationLoader, mongoDbFirewallService, logger);
+            return new MongoDbServiceFactory(repositoryConfigurationLoader, mongoDbFirewallStateService, logger);
         });
         services.AddTransient<IRepositoryConfigurationLoader>(serviceProvider =>
         {

@@ -97,4 +97,9 @@ public abstract class RepositoryCollectionBase<TEntity, TKey> : RepositoryCollec
             ServerName = ServerName
         };
     }
+
+    protected ValueTask AssureFirewallAccessAsync()
+    {
+        return _mongoDbService.AssureFirewallAccessAsync(true);
+    }
 }

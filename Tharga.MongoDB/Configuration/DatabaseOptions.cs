@@ -1,11 +1,15 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Net;
 using System.Reflection;
 using System.Threading.Tasks;
 using Tharga.MongoDB.Internals;
 
 namespace Tharga.MongoDB.Configuration;
+
+public record DatabaseUsage
+{
+    public string[] FirewallConfigurationNames { get; set; }
+}
 
 /// <summary>
 /// All database options are optional.

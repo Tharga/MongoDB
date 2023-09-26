@@ -1,4 +1,6 @@
 ﻿using System;
+using System.Collections.Generic;
+using System.Linq;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Tharga.MongoDB.Configuration;
@@ -20,13 +22,13 @@ internal class RepositoryConfiguration : IRepositoryConfiguration
 
     public string GetRawDatabaseUrl(string configurationName = null)
     {
-        var name = configurationName ?? "Default";
+        var name = configurationName ?? _databaseOptions.ConfigurationName ?? "Default";
         return _databaseOptions.ConnectionStringLoader?.Invoke(name, _serviceProvider).GetAwaiter().GetResult() ?? _configuration.GetConnectionString(name);
     }
 
     public MongoDbConfig GetConfiguration(string configurationName = null)
     {
-        var name = configurationName ?? "Default";
+        var name = configurationName ?? _databaseOptions.ConfigurationName ?? "Default";
 
         //Provided as named parameter
         MongoDbConfiguration c1 = null;
@@ -52,6 +54,25 @@ internal class RepositoryConfiguration : IRepositoryConfiguration
         };
 
         return configuration;
+    }
+
+    public IEnumerable<string> GetDatabaseConfigurationNames()
+    {
+        foreach (var p in GetAllConfigurationNames().Distinct())
+        {
+            yield return p;
+        }
+    }
+
+    private IEnumerable<string> GetAllConfigurationNames()
+    {
+        yield return _databaseOptions.ConfigurationName ?? "Default";
+
+        var connectionStrings = _configuration.GetSection("ConnectionStrings");
+        foreach (var connectionString in connectionStrings.GetChildren())
+        {
+            yield return connectionString.Key;
+        }
     }
 
     private T GetConfigValue<T>(string path) where T : new()

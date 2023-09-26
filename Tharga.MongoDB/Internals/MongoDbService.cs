@@ -13,28 +13,30 @@ namespace Tharga.MongoDB.Internals;
 internal class MongoDbService : IMongoDbService
 {
     private readonly IRepositoryConfigurationInternal _configuration;
-    private readonly IMongoDbFirewallService _mongoDbFirewallService;
+    private readonly IMongoDbFirewallStateService _mongoDbFirewallStateService;
     private readonly MongoClient _mongoClient;
     private readonly IMongoDatabase _mongoDatabase;
 
-    public MongoDbService(IRepositoryConfigurationInternal configuration, IMongoDbFirewallService mongoDbFirewallService, ILogger logger)
+    public MongoDbService(IRepositoryConfigurationInternal configuration, IMongoDbFirewallStateService mongoDbFirewallStateService, ILogger logger)
     {
         _configuration = configuration;
-        _mongoDbFirewallService = mongoDbFirewallService;
+        _mongoDbFirewallStateService = mongoDbFirewallStateService;
         var mongoUrl = configuration.GetDatabaseUrl() ?? throw new NullReferenceException("MongoUrl not found in configuration.");
-        _mongoClient = new MongoClient(mongoUrl);
+        _mongoClient = new MongoClient(new MongoClientSettings{ Server = mongoUrl.Server, ConnectTimeout = TimeSpan.FromSeconds(5) });
         var settings = new MongoDatabaseSettings { WriteConcern = WriteConcern.WMajority };
         _mongoDatabase = _mongoClient.GetDatabase(mongoUrl.DatabaseName, settings);
     }
 
     public async Task<IMongoCollection<T>> GetCollectionAsync<T>(string collectionName)
     {
-        if (!_configuration.GetDatabaseUrl().Server.Host.Contains("localhost", StringComparison.InvariantCultureIgnoreCase))
-        {
-            await _mongoDbFirewallService.OpenMongoDbFirewallAsync(_configuration.GetConfiguration().AccessInfo);
-        }
-
+        await AssureFirewallAccessAsync();
         return _mongoDatabase.GetCollection<T>(collectionName);
+    }
+
+    public ValueTask AssureFirewallAccessAsync(bool force = false)
+    {
+        if (_configuration.GetDatabaseUrl().Server.Host.Contains("localhost", StringComparison.InvariantCultureIgnoreCase)) return ValueTask.CompletedTask;
+        return _mongoDbFirewallStateService.AssureFirewallAccessAsync(_configuration.GetConfiguration().AccessInfo, force);
     }
 
     public string GetDatabaseName()

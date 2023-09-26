@@ -24,7 +24,34 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
     {
     }
 
-    private IMongoCollection<TEntity> Collection => _collection ??= Task.Run(async () => await FetchCollectionAsync()).Result;
+    private IMongoCollection<TEntity> Collection => _collection ??= Task.Run(async () =>
+    {
+        try
+        {
+            return await FetchCollectionAsync();
+        }
+        catch (TimeoutException e)
+        {
+            try
+            {
+                _logger.LogWarning(e, "Failed to get collection, trying to open firewall.");
+                await AssureFirewallAccessAsync();
+                return await FetchCollectionAsync();
+            }
+            catch (Exception exception)
+            {
+                Debugger.Break();
+                _logger.LogError(exception, exception.Message);
+                throw;
+            }
+        }
+        catch (Exception e)
+        {
+            Debugger.Break();
+            _logger.LogError(e, e.Message);
+            throw;
+        }
+    }).Result;
 
     protected virtual async Task<T> Execute<T>(string functionName, Func<Task<T>> action, bool assureIndex)
     {

@@ -1,171 +1,180 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Diagnostics;
-using System.Linq;
-using System.Net;
-using System.Net.Http;
-using System.Runtime.InteropServices;
-using System.Text;
-using System.Text.Json;
-using System.Threading;
-using System.Threading.Tasks;
-using Microsoft.Extensions.Logging;
-using Tharga.MongoDB.Configuration;
+﻿//using System;
+//using System.Collections.Generic;
+//using System.Linq;
+//using System.Net;
+//using System.Net.Http;
+//using System.Runtime.InteropServices;
+//using System.Text;
+//using System.Text.Json;
+//using System.Threading.Tasks;
+//using Microsoft.Extensions.Logging;
+//using Tharga.MongoDB.Configuration;
 
-namespace Tharga.MongoDB.Atlas;
+//namespace Tharga.MongoDB.Atlas;
 
-internal class AtlasAdministrationService
-{
-    //NOTE: Read more here
-    //- https://www.mongodb.com/docs/atlas/api/
-    //- https://www.mongodb.com/docs/atlas/configure-api-access/
-    //- https://www.mongodb.com/docs/atlas/configure-api-access/#std-label-create-org-api-key
+////internal interface IAtlasAdministrationService
+////{
+////    Task<IPAddress> AssureAccess(string comment = null);
+////}
 
-    private readonly MongoDbApiAccess _access;
-    private readonly ILogger _logger;
-    private readonly string[] _uris = { "https://quilt4net.com/api/IpAddress", "https://app-eplicta-aggregator-prod.azurewebsites.net/api/IpAddress", "https://ipv4.icanhazip.com", "http://icanhazip.com" };
+//internal class AtlasAdministrationService //: IAtlasAdministrationService
+//{
+//    //NOTE: Read more here
+//    //- https://www.mongodb.com/docs/atlas/api/
+//    //- https://www.mongodb.com/docs/atlas/configure-api-access/
+//    //- https://www.mongodb.com/docs/atlas/configure-api-access/#std-label-create-org-api-key
 
-    public AtlasAdministrationService(MongoDbApiAccess access = null, ILogger logger = null)
-    {
-        _access = access;
-        _logger = logger;
-    }
+//    //private readonly IHttpClientFactory _httpClientFactory;
+//    private readonly MongoDbApiAccess _access;
+//    private readonly ILogger _logger;
+//    //private readonly string[] _uris = { "https://ipv4.icanhazip.com", "http://icanhazip.com", "https://app-eplicta-aggregator-prod.azurewebsites.net/api/IpAddress", "https://quilt4net.com/api/IpAddress" };
 
-    public static event EventHandler<ActionEventArgs> ActionEvent;
+//    public AtlasAdministrationService(MongoDbApiAccess access = null, ILogger logger = null)
+//    {
+//        _access = access;
+//        _logger = logger;
+//    }
 
-    public IEnumerable<WhiteListItem> GetWhitelist(MongoDbApiAccess access = null)
-    {
-        access ??= _access ?? throw new InvalidOleVariantTypeException("Provide access info.");
+//    public static event EventHandler<ActionEventArgs> ActionEvent;
 
-        using var httpClient = GetHttpClient(access);
+//    public async IAsyncEnumerable<WhiteListItem> GetWhitelist(MongoDbApiAccess access = null)
+//    {
+//        access ??= _access ?? throw new InvalidOleVariantTypeException("Provide access info.");
 
-        var r = httpClient.GetAsync($"groups/{access.GroupId}/accessList").GetAwaiter().GetResult();
-        r.EnsureSuccessStatusCode();
-        var rb = r.Content.ReadAsStringAsync().GetAwaiter().GetResult();
+//        using var httpClient = GetHttpClient(access);
 
-        var result = JsonSerializer.Deserialize<WhiteListResult>(rb, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-        return result?.Results ?? Array.Empty<WhiteListItem>();
-    }
+//        var r = await httpClient.GetAsync($"groups/{access.GroupId}/accessList");
+//        r.EnsureSuccessStatusCode();
+//        var rb = await r.Content.ReadAsStringAsync();
 
-    private HttpClient GetHttpClient(MongoDbApiAccess access)
-    {
-        access ??= _access ?? throw new InvalidOleVariantTypeException("Provide access info.");
+//        var result = JsonSerializer.Deserialize<WhiteListResult>(rb, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+//        if (result != null)
+//        {
+//            foreach (var item in result.Results)
+//            {
+//                yield return item;
+//            }
+//        }
+//    }
 
-        var httpClient = new HttpClient(new HttpClientHandler { Credentials = new NetworkCredential(access.PublicKey, access.PrivateKey) });
-        httpClient.BaseAddress = new Uri("https://cloud.mongodb.com/api/atlas/v1.0/");
-        return httpClient;
-    }
+//    private HttpClient GetHttpClient(MongoDbApiAccess access)
+//    {
+//        access ??= _access ?? throw new InvalidOleVariantTypeException("Provide access info.");
 
-    public void SetWhitelist(string comment, string ipAddress, MongoDbApiAccess access = null)
-    {
-        access ??= _access ?? throw new InvalidOleVariantTypeException("Provide access info.");
+//        var httpClient = new HttpClient(new HttpClientHandler { Credentials = new NetworkCredential(access.PublicKey, access.PrivateKey) }, true);
+//        httpClient.BaseAddress = new Uri("https://cloud.mongodb.com/api/atlas/v1.0/");
+//        return httpClient;
+//    }
 
-        using var httpClient = GetHttpClient(access);
+//    public async Task SetWhitelist(string comment, string ipAddress, MongoDbApiAccess access = null)
+//    {
+//        access ??= _access ?? throw new InvalidOleVariantTypeException("Provide access info.");
 
-        var payload = new[] { new { cidrBlock = $"{ipAddress}/32", comment } };
-        var ser = JsonSerializer.Serialize(payload);
-        var content = new StringContent(ser, Encoding.UTF8, "application/json");
-        var r = httpClient.PostAsync($"groups/{access.GroupId}/accessList", content).GetAwaiter().GetResult();
-        r.EnsureSuccessStatusCode();
-        _logger.LogInformation("Firewall opened for ip '{ipAddress}' with comment '{comment}'.", ipAddress, comment);
-        ActionEvent?.Invoke(this, new ActionEventArgs(new ActionEventArgs.ActionData { Level = LogLevel.Information, Message = $"Firewall opened for ip '{ipAddress}' with comment '{comment}'." }, null));
-    }
+//        using var httpClient = GetHttpClient(access);
 
-    private async Task<IPAddress> GetExternalIpAddress()
-    {
-        try
-        {
-            using var httpClient = new HttpClient();
-            httpClient.Timeout = TimeSpan.FromSeconds(10);
-            foreach (var uri in _uris)
-            {
-                try
-                {
-                    using var tokenSource = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-                    var result = await httpClient.GetAsync(new Uri(uri), tokenSource.Token);
-                    if (result.IsSuccessStatusCode)
-                    {
-                        var externalIpString = (await result.Content.ReadAsStringAsync(CancellationToken.None)).Replace("\\r\\n", "").Replace("\\n", "").Trim();
-                        var externalIp = IPAddress.Parse(externalIpString);
-                        return externalIp;
-                    }
-                }
-                catch (TaskCanceledException e)
-                {
-                    _logger.LogWarning(e, $"Failed to call '{{uri}}'. {e.Message}", uri);
-                }
-                catch (HttpRequestException e)
-                {
-                    _logger.LogWarning(e, $"Failed to call '{{uri}}'. {e.Message}", uri);
-                }
-                catch (Exception e)
-                {
-                    Debugger.Break();
-                    throw;
-                }
-            }
+//        var payload = new[] { new { cidrBlock = $"{ipAddress}/32", comment } };
+//        var ser = JsonSerializer.Serialize(payload);
+//        var content = new StringContent(ser, Encoding.UTF8, "application/json");
+//        var r = await httpClient.PostAsync($"groups/{access.GroupId}/accessList", content);
+//        r.EnsureSuccessStatusCode();
+//        _logger.LogInformation("Firewall opened for ip '{ipAddress}' with comment '{comment}'.", ipAddress, comment);
+//        ActionEvent?.Invoke(this, new ActionEventArgs(new ActionEventArgs.ActionData { Level = LogLevel.Information, Message = $"Firewall opened for ip '{ipAddress}' with comment '{comment}'." }, null));
+//    }
 
-            return null;
-        }
-        catch (Exception e)
-        {
-            _logger.LogError(e, e.Message);
-            throw;
-        }
-    }
+//    //private async Task<IPAddress> GetExternalIpAddress()
+//    //{
+//    //    try
+//    //    {
+//    //        foreach (var uri in _uris)
+//    //        {
+//    //            try
+//    //            {
+//    //                using var tokenSource = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+//    //                using var httpClient = _httpClientFactory.CreateClient("IpAddressClient");
+//    //                var result = await httpClient.GetAsync(new Uri(uri), tokenSource.Token);
+//    //                if (result.IsSuccessStatusCode)
+//    //                {
+//    //                    var externalIpString = (await result.Content.ReadAsStringAsync(CancellationToken.None)).Replace("\\r\\n", "").Replace("\\n", "").Trim();
+//    //                    var externalIp = IPAddress.Parse(externalIpString);
+//    //                    return externalIp;
+//    //                }
+//    //            }
+//    //            catch (TaskCanceledException e)
+//    //            {
+//    //                _logger.LogWarning(e, $"Failed to call '{{uri}}'. {e.Message}", uri);
+//    //            }
+//    //            catch (HttpRequestException e)
+//    //            {
+//    //                _logger.LogWarning(e, $"Failed to call '{{uri}}'. {e.Message}", uri);
+//    //            }
+//    //            catch (Exception e)
+//    //            {
+//    //                Debugger.Break();
+//    //                throw;
+//    //            }
+//    //        }
 
-    internal record WhiteListResult
-    {
-        public WhiteListItem[] Results { get; init; }
-    }
+//    //        return null;
+//    //    }
+//    //    catch (Exception e)
+//    //    {
+//    //        _logger.LogError(e, e.Message);
+//    //        throw;
+//    //    }
+//    //}
 
-    public record WhiteListItem
-    {
-        public string IpAddress { get; init; }
-        public string CidrBlock { get; init; }
-        public string Comment { get; init; }
-        public string GroupId { get; init; }
-    }
+//    internal record WhiteListResult
+//    {
+//        public WhiteListItem[] Results { get; init; }
+//    }
 
-    public async Task<IPAddress> AssureAccess(string comment = null)
-    {
-        IPAddress externalIp = null;
-        try
-        {
-            externalIp = await GetExternalIpAddress();
-            var machineName = comment ?? Environment.MachineName;
+//    public record WhiteListItem
+//    {
+//        public string IpAddress { get; init; }
+//        public string CidrBlock { get; init; }
+//        public string Comment { get; init; }
+//        public string GroupId { get; init; }
+//    }
 
-            var items = GetWhitelist();
-            if (items.Any(x => x.CidrBlock.StartsWith(externalIp.ToString())))
-            {
-                var message = $"Firewall already open for ip '{externalIp}'.";
-                _logger?.LogTrace(message);
-                ActionEvent?.Invoke(this, new ActionEventArgs(new ActionEventArgs.ActionData { Level = LogLevel.Information, Message = message }, null));
-                return externalIp;
-            }
+//    public async Task<IPAddress> AssureAccess(IPAddress ipAddress, string comment = null)
+//    {
+//        //IPAddress externalIp = null;
+//        try
+//        {
+//            //externalIp = await GetExternalIpAddress();
+//            var machineName = comment ?? Environment.MachineName;
 
-            await RemoveWhitelist(machineName);
-            SetWhitelist(machineName, externalIp.ToString());
-            return externalIp;
-        }
-        catch (Exception e)
-        {
-            _logger?.LogError(e, "Unable to AsureAccess to Atlas MongoDB for ip '{externalIp}'. {details}", externalIp, e.Message);
-            ActionEvent?.Invoke(this, new ActionEventArgs(new ActionEventArgs.ActionData { Level = LogLevel.Error, Message = $"Unable to AsureAccess to Atlas MongoDB for ip '{externalIp}'. {e.Message}" }, null));
-            return null;
-        }
-    }
+//            var items = await GetWhitelist().ToArrayAsync();
+//            if (items.Any(x => x.CidrBlock.StartsWith(ipAddress.ToString())))
+//            {
+//                var message = $"Firewall already open for ip '{ipAddress}'.";
+//                _logger?.LogTrace(message);
+//                ActionEvent?.Invoke(this, new ActionEventArgs(new ActionEventArgs.ActionData { Level = LogLevel.Information, Message = message }, null));
+//                return ipAddress;
+//            }
 
-    public async Task RemoveWhitelist(string comment, MongoDbApiAccess access = null)
-    {
-        access ??= _access ?? throw new InvalidOleVariantTypeException("Provide access info.");
+//            await RemoveWhitelist(machineName);
+//            await SetWhitelist(machineName, ipAddress.ToString());
+//            return ipAddress;
+//        }
+//        catch (Exception e)
+//        {
+//            _logger?.LogError(e, "Unable to AsureAccess to Atlas MongoDB for ip '{externalIp}'. {details}", ipAddress, e.Message);
+//            ActionEvent?.Invoke(this, new ActionEventArgs(new ActionEventArgs.ActionData { Level = LogLevel.Error, Message = $"Unable to AsureAccess to Atlas MongoDB for ip '{ipAddress}'. {e.Message}" }, null));
+//            return null;
+//        }
+//    }
 
-        using var httpClient = GetHttpClient(access);
+//    public async Task RemoveWhitelist(string comment, MongoDbApiAccess access = null)
+//    {
+//        access ??= _access ?? throw new InvalidOleVariantTypeException("Provide access info.");
 
-        foreach (var item in GetWhitelist().Where(x => x.Comment == comment))
-        {
-            var r = await httpClient.DeleteAsync($"groups/{access.GroupId}/accessList/{item.IpAddress}");
-            r.EnsureSuccessStatusCode();
-        }
-    }
-}
+//        using var httpClient = GetHttpClient(access);
+
+//        await foreach (var item in GetWhitelist().Where(x => x.Comment == comment))
+//        {
+//            var r = await httpClient.DeleteAsync($"groups/{access.GroupId}/accessList/{item.IpAddress}");
+//            r.EnsureSuccessStatusCode();
+//        }
+//    }
+//}
