@@ -462,7 +462,6 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                 await _lock.WaitAsync();
 
                 var collection = await _mongoDbService.GetCollectionAsync<TEntity>(ProtectedCollectionName);
-                var exists = _mongoDbService.DoesCollectionExist(ProtectedCollectionName);
 
                 if (InitiationLibrary.ShouldInitiate(ServerName, DatabaseName, ProtectedCollectionName))
                 {
@@ -470,6 +469,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                     InvokeAction(new ActionEventArgs.ActionData { Operation = nameof(FetchCollectionAsync), Message = "Starting to initiate.", Level = LogLevel.Trace });
                     RegisterTypes();
 
+                    var exists = _mongoDbService.DoesCollectionExist(ProtectedCollectionName);
                     if (exists)
                     {
                         await AssureIndex(collection);
