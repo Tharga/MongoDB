@@ -25,9 +25,9 @@ public abstract class MongoDbTestBase : IDisposable
         configurationLoaderMock.Setup(x => x.GetConfiguration(It.IsAny<Func<DatabaseContext>>())).Returns(_configurationMock.Object);
         var loggerMock = new Mock<ILogger<MongoDbServiceFactory>>();
 
-        var repositoryConfigurationLoader = new Mock<IMongoDbFirewallService>(MockBehavior.Strict);
+        var mongoDbFirewallStateService = new Mock<IMongoDbFirewallStateService>(MockBehavior.Strict);
 
-        _mongoDbServiceFactory = new MongoDbServiceFactory(configurationLoaderMock.Object, repositoryConfigurationLoader.Object, loggerMock.Object);
+        _mongoDbServiceFactory = new MongoDbServiceFactory(configurationLoaderMock.Object, mongoDbFirewallStateService.Object, loggerMock.Object);
     }
 
     protected IMongoDbServiceFactory MongoDbServiceFactory => _mongoDbServiceFactory;
