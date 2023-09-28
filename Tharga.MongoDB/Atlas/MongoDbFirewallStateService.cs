@@ -18,6 +18,8 @@ internal class MongoDbFirewallStateService : IMongoDbFirewallStateService
 
     public async ValueTask AssureFirewallAccessAsync(MongoDbApiAccess accessInfo, bool force = false)
     {
+        if (!accessInfo.HasMongoDbApiAccess()) return;
+
         _dictionary.TryGetValue(accessInfo, out var current);
         if (!force && current != null) return;
 

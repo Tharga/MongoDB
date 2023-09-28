@@ -63,7 +63,6 @@ public static class AddMongoDbExtensions
         _actionEvent = databaseOptions.ActionEvent;
 
         RepositoryCollectionBase.ActionEvent += (_, e) => { _actionEvent?.Invoke(e); };
-        //TODO: Fix
         //AtlasAdministrationService.ActionEvent += (_, e) => { _actionEvent?.Invoke(e); };
         //MongoDbFirewallService.ActionEvent += (_, e) => { _actionEvent?.Invoke(e); };
         //ExternalIpAddressService.ActionEvent += (_, e) => { _actionEvent?.Invoke(e); };
@@ -191,7 +190,6 @@ public static class AddMongoDbExtensions
         }
         else
         {
-            //TODO: Add note about what parameters (like DatabaseContext) makes it not beeing registered in IOC)
             message = " Not registered in IOC (IServiceCollection), can not be injected in constructor because it requires ICollectionProvider.";
         }
 

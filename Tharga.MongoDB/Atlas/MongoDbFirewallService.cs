@@ -60,13 +60,10 @@ internal class MongoDbFirewallService : IMongoDbFirewallService
     {
         if (access == null) throw new ArgumentNullException(nameof(access));
 
-        //TODO: Duplicate code
-        using var handler = new HttpClientHandler { Credentials = new NetworkCredential(access.PublicKey, access.PrivateKey) };
-        using var httpClient = new HttpClient(handler);
-        httpClient.BaseAddress = new Uri("https://cloud.mongodb.com/api/atlas/v1.0/");
+        using var atlasHttp = new AtlasHttpClient(access);
 
         using var request = new HttpRequestMessage(HttpMethod.Get, $"groups/{access.GroupId}/accessList");
-        using var result = await httpClient.SendAsync(request);
+        using var result = await atlasHttp.Client.SendAsync(request);
         result.EnsureSuccessStatusCode();
         var content = await result.Content.ReadFromJsonAsync<WhiteListResult>();
         if (content != null)
@@ -82,14 +79,11 @@ internal class MongoDbFirewallService : IMongoDbFirewallService
     {
         if (access == null) throw new ArgumentNullException(nameof(access));
 
-        //TODO: Duplicate code
-        using var handler = new HttpClientHandler { Credentials = new NetworkCredential(access.PublicKey, access.PrivateKey) };
-        using var httpClient = new HttpClient(handler);
-        httpClient.BaseAddress = new Uri("https://cloud.mongodb.com/api/atlas/v1.0/");
+        using var atlasHttp = new AtlasHttpClient(access);
 
         await foreach (var item in GetFirewallListAsync(access))
         {
-            var r = await httpClient.DeleteAsync($"groups/{access.GroupId}/accessList/{item.IpAddress}");
+            var r = await atlasHttp.Client.DeleteAsync($"groups/{access.GroupId}/accessList/{item.IpAddress}");
             r.EnsureSuccessStatusCode();
         }
     }
@@ -98,16 +92,35 @@ internal class MongoDbFirewallService : IMongoDbFirewallService
     {
         if (access == null) throw new ArgumentNullException(nameof(access));
 
-        //TODO: Duplicate code
-        using var handler = new HttpClientHandler { Credentials = new NetworkCredential(access.PublicKey, access.PrivateKey) };
-        using var httpClient = new HttpClient(handler);
-        httpClient.BaseAddress = new Uri("https://cloud.mongodb.com/api/atlas/v1.0/");
+        using var atlasHttp = new AtlasHttpClient(access);
 
         var payload = new[] { new { cidrBlock = $"{ipAddress}/32", comment = name } };
         var serialized = JsonSerializer.Serialize(payload);
         using var content = new StringContent(serialized, Encoding.UTF8, "application/json");
-        using var result = await httpClient.PostAsync($"groups/{access.GroupId}/accessList", content);
+        using var result = await atlasHttp.Client.PostAsync($"groups/{access.GroupId}/accessList", content);
         result.EnsureSuccessStatusCode();
         _logger.LogInformation("Firewall opened for ip '{ipAddress}' with comment '{name}'.", ipAddress, name);
+    }
+}
+
+internal class AtlasHttpClient : IDisposable
+{
+    private readonly HttpClient _httpClient;
+    private readonly HttpClientHandler _handler;
+
+    public AtlasHttpClient(MongoDbApiAccess access)
+    {
+        _handler = new HttpClientHandler();
+        _handler.Credentials = new NetworkCredential(access.PublicKey, access.PrivateKey);
+        _httpClient = new HttpClient(_handler);
+        _httpClient.BaseAddress = new Uri("https://cloud.mongodb.com/api/atlas/v1.0/");
+    }
+
+    public HttpClient Client => _httpClient;
+
+    public void Dispose()
+    {
+        _httpClient.Dispose();
+        _handler.Dispose();
     }
 }

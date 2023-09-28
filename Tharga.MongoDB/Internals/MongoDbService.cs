@@ -23,8 +23,11 @@ internal class MongoDbService : IMongoDbService
         _configuration = configuration;
         _mongoDbFirewallStateService = mongoDbFirewallStateService;
         var mongoUrl = configuration.GetDatabaseUrl() ?? throw new NullReferenceException("MongoUrl not found in configuration.");
+        //_mongoClient = new MongoClient(mongoUrl);
+        var cfg = MongoClientSettings.FromUrl(mongoUrl);
         //TODO: Make timeout configurable
-        _mongoClient = new MongoClient(new MongoClientSettings{ Server = mongoUrl.Server, ConnectTimeout = Debugger.IsAttached ? TimeSpan.FromSeconds(5) : TimeSpan.FromSeconds(10) });
+        cfg.ConnectTimeout = Debugger.IsAttached ? TimeSpan.FromSeconds(5) : TimeSpan.FromSeconds(10);
+        _mongoClient = new MongoClient(cfg);
         var settings = new MongoDatabaseSettings { WriteConcern = WriteConcern.WMajority };
         _mongoDatabase = _mongoClient.GetDatabase(mongoUrl.DatabaseName, settings);
     }
