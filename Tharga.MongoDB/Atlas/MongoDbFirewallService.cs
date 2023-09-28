@@ -98,17 +98,6 @@ internal class MongoDbFirewallService : IMongoDbFirewallService
     {
         if (access == null) throw new ArgumentNullException(nameof(access));
 
-        //        access ??= _access ?? throw new InvalidOleVariantTypeException("Provide access info.");
-
-        //using var httpClient = GetHttpClient(access);
-
-        //var payload = new[] { new { cidrBlock = $"{ipAddress}/32", comment = name } };
-        //var ser = JsonSerializer.Serialize(payload);
-        //var content = new StringContent(ser, Encoding.UTF8, "application/json");
-        //var r = await httpClient.PostAsync($"groups/{access.GroupId}/accessList", content);
-        //r.EnsureSuccessStatusCode();
-        //_logger.LogInformation("Firewall opened for ip '{ipAddress}' with comment '{comment}'.", ipAddress, name);
-
         //TODO: Duplicate code
         using var handler = new HttpClientHandler { Credentials = new NetworkCredential(access.PublicKey, access.PrivateKey) };
         using var httpClient = new HttpClient(handler);
@@ -121,11 +110,4 @@ internal class MongoDbFirewallService : IMongoDbFirewallService
         result.EnsureSuccessStatusCode();
         _logger.LogInformation("Firewall opened for ip '{ipAddress}' with comment '{name}'.", ipAddress, name);
     }
-
-    //private HttpClient GetHttpClient(MongoDbApiAccess access)
-    //{
-    //    var httpClient = new HttpClient(new HttpClientHandler { Credentials = new NetworkCredential(access.PublicKey, access.PrivateKey) }, true);
-    //    httpClient.BaseAddress = new Uri("https://cloud.mongodb.com/api/atlas/v1.0/");
-    //    return httpClient;
-    //}
 }
