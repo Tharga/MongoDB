@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using MongoDB.Bson;
@@ -15,27 +16,64 @@ internal class MongoDbService : IMongoDbService
 {
     private readonly IRepositoryConfigurationInternal _configuration;
     private readonly IMongoDbFirewallStateService _mongoDbFirewallStateService;
-    private readonly MongoClient _mongoClient;
-    private readonly IMongoDatabase _mongoDatabase;
+    private readonly MongoUrl _mongoUrl;
+    private readonly SemaphoreSlim _mongoClientLock = new(1, 1);
+    private MongoClient _mongoClient;
+    private readonly SemaphoreSlim _mongoDatabaseLock = new(1, 1);
+    private IMongoDatabase _mongoDatabase;
 
     public MongoDbService(IRepositoryConfigurationInternal configuration, IMongoDbFirewallStateService mongoDbFirewallStateService, ILogger logger)
     {
         _configuration = configuration;
         _mongoDbFirewallStateService = mongoDbFirewallStateService;
-        var mongoUrl = configuration.GetDatabaseUrl() ?? throw new NullReferenceException("MongoUrl not found in configuration.");
-        //_mongoClient = new MongoClient(mongoUrl);
-        var cfg = MongoClientSettings.FromUrl(mongoUrl);
-        //TODO: Make timeout configurable
-        cfg.ConnectTimeout = Debugger.IsAttached ? TimeSpan.FromSeconds(5) : TimeSpan.FromSeconds(10);
-        _mongoClient = new MongoClient(cfg);
-        var settings = new MongoDatabaseSettings { WriteConcern = WriteConcern.WMajority };
-        _mongoDatabase = _mongoClient.GetDatabase(mongoUrl.DatabaseName, settings);
+        _mongoUrl = configuration.GetDatabaseUrl() ?? throw new NullReferenceException("MongoUrl not found in configuration.");
+    }
+
+    private MongoClient GetMongoClient()
+    {
+        if (_mongoClient != null) return _mongoClient;
+
+        try
+        {
+            _mongoClientLock.Wait();
+
+            if (_mongoClient != null) return _mongoClient;
+
+            var cfg = MongoClientSettings.FromUrl(_mongoUrl);
+            cfg.ConnectTimeout = Debugger.IsAttached ? TimeSpan.FromSeconds(5) : TimeSpan.FromSeconds(10);
+            _mongoClient = new MongoClient(cfg);
+            return _mongoClient;
+        }
+        finally
+        {
+            _mongoClientLock.Release();
+        }
+    }
+
+    private IMongoDatabase GetMongoDatabase()
+    {
+        if (_mongoDatabase != null) return _mongoDatabase;
+
+        try
+        {
+            _mongoDatabaseLock.Wait();
+
+            if (_mongoDatabase != null) return _mongoDatabase;
+
+            var settings = new MongoDatabaseSettings { WriteConcern = WriteConcern.WMajority };
+            _mongoDatabase = GetMongoClient().GetDatabase(_mongoUrl.DatabaseName, settings);
+            return _mongoDatabase;
+        }
+        finally
+        {
+            _mongoDatabaseLock.Release();
+        }
     }
 
     public async Task<IMongoCollection<T>> GetCollectionAsync<T>(string collectionName)
     {
         await AssureFirewallAccessAsync();
-        return _mongoDatabase.GetCollection<T>(collectionName);
+        return GetMongoDatabase().GetCollection<T>(collectionName);
     }
 
     public ValueTask AssureFirewallAccessAsync(bool force = false)
@@ -44,39 +82,62 @@ internal class MongoDbService : IMongoDbService
         return _mongoDbFirewallStateService.AssureFirewallAccessAsync(_configuration.GetConfiguration().AccessInfo, force);
     }
 
+    public async ValueTask ResetConnection()
+    {
+        try
+        {
+            await _mongoClientLock.WaitAsync();
+            _mongoClient = null;
+        }
+        finally
+        {
+            _mongoClientLock.Release();
+        }
+
+        try
+        {
+            await _mongoDatabaseLock.WaitAsync();
+            _mongoDatabase = null;
+        }
+        finally
+        {
+            _mongoDatabaseLock.Release();
+        }
+    }
+
     public string GetDatabaseName()
     {
-        return _mongoDatabase.DatabaseNamespace.DatabaseName;
+        return GetMongoDatabase().DatabaseNamespace.DatabaseName;
     }
 
     public string GetDatabaseAddress()
     {
-        return $"{_mongoClient.Settings.Server.Host}:{_mongoClient.Settings.Server.Port}";
+        return $"{GetMongoClient().Settings.Server.Host}:{GetMongoClient().Settings.Server.Port}";
     }
 
     public int GetMaxConnectionPoolSize()
     {
-        return _mongoClient.Settings.MaxConnectionPoolSize;
+        return GetMongoClient().Settings.MaxConnectionPoolSize;
     }
 
     public string GetDatabaseHostName()
     {
-        return _mongoClient.Settings.Server.Host;
+        return GetMongoClient().Settings.Server.Host;
     }
 
     public Task DropCollectionAsync(string name)
     {
-        return _mongoDatabase.DropCollectionAsync(name);
+        return GetMongoDatabase().DropCollectionAsync(name);
     }
 
     public IEnumerable<string> GetCollections()
     {
-        return _mongoDatabase.ListCollections().ToEnumerable().Select(x => x.AsBsonValue["name"].ToString());
+        return GetMongoDatabase().ListCollections().ToEnumerable().Select(x => x.AsBsonValue["name"].ToString());
     }
 
     public async IAsyncEnumerable<(string Name, long DocumentCount, long Size)> GetCollectionsWithMetaAsync(string databaseName = null)
     {
-        var mongoDatabase = string.IsNullOrEmpty(databaseName) ? _mongoDatabase : _mongoClient.GetDatabase(databaseName);
+        var mongoDatabase = string.IsNullOrEmpty(databaseName) ? GetMongoDatabase() : GetMongoClient().GetDatabase(databaseName);
 
         var collections = (await mongoDatabase.ListCollectionsAsync()).ToEnumerable();
 
@@ -93,12 +154,12 @@ internal class MongoDbService : IMongoDbService
     {
         var filter = new BsonDocument("name", name);
         var options = new ListCollectionNamesOptions { Filter = filter };
-        return _mongoDatabase.ListCollectionNames(options).Any();
+        return GetMongoDatabase().ListCollectionNames(options).Any();
     }
 
     public long GetSize(string collectionName, IMongoDatabase mongoDatabase = null)
     {
-        var size = (mongoDatabase ?? _mongoDatabase).RunCommand<SizeResult>($"{{collstats: '{collectionName}'}}").Size;
+        var size = (mongoDatabase ?? GetMongoDatabase()).RunCommand<SizeResult>($"{{collstats: '{collectionName}'}}").Size;
         return size;
     }
 
@@ -144,18 +205,18 @@ internal class MongoDbService : IMongoDbService
 
     private string GetDatabaseDescription()
     {
-        return $"{_mongoDatabase.Client.Settings.Server.Host}/{_mongoDatabase.DatabaseNamespace.DatabaseName}";
+        return $"{GetMongoDatabase().Client.Settings.Server.Host}/{GetMongoDatabase().DatabaseNamespace.DatabaseName}";
     }
 
     public void DropDatabase(string name)
     {
         if (GetDatabaseName() != name) throw new InvalidOperationException();
-        _mongoClient.DropDatabase(name);
+        GetMongoClient().DropDatabase(name);
     }
 
     public IEnumerable<string> GetDatabases()
     {
-        var dbs = _mongoClient.ListDatabases().ToList();
+        var dbs = GetMongoClient().ListDatabases().ToList();
         return dbs.Select(x => x.AsBsonValue["name"].ToString());
     }
 

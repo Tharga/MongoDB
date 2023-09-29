@@ -28,6 +28,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
     {
         try
         {
+            await _lock.WaitAsync();
             return await FetchCollectionAsync();
         }
         catch (TimeoutException e)
@@ -51,21 +52,20 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             _logger.LogError(e, e.Message);
             throw;
         }
+        finally
+        {
+            _lock.Release();
+        }
     }).Result;
 
     protected virtual async Task<T> Execute<T>(string functionName, Func<Task<T>> action, bool assureIndex)
     {
-        var sw = new Stopwatch();
-        sw.Start();
-
         try
         {
-            if (assureIndex)
-            {
-                await AssureIndex(Collection);
-            }
+            var sw = new Stopwatch();
+            sw.Start();
 
-            var result = await action.Invoke();
+            var result = await Execute<T>(action, assureIndex);
 
             sw.Stop();
 
@@ -74,12 +74,40 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 
             return result;
         }
+        catch (Exception e) when (e is MongoConnectionException || e is TimeoutException || e is MongoConnectionPoolPausedException)
+        {
+            _logger?.LogWarning(e, $"{e.GetType().Name} {{repositoryType}}. [action: Database, operation: {functionName}]", "DiskRepository");
+            try
+            {
+                await ResetConnection();
+                _collection = null;
+                var result = await Execute<T>(action, assureIndex);
+                return result;
+            }
+            catch (Exception exception)
+            {
+                _logger?.LogError(e, $"{nameof(Exception)} after reset connection {{repositoryType}}. [action: Database, operation: {functionName}]", "DiskRepository");
+                InvokeAction(new ActionEventArgs.ActionData { Operation = functionName, Exception = e });
+                throw;
+            }
+        }
         catch (Exception e)
         {
-            _logger?.LogError(e, $"Exception {{repositoryType}}. [action: Database, operation: {functionName}]", "DiskRepository");
+            _logger?.LogError(e, $"{nameof(Exception)} {{repositoryType}}. [action: Database, operation: {functionName}]", "DiskRepository");
             InvokeAction(new ActionEventArgs.ActionData { Operation = functionName, Exception = e });
             throw;
         }
+    }
+
+    private async Task<T> Execute<T>(Func<Task<T>> action, bool assureIndex)
+    {
+        if (assureIndex)
+        {
+            await AssureIndex(Collection);
+        }
+
+        var result = await action.Invoke();
+        return result;
     }
 
     public override async IAsyncEnumerable<TEntity> GetAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
@@ -455,11 +483,11 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 
     private async Task<IMongoCollection<TEntity>> FetchCollectionAsync()
     {
-        return await Execute(nameof(FetchCollectionAsync), async () =>
-        {
-            try
-            {
-                await _lock.WaitAsync();
+        //return await Execute(nameof(FetchCollectionAsync), async () =>
+        //{
+        //    try
+        //    {
+        //      await _lock.WaitAsync();
 
                 var collection = await _mongoDbService.GetCollectionAsync<TEntity>(ProtectedCollectionName);
 
@@ -488,12 +516,12 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                 }
 
                 return collection;
-            }
-            finally
-            {
-                _lock.Release();
-            }
-        }, false);
+        //    }
+        //    finally
+        //    {
+        //        _lock.Release();
+        //    }
+        //}, false);
     }
 
     private async Task AssureIndex(IMongoCollection<TEntity> collection)

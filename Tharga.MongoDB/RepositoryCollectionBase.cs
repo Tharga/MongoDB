@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq.Expressions;
+using System.Security.Principal;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
@@ -101,5 +103,10 @@ public abstract class RepositoryCollectionBase<TEntity, TKey> : RepositoryCollec
     protected ValueTask AssureFirewallAccessAsync()
     {
         return _mongoDbService.AssureFirewallAccessAsync(true);
+    }
+
+    protected ValueTask ResetConnection()
+    {
+        return _mongoDbService.ResetConnection();
     }
 }

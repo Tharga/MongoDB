@@ -24,4 +24,5 @@ public interface IMongoDbService
     bool GetCleanOnStartup();
     bool DropEmptyCollections();
     ValueTask AssureFirewallAccessAsync(bool force = false);
+    ValueTask ResetConnection();
 }
