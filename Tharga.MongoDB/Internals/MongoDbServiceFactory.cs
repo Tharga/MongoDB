@@ -19,6 +19,7 @@ internal class MongoDbServiceFactory : IMongoDbServiceFactory
 
     public IMongoDbService GetMongoDbService(Func<DatabaseContext> databaseContextLoader)
     {
+        //TODO: This should possibly be a single instance per configuration, or?
         return new MongoDbService(_repositoryConfigurationLoader.GetConfiguration(databaseContextLoader), _mongoDbFirewallStateService, _logger);
     }
 }

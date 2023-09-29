@@ -342,7 +342,9 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
     {
         return await Execute(nameof(AddAsync), async () =>
         {
-            if (await DoesExistAsync(x => x.Id.Equals(entity.Id))) return false;
+            //if (await DoesExistAsync(x => x.Id.Equals(entity.Id))) return false;
+            var existing = await Collection.CountDocumentsAsync(x => x.Id.Equals(entity.Id));
+            if (existing > 0) return false;
             await Collection.InsertOneAsync(entity);
             return true;
         }, true);
@@ -579,11 +581,11 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         }
     }
 
-    private async Task<bool> DoesExistAsync(Expression<Func<TEntity, bool>> expression, CancellationToken cancellationToken = default)
-    {
-        var existing = await Collection.CountDocumentsAsync(expression, null, cancellationToken);
-        return existing > 0;
-    }
+    //private async Task<bool> DoesExistAsync(Expression<Func<TEntity, bool>> expression, CancellationToken cancellationToken = default)
+    //{
+    //    var existing = await Collection.CountDocumentsAsync(expression, null, cancellationToken);
+    //    return existing > 0;
+    //}
 
     protected virtual async Task CleanAsync(IMongoCollection<TEntity> collection)
     {

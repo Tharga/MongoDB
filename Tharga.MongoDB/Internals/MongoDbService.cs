@@ -8,6 +8,7 @@ using Microsoft.Extensions.Logging;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
 using MongoDB.Driver;
+using MongoDB.Driver.Core.Servers;
 using Tharga.MongoDB.Atlas;
 
 namespace Tharga.MongoDB.Internals;
@@ -41,7 +42,22 @@ internal class MongoDbService : IMongoDbService
 
             var cfg = MongoClientSettings.FromUrl(_mongoUrl);
             cfg.ConnectTimeout = Debugger.IsAttached ? TimeSpan.FromSeconds(5) : TimeSpan.FromSeconds(10);
+            cfg.SdamLogFilename = @"C:\temp\Logs\sdam.log";
+            cfg.MaxConnectionPoolSize = 1000; //TODO: Try this
+            //cfg.WaitQueueTimeout = TimeSpan.FromSeconds(10);
             _mongoClient = new MongoClient(cfg);
+
+            foreach (var server in GetMongoClient().Cluster.Description.Servers)
+            {
+                var isAlive = (server != null && server.HeartbeatException == null && server.State == ServerState.Connected);
+                if (isAlive)
+                {
+                }
+                else
+                {
+                }
+            }
+
             return _mongoClient;
         }
         finally
@@ -84,6 +100,7 @@ internal class MongoDbService : IMongoDbService
 
     public async ValueTask ResetConnection()
     {
+        //TODO: Multiple threads will all try to reset here, do not do it to fast. The locks does not help much in this case.
         try
         {
             await _mongoClientLock.WaitAsync();
