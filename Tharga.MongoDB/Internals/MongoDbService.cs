@@ -28,7 +28,7 @@ internal class MongoDbService : IMongoDbService
         var cfg = MongoClientSettings.FromUrl(mongoUrl);
         //TODO: Make timeout configurable
         cfg.ConnectTimeout = Debugger.IsAttached ? TimeSpan.FromSeconds(5) : TimeSpan.FromSeconds(10);
-        cfg.SdamLogFilename = @"C:\temp\Logs\sdam.log"; //TODO: Use logger instead
+        //cfg.SdamLogFilename = @"C:\temp\Logs\sdam.log"; //TODO: Use logger instead
         //cfg.MaxConnectionPoolSize = 1000; //TODO: Try this
         //cfg.WaitQueueTimeout = TimeSpan.FromSeconds(10);
         _mongoClient = new MongoClient(cfg);
