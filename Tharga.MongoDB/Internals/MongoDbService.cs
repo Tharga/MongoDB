@@ -7,7 +7,6 @@ using Microsoft.Extensions.Logging;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
 using MongoDB.Driver;
-using MongoDB.Driver.Core.Servers;
 using Tharga.MongoDB.Atlas;
 
 namespace Tharga.MongoDB.Internals;
@@ -34,16 +33,16 @@ internal class MongoDbService : IMongoDbService
         _mongoClient = new MongoClient(cfg);
         var settings = new MongoDatabaseSettings { WriteConcern = WriteConcern.WMajority };
 
-        foreach (var server in _mongoClient.Cluster.Description.Servers)
-        {
-            var isAlive = (server != null && server.HeartbeatException == null && server.State == ServerState.Connected);
-            if (isAlive)
-            {
-            }
-            else
-            {
-            }
-        }
+        //foreach (var server in _mongoClient.Cluster.Description.Servers)
+        //{
+        //    var isAlive = (server != null && server.HeartbeatException == null && server.State == ServerState.Connected);
+        //    if (isAlive)
+        //    {
+        //    }
+        //    else
+        //    {
+        //    }
+        //}
 
         _mongoDatabase = _mongoClient.GetDatabase(mongoUrl.DatabaseName, settings);
     }
@@ -105,11 +104,14 @@ internal class MongoDbService : IMongoDbService
         }
     }
 
-    public bool DoesCollectionExist(string name)
+    public async Task<bool> DoesCollectionExist(string name)
     {
+        //var items = _mongoDatabase.ListCollectionNamesAsync().ToAsyncEnumerable().ToListAsync();
+
         var filter = new BsonDocument("name", name);
         var options = new ListCollectionNamesOptions { Filter = filter };
-        return _mongoDatabase.ListCollectionNames(options).Any();
+        var exists = await (await _mongoDatabase.ListCollectionNamesAsync(options)).AnyAsync();
+        return exists;
     }
 
     public long GetSize(string collectionName, IMongoDatabase mongoDatabase = null)

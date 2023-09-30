@@ -32,7 +32,7 @@ public abstract class BufferRepositoryCollectionBase<TEntity, TKey> : Repository
         : base(mongoDbServiceFactory, logger, databaseContext)
     {
         _mongoDbServiceFactory = mongoDbServiceFactory;
-        _bufferCollection = BufferLibrary.GetBufferCollection<TEntity, TKey>();
+        _bufferCollection = BufferLibrary.GetBufferCollection<TEntity, TKey>(databaseContext);
     }
 
     internal override IRepositoryCollection<TEntity, TKey> BaseCollection => _diskConnected ? Disk : this;
@@ -176,11 +176,6 @@ public abstract class BufferRepositoryCollectionBase<TEntity, TKey> : Repository
         _bufferCollection.Data.AddOrUpdate(entity.Id, entity, (_, _) => entity);
         return result;
     }
-
-    //public override Task<long> UpdateAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update)
-    //{
-    //    throw new NotSupportedException($"{nameof(UpdateAsync)} with {nameof(filter)} is not supported for {nameof(BufferRepositoryCollectionBase<TEntity, TKey>)}");
-    //}
 
     public override async Task<EntityChangeResult<TEntity>> UpdateOneAsync(TKey id, UpdateDefinition<TEntity> update)
     {

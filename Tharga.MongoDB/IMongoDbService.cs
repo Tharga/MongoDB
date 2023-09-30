@@ -14,7 +14,7 @@ public interface IMongoDbService
     Task DropCollectionAsync(string name);
     IEnumerable<string> GetCollections();
     IAsyncEnumerable<(string Name, long DocumentCount, long Size)> GetCollectionsWithMetaAsync(string databaseName = null);
-    bool DoesCollectionExist(string name);
+    Task<bool> DoesCollectionExist(string name);
     void DropDatabase(string name);
     IEnumerable<string> GetDatabases();
     long GetSize(string collectionName, IMongoDatabase mongoDatabase = null);

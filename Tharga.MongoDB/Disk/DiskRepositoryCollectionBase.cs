@@ -480,7 +480,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                     InvokeAction(new ActionEventArgs.ActionData { Operation = nameof(FetchCollectionAsync), Message = "Starting to initiate.", Level = LogLevel.Trace });
                     RegisterTypes();
 
-                    var exists = _mongoDbService.DoesCollectionExist(ProtectedCollectionName);
+                    var exists = await _mongoDbService.DoesCollectionExist(ProtectedCollectionName);
                     if (exists)
                     {
                         await AssureIndex(collection);
