@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
 using MongoDB.Driver;
+using MongoDB.Driver.Core.Servers;
 using Tharga.MongoDB.Atlas;
 
 namespace Tharga.MongoDB.Internals;
@@ -27,8 +28,23 @@ internal class MongoDbService : IMongoDbService
         var cfg = MongoClientSettings.FromUrl(mongoUrl);
         //TODO: Make timeout configurable
         cfg.ConnectTimeout = Debugger.IsAttached ? TimeSpan.FromSeconds(5) : TimeSpan.FromSeconds(10);
+        cfg.SdamLogFilename = @"C:\temp\Logs\sdam.log"; //TODO: Use logger instead
+        //cfg.MaxConnectionPoolSize = 1000; //TODO: Try this
+        //cfg.WaitQueueTimeout = TimeSpan.FromSeconds(10);
         _mongoClient = new MongoClient(cfg);
         var settings = new MongoDatabaseSettings { WriteConcern = WriteConcern.WMajority };
+
+        foreach (var server in _mongoClient.Cluster.Description.Servers)
+        {
+            var isAlive = (server != null && server.HeartbeatException == null && server.State == ServerState.Connected);
+            if (isAlive)
+            {
+            }
+            else
+            {
+            }
+        }
+
         _mongoDatabase = _mongoClient.GetDatabase(mongoUrl.DatabaseName, settings);
     }
 

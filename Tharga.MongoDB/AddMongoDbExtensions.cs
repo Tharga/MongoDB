@@ -74,7 +74,7 @@ public static class AddMongoDbExtensions
         services.AddTransient<IExternalIpAddressService, ExternalIpAddressService>();
         services.AddTransient<IMongoDbFirewallService, MongoDbFirewallService>();
         services.AddSingleton<IMongoDbFirewallStateService, MongoDbFirewallStateService>();
-        services.AddTransient<IMongoDbServiceFactory>(serviceProvider =>
+        services.AddSingleton<IMongoDbServiceFactory>(serviceProvider =>
         {
             var repositoryConfigurationLoader = serviceProvider.GetService<IRepositoryConfigurationLoader>();
             var mongoDbFirewallStateService = serviceProvider.GetService<IMongoDbFirewallStateService> ();

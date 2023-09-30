@@ -28,6 +28,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
     {
         try
         {
+            _lock.Wait();
             return await FetchCollectionAsync();
         }
         catch (TimeoutException e)
@@ -50,6 +51,10 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             Debugger.Break();
             _logger.LogError(e, e.Message);
             throw;
+        }
+        finally
+        {
+            _lock.Release();
         }
     }).Result;
 
@@ -74,9 +79,15 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 
             return result;
         }
+        catch (Exception e) when (e is MongoConnectionException || e is TimeoutException || e is MongoConnectionPoolPausedException)
+        {
+            _logger?.LogWarning(e, $"{e.GetType().Name} {{repositoryType}}. [action: Database, operation: {functionName}]", "DiskRepository");
+            InvokeAction(new ActionEventArgs.ActionData { Operation = functionName, Exception = e });
+            throw;
+        }
         catch (Exception e)
         {
-            _logger?.LogError(e, $"Exception {{repositoryType}}. [action: Database, operation: {functionName}]", "DiskRepository");
+            _logger?.LogError(e, $"{e.GetType().Name} {{repositoryType}}. [action: Database, operation: {functionName}]", "DiskRepository");
             InvokeAction(new ActionEventArgs.ActionData { Operation = functionName, Exception = e });
             throw;
         }
@@ -455,11 +466,11 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 
     private async Task<IMongoCollection<TEntity>> FetchCollectionAsync()
     {
-        return await Execute(nameof(FetchCollectionAsync), async () =>
-        {
-            try
-            {
-                await _lock.WaitAsync();
+        //return await Execute(nameof(FetchCollectionAsync), async () =>
+        //{
+        //    try
+        //    {
+        //        await _lock.WaitAsync();
 
                 var collection = await _mongoDbService.GetCollectionAsync<TEntity>(ProtectedCollectionName);
 
@@ -488,12 +499,12 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                 }
 
                 return collection;
-            }
-            finally
-            {
-                _lock.Release();
-            }
-        }, false);
+        //    }
+        //    finally
+        //    {
+        //        _lock.Release();
+        //    }
+        //}, false);
     }
 
     private async Task AssureIndex(IMongoCollection<TEntity> collection)
