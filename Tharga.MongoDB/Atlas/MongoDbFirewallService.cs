@@ -42,7 +42,7 @@ internal class MongoDbFirewallService : IMongoDbFirewallService
                 return new FirewallResponse { Name = name, IpAddress = ipAddress, Result = EFirewallOpenResult.AlreadyOpen };
             }
 
-            await RemoveFromFirewallAsync(access, name);
+            //await RemoveFromFirewallAsync(access, name);
             await AddToFirewallAsync(access, name, ipAddress);
 
             return new FirewallResponse { Name = name, IpAddress = ipAddress, Result = EFirewallOpenResult.Open };
