@@ -3,6 +3,7 @@ using System.Threading.Tasks;
 using AutoFixture;
 using FluentAssertions;
 using MongoDB.Bson;
+using MongoDB.Driver;
 using Tharga.MongoDB.Tests.Support;
 using Xunit;
 
@@ -29,10 +30,9 @@ public class AddAsyncTest : GenericBufferRepositoryCollectionBaseTestBase
         var sut = await GetCollection(collectionType);
 
         //Act
-        var result = await sut.AddAsync(newEntity);
+        await sut.AddAsync(newEntity);
 
         //Assert
-        result.Should().BeTrue();
         (await sut.GetAsync(x => x.Id == id).ToArrayAsync()).Should().HaveCount(1);
         await VerifyContentAsync(sut);
     }
@@ -47,10 +47,9 @@ public class AddAsyncTest : GenericBufferRepositoryCollectionBaseTestBase
         var sut = await GetCollection(CollectionType.Disk);
 
         //Act
-        var result = await sut.AddAsync(newEntity);
+        await sut.AddAsync(newEntity);
 
         //Assert
-        result.Should().BeTrue();
         (await sut.GetAsync(x => x.Id == id).ToArrayAsync()).Should().HaveCount(1);
         await VerifyContentAsync(sut);
     }
@@ -64,10 +63,10 @@ public class AddAsyncTest : GenericBufferRepositoryCollectionBaseTestBase
         var sut = await GetCollection(collectionType);
 
         //Act
-        var result = await sut.AddAsync(InitialData.First());
+        var act = () => sut.AddAsync(InitialData.First());
 
         //Assert
-        result.Should().BeFalse();
+        await act.Should().ThrowAsync<MongoWriteException>();
         (await sut.GetAsync(x => x.Id == InitialData.First().Id).ToArrayAsync()).Should().HaveCount(1);
         await VerifyContentAsync(sut);
     }

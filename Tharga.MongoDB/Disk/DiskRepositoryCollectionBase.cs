@@ -102,7 +102,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         var cursor = await FindAsync(Collection, predicate, cancellationToken, o);
 
         var count = 0;
-        await foreach (var item in BuildList(cursor, cancellationToken).WithCancellation(cancellationToken))
+        await foreach (var item in BuildList(cursor, cancellationToken))
         {
             count++;
             yield return item;
@@ -137,7 +137,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         var cursor = await FindAsync(Collection, filter, cancellationToken, o);
 
         var count = 0;
-        await foreach (var item in BuildList(cursor, cancellationToken).WithCancellation(cancellationToken))
+        await foreach (var item in BuildList(cursor, cancellationToken))
         {
             count++;
             yield return item;
@@ -321,11 +321,10 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         }, false);
     }
 
-    public override async Task<bool> AddAsync(TEntity entity)
+    public override async Task AddAsync(TEntity entity)
     {
-        return await Execute(nameof(AddAsync), async () =>
+        await Execute(nameof(AddAsync), async () =>
         {
-            if (await DoesExistAsync(x => x.Id.Equals(entity.Id))) return false;
             await Collection.InsertOneAsync(entity);
             return true;
         }, true);
@@ -560,12 +559,6 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         {
             await collection.Indexes.CreateOneAsync(index);
         }
-    }
-
-    private async Task<bool> DoesExistAsync(Expression<Func<TEntity, bool>> expression, CancellationToken cancellationToken = default)
-    {
-        var existing = await Collection.CountDocumentsAsync(expression, null, cancellationToken);
-        return existing > 0;
     }
 
     protected virtual async Task CleanAsync(IMongoCollection<TEntity> collection)

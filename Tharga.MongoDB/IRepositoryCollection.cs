@@ -24,7 +24,7 @@ public interface IRepositoryCollection<TEntity, TKey> : IRepositoryCollection
     Task<TEntity> GetOneAsync(Expression<Func<TEntity, bool>> predicate = null, OneOption<TEntity> options = null, CancellationToken cancellationToken = default);
     Task<TEntity> GetOneAsync(FilterDefinition<TEntity> filter, OneOption<TEntity> options = null, CancellationToken cancellationToken = default);
     Task<T> GetOneAsync<T>(Expression<Func<T, bool>> predicate = null, OneOption<T> options = null, CancellationToken cancellationToken = default) where T : TEntity;
-    Task<bool> AddAsync(TEntity entity);
+    Task AddAsync(TEntity entity);
     Task AddManyAsync(IEnumerable<TEntity> entities);
     Task<EntityChangeResult<TEntity>> AddOrReplaceAsync(TEntity entity);
     Task<EntityChangeResult<TEntity>> UpdateOneAsync(TKey id, UpdateDefinition<TEntity> update);

@@ -16,4 +16,9 @@ public record MongoDbApiAccess
     /// Value of the GroupId in Atlas MongoDB.
     /// </summary>
     public string GroupId { get; init; }
+
+    /// <summary>
+    /// A name to be added as a comment for the firewall rule.
+    /// </summary>
+    public string Name { get; init; }
 }

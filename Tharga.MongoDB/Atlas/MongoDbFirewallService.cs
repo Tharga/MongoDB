@@ -28,9 +28,10 @@ internal class MongoDbFirewallService : IMongoDbFirewallService
     {
         if (!access.HasMongoDbApiAccess()) return new FirewallResponse { Result = EFirewallOpenResult.NoAccessProvided };
 
+        IPAddress ipAddress = null;
         try
         {
-            var ipAddress = await _externalIpAddressService.GetExternalIpAddressAsync();
+            ipAddress = await _externalIpAddressService.GetExternalIpAddressAsync();
             name ??= $"{Environment.MachineName}-Auto";
 
             var items = await GetFirewallListAsync(access).ToArrayAsync();
@@ -48,11 +49,34 @@ internal class MongoDbFirewallService : IMongoDbFirewallService
         }
         catch (Exception e)
         {
-            //_logger?.LogError(e, "Unable to AsureAccess to Atlas MongoDB for ip '{externalIp}'. {details}", ipAddress, e.Message);
+            _logger?.LogError(e, "Unable to AsureAccess to Atlas MongoDB for ip '{externalIp}' with name {name}. {details}", ipAddress, name, e.Message);
             //ActionEvent?.Invoke(this, new ActionEventArgs(new ActionEventArgs.ActionData { Level = LogLevel.Error, Message = $"Unable to AsureAccess to Atlas MongoDB for ip '{ipAddress}'. {e.Message}" }, null));
             Debugger.Break();
             Console.WriteLine(e);
             throw;
+        }
+    }
+
+    public async Task<(bool HaveAccess, string Message)> HaveAccess(MongoDbApiAccess access)
+    {
+        if (!access.HasMongoDbApiAccess()) return (false, "No configuration.");
+
+        try
+        {
+            var ipAddress = await _externalIpAddressService.GetExternalIpAddressAsync();
+
+            var items = await GetFirewallListAsync(access).ToArrayAsync();
+            var existing = items.FirstOrDefault(x => x.CidrBlock.StartsWith(ipAddress.ToString()));
+            if (existing != null)
+            {
+                return (true, $"Access with name '{existing.Comment}'.");
+            }
+
+            return (false, $"No access for ip '{ipAddress}'.");
+        }
+        catch (Exception e)
+        {
+            return (false, e.Message);
         }
     }
 
@@ -100,27 +124,5 @@ internal class MongoDbFirewallService : IMongoDbFirewallService
         using var result = await atlasHttp.Client.PostAsync($"groups/{access.GroupId}/accessList", content);
         result.EnsureSuccessStatusCode();
         _logger.LogInformation("Firewall opened for ip '{ipAddress}' with comment '{name}'.", ipAddress, name);
-    }
-}
-
-internal class AtlasHttpClient : IDisposable
-{
-    private readonly HttpClient _httpClient;
-    private readonly HttpClientHandler _handler;
-
-    public AtlasHttpClient(MongoDbApiAccess access)
-    {
-        _handler = new HttpClientHandler();
-        _handler.Credentials = new NetworkCredential(access.PublicKey, access.PrivateKey);
-        _httpClient = new HttpClient(_handler);
-        _httpClient.BaseAddress = new Uri("https://cloud.mongodb.com/api/atlas/v1.0/");
-    }
-
-    public HttpClient Client => _httpClient;
-
-    public void Dispose()
-    {
-        _httpClient.Dispose();
-        _handler.Dispose();
     }
 }
