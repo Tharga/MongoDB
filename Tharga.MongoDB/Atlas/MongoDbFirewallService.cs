@@ -105,9 +105,10 @@ internal class MongoDbFirewallService : IMongoDbFirewallService
 
         using var atlasHttp = new AtlasHttpClient(access);
 
-        await foreach (var item in GetFirewallListAsync(access))
+        await foreach (var item in GetFirewallListAsync(access).Where(x => x.Comment == name))
         {
             var r = await atlasHttp.Client.DeleteAsync($"groups/{access.GroupId}/accessList/{item.IpAddress}");
+            _logger.LogInformation("Firewall entry removed for '{name}' with ip '{ipAddress}'.", name, item.IpAddress);
             r.EnsureSuccessStatusCode();
         }
     }
