@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Linq;
 using Microsoft.Extensions.Logging;
+using MongoDB.Bson;
 using Tharga.MongoDB.Buffer;
 using Tharga.MongoDB.Configuration;
 using Tharga.MongoDB.Disk;
@@ -71,5 +72,10 @@ internal class CollectionProvider : ICollectionProvider
 
         var collection = Activator.CreateInstance(collectionType, parameters);
         return (TCollection)collection;
+    }
+
+    public TCollection GetCollection<TCollection, TEntity>(DatabaseContext databaseContext = null) where TCollection : IRepositoryCollection<TEntity, ObjectId> where TEntity : EntityBase
+    {
+        return GetCollection<TCollection, TEntity, ObjectId>(databaseContext);
     }
 }

@@ -7,6 +7,7 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
+using MongoDB.Bson;
 using MongoDB.Bson.Serialization;
 using MongoDB.Driver;
 using Tharga.MongoDB.Internals;
@@ -637,5 +638,14 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         }
 
         return item;
+    }
+}
+
+public abstract class DiskRepositoryCollectionBase<TEntity> : DiskRepositoryCollectionBase<TEntity, ObjectId>
+    where TEntity : EntityBase
+{
+    protected DiskRepositoryCollectionBase(IMongoDbServiceFactory mongoDbServiceFactory, ILogger<RepositoryCollectionBase<TEntity, ObjectId>> logger = null, DatabaseContext databaseContext = null)
+        : base(mongoDbServiceFactory, logger, databaseContext)
+    {
     }
 }

@@ -1,4 +1,6 @@
-﻿namespace Tharga.MongoDB;
+﻿using MongoDB.Bson;
+
+namespace Tharga.MongoDB;
 
 public interface ICollectionProvider
 {
@@ -33,4 +35,16 @@ public interface ICollectionProvider
     TCollection GetCollection<TCollection, TEntity, TKey>(DatabaseContext databaseContext = null)
         where TCollection : IRepositoryCollection<TEntity, TKey>
         where TEntity : EntityBase<TKey>;
+
+    /// <summary>
+    /// Returns a defined collection where the BaseEntity has ObjectId as key.
+    /// </summary>
+    /// <typeparam name="TCollection"></typeparam>
+    /// <typeparam name="TEntity"></typeparam>
+    /// <typeparam name="TKey"></typeparam>
+    /// <param name="databaseContext"></param>
+    /// <returns></returns>
+    TCollection GetCollection<TCollection, TEntity>(DatabaseContext databaseContext = null)
+        where TCollection : IRepositoryCollection<TEntity, ObjectId>
+        where TEntity : EntityBase;
 }
