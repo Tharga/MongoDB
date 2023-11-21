@@ -47,9 +47,21 @@ internal class MongoDbService : IMongoDbService
         _mongoDatabase = _mongoClient.GetDatabase(mongoUrl.DatabaseName, settings);
     }
 
-    public async Task<IMongoCollection<T>> GetCollectionAsync<T>(string collectionName)
+    public async Task<IMongoCollection<T>> GetCollectionAsync<T>(string collectionName, TimeSeriesOptions timeSeriesOptions)
     {
         await AssureFirewallAccessAsync();
+
+        if (timeSeriesOptions != null)
+        {
+            var filter = new BsonDocument("name", collectionName);
+            var collectionCursor = await _mongoDatabase.ListCollectionNamesAsync(new ListCollectionNamesOptions { Filter = filter });
+            if (!await collectionCursor.AnyAsync())
+            {
+                var options = new CreateCollectionOptions<T> { TimeSeriesOptions = timeSeriesOptions };
+                await _mongoDatabase.CreateCollectionAsync(collectionName, options);
+            }
+        }
+
         return _mongoDatabase.GetCollection<T>(collectionName);
     }
 
@@ -106,8 +118,6 @@ internal class MongoDbService : IMongoDbService
 
     public async Task<bool> DoesCollectionExist(string name)
     {
-        //var items = _mongoDatabase.ListCollectionNamesAsync().ToAsyncEnumerable().ToListAsync();
-
         var filter = new BsonDocument("name", name);
         var options = new ListCollectionNamesOptions { Filter = filter };
         var exists = await (await _mongoDatabase.ListCollectionNamesAsync(options)).AnyAsync();

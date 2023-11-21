@@ -71,4 +71,11 @@ public record DatabaseOptions
     /// 5. Default values.
     /// </summary>
     public Func<IServiceProvider, Task<MongoDbConfigurationTree>> ConfigurationLoader { get; set; }
+
+    /// <summary>
+    /// Collections provided by CollectionProvider are Cache.
+    /// The cache is keepts for the duration of the application lifetime.
+    /// This cache enabled by default.
+    /// </summary>
+    public bool UseCollectionProviderCache { get; set; } = true;
 }

@@ -6,7 +6,7 @@ namespace Tharga.MongoDB;
 
 public interface IMongoDbService
 {
-    Task<IMongoCollection<T>> GetCollectionAsync<T>(string collectionName);
+    Task<IMongoCollection<T>> GetCollectionAsync<T>(string collectionName, TimeSeriesOptions timeSeriesOptions = null);
     string GetDatabaseName();
     string GetDatabaseAddress();
     string GetDatabaseHostName();

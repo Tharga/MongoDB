@@ -90,10 +90,18 @@ public static class AddMongoDbExtensions
         services.AddTransient<IMongoUrlBuilderLoader>(serviceProvider => new MongoUrlBuilderLoader(serviceProvider, databaseOptions));
         services.AddTransient<IRepositoryConfiguration>(serviceProvider => new RepositoryConfiguration(serviceProvider, databaseOptions));
 
+        services.AddSingleton<ICollectionProviderCache>(_ =>
+        {
+            if (databaseOptions.UseCollectionProviderCache)
+                return new CollectionProviderCache();
+            return new CollectionProviderNoCache();
+        });
+
         services.AddTransient<ICollectionProvider, CollectionProvider>(provider =>
         {
+            var collectionProviderCache = provider.GetService<ICollectionProviderCache>();
             var mongoDbServiceFactory = provider.GetService<IMongoDbServiceFactory>();
-            return new CollectionProvider(mongoDbServiceFactory, type =>
+            return new CollectionProvider(collectionProviderCache, mongoDbServiceFactory, type =>
             {
                 var service = provider.GetService(type);
                 return service;
