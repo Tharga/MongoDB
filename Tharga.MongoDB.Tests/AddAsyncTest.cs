@@ -9,6 +9,8 @@ using Xunit;
 
 namespace Tharga.MongoDB.Tests;
 
+[Collection("Sequential")]
+[CollectionDefinition("Sequential", DisableParallelization = true)]
 public class AddAsyncTest : GenericBufferRepositoryCollectionBaseTestBase
 {
     public AddAsyncTest()

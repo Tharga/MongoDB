@@ -159,7 +159,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 
         _ = Collection ?? throw new InvalidOperationException("Unable to initiate collection.");
 
-        var collection = await _mongoDbService.GetCollectionAsync<T>(ProtectedCollectionName);
+        var collection = await GetCollectionAsync<T>();
         var cursor = await collection.FindAsync(filter ?? FilterDefinition<T>.Empty, o, cancellationToken);
 
         var count = 0;
@@ -303,7 +303,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 
             _ = Collection ?? throw new InvalidOperationException("Unable to initiate collection.");
 
-            var collection = await _mongoDbService.GetCollectionAsync<T>(ProtectedCollectionName);
+            var collection = await GetCollectionAsync<T>();
             var findFluent = collection.Find(filter).Sort(options?.Sort).Limit(2);
             T item;
             switch (options?.Mode)
@@ -320,6 +320,11 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             }
             return await CleanEntityAsync(collection, item);
         }, false);
+    }
+
+    protected virtual async Task<IMongoCollection<T>> GetCollectionAsync<T>()
+    {
+        return await _mongoDbService.GetCollectionAsync<T>(ProtectedCollectionName);
     }
 
     public override async Task AddAsync(TEntity entity)
@@ -472,7 +477,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         //    {
         //        await _lock.WaitAsync();
 
-                var collection = await _mongoDbService.GetCollectionAsync<TEntity>(ProtectedCollectionName);
+                var collection = await GetCollectionAsync<TEntity>();
 
                 if (InitiationLibrary.ShouldInitiate(ServerName, DatabaseName, ProtectedCollectionName))
                 {
