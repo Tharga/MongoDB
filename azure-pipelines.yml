@@ -1,7 +1,7 @@
 trigger:
 - master
 
-name: 1.10.$(Rev:r)
+name: 1.11.$(Rev:r)
 
 pool:
   vmImage: 'windows-latest'
@@ -20,9 +20,9 @@ stages:
 
     steps:
     - task: UseDotNet@2
-      displayName: 'Use .NET 7'
+      displayName: 'Use .NET 8'
       inputs:
-        version: 7.0.x
+        version: 8.0.x
         includePreviewVersions: false
 
     - task: PowerShell@2
@@ -76,6 +76,13 @@ stages:
       inputs:
         command: 'pack'
         packagesToPack: '**/Tharga.MongoDB.csproj'
+        versioningScheme: 'byBuildNumber'
+
+    - task: DotNetCoreCLI@2
+      displayName: 'Pack Tharga.MongoDB.Web'
+      inputs:
+        command: 'pack'
+        packagesToPack: '**/Tharga.MongoDB.Web.csproj'
         versioningScheme: 'byBuildNumber'
 
     - task: DotNetCoreCLI@2

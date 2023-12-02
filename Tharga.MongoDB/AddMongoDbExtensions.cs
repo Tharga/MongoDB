@@ -2,7 +2,6 @@
 using System.Collections.Concurrent;
 using System.Linq;
 using System.Threading.Tasks;
-using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Tharga.MongoDB.Atlas;
@@ -18,9 +17,9 @@ public static class AddMongoDbExtensions
     private static readonly ConcurrentDictionary<Type, Type> _registeredCollections = new();
     private static Action<ActionEventArgs> _actionEvent;
 
-    public static void UseMongoDB(this IApplicationBuilder applicationBuilder, Action<DatabaseUsage> options = null)
+    public static void UseMongoDB(this IServiceProvider services, Action<DatabaseUsage> options = null)
     {
-        var repositoryConfiguration = applicationBuilder.ApplicationServices.GetService<IRepositoryConfiguration>();
+        var repositoryConfiguration = services.GetService<IRepositoryConfiguration>();
 
         var databaseOptions = new DatabaseUsage
         {
@@ -29,8 +28,8 @@ public static class AddMongoDbExtensions
 
         options?.Invoke(databaseOptions);
 
-        var mongoDbFirewallStateService = applicationBuilder.ApplicationServices.GetService<IMongoDbFirewallStateService>();
-        var mongoDbServiceFactory = applicationBuilder.ApplicationServices.GetService<IMongoDbServiceFactory>();
+        var mongoDbFirewallStateService = services.GetService<IMongoDbFirewallStateService>();
+        var mongoDbServiceFactory = services.GetService<IMongoDbServiceFactory>();
 
         Task.Run(async () =>
         {
