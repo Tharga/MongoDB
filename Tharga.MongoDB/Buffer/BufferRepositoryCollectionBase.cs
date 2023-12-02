@@ -188,6 +188,13 @@ public abstract class BufferRepositoryCollectionBase<TEntity, TKey> : Repository
         return result;
     }
 
+    public override async Task<EntityChangeResult<TEntity>> ReplaceOneAsync(TEntity entity, OneOption<TEntity> options = null)
+    {
+        var result = await Disk.ReplaceOneAsync(entity);
+        _bufferCollection.Data.TryUpdate(entity.Id, entity, result.Before);
+        return result;
+    }
+
     public override async Task<EntityChangeResult<TEntity>> UpdateOneAsync(TKey id, UpdateDefinition<TEntity> update)
     {
         var result = await Disk.UpdateOneAsync(id, update);

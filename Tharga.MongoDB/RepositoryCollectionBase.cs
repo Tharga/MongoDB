@@ -65,7 +65,7 @@ public abstract class RepositoryCollectionBase<TEntity, TKey> : RepositoryCollec
     public abstract Task<bool> TryAddAsync(TEntity entity);
     public abstract Task AddManyAsync(IEnumerable<TEntity> entities);
     public abstract Task<EntityChangeResult<TEntity>> AddOrReplaceAsync(TEntity entity);
-    //public abstract Task<long> UpdateAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update);
+    public abstract Task<EntityChangeResult<TEntity>> ReplaceOneAsync(TEntity entity, OneOption<TEntity> options = null);
     public abstract Task<EntityChangeResult<TEntity>> UpdateOneAsync(TKey id, UpdateDefinition<TEntity> update);
     public abstract Task<EntityChangeResult<TEntity>> UpdateOneAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update, FindOneAndUpdateOptions<TEntity> options = default);
     public abstract Task<TEntity> DeleteOneAsync(TKey id);

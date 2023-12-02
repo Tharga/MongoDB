@@ -373,14 +373,22 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             if (current == default)
             {
                 await Collection.InsertOneAsync(entity);
-                //data.AddField("operation", "inserted");
             }
             else
             {
                 before = current;
-                //data.AddField("operation", "updated");
             }
 
+            return new EntityChangeResult<TEntity>(before, entity);
+        }, true);
+    }
+
+    public override async Task<EntityChangeResult<TEntity>> ReplaceOneAsync(TEntity entity, OneOption<TEntity> options = null)
+    {
+        return await Execute(nameof(ReplaceOneAsync), async () =>
+        {
+            var filter = Builders<TEntity>.Filter.Eq(x => x.Id, entity.Id);
+            var before = await Collection.FindOneAndReplaceAsync(filter, entity);
             return new EntityChangeResult<TEntity>(before, entity);
         }, true);
     }

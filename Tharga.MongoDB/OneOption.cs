@@ -8,4 +8,5 @@ public record OneOption<TEntity>
     public EMode Mode { get; init; } = EMode.Single;
 
     public static OneOption<TEntity> First => new() { Mode = EMode.First };
+    public static OneOption<TEntity> Single => new() { Mode = EMode.Single };
 }
