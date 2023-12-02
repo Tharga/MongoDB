@@ -144,6 +144,18 @@ public abstract class BufferRepositoryCollectionBase<TEntity, TKey> : Repository
         await InvalidateBufferAsync();
     }
 
+    public override async Task<bool> TryAddAsync(TEntity entity)
+    {
+        var result = await Disk.TryAddAsync(entity);
+        if (!result) return false;
+
+        var buffer = await GetBufferAsync();
+        if (buffer.TryAdd(entity.Id, entity)) return true;
+
+        await InvalidateBufferAsync();
+        return true;
+    }
+
     public override async Task AddManyAsync(IEnumerable<TEntity> entities)
     {
         try

@@ -336,6 +336,24 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         }, true);
     }
 
+    public override async Task<bool> TryAddAsync(TEntity entity)
+    {
+        return await Execute(nameof(TryAddAsync), async () =>
+        {
+            try
+            {
+                await Collection.InsertOneAsync(entity);
+                return true;
+            }
+            catch (Exception e) //TODO: Catch explicit exception
+            {
+                Debugger.Break();
+                Console.WriteLine(e);
+                return false;
+            }
+        }, true);
+    }
+
     public override async Task AddManyAsync(IEnumerable<TEntity> entities)
     {
         await Execute(nameof(AddManyAsync), async () =>
