@@ -77,9 +77,9 @@ public abstract class BufferRepositoryCollectionBase<TEntity, TKey> : Repository
         }
     }
 
-    public override IAsyncEnumerable<ResultPage<TEntity, TKey>> GetPageAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default)
+    public override IAsyncEnumerable<ResultPage<TEntity, TKey>> GetPagesAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default)
     {
-        throw new NotSupportedException($"{nameof(GetPageAsync)} is not supported for {nameof(BufferRepositoryCollectionBase<TEntity, TKey>)}");
+        throw new NotSupportedException($"{nameof(GetPagesAsync)} is not supported for {nameof(BufferRepositoryCollectionBase<TEntity, TKey>)}");
     }
 
     public override async Task<TEntity> GetOneAsync(TKey id, CancellationToken cancellationToken = default)
