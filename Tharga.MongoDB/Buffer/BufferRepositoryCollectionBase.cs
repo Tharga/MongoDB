@@ -202,7 +202,14 @@ public abstract class BufferRepositoryCollectionBase<TEntity, TKey> : Repository
         return result;
     }
 
-    public override async Task<EntityChangeResult<TEntity>> UpdateOneAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update, FindOneAndUpdateOptions<TEntity> options = default)
+    public override async Task<EntityChangeResult<TEntity>> UpdateOneAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update, FindOneAndUpdateOptions<TEntity> options)
+    {
+        var result = await Disk.UpdateOneAsync(filter, update, options);
+        await InvalidateBufferAsync();
+        return result;
+    }
+
+    public override async Task<EntityChangeResult<TEntity>> UpdateOneAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update, OneOption<TEntity> options = null)
     {
         var result = await Disk.UpdateOneAsync(filter, update, options);
         await InvalidateBufferAsync();
@@ -219,7 +226,17 @@ public abstract class BufferRepositoryCollectionBase<TEntity, TKey> : Repository
         return result;
     }
 
-    public override async Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate = null, FindOneAndDeleteOptions<TEntity, TEntity> options = default)
+    public override async Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate, FindOneAndDeleteOptions<TEntity, TEntity> options)
+    {
+        var result = await Disk.DeleteOneAsync(predicate, options);
+        if (!_bufferCollection.Data.TryRemove(result.Id, out _))
+        {
+            await InvalidateBufferAsync();
+        }
+        return result;
+    }
+
+    public override async Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate = null, OneOption<TEntity> options = null)
     {
         var result = await Disk.DeleteOneAsync(predicate, options);
         if (!_bufferCollection.Data.TryRemove(result.Id, out _))

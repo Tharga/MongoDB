@@ -31,10 +31,12 @@ public interface IRepositoryCollection<TEntity, TKey> : IRepositoryCollection
     Task<EntityChangeResult<TEntity>> ReplaceOneAsync(TEntity entity, OneOption<TEntity> options = null);
     Task<EntityChangeResult<TEntity>> UpdateOneAsync(TKey id, UpdateDefinition<TEntity> update);
     Task<EntityChangeResult<TEntity>> UpdateOneAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update, FindOneAndUpdateOptions<TEntity> options = default);
-    //Task<EntityChangeResult<TEntity>> UpdateOneAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update, OneOption<TEntity> options = null);
+    //TODO: When we are sure the UpdateOneAsync with OneOption works as intended, deprecate this one.
+    Task<EntityChangeResult<TEntity>> UpdateOneAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update, OneOption<TEntity> options);
     Task<TEntity> DeleteOneAsync(TKey id);
+    //TODO: When we are sure the DeleteOneAsync with OneOption works as intended, deprecate this one.
     Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate = null, FindOneAndDeleteOptions<TEntity, TEntity> options = default);
-    //Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate = null, OneOption<TEntity> options = null);
+    Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate = null, OneOption<TEntity> options = null);
     Task<long> DeleteManyAsync(Expression<Func<TEntity, bool>> predicate);
     Task<long> CountAsync(Expression<Func<TEntity, bool>> predicate);
     Task<long> CountAsync(FilterDefinition<TEntity> filter);

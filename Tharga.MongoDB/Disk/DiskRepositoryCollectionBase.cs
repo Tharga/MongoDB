@@ -417,13 +417,45 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         }, true);
     }
 
-    public override async Task<EntityChangeResult<TEntity>> UpdateOneAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update, FindOneAndUpdateOptions<TEntity> options = default)
+    public override async Task<EntityChangeResult<TEntity>> UpdateOneAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update, FindOneAndUpdateOptions<TEntity> options)
     {
         return await Execute(nameof(UpdateOneAsync), async () =>
         {
             options ??= new FindOneAndUpdateOptions<TEntity> { ReturnDocument = ReturnDocument.Before };
             if (options.ReturnDocument != ReturnDocument.Before) throw new InvalidOperationException($"The ReturnDocument option has to be set to {ReturnDocument.Before}. To get the '{ReturnDocument.After}', call method '{nameof(EntityChangeResult<TEntity>.GetAfterAsync)}()' on the result.");
             var before = await Collection.FindOneAndUpdateAsync(filter, update, options);
+            if (before == null) return new EntityChangeResult<TEntity>(default, default(TEntity));
+            return new EntityChangeResult<TEntity>(before, async () =>
+            {
+                return await Collection.Find(x => x.Id.Equals(before.Id)).SingleAsync();
+            });
+        }, true);
+    }
+
+    public override async Task<EntityChangeResult<TEntity>> UpdateOneAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update, OneOption<TEntity> options = null)
+    {
+        if (filter == null) throw new ArgumentException(nameof(filter));
+        if (update == null) throw new ArgumentException(nameof(update));
+
+        return await Execute(nameof(UpdateOneAsync), async () =>
+        {
+            var sort = options?.Sort;
+            var findFluent = Collection.Find(filter).Sort(sort).Limit(2);
+            TEntity item;
+            switch (options?.Mode)
+            {
+                case null:
+                case EMode.Single:
+                    item = await findFluent.SingleOrDefaultAsync();
+                    break;
+                case EMode.First:
+                    item = await findFluent.FirstOrDefaultAsync();
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException();
+            }
+            var itemFilter = new FilterDefinitionBuilder<TEntity>().Eq(x => x.Id, item.Id);
+            var before = await Collection.FindOneAndUpdateAsync(itemFilter, update);
             if (before == null) return new EntityChangeResult<TEntity>(default, default(TEntity));
             return new EntityChangeResult<TEntity>(before, async () =>
             {
@@ -443,7 +475,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         }, false);
     }
 
-    public override async Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate = null, FindOneAndDeleteOptions<TEntity, TEntity> options = default)
+    public override async Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate, FindOneAndDeleteOptions<TEntity, TEntity> options)
     {
         return await Execute(nameof(DeleteOneAsync), async () =>
         {
@@ -451,6 +483,34 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             await DropEmpty(Collection);
             return item;
         }, false);
+    }
+
+    public override async Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate = null, OneOption<TEntity> options = null)
+    {
+        if (predicate == null) throw new ArgumentException(nameof(predicate));
+
+        return await Execute(nameof(UpdateOneAsync), async () =>
+        {
+            var sort = options?.Sort;
+            var findFluent = Collection.Find(predicate).Sort(sort).Limit(2);
+            TEntity item;
+            switch (options?.Mode)
+            {
+                case null:
+                case EMode.Single:
+                    item = await findFluent.SingleOrDefaultAsync();
+                    break;
+                case EMode.First:
+                    item = await findFluent.FirstOrDefaultAsync();
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException();
+            }
+            var itemFilter = new FilterDefinitionBuilder<TEntity>().Eq(x => x.Id, item.Id);
+            await Collection.FindOneAndDeleteAsync(itemFilter);
+            await DropEmpty(Collection);
+            return item;
+        }, true);
     }
 
     public override async Task<long> DeleteManyAsync(Expression<Func<TEntity, bool>> predicate)
