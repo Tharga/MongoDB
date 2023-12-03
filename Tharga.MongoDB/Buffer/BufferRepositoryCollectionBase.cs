@@ -55,7 +55,7 @@ public abstract class BufferRepositoryCollectionBase<TEntity, TKey> : Repository
         }
 
         sw.Stop();
-        _logger?.LogInformation($"Executed {{repositoryType}} took {{elapsed}} ms and returned {{itemCount}} items. [action: Database, operation: {nameof(GetAsync)}]", "BufferRepository", sw.Elapsed.TotalMilliseconds, count);
+        _logger?.LogInformation($"Executed {{repositoryType}} for {{CollectionName}} took {{elapsed}} ms and returned {{itemCount}} items. [action: Database, operation: {nameof(GetAsync)}]", "BufferRepository", CollectionName, sw.Elapsed.TotalMilliseconds, count);
         InvokeAction(new ActionEventArgs.ActionData { Operation = nameof(GetAsync), Elapsed = sw.Elapsed, ItemCount = count });
     }
 
@@ -77,9 +77,9 @@ public abstract class BufferRepositoryCollectionBase<TEntity, TKey> : Repository
         }
     }
 
-    public override IAsyncEnumerable<ResultPage<TEntity, TKey>> GetPageAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default)
+    public override IAsyncEnumerable<ResultPage<TEntity, TKey>> GetPagesAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default)
     {
-        throw new NotSupportedException($"{nameof(GetPageAsync)} is not supported for {nameof(BufferRepositoryCollectionBase<TEntity, TKey>)}");
+        throw new NotSupportedException($"{nameof(GetPagesAsync)} is not supported for {nameof(BufferRepositoryCollectionBase<TEntity, TKey>)}");
     }
 
     public override async Task<TEntity> GetOneAsync(TKey id, CancellationToken cancellationToken = default)
@@ -144,6 +144,18 @@ public abstract class BufferRepositoryCollectionBase<TEntity, TKey> : Repository
         await InvalidateBufferAsync();
     }
 
+    public override async Task<bool> TryAddAsync(TEntity entity)
+    {
+        var result = await Disk.TryAddAsync(entity);
+        if (!result) return false;
+
+        var buffer = await GetBufferAsync();
+        if (buffer.TryAdd(entity.Id, entity)) return true;
+
+        await InvalidateBufferAsync();
+        return true;
+    }
+
     public override async Task AddManyAsync(IEnumerable<TEntity> entities)
     {
         try
@@ -176,6 +188,13 @@ public abstract class BufferRepositoryCollectionBase<TEntity, TKey> : Repository
         return result;
     }
 
+    public override async Task<EntityChangeResult<TEntity>> ReplaceOneAsync(TEntity entity, OneOption<TEntity> options = null)
+    {
+        var result = await Disk.ReplaceOneAsync(entity);
+        _bufferCollection.Data.TryUpdate(entity.Id, entity, result.Before);
+        return result;
+    }
+
     public override async Task<EntityChangeResult<TEntity>> UpdateOneAsync(TKey id, UpdateDefinition<TEntity> update)
     {
         var result = await Disk.UpdateOneAsync(id, update);
@@ -183,7 +202,14 @@ public abstract class BufferRepositoryCollectionBase<TEntity, TKey> : Repository
         return result;
     }
 
-    public override async Task<EntityChangeResult<TEntity>> UpdateOneAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update, FindOneAndUpdateOptions<TEntity> options = default)
+    public override async Task<EntityChangeResult<TEntity>> UpdateOneAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update, FindOneAndUpdateOptions<TEntity> options)
+    {
+        var result = await Disk.UpdateOneAsync(filter, update, options);
+        await InvalidateBufferAsync();
+        return result;
+    }
+
+    public override async Task<EntityChangeResult<TEntity>> UpdateOneAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update, OneOption<TEntity> options = null)
     {
         var result = await Disk.UpdateOneAsync(filter, update, options);
         await InvalidateBufferAsync();
@@ -200,7 +226,17 @@ public abstract class BufferRepositoryCollectionBase<TEntity, TKey> : Repository
         return result;
     }
 
-    public override async Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate = null, FindOneAndDeleteOptions<TEntity, TEntity> options = default)
+    public override async Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate, FindOneAndDeleteOptions<TEntity, TEntity> options)
+    {
+        var result = await Disk.DeleteOneAsync(predicate, options);
+        if (!_bufferCollection.Data.TryRemove(result.Id, out _))
+        {
+            await InvalidateBufferAsync();
+        }
+        return result;
+    }
+
+    public override async Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate = null, OneOption<TEntity> options = null)
     {
         var result = await Disk.DeleteOneAsync(predicate, options);
         if (!_bufferCollection.Data.TryRemove(result.Id, out _))

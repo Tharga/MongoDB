@@ -10,7 +10,7 @@ public record MongoDbConfiguration
 
     /// <summary>
     /// The maximum number of records allowed in a single response.
-    /// The function GetPageAsync can be used to make multiple calls to get more data.
+    /// The function GetPagesAsync can be used to make multiple calls to get more data.
     /// Default value is null (no limit).
     /// </summary>
     public int? ResultLimit { get; init; }

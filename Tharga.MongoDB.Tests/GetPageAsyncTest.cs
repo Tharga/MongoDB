@@ -29,7 +29,7 @@ public class GetPageAsyncTest : GenericBufferRepositoryCollectionBaseTestBase
         sut.ResultLimit.Should().Be(5);
 
         //Act
-        var result = await sut.GetPageAsync(x => true).ToArrayAsync();
+        var result = await sut.GetPagesAsync(x => true).ToArrayAsync();
 
         //Assert
         result.Should().NotBeNull();
@@ -50,7 +50,7 @@ public class GetPageAsyncTest : GenericBufferRepositoryCollectionBaseTestBase
         InitialData.Length.Should().Be((int)await sut.CountAsync(x => true));
 
         //Act
-        var result = await sut.GetPageAsync(x => true).SelectMany(x => x.Items).ToArrayAsync();
+        var result = await sut.GetPagesAsync(x => true).SelectMany(x => x.Items).ToArrayAsync();
 
         //Assert
         result.Should().NotBeNull();
@@ -81,7 +81,7 @@ public class GetPageAsyncTest : GenericBufferRepositoryCollectionBaseTestBase
         var sut = await GetCollection(CollectionType.Buffer);
 
         //Act
-        var act = async () => await sut.GetPageAsync(x => true).ToArrayAsync();
+        var act = async () => await sut.GetPagesAsync(x => true).ToArrayAsync();
 
         //Assert
         await act.Should().ThrowAsync<NotSupportedException>();
