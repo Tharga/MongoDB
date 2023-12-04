@@ -282,11 +282,17 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             switch (options?.Mode)
             {
                 case null:
-                case EMode.Single:
+                case EMode.SingleOrDefault:
                     item = await findFluent.SingleOrDefaultAsync(cancellationToken: cancellationToken);
                     break;
-                case EMode.First:
+                case EMode.Single:
+                    item = await findFluent.SingleAsync(cancellationToken: cancellationToken);
+                    break;
+                case EMode.FirstOrDefault:
                     item = await findFluent.FirstOrDefaultAsync(cancellationToken: cancellationToken);
+                    break;
+                case EMode.First:
+                    item = await findFluent.FirstAsync(cancellationToken: cancellationToken);
                     break;
                 default:
                     throw new ArgumentOutOfRangeException();
@@ -309,11 +315,17 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             switch (options?.Mode)
             {
                 case null:
-                case EMode.Single:
+                case EMode.SingleOrDefault:
                     item = await findFluent.SingleOrDefaultAsync(cancellationToken: cancellationToken);
                     break;
-                case EMode.First:
+                case EMode.Single:
+                    item = await findFluent.SingleAsync(cancellationToken: cancellationToken);
+                    break;
+                case EMode.FirstOrDefault:
                     item = await findFluent.FirstOrDefaultAsync(cancellationToken: cancellationToken);
+                    break;
+                case EMode.First:
+                    item = await findFluent.FirstAsync(cancellationToken: cancellationToken);
                     break;
                 default:
                     throw new ArgumentOutOfRangeException();
@@ -432,7 +444,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         }, true);
     }
 
-    public override async Task<EntityChangeResult<TEntity>> UpdateOneAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update, OneOption<TEntity> options = null)
+    public override async Task<EntityChangeResult<TEntity>> UpdateOneAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update, OneOption<TEntity> options = default)
     {
         if (filter == null) throw new ArgumentException(nameof(filter));
         if (update == null) throw new ArgumentException(nameof(update));
@@ -445,21 +457,30 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             switch (options?.Mode)
             {
                 case null:
-                case EMode.Single:
+                case EMode.SingleOrDefault:
                     item = await findFluent.SingleOrDefaultAsync();
                     break;
-                case EMode.First:
+                case EMode.Single:
+                    item = await findFluent.SingleAsync();
+                    break;
+                case EMode.FirstOrDefault:
                     item = await findFluent.FirstOrDefaultAsync();
+                    break;
+                case EMode.First:
+                    item = await findFluent.FirstAsync();
                     break;
                 default:
                     throw new ArgumentOutOfRangeException();
             }
+
+            if (item == null) return new EntityChangeResult<TEntity>(default, default(TEntity));
+
             var itemFilter = new FilterDefinitionBuilder<TEntity>().Eq(x => x.Id, item.Id);
-            var before = await Collection.FindOneAndUpdateAsync(itemFilter, update);
-            if (before == null) return new EntityChangeResult<TEntity>(default, default(TEntity));
-            return new EntityChangeResult<TEntity>(before, async () =>
+            item = await Collection.FindOneAndUpdateAsync(itemFilter, update);
+
+            return new EntityChangeResult<TEntity>(item, async () =>
             {
-                return await Collection.Find(x => x.Id.Equals(before.Id)).SingleAsync();
+                return await Collection.Find(x => x.Id.Equals(item.Id)).SingleAsync();
             });
         }, true);
     }
@@ -485,7 +506,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         }, false);
     }
 
-    public override async Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate = null, OneOption<TEntity> options = null)
+    public override async Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate = default, OneOption<TEntity> options = default)
     {
         if (predicate == null) throw new ArgumentException(nameof(predicate));
 
@@ -497,15 +518,24 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             switch (options?.Mode)
             {
                 case null:
-                case EMode.Single:
+                case EMode.SingleOrDefault:
                     item = await findFluent.SingleOrDefaultAsync();
                     break;
-                case EMode.First:
+                case EMode.Single:
+                    item = await findFluent.SingleAsync();
+                    break;
+                case EMode.FirstOrDefault:
                     item = await findFluent.FirstOrDefaultAsync();
+                    break;
+                case EMode.First:
+                    item = await findFluent.FirstAsync();
                     break;
                 default:
                     throw new ArgumentOutOfRangeException();
             }
+
+            if (item == null) return default;
+
             var itemFilter = new FilterDefinitionBuilder<TEntity>().Eq(x => x.Id, item.Id);
             await Collection.FindOneAndDeleteAsync(itemFilter);
             await DropEmpty(Collection);
