@@ -99,9 +99,13 @@ public abstract class BufferRepositoryCollectionBase<TEntity, TKey> : Repository
         switch (options?.Mode)
         {
             case null:
-            case EMode.Single:
+            case EMode.SingleOrDefault:
                 return data.SingleOrDefault();
+            case EMode.Single:
+                return data.Single();
             case EMode.First:
+                return data.First();
+            case EMode.FirstOrDefault:
                 return data.FirstOrDefault();
             default:
                 throw new ArgumentOutOfRangeException($"Unknown mode '{options.Mode}'.");
@@ -125,10 +129,14 @@ public abstract class BufferRepositoryCollectionBase<TEntity, TKey> : Repository
         switch (options?.Mode)
         {
             case null:
-            case EMode.Single:
+            case EMode.SingleOrDefault:
                 return data.SingleOrDefault() as T;
-            case EMode.First:
+            case EMode.Single:
+                return data.Single() as T;
+            case EMode.FirstOrDefault:
                 return data.FirstOrDefault() as T;
+            case EMode.First:
+                return data.First() as T;
             default:
                 throw new ArgumentOutOfRangeException($"Unknown mode '{options.Mode}'.");
         }
@@ -209,7 +217,7 @@ public abstract class BufferRepositoryCollectionBase<TEntity, TKey> : Repository
         return result;
     }
 
-    public override async Task<EntityChangeResult<TEntity>> UpdateOneAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update, OneOption<TEntity> options = null)
+    public override async Task<EntityChangeResult<TEntity>> UpdateOneAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update, OneOption<TEntity> options = default)
     {
         var result = await Disk.UpdateOneAsync(filter, update, options);
         await InvalidateBufferAsync();
@@ -236,7 +244,7 @@ public abstract class BufferRepositoryCollectionBase<TEntity, TKey> : Repository
         return result;
     }
 
-    public override async Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate = null, OneOption<TEntity> options = null)
+    public override async Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate = default, OneOption<TEntity> options = default)
     {
         var result = await Disk.DeleteOneAsync(predicate, options);
         if (!_bufferCollection.Data.TryRemove(result.Id, out _))

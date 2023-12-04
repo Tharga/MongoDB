@@ -1,10 +1,9 @@
-﻿using MongoDB.Driver;
-using Tharga.MongoDB.Configuration;
-
-namespace Tharga.MongoDB;
+﻿namespace Tharga.MongoDB;
 
 public enum EMode
 {
+    SingleOrDefault,
     Single,
-    First
+    FirstOrDefault,
+    First,
 }
