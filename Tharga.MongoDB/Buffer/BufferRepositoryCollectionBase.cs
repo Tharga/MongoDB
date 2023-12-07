@@ -282,6 +282,11 @@ public abstract class BufferRepositoryCollectionBase<TEntity, TKey> : Repository
         throw new NotSupportedException($"{nameof(CountAsync)} with {nameof(filter)} is not supported for {nameof(BufferRepositoryCollectionBase<TEntity, TKey>)}");
     }
 
+    public override IAsyncEnumerable<TTarget> AggregateAsync<TTarget>(FilterDefinition<TEntity> filter, EPrecision precision, AggregateOperations<TTarget> operations)
+    {
+        throw new NotSupportedException($"{nameof(AggregateAsync)} is not supported for {nameof(BufferRepositoryCollectionBase<TEntity, TKey>)}");
+    }
+
     public override Task<long> GetSizeAsync()
     {
         return Disk.GetSizeAsync();

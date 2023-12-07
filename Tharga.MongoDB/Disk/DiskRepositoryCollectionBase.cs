@@ -580,6 +580,56 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         }, false);
     }
 
+    public override async IAsyncEnumerable<TTarget> AggregateAsync<TTarget>(FilterDefinition<TEntity> filter, EPrecision precision, AggregateOperations<TTarget> operations)
+    {
+        var serializerRegistry = BsonSerializer.SerializerRegistry;
+        var documentSerializer = serializerRegistry.GetSerializer<TEntity>();
+        var renderedFilter = filter.Render(documentSerializer, serializerRegistry);
+
+        var properties = AggregatePropertyCache.GetProperties<TEntity, TTarget>().ToArray();
+
+        var grp = new BsonDocument
+        {
+            { "minute", new BsonDocument("$minute", "$Timestamp") },
+            { "hour", new BsonDocument("$hour", "$Timestamp") },
+            { "dayOfMonth", new BsonDocument("$dayOfMonth", "$Timestamp") },
+            { "month", new BsonDocument("$month", "$Timestamp") },
+            { "year", new BsonDocument("$year", "$Timestamp") },
+        };
+        grp.AddRange(properties.ToDictionary(x => x, x => $"${x}"));
+
+        var group = new BsonDocument
+        {
+            { "_id", grp },
+            { "Time", new BsonDocument("$first", "$Timestamp") },
+        };
+        group.AddRange(properties.ToDictionary(x => x, x => new BsonDocument("$first", $"${x}")));
+        group.AddRange(operations.Build());
+
+        var pipeline = new[] { new BsonDocument("$match", renderedFilter), new BsonDocument("$group", group) };
+        var result = Collection.Aggregate<TTarget>(pipeline).ToEnumerable();
+
+        foreach (var item in AddTimeInfo(result))
+        {
+            yield return item;
+        }
+    }
+
+    private IEnumerable<TTarget> AddTimeInfo<TTarget>(IEnumerable<TTarget> items)
+        where TTarget : TimeEntityBase
+    {
+        foreach (var item in items)
+        {
+            yield return item with { Time = TrunkateTime(item.Time) };
+        }
+    }
+
+    private DateTime TrunkateTime(DateTime itemTime)
+    {
+        var v = itemTime.AddSeconds(-itemTime.Second).AddMilliseconds(-itemTime.Millisecond);
+        return v;
+    }
+
     public override async Task<long> GetSizeAsync()
     {
         return await Execute(nameof(GetSizeAsync), () => Task.FromResult(_mongoDbService.GetSize(ProtectedCollectionName)), false);

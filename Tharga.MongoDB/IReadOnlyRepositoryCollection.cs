@@ -26,5 +26,5 @@ public interface IReadOnlyRepositoryCollection<TEntity, TKey> : IReadOnlyReposit
     Task<long> CountAsync(Expression<Func<TEntity, bool>> predicate);
     Task<long> CountAsync(FilterDefinition<TEntity> filter);
 
-    IAsyncEnumerable<TTarget> AggregateAsync<TTarget>(FilterDefinition<TEntity> filter, EPrecision precision, AggregateOptions options = default) where TTarget : TimeEntityBase;
+    IAsyncEnumerable<TTarget> AggregateAsync<TTarget>(FilterDefinition<TEntity> filter, EPrecision precision, AggregateOperations<TTarget> operations) where TTarget : TimeEntityBase;
 }
