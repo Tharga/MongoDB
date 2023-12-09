@@ -590,8 +590,9 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 
         var grp = new BsonDocument
         {
-            { "minute", new BsonDocument("$minute", "$Timestamp") },
-            { "hour", new BsonDocument("$hour", "$Timestamp") },
+            //TODO: Handle depending on precision
+            //{ "minute", new BsonDocument("$minute", "$Timestamp") },
+            //{ "hour", new BsonDocument("$hour", "$Timestamp") },
             { "dayOfMonth", new BsonDocument("$dayOfMonth", "$Timestamp") },
             { "month", new BsonDocument("$month", "$Timestamp") },
             { "year", new BsonDocument("$year", "$Timestamp") },
@@ -609,25 +610,43 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         var pipeline = new[] { new BsonDocument("$match", renderedFilter), new BsonDocument("$group", group) };
         var result = Collection.Aggregate<TTarget>(pipeline).ToEnumerable();
 
-        foreach (var item in AddTimeInfo(result))
+        foreach (var item in AddTimeInfo(result, precision))
         {
             yield return item;
         }
     }
 
-    private IEnumerable<TTarget> AddTimeInfo<TTarget>(IEnumerable<TTarget> items)
+    private IEnumerable<TTarget> AddTimeInfo<TTarget>(IEnumerable<TTarget> items, EPrecision precision)
         where TTarget : TimeEntityBase
     {
         foreach (var item in items)
         {
-            yield return item with { Time = TrunkateTime(item.Time) };
+            yield return item with { Time = TrunkateTime(item.Time, precision) };
         }
     }
 
-    private DateTime TrunkateTime(DateTime itemTime)
+    private DateTime TrunkateTime(DateTime itemTime, EPrecision precision)
     {
-        var v = itemTime.AddSeconds(-itemTime.Second).AddMilliseconds(-itemTime.Millisecond);
-        return v;
+        itemTime = itemTime.AddMilliseconds(-itemTime.Millisecond);
+
+        if (precision >= EPrecision.Minute)
+        {
+            itemTime = itemTime.AddSeconds(-itemTime.Second);
+        }
+
+        if (precision >= EPrecision.Hour)
+        {
+            itemTime = itemTime.AddMinutes(-itemTime.Minute);
+        }
+
+        if (precision >= EPrecision.Day)
+        {
+            itemTime = itemTime.AddHours(-itemTime.Hour);
+        }
+
+        if (precision >= EPrecision.Month) throw new NotImplementedException();
+
+        return itemTime;
     }
 
     public override async Task<long> GetSizeAsync()
