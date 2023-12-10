@@ -822,27 +822,34 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 
         var filter = Builders<TEntity>.Filter.Empty;
 
-        var cursor = await FindAsync(collection, filter, CancellationToken.None, null);
-        var allItems = await cursor.ToListAsync();
-        var items = allItems.Where(x => x.NeedsCleaning());
-        var totalCount = allItems.Count;
-        var count = 0;
-        foreach (var item in items)
+        try
         {
-            count++;
-            await CleanEntityAsync(collection, item);
-        }
+            using var cursor = await FindAsync(collection, filter, CancellationToken.None, null);
+            var allItems = await cursor.ToListAsync();
+            var items = allItems.Where(x => x.NeedsCleaning());
+            var totalCount = allItems.Count;
+            var count = 0;
+            foreach (var item in items)
+            {
+                count++;
+                await CleanEntityAsync(collection, item);
+            }
 
-        sw.Stop();
-        if (count == 0)
-        {
-            _logger?.LogTrace($"Nothing to clean in collection {{collection}} in {{repositoryType}}. [action: Database, operation: {nameof(CleanAsync)}]", ProtectedCollectionName, "DiskRepository");
-            InvokeAction(new ActionEventArgs.ActionData { Operation = nameof(CleanAsync), Message = "Nothing to clean.", Level = LogLevel.Trace });
+            sw.Stop();
+            if (count == 0)
+            {
+                _logger?.LogTrace($"Nothing to clean in collection {{collection}} in {{repositoryType}}. [action: Database, operation: {nameof(CleanAsync)}]", ProtectedCollectionName, "DiskRepository");
+                InvokeAction(new ActionEventArgs.ActionData { Operation = nameof(CleanAsync), Message = "Nothing to clean.", Level = LogLevel.Trace });
+            }
+            else
+            {
+                _logger?.LogInformation($"Cleaned {{count}} of {{totalCount}} took {{elapsed}} ms in collection {{collection}} in {{repositoryType}}. [action: Database, operation: {nameof(CleanAsync)}]", count, totalCount, sw.Elapsed.TotalMilliseconds, ProtectedCollectionName, "DiskRepository");
+                InvokeAction(new ActionEventArgs.ActionData { Operation = nameof(CleanAsync), Message = "Cleaned completed.", ItemCount = count, Elapsed = sw.Elapsed });
+            }
         }
-        else
+        catch (FormatException)
         {
-            _logger?.LogInformation($"Cleaned {{count}} of {{totalCount}} took {{elapsed}} ms in collection {{collection}} in {{repositoryType}}. [action: Database, operation: {nameof(CleanAsync)}]", count, totalCount, sw.Elapsed.TotalMilliseconds, ProtectedCollectionName, "DiskRepository");
-            InvokeAction(new ActionEventArgs.ActionData { Operation = nameof(CleanAsync), Message = "Cleaned completed.", ItemCount = count, Elapsed = sw.Elapsed });
+            _logger?.LogError("Failed to clean collection {collection} in {repositoryType}.", ProtectedCollectionName, "DiskRepository");
         }
     }
 
