@@ -588,15 +588,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 
         var properties = AggregatePropertyCache.GetProperties<TEntity, TTarget>().ToArray();
 
-        var grp = new BsonDocument
-        {
-            //TODO: Handle depending on precision
-            //{ "minute", new BsonDocument("$minute", "$Timestamp") },
-            //{ "hour", new BsonDocument("$hour", "$Timestamp") },
-            { "dayOfMonth", new BsonDocument("$dayOfMonth", "$Timestamp") },
-            { "month", new BsonDocument("$month", "$Timestamp") },
-            { "year", new BsonDocument("$year", "$Timestamp") },
-        };
+        var grp = BuildTimestampGrouping(precision);
         grp.AddRange(properties.ToDictionary(x => x, x => $"${x}"));
 
         var group = new BsonDocument
@@ -613,6 +605,60 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         foreach (var item in AddTimeInfo(result, precision))
         {
             yield return item;
+        }
+    }
+
+    private static BsonDocument BuildTimestampGrouping(EPrecision precision)
+    {
+        switch (precision)
+        {
+            case EPrecision.Second:
+                return new BsonDocument
+                {
+                    { "second", new BsonDocument("second", "$Timestamp") },
+                    { "minute", new BsonDocument("$minute", "$Timestamp") },
+                    { "hour", new BsonDocument("$hour", "$Timestamp") },
+                    { "dayOfMonth", new BsonDocument("$dayOfMonth", "$Timestamp") },
+                    { "month", new BsonDocument("$month", "$Timestamp") },
+                    { "year", new BsonDocument("$year", "$Timestamp") },
+                };
+            case EPrecision.Minute:
+                return new BsonDocument
+                {
+                    { "minute", new BsonDocument("$minute", "$Timestamp") },
+                    { "hour", new BsonDocument("$hour", "$Timestamp") },
+                    { "dayOfMonth", new BsonDocument("$dayOfMonth", "$Timestamp") },
+                    { "month", new BsonDocument("$month", "$Timestamp") },
+                    { "year", new BsonDocument("$year", "$Timestamp") },
+                };
+            case EPrecision.Hour:
+                return new BsonDocument
+                {
+                    { "hour", new BsonDocument("$hour", "$Timestamp") },
+                    { "dayOfMonth", new BsonDocument("$dayOfMonth", "$Timestamp") },
+                    { "month", new BsonDocument("$month", "$Timestamp") },
+                    { "year", new BsonDocument("$year", "$Timestamp") },
+                };
+            case EPrecision.Day:
+                return new BsonDocument
+                {
+                    { "dayOfMonth", new BsonDocument("$dayOfMonth", "$Timestamp") },
+                    { "month", new BsonDocument("$month", "$Timestamp") },
+                    { "year", new BsonDocument("$year", "$Timestamp") },
+                };
+            case EPrecision.Month:
+                return new BsonDocument
+                {
+                    { "month", new BsonDocument("$month", "$Timestamp") },
+                    { "year", new BsonDocument("$year", "$Timestamp") },
+                };
+            case EPrecision.Year:
+                return new BsonDocument
+                {
+                    { "year", new BsonDocument("$year", "$Timestamp") },
+                };
+            default:
+                throw new ArgumentOutOfRangeException(nameof(precision), precision, null);
         }
     }
 
@@ -644,7 +690,15 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             itemTime = itemTime.AddHours(-itemTime.Hour);
         }
 
-        if (precision >= EPrecision.Month) throw new NotImplementedException();
+        if (precision >= EPrecision.Month)
+        {
+            itemTime = itemTime.AddDays(-itemTime.Day);
+        }
+
+        if (precision >= EPrecision.Year)
+        {
+            itemTime = itemTime.AddMonths(-itemTime.Month);
+        }
 
         return itemTime;
     }
