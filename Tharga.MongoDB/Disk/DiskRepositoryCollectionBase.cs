@@ -357,10 +357,8 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                 await Collection.InsertOneAsync(entity);
                 return true;
             }
-            catch (Exception e) //TODO: Catch explicit exception
+            catch (MongoWriteException)
             {
-                Debugger.Break();
-                Console.WriteLine(e);
                 return false;
             }
         }, true);
