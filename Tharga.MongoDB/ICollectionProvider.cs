@@ -41,7 +41,6 @@ public interface ICollectionProvider
     /// </summary>
     /// <typeparam name="TCollection"></typeparam>
     /// <typeparam name="TEntity"></typeparam>
-    /// <typeparam name="TKey"></typeparam>
     /// <param name="databaseContext"></param>
     /// <returns></returns>
     TCollection GetCollection<TCollection, TEntity>(DatabaseContext databaseContext = null)

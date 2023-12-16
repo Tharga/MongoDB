@@ -17,13 +17,13 @@ public class ConfigurationTests
     [InlineData(null, "SomePart")]
     [InlineData("SomeEnvironment", "SomePart")]
     [InlineData("Production", "SomePart")]
-    public async Task Basic(string environment, string part)
+    public Task Basic(string environment, string part)
     {
         //Arrange
         var expectedPart = string.IsNullOrEmpty(part) ? string.Empty : $"_{part}";
         var expectedEnvironment = string.IsNullOrEmpty(environment) || environment == "Production" ? string.Empty :  $"_{environment}";
         var configurationMock = new Mock<IConfiguration>(MockBehavior.Strict);
-        configurationMock.Setup(x => x.GetSection(It.IsAny<string>())).Returns((string name) => Mock.Of<IConfigurationSection>());
+        configurationMock.Setup(x => x.GetSection(It.IsAny<string>())).Returns((string _) => Mock.Of<IConfigurationSection>());
         var hostEnvironmentMock = new Mock<IHostEnvironment>(MockBehavior.Strict);
         hostEnvironmentMock.SetupGet(x => x.EnvironmentName).Returns(environment);
         var connectionStringBuilder = new MongoUrlBuilder(hostEnvironmentMock.Object);
@@ -40,5 +40,6 @@ public class ConfigurationTests
 
         //Assert
         result.DatabaseName.Should().Be($"Tharga{expectedEnvironment}{expectedPart}");
+        return Task.CompletedTask;
     }
 }

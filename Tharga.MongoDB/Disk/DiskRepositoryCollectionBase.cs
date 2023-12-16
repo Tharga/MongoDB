@@ -282,11 +282,17 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             switch (options?.Mode)
             {
                 case null:
-                case EMode.Single:
+                case EMode.SingleOrDefault:
                     item = await findFluent.SingleOrDefaultAsync(cancellationToken: cancellationToken);
                     break;
-                case EMode.First:
+                case EMode.Single:
+                    item = await findFluent.SingleAsync(cancellationToken: cancellationToken);
+                    break;
+                case EMode.FirstOrDefault:
                     item = await findFluent.FirstOrDefaultAsync(cancellationToken: cancellationToken);
+                    break;
+                case EMode.First:
+                    item = await findFluent.FirstAsync(cancellationToken: cancellationToken);
                     break;
                 default:
                     throw new ArgumentOutOfRangeException();
@@ -309,11 +315,17 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             switch (options?.Mode)
             {
                 case null:
-                case EMode.Single:
+                case EMode.SingleOrDefault:
                     item = await findFluent.SingleOrDefaultAsync(cancellationToken: cancellationToken);
                     break;
-                case EMode.First:
+                case EMode.Single:
+                    item = await findFluent.SingleAsync(cancellationToken: cancellationToken);
+                    break;
+                case EMode.FirstOrDefault:
                     item = await findFluent.FirstOrDefaultAsync(cancellationToken: cancellationToken);
+                    break;
+                case EMode.First:
+                    item = await findFluent.FirstAsync(cancellationToken: cancellationToken);
                     break;
                 default:
                     throw new ArgumentOutOfRangeException();
@@ -345,10 +357,8 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                 await Collection.InsertOneAsync(entity);
                 return true;
             }
-            catch (Exception e) //TODO: Catch explicit exception
+            catch (MongoWriteException)
             {
-                Debugger.Break();
-                Console.WriteLine(e);
                 return false;
             }
         }, true);
@@ -432,7 +442,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         }, true);
     }
 
-    public override async Task<EntityChangeResult<TEntity>> UpdateOneAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update, OneOption<TEntity> options = null)
+    public override async Task<EntityChangeResult<TEntity>> UpdateOneAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update, OneOption<TEntity> options = default)
     {
         if (filter == null) throw new ArgumentException(nameof(filter));
         if (update == null) throw new ArgumentException(nameof(update));
@@ -445,21 +455,30 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             switch (options?.Mode)
             {
                 case null:
-                case EMode.Single:
+                case EMode.SingleOrDefault:
                     item = await findFluent.SingleOrDefaultAsync();
                     break;
-                case EMode.First:
+                case EMode.Single:
+                    item = await findFluent.SingleAsync();
+                    break;
+                case EMode.FirstOrDefault:
                     item = await findFluent.FirstOrDefaultAsync();
+                    break;
+                case EMode.First:
+                    item = await findFluent.FirstAsync();
                     break;
                 default:
                     throw new ArgumentOutOfRangeException();
             }
+
+            if (item == null) return new EntityChangeResult<TEntity>(default, default(TEntity));
+
             var itemFilter = new FilterDefinitionBuilder<TEntity>().Eq(x => x.Id, item.Id);
-            var before = await Collection.FindOneAndUpdateAsync(itemFilter, update);
-            if (before == null) return new EntityChangeResult<TEntity>(default, default(TEntity));
-            return new EntityChangeResult<TEntity>(before, async () =>
+            item = await Collection.FindOneAndUpdateAsync(itemFilter, update);
+
+            return new EntityChangeResult<TEntity>(item, async () =>
             {
-                return await Collection.Find(x => x.Id.Equals(before.Id)).SingleAsync();
+                return await Collection.Find(x => x.Id.Equals(item.Id)).SingleAsync();
             });
         }, true);
     }
@@ -485,7 +504,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         }, false);
     }
 
-    public override async Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate = null, OneOption<TEntity> options = null)
+    public override async Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate = default, OneOption<TEntity> options = default)
     {
         if (predicate == null) throw new ArgumentException(nameof(predicate));
 
@@ -497,15 +516,24 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             switch (options?.Mode)
             {
                 case null:
-                case EMode.Single:
+                case EMode.SingleOrDefault:
                     item = await findFluent.SingleOrDefaultAsync();
                     break;
-                case EMode.First:
+                case EMode.Single:
+                    item = await findFluent.SingleAsync();
+                    break;
+                case EMode.FirstOrDefault:
                     item = await findFluent.FirstOrDefaultAsync();
+                    break;
+                case EMode.First:
+                    item = await findFluent.FirstAsync();
                     break;
                 default:
                     throw new ArgumentOutOfRangeException();
             }
+
+            if (item == null) return default;
+
             var itemFilter = new FilterDefinitionBuilder<TEntity>().Eq(x => x.Id, item.Id);
             await Collection.FindOneAndDeleteAsync(itemFilter);
             await DropEmpty(Collection);
@@ -548,6 +576,129 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             var count = await Collection.CountDocumentsAsync(filter);
             return count;
         }, false);
+    }
+
+    public override async IAsyncEnumerable<TTarget> AggregateAsync<TTarget>(FilterDefinition<TEntity> filter, EPrecision precision, AggregateOperations<TTarget> operations)
+    {
+        var serializerRegistry = BsonSerializer.SerializerRegistry;
+        var documentSerializer = serializerRegistry.GetSerializer<TEntity>();
+        var renderedFilter = filter.Render(documentSerializer, serializerRegistry);
+
+        var properties = AggregatePropertyCache.GetProperties<TEntity, TTarget>().ToArray();
+
+        var grp = BuildTimestampGrouping(precision);
+        grp.AddRange(properties.ToDictionary(x => x, x => $"${x}"));
+
+        var group = new BsonDocument
+        {
+            { "_id", grp },
+            { "Time", new BsonDocument("$first", "$Timestamp") },
+        };
+        group.AddRange(properties.ToDictionary(x => x, x => new BsonDocument("$first", $"${x}")));
+        group.AddRange(operations.Build());
+
+        var pipeline = new[] { new BsonDocument("$match", renderedFilter), new BsonDocument("$group", group) };
+        var result = Collection.Aggregate<TTarget>(pipeline).ToEnumerable();
+
+        foreach (var item in AddTimeInfo(result, precision))
+        {
+            yield return item;
+        }
+    }
+
+    private static BsonDocument BuildTimestampGrouping(EPrecision precision)
+    {
+        switch (precision)
+        {
+            case EPrecision.Second:
+                return new BsonDocument
+                {
+                    { "second", new BsonDocument("second", "$Timestamp") },
+                    { "minute", new BsonDocument("$minute", "$Timestamp") },
+                    { "hour", new BsonDocument("$hour", "$Timestamp") },
+                    { "dayOfMonth", new BsonDocument("$dayOfMonth", "$Timestamp") },
+                    { "month", new BsonDocument("$month", "$Timestamp") },
+                    { "year", new BsonDocument("$year", "$Timestamp") },
+                };
+            case EPrecision.Minute:
+                return new BsonDocument
+                {
+                    { "minute", new BsonDocument("$minute", "$Timestamp") },
+                    { "hour", new BsonDocument("$hour", "$Timestamp") },
+                    { "dayOfMonth", new BsonDocument("$dayOfMonth", "$Timestamp") },
+                    { "month", new BsonDocument("$month", "$Timestamp") },
+                    { "year", new BsonDocument("$year", "$Timestamp") },
+                };
+            case EPrecision.Hour:
+                return new BsonDocument
+                {
+                    { "hour", new BsonDocument("$hour", "$Timestamp") },
+                    { "dayOfMonth", new BsonDocument("$dayOfMonth", "$Timestamp") },
+                    { "month", new BsonDocument("$month", "$Timestamp") },
+                    { "year", new BsonDocument("$year", "$Timestamp") },
+                };
+            case EPrecision.Day:
+                return new BsonDocument
+                {
+                    { "dayOfMonth", new BsonDocument("$dayOfMonth", "$Timestamp") },
+                    { "month", new BsonDocument("$month", "$Timestamp") },
+                    { "year", new BsonDocument("$year", "$Timestamp") },
+                };
+            case EPrecision.Month:
+                return new BsonDocument
+                {
+                    { "month", new BsonDocument("$month", "$Timestamp") },
+                    { "year", new BsonDocument("$year", "$Timestamp") },
+                };
+            case EPrecision.Year:
+                return new BsonDocument
+                {
+                    { "year", new BsonDocument("$year", "$Timestamp") },
+                };
+            default:
+                throw new ArgumentOutOfRangeException(nameof(precision), precision, null);
+        }
+    }
+
+    private IEnumerable<TTarget> AddTimeInfo<TTarget>(IEnumerable<TTarget> items, EPrecision precision)
+        where TTarget : TimeEntityBase
+    {
+        foreach (var item in items)
+        {
+            yield return item with { Time = TrunkateTime(item.Time, precision) };
+        }
+    }
+
+    private DateTime TrunkateTime(DateTime itemTime, EPrecision precision)
+    {
+        itemTime = itemTime.AddMilliseconds(-itemTime.Millisecond);
+
+        if (precision >= EPrecision.Minute)
+        {
+            itemTime = itemTime.AddSeconds(-itemTime.Second);
+        }
+
+        if (precision >= EPrecision.Hour)
+        {
+            itemTime = itemTime.AddMinutes(-itemTime.Minute);
+        }
+
+        if (precision >= EPrecision.Day)
+        {
+            itemTime = itemTime.AddHours(-itemTime.Hour);
+        }
+
+        if (precision >= EPrecision.Month)
+        {
+            itemTime = itemTime.AddDays(-itemTime.Day);
+        }
+
+        if (precision >= EPrecision.Year)
+        {
+            itemTime = itemTime.AddMonths(-itemTime.Month);
+        }
+
+        return itemTime;
     }
 
     public override async Task<long> GetSizeAsync()
@@ -669,27 +820,34 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 
         var filter = Builders<TEntity>.Filter.Empty;
 
-        var cursor = await FindAsync(collection, filter, CancellationToken.None, null);
-        var allItems = await cursor.ToListAsync();
-        var items = allItems.Where(x => x.NeedsCleaning());
-        var totalCount = allItems.Count;
-        var count = 0;
-        foreach (var item in items)
+        try
         {
-            count++;
-            await CleanEntityAsync(collection, item);
-        }
+            using var cursor = await FindAsync(collection, filter, CancellationToken.None, null);
+            var allItems = await cursor.ToListAsync();
+            var items = allItems.Where(x => x.NeedsCleaning());
+            var totalCount = allItems.Count;
+            var count = 0;
+            foreach (var item in items)
+            {
+                count++;
+                await CleanEntityAsync(collection, item);
+            }
 
-        sw.Stop();
-        if (count == 0)
-        {
-            _logger?.LogTrace($"Nothing to clean in collection {{collection}} in {{repositoryType}}. [action: Database, operation: {nameof(CleanAsync)}]", ProtectedCollectionName, "DiskRepository");
-            InvokeAction(new ActionEventArgs.ActionData { Operation = nameof(CleanAsync), Message = "Nothing to clean.", Level = LogLevel.Trace });
+            sw.Stop();
+            if (count == 0)
+            {
+                _logger?.LogTrace($"Nothing to clean in collection {{collection}} in {{repositoryType}}. [action: Database, operation: {nameof(CleanAsync)}]", ProtectedCollectionName, "DiskRepository");
+                InvokeAction(new ActionEventArgs.ActionData { Operation = nameof(CleanAsync), Message = "Nothing to clean.", Level = LogLevel.Trace });
+            }
+            else
+            {
+                _logger?.LogInformation($"Cleaned {{count}} of {{totalCount}} took {{elapsed}} ms in collection {{collection}} in {{repositoryType}}. [action: Database, operation: {nameof(CleanAsync)}]", count, totalCount, sw.Elapsed.TotalMilliseconds, ProtectedCollectionName, "DiskRepository");
+                InvokeAction(new ActionEventArgs.ActionData { Operation = nameof(CleanAsync), Message = "Cleaned completed.", ItemCount = count, Elapsed = sw.Elapsed });
+            }
         }
-        else
+        catch (FormatException)
         {
-            _logger?.LogInformation($"Cleaned {{count}} of {{totalCount}} took {{elapsed}} ms in collection {{collection}} in {{repositoryType}}. [action: Database, operation: {nameof(CleanAsync)}]", count, totalCount, sw.Elapsed.TotalMilliseconds, ProtectedCollectionName, "DiskRepository");
-            InvokeAction(new ActionEventArgs.ActionData { Operation = nameof(CleanAsync), Message = "Cleaned completed.", ItemCount = count, Elapsed = sw.Elapsed });
+            _logger?.LogError("Failed to clean collection {collection} in {repositoryType}.", ProtectedCollectionName, "DiskRepository");
         }
     }
 
