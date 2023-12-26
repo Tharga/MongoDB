@@ -708,51 +708,41 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 
     private async Task<IMongoCollection<TEntity>> FetchCollectionAsync()
     {
-        //return await Execute(nameof(FetchCollectionAsync), async () =>
-        //{
-        //    try
-        //    {
-        //        await _lock.WaitAsync();
+        var collection = await GetCollectionAsync<TEntity>();
 
-                var collection = await GetCollectionAsync<TEntity>();
+        if (InitiationLibrary.ShouldInitiate(ServerName, DatabaseName, ProtectedCollectionName))
+        {
+            _logger?.LogTrace($"Starting to initiate {{collection}}. [action: Database, operation: {nameof(FetchCollectionAsync)}]", ProtectedCollectionName);
+            InvokeAction(new ActionEventArgs.ActionData { Operation = nameof(FetchCollectionAsync), Message = "Starting to initiate.", Level = LogLevel.Trace });
+            RegisterTypes();
 
-                if (InitiationLibrary.ShouldInitiate(ServerName, DatabaseName, ProtectedCollectionName))
-                {
-                    _logger?.LogTrace($"Starting to initiate {{collection}}. [action: Database, operation: {nameof(FetchCollectionAsync)}]", ProtectedCollectionName);
-                    InvokeAction(new ActionEventArgs.ActionData { Operation = nameof(FetchCollectionAsync), Message = "Starting to initiate.", Level = LogLevel.Trace });
-                    RegisterTypes();
+            var exists = await _mongoDbService.DoesCollectionExist(ProtectedCollectionName);
+            if (exists)
+            {
+                await AssureIndex(collection);
+                await CleanAsync(collection);
+                await DropEmpty(collection);
+            }
 
-                    var exists = await _mongoDbService.DoesCollectionExist(ProtectedCollectionName);
-                    if (exists)
-                    {
-                        await AssureIndex(collection);
-                        await CleanAsync(collection);
-                        await DropEmpty(collection);
-                    }
+            await InitAsync(collection);
+            _logger?.LogTrace($"Initiate {{collection}} is completed. [action: Database, operation: {nameof(FetchCollectionAsync)}]", ProtectedCollectionName);
+            InvokeAction(new ActionEventArgs.ActionData { Operation = nameof(FetchCollectionAsync), Message = "Initiation completed.", Level = LogLevel.Trace });
+        }
+        else
+        {
+            _logger?.LogTrace($"Skip initiation of {{collection}} because it has already been initiated. [action: Database, operation: {nameof(FetchCollectionAsync)}]", ProtectedCollectionName);
+            InvokeAction(new ActionEventArgs.ActionData { Operation = nameof(FetchCollectionAsync), Message = "Skip initiation because it has already been completed.", Level = LogLevel.Trace });
+        }
 
-                    await InitAsync(collection);
-                    _logger?.LogTrace($"Initiate {{collection}} is completed. [action: Database, operation: {nameof(FetchCollectionAsync)}]", ProtectedCollectionName);
-                    InvokeAction(new ActionEventArgs.ActionData { Operation = nameof(FetchCollectionAsync), Message = "Initiation completed.", Level = LogLevel.Trace });
-                }
-                else
-                {
-                    _logger?.LogTrace($"Skip initiation of {{collection}} because it has already been initiated. [action: Database, operation: {nameof(FetchCollectionAsync)}]", ProtectedCollectionName);
-                    InvokeAction(new ActionEventArgs.ActionData { Operation = nameof(FetchCollectionAsync), Message = "Skip initiation because it has already been completed.", Level = LogLevel.Trace });
-                }
-
-                return collection;
-        //    }
-        //    finally
-        //    {
-        //        _lock.Release();
-        //    }
-        //}, false);
+        return collection;
     }
 
     private async Task AssureIndex(IMongoCollection<TEntity> collection)
     {
         if (InitiationLibrary.ShouldInitiateIndex(ServerName, DatabaseName, ProtectedCollectionName))
         {
+            _logger?.LogTrace($"Assure index for collection {{collection}} in {{repositoryType}}. [action: Database, operation: {nameof(CleanAsync)}]", ProtectedCollectionName, "DiskRepository");
+
             await collection.Indexes.CreateOneAsync(new CreateIndexModel<TEntity>(Builders<TEntity>.IndexKeys.Ascending(x => x.Id).Ascending("_t"), new CreateIndexOptions()));
             await UpdateIndiciesAsync(collection);
         }
@@ -822,6 +812,8 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 
         try
         {
+            _logger?.LogTrace($"Starting to clean in collection {{collection}} in {{repositoryType}}. [action: Database, operation: {nameof(CleanAsync)}]", ProtectedCollectionName, "DiskRepository");
+
             using var cursor = await FindAsync(collection, filter, CancellationToken.None, null);
             var allItems = await cursor.ToListAsync();
             var items = allItems.Where(x => x.NeedsCleaning());
