@@ -15,6 +15,7 @@ internal class MongoDbService : IMongoDbService
 {
     private readonly IRepositoryConfigurationInternal _configuration;
     private readonly IMongoDbFirewallStateService _mongoDbFirewallStateService;
+    private readonly ILogger _logger;
     private readonly MongoClient _mongoClient;
     private readonly IMongoDatabase _mongoDatabase;
 
@@ -22,6 +23,7 @@ internal class MongoDbService : IMongoDbService
     {
         _configuration = configuration;
         _mongoDbFirewallStateService = mongoDbFirewallStateService;
+        _logger = logger;
         var mongoUrl = configuration.GetDatabaseUrl() ?? throw new NullReferenceException("MongoUrl not found in configuration.");
         //_mongoClient = new MongoClient(mongoUrl);
         var cfg = MongoClientSettings.FromUrl(mongoUrl);
@@ -65,10 +67,11 @@ internal class MongoDbService : IMongoDbService
         return _mongoDatabase.GetCollection<T>(collectionName);
     }
 
-    public ValueTask AssureFirewallAccessAsync(bool force = false)
+    public async ValueTask AssureFirewallAccessAsync(bool force = false)
     {
-        if (_configuration.GetDatabaseUrl().Server.Host.Contains("localhost", StringComparison.InvariantCultureIgnoreCase)) return ValueTask.CompletedTask;
-        return _mongoDbFirewallStateService.AssureFirewallAccessAsync(_configuration.GetConfiguration().AccessInfo, force);
+        if (_configuration.GetDatabaseUrl().Server.Host.Contains("localhost", StringComparison.InvariantCultureIgnoreCase)) return;
+        var message = await _mongoDbFirewallStateService.AssureFirewallAccessAsync(_configuration.GetConfiguration().AccessInfo, force);
+        _logger.LogInformation(message);
     }
 
     public string GetDatabaseName()

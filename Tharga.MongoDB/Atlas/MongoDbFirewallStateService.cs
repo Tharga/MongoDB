@@ -20,23 +20,24 @@ internal class MongoDbFirewallStateService : IMongoDbFirewallStateService
         _hostEnvironment = hostEnvironment;
     }
 
-    public async ValueTask AssureFirewallAccessAsync(MongoDbApiAccess accessInfo, bool force = false)
+    public async ValueTask<string> AssureFirewallAccessAsync(MongoDbApiAccess accessInfo, bool force = false)
     {
-        if (!accessInfo.HasMongoDbApiAccess()) return;
+        if (!accessInfo.HasMongoDbApiAccess()) return "No information.";
 
         _dictionary.TryGetValue(accessInfo, out var current);
-        if (!force && current != null) return;
+        if (!force && current != null) return $"Already verified with result '{current.Result}' for {current.Name} with IP {current.IpAddress}.";
 
         try
         {
             await _semaphoreSlim.WaitAsync();
 
             _dictionary.TryGetValue(accessInfo, out var updated);
-            if (!force && updated != null) return;
-            if (!Equals(current?.IpAddress, updated?.IpAddress)) return;
+            if (!force && updated != null) return $"Already verified with result '{updated.Result}' for {updated.Name} with IP {updated.IpAddress} (Waited for other thread).";
+            if (!Equals(current?.IpAddress, updated?.IpAddress)) return $"Ip address changed from '{current?.IpAddress}' to '{updated?.IpAddress}' when waiting for thread for {accessInfo.Name}.";
 
             var result = await _mongoDbFirewallService.AssureFirewallAccessAsync(accessInfo, BuildName(accessInfo));
             _dictionary.AddOrUpdate(accessInfo, result, (_, _) => result);
+            return $"Firewall api responded with '{result.Result}' for {result.Name} with IP {result.IpAddress}.";
         }
         finally
         {
