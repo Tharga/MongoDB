@@ -89,6 +89,6 @@ public class GetAsyncTest : GenericBufferRepositoryCollectionBaseTestBase
         //Assert
         throw new NotImplementedException();
         //await act.Should().ThrowAsync<MongoBulkWriteException>();
-        await VerifyContentAsync(sut);
+        //await VerifyContentAsync(sut);
     }
 }

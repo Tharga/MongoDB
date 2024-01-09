@@ -47,7 +47,7 @@ internal class ExternalIpAddressService : IExternalIpAddressService
                 {
                     _logger.LogWarning(e, $"Failed to call '{{uri}}'. {e.Message}", uri);
                 }
-                catch (Exception e)
+                catch (Exception)
                 {
                     Debugger.Break();
                     throw;
