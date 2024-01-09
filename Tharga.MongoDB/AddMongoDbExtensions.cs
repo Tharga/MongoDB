@@ -17,35 +17,53 @@ public static class AddMongoDbExtensions
     private static readonly ConcurrentDictionary<Type, Type> _registeredCollections = new();
     private static Action<ActionEventArgs> _actionEvent;
 
-    public static void UseMongoDB(this IServiceProvider services, Action<DatabaseUsage> options = null)
+    public static void UseMongoDB(this IServiceProvider services, Action<UseMongoOptions> options = null)
     {
         var repositoryConfiguration = services.GetService<IRepositoryConfiguration>();
 
-        var databaseOptions = new DatabaseUsage
+        var useMongoOptions = new UseMongoOptions
         {
-            FirewallConfigurationNames = repositoryConfiguration.GetDatabaseConfigurationNames().ToArray()
+            DatabaseUsage = new DatabaseUsage { FirewallConfigurationNames = repositoryConfiguration.GetDatabaseConfigurationNames().ToArray() }
         };
 
-        options?.Invoke(databaseOptions);
+        options?.Invoke(useMongoOptions);
 
         var mongoDbFirewallStateService = services.GetService<IMongoDbFirewallStateService>();
         var mongoDbServiceFactory = services.GetService<IMongoDbServiceFactory>();
 
-        Task.Run(async () =>
+        var task = Task.Run(async () =>
         {
-            foreach (var configurationName in databaseOptions.FirewallConfigurationNames)
+            try
             {
-                var configuration = repositoryConfiguration.GetConfiguration(configurationName);
-                if (configuration.AccessInfo.HasMongoDbApiAccess())
+                foreach (var configurationName in useMongoOptions.DatabaseUsage.FirewallConfigurationNames)
                 {
-                    var mongoDbService = mongoDbServiceFactory.GetMongoDbService(() => new DatabaseContext { ConfigurationName = configurationName });
-                    if (!mongoDbService.GetDatabaseHostName().Contains("localhost", StringComparison.InvariantCultureIgnoreCase))
+                    var configuration = repositoryConfiguration.GetConfiguration(configurationName);
+                    if (configuration.AccessInfo.HasMongoDbApiAccess())
                     {
-                        await mongoDbFirewallStateService.AssureFirewallAccessAsync(configuration.AccessInfo);
+                        var mongoDbService = mongoDbServiceFactory.GetMongoDbService(() => new DatabaseContext { ConfigurationName = configurationName });
+                        if (!mongoDbService.GetDatabaseHostName().Contains("localhost", StringComparison.InvariantCultureIgnoreCase))
+                        {
+                            var message = await mongoDbFirewallStateService.AssureFirewallAccessAsync(configuration.AccessInfo);
+                            useMongoOptions.Logger?.LogInformation(message);
+                        }
+                        else
+                        {
+                            useMongoOptions.Logger?.LogInformation("Ignore firewall for {hostname}.", mongoDbService.GetDatabaseHostName());
+                        }
+                    }
+                    else
+                    {
+                        useMongoOptions.Logger?.LogInformation($"No firewall information for database configuration '{configurationName}'.");
                     }
                 }
             }
+            catch (Exception e)
+            {
+                useMongoOptions.Logger?.LogError(e, e.Message);
+            }
         });
+
+        if (useMongoOptions.WaitToComplete) Task.WaitAll(task);
     }
 
     public static IServiceCollection AddMongoDB(this IServiceCollection services, Action<DatabaseOptions> options = null)
