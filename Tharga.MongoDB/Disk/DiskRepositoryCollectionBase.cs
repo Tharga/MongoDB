@@ -769,28 +769,41 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 
     private async Task UpdateIndiciesAsync(IMongoCollection<TEntity> collection)
     {
-        if (Indicies == null) return;
+        var indices = Indicies?.ToArray();
 
-        if (Indicies.Any(x => string.IsNullOrEmpty(x.Options.Name))) throw new InvalidOperationException("Indicies needs to have a name.");
+        if (indices == null) return;
+
+        if (indices.Any(x => string.IsNullOrEmpty(x.Options.Name))) throw new InvalidOperationException("Indicies needs to have a name.");
+
+        var existingIndexNames = (await collection.Indexes.ListAsync()).ToList()
+            .Select(x => x.GetValue("name").AsString)
+            .Where(x => !x.StartsWith("_id_"))
+            .ToArray();
 
         //NOTE: Drop indexes not in list
-        var indicies = (await collection.Indexes.ListAsync()).ToList();
-        foreach (var index in indicies)
+        foreach (var indexName in existingIndexNames)
         {
-            var indexName = index.GetValue("name").AsString;
-            if (!indexName.StartsWith("_id_"))
+            if (indices.All(x => x.Options.Name != indexName))
             {
-                if (Indicies.All(x => x.Options.Name != indexName))
-                {
-                    await collection.Indexes.DropOneAsync(indexName);
-                }
+                await collection.Indexes.DropOneAsync(indexName);
+                _logger?.LogInformation("Index {indexName} was dropped in collection {collection}.", indexName, ProtectedCollectionName);
+            }
+            else
+            {
             }
         }
 
         //NOTE: Create indexes in the list
-        foreach (var index in Indicies)
+        foreach (var index in indices)
         {
-            await collection.Indexes.CreateOneAsync(index);
+            if (existingIndexNames.All(x => index.Options.Name != x))
+            {
+                var message = await collection.Indexes.CreateOneAsync(index);
+                _logger?.LogInformation("Index {indexName} was created in collection {collection}.", message, ProtectedCollectionName);
+            }
+            else
+            {
+            }
         }
     }
 

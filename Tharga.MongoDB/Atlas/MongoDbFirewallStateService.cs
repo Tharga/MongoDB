@@ -9,9 +9,9 @@ namespace Tharga.MongoDB.Atlas;
 
 internal class MongoDbFirewallStateService : IMongoDbFirewallStateService
 {
+    private static readonly SemaphoreSlim _lock = new(1, 1);
     private readonly IMongoDbFirewallService _mongoDbFirewallService;
     private readonly IHostEnvironment _hostEnvironment;
-    private readonly SemaphoreSlim _semaphoreSlim = new(1, 1);
     private readonly ConcurrentDictionary<MongoDbApiAccess, FirewallResponse> _dictionary = new();
 
     public MongoDbFirewallStateService(IMongoDbFirewallService mongoDbFirewallService, IHostEnvironment hostEnvironment)
@@ -29,7 +29,7 @@ internal class MongoDbFirewallStateService : IMongoDbFirewallStateService
 
         try
         {
-            await _semaphoreSlim.WaitAsync();
+            await _lock.WaitAsync();
 
             _dictionary.TryGetValue(accessInfo, out var updated);
             if (!force && updated != null) return $"Already verified with result '{updated.Result}' for {updated.Name} with IP {updated.IpAddress} (Waited for other thread).";
@@ -41,7 +41,7 @@ internal class MongoDbFirewallStateService : IMongoDbFirewallStateService
         }
         finally
         {
-            _semaphoreSlim.Release();
+            _lock.Release();
         }
     }
 
