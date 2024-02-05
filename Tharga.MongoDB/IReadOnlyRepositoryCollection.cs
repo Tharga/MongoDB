@@ -29,10 +29,3 @@ public interface IReadOnlyRepositoryCollection<TEntity, TKey> : IReadOnlyReposit
 
     IAsyncEnumerable<TTarget> AggregateAsync<TTarget>(FilterDefinition<TEntity> filter, EPrecision precision, AggregateOperations<TTarget> operations) where TTarget : TimeEntityBase;
 }
-
-public record Result<TEntity, TKey>
-    where TEntity : EntityBase<TKey>
-{
-    public TEntity[] Items { get; init; }
-    public int TotalCount { get; init; }
-}
