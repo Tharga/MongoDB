@@ -45,7 +45,7 @@ public abstract class BufferRepositoryCollectionBase<TEntity, TKey> : Repository
         var sw = new Stopwatch();
         sw.Start();
 
-        var buffer = await GetBufferAsync();
+        var buffer = await GetBufferAsync(cancellationToken);
         var data = buffer.Values.Where(x => predicate?.Compile().Invoke(x) ?? true);
         var count = 0;
         foreach (var entity in data)
@@ -67,7 +67,7 @@ public abstract class BufferRepositoryCollectionBase<TEntity, TKey> : Repository
     public override async IAsyncEnumerable<T> GetAsync<T>(Expression<Func<T, bool>> predicate = null, Options<T> options = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         if (options != default) throw new NotSupportedException($"The {nameof(options)} parameter is not supported for {nameof(BufferRepositoryCollectionBase<TEntity, TKey>)}.");
-        var buffer = await GetBufferAsync();
+        var buffer = await GetBufferAsync(cancellationToken);
         var data = buffer.Values
             .Where(x => x.GetType() == typeof(T))
             .Where(x => (predicate ?? (_ => true)).Compile().Invoke(x as T));
@@ -89,7 +89,7 @@ public abstract class BufferRepositoryCollectionBase<TEntity, TKey> : Repository
 
     public override async Task<TEntity> GetOneAsync(TKey id, CancellationToken cancellationToken = default)
     {
-        var buffer = await GetBufferAsync();
+        var buffer = await GetBufferAsync(cancellationToken);
         var data = buffer.Values.FirstOrDefault(x => x.Id.Equals(id));
         return data;
     }
@@ -98,7 +98,7 @@ public abstract class BufferRepositoryCollectionBase<TEntity, TKey> : Repository
     {
         if (options?.Sort != null) throw new NotSupportedException($"The {nameof(options.Sort)} part of the {nameof(options)} parameter is not supported for {nameof(BufferRepositoryCollectionBase<TEntity, TKey>)}.");
 
-        var buffer = await GetBufferAsync();
+        var buffer = await GetBufferAsync(cancellationToken);
         var data = buffer.Values.Where(x => predicate?.Compile().Invoke(x) ?? true);
 
         switch (options?.Mode)
@@ -126,7 +126,7 @@ public abstract class BufferRepositoryCollectionBase<TEntity, TKey> : Repository
     {
         if (options?.Sort != null) throw new NotSupportedException($"The {nameof(options.Sort)} part of the {nameof(options)} parameter is not supported for {nameof(BufferRepositoryCollectionBase<TEntity, TKey>)}.");
 
-        var buffer = await GetBufferAsync();
+        var buffer = await GetBufferAsync(cancellationToken);
         var data = buffer.Values
             .Where(x => x.GetType() == typeof(T))
             .Where(x => (predicate ?? (_ => true)).Compile().Invoke(x as T));
@@ -151,7 +151,7 @@ public abstract class BufferRepositoryCollectionBase<TEntity, TKey> : Repository
     {
         await Disk.AddAsync(entity);
 
-        var buffer = await GetBufferAsync();
+        var buffer = await GetBufferAsync(CancellationToken.None);
         if (buffer.TryAdd(entity.Id, entity)) return;
 
         await InvalidateBufferAsync();
@@ -162,7 +162,7 @@ public abstract class BufferRepositoryCollectionBase<TEntity, TKey> : Repository
         var result = await Disk.TryAddAsync(entity);
         if (!result) return false;
 
-        var buffer = await GetBufferAsync();
+        var buffer = await GetBufferAsync(CancellationToken.None);
         if (buffer.TryAdd(entity.Id, entity)) return true;
 
         await InvalidateBufferAsync();
@@ -177,7 +177,7 @@ public abstract class BufferRepositoryCollectionBase<TEntity, TKey> : Repository
 
             await Disk.AddManyAsync(array);
 
-            var buffer = await GetBufferAsync();
+            var buffer = await GetBufferAsync(CancellationToken.None);
             foreach (var entity in array)
             {
                 if (!buffer.TryAdd(entity.Id, entity))
@@ -275,19 +275,19 @@ public abstract class BufferRepositoryCollectionBase<TEntity, TKey> : Repository
         await InvalidateBufferAsync();
     }
 
-    public override async Task<long> CountAsync(Expression<Func<TEntity, bool>> predicate)
+    public override async Task<long> CountAsync(Expression<Func<TEntity, bool>> predicate, CancellationToken cancellationToken = default)
     {
-        var buffer = await GetBufferAsync();
+        var buffer = await GetBufferAsync(cancellationToken);
         var data = buffer.Values.Where(x => predicate.Compile().Invoke(x));
         return data.Count();
     }
 
-    public override Task<long> CountAsync(FilterDefinition<TEntity> filter)
+    public override Task<long> CountAsync(FilterDefinition<TEntity> filter, CancellationToken cancellationToken = default)
     {
         throw new NotSupportedException($"{nameof(CountAsync)} with {nameof(filter)} is not supported for {nameof(BufferRepositoryCollectionBase<TEntity, TKey>)}");
     }
 
-    public override IAsyncEnumerable<TTarget> AggregateAsync<TTarget>(FilterDefinition<TEntity> filter, EPrecision precision, AggregateOperations<TTarget> operations)
+    public override IAsyncEnumerable<TTarget> AggregateAsync<TTarget>(FilterDefinition<TEntity> filter, EPrecision precision, AggregateOperations<TTarget> operations, CancellationToken cancellationToken = default)
     {
         throw new NotSupportedException($"{nameof(AggregateAsync)} is not supported for {nameof(BufferRepositoryCollectionBase<TEntity, TKey>)}");
     }
@@ -303,10 +303,10 @@ public abstract class BufferRepositoryCollectionBase<TEntity, TKey> : Repository
     /// <returns></returns>
     public async Task InvalidateBufferAsync()
     {
-        await GetBufferAsync(true);
+        await GetBufferAsync(CancellationToken.None, true);
     }
 
-    private async ValueTask<ConcurrentDictionary<TKey, TEntity>> GetBufferAsync(bool forceReload = false)
+    private async ValueTask<ConcurrentDictionary<TKey, TEntity>> GetBufferAsync(CancellationToken cancellationToken, bool forceReload = false)
     {
         if (!forceReload && _bufferCollection.Data != null) return _bufferCollection.Data;
 
@@ -315,10 +315,10 @@ public abstract class BufferRepositoryCollectionBase<TEntity, TKey> : Repository
 
         try
         {
-            await _bufferLoadLock.WaitAsync();
+            await _bufferLoadLock.WaitAsync(cancellationToken);
             if (!forceReload && _bufferCollection.Data != null) return _bufferCollection.Data;
 
-            var allData = await Disk.GetAsync(x => true).ToArrayAsync();
+            var allData = await Disk.GetAsync(x => true, cancellationToken: cancellationToken).ToArrayAsync(cancellationToken: cancellationToken);
             _bufferCollection.Set(new ConcurrentDictionary<TKey, TEntity>(allData.ToDictionary(x => x.Id, x => x)));
 
             sw.Stop();

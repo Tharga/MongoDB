@@ -583,25 +583,25 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         }, false);
     }
 
-    public override async Task<long> CountAsync(Expression<Func<TEntity, bool>> predicate)
+    public override async Task<long> CountAsync(Expression<Func<TEntity, bool>> predicate, CancellationToken cancellationToken = default)
     {
         return await Execute(nameof(CountAsync), async () =>
         {
-            var count = await Collection.CountDocumentsAsync(predicate);
+            var count = await Collection.CountDocumentsAsync(predicate, cancellationToken: cancellationToken);
             return count;
         }, false);
     }
 
-    public override async Task<long> CountAsync(FilterDefinition<TEntity> filter)
+    public override async Task<long> CountAsync(FilterDefinition<TEntity> filter, CancellationToken cancellationToken = default)
     {
         return await Execute(nameof(CountAsync), async () =>
         {
-            var count = await Collection.CountDocumentsAsync(filter);
+            var count = await Collection.CountDocumentsAsync(filter, cancellationToken: cancellationToken);
             return count;
         }, false);
     }
 
-    public override async IAsyncEnumerable<TTarget> AggregateAsync<TTarget>(FilterDefinition<TEntity> filter, EPrecision precision, AggregateOperations<TTarget> operations)
+    public override async IAsyncEnumerable<TTarget> AggregateAsync<TTarget>(FilterDefinition<TEntity> filter, EPrecision precision, AggregateOperations<TTarget> operations, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         var serializerRegistry = BsonSerializer.SerializerRegistry;
         var documentSerializer = serializerRegistry.GetSerializer<TEntity>();
@@ -609,21 +609,21 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 
         var properties = AggregatePropertyCache.GetProperties<TEntity, TTarget>().ToArray();
 
-        var grp = BuildTimestampGrouping(precision);
-        grp.AddRange(properties.ToDictionary(x => x, x => $"${x}"));
+        var timestampGrouping = BuildTimestampGrouping(precision);
+        timestampGrouping.AddRange(properties.ToDictionary(x => x, x => $"${x}"));
 
         var group = new BsonDocument
         {
-            { "_id", grp },
+            { "_id", timestampGrouping },
             { "Time", new BsonDocument("$first", "$Timestamp") },
         };
         group.AddRange(properties.ToDictionary(x => x, x => new BsonDocument("$first", $"${x}")));
         group.AddRange(operations.Build());
 
         var pipeline = new[] { new BsonDocument("$match", renderedFilter), new BsonDocument("$group", group) };
-        var result = Collection.Aggregate<TTarget>(pipeline).ToEnumerable();
+        var result = await Collection.AggregateAsync<TTarget>(pipeline, cancellationToken: cancellationToken);
 
-        foreach (var item in AddTimeInfo(result, precision))
+        await foreach (var item in AddTimeInfo(result, precision, cancellationToken).WithCancellation(cancellationToken))
         {
             yield return item;
         }
@@ -683,12 +683,16 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         }
     }
 
-    private IEnumerable<TTarget> AddTimeInfo<TTarget>(IEnumerable<TTarget> items, EPrecision precision)
+    private async IAsyncEnumerable<TTarget> AddTimeInfo<TTarget>(IAsyncCursor<TTarget> cursor, EPrecision precision, [EnumeratorCancellation] CancellationToken cancellationToken)
         where TTarget : TimeEntityBase
     {
-        foreach (var item in items)
+        while (await cursor.MoveNextAsync(cancellationToken))
         {
-            yield return item with { Time = TrunkateTime(item.Time, precision) };
+            var batch = cursor.Current;
+            foreach (var item in batch)
+            {
+                yield return item with { Time = TrunkateTime(item.Time, precision) };
+            }
         }
     }
 

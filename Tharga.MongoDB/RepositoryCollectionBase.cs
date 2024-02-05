@@ -76,10 +76,10 @@ public abstract class RepositoryCollectionBase<TEntity, TKey> : RepositoryCollec
     public abstract Task<long> DeleteManyAsync(Expression<Func<TEntity, bool>> predicate);
     public abstract Task DropCollectionAsync();
 
-    public abstract Task<long> CountAsync(Expression<Func<TEntity, bool>> predicate);
-    public abstract Task<long> CountAsync(FilterDefinition<TEntity> filter);
+    public abstract Task<long> CountAsync(Expression<Func<TEntity, bool>> predicate, CancellationToken cancellationToken = default);
+    public abstract Task<long> CountAsync(FilterDefinition<TEntity> filter, CancellationToken cancellationToken = default);
 
-    public abstract IAsyncEnumerable<TTarget> AggregateAsync<TTarget>(FilterDefinition<TEntity> filter, EPrecision precision, AggregateOperations<TTarget> operations) where TTarget : TimeEntityBase;
+    public abstract IAsyncEnumerable<TTarget> AggregateAsync<TTarget>(FilterDefinition<TEntity> filter, EPrecision precision, AggregateOperations<TTarget> operations, CancellationToken cancellationToken = default) where TTarget : TimeEntityBase;
 
     public abstract Task<long> GetSizeAsync();
 
