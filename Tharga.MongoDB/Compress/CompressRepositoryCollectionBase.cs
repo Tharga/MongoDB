@@ -29,15 +29,16 @@ public abstract class CompressRepositoryCollectionBase<TEntity, TKey> : Reposito
     internal override IRepositoryCollection<TEntity, TKey> BaseCollection => _diskConnected ? Disk : this;
     private RepositoryCollectionBase<TEntity, TKey> Disk => _diskConnected ? _disk ??= new GenericDiskRepositoryCollection<TEntity, TKey>(_mongoDbServiceFactory, _databaseContext ?? new DatabaseContext { CollectionName = CollectionName, DatabasePart = DatabasePart, ConfigurationName = ConfigurationName }, _logger, this) : null;
 
-    public override async IAsyncEnumerable<TEntity> GetAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    public override IAsyncEnumerable<TEntity> GetAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default)
     {
-        throw new NotImplementedException();
-        yield break;
+        //TODO: Compress data here
+        return Disk.GetAsync(predicate, options, cancellationToken);
     }
 
     public override IAsyncEnumerable<TEntity> GetAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default)
     {
-        throw new NotImplementedException();
+        //TODO: Compress data here
+        return Disk.GetAsync(filter, options, cancellationToken);
     }
 
     public override async IAsyncEnumerable<T> GetAsync<T>(Expression<Func<T, bool>> predicate = null, Options<T> options = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
@@ -47,6 +48,11 @@ public abstract class CompressRepositoryCollectionBase<TEntity, TKey> : Reposito
     }
 
     public override Task<Result<TEntity, TKey>> QueryAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default)
+    {
+        throw new NotImplementedException();
+    }
+
+    public override async Task<Result<TEntity, TKey>> QueryAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default)
     {
         throw new NotImplementedException();
     }
@@ -83,7 +89,14 @@ public abstract class CompressRepositoryCollectionBase<TEntity, TKey> : Reposito
         //The last 30 days per day
         //Per month
 
-        var item = await Disk.GetOneAsync(x => x.AggregateKey == entity.AggregateKey);
+        var timeInfo = GetDateTime(entity);
+        entity = entity with
+        {
+            Timestamp = timeInfo.Time,
+            Granularity = timeInfo.Granularity
+        };
+
+        var item = await Disk.GetOneAsync(x => x.AggregateKey == entity.AggregateKey && x.Timestamp == timeInfo.Time);
         if (item == null)
         {
             await Disk.AddOrReplaceAsync(entity);
@@ -93,6 +106,41 @@ public abstract class CompressRepositoryCollectionBase<TEntity, TKey> : Reposito
             var merged = item.Merge(entity);
             await Disk.ReplaceOneAsync(merged);
         }
+    }
+
+    private static (DateTime? Time, CompressGranularity Granularity) GetDateTime(TEntity entity)
+    {
+        DateTime? time = null;
+        var granularity = CompressGranularity.None;
+        if (entity.Timestamp.HasValue)
+        {
+            var strata = entity.GetStrata();
+            granularity = strata.CompressPer;
+            switch (strata.CompressPer)
+            {
+                case CompressGranularity.None:
+                    break;
+                case CompressGranularity.Minute:
+                    time = new DateTime(entity.Timestamp.Value.Year, entity.Timestamp.Value.Month, entity.Timestamp.Value.Day, entity.Timestamp.Value.Hour, entity.Timestamp.Value.Minute, 0);
+                    break;
+                case CompressGranularity.Hour:
+                    time = new DateTime(entity.Timestamp.Value.Year, entity.Timestamp.Value.Month, entity.Timestamp.Value.Day, entity.Timestamp.Value.Hour, 0, 0);
+                    break;
+                case CompressGranularity.Day:
+                    time = new DateTime(entity.Timestamp.Value.Year, entity.Timestamp.Value.Month, entity.Timestamp.Value.Day);
+                    break;
+                case CompressGranularity.Month:
+                    time = new DateTime(entity.Timestamp.Value.Year, entity.Timestamp.Value.Month, 0);
+                    break;
+                case CompressGranularity.Year:
+                    time = new DateTime(entity.Timestamp.Value.Year, 0, 0);
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException($"Unknown strata value '{strata.CompressPer}'.");
+            }
+        }
+
+        return (time ?? entity.Timestamp ?? DateTime.UtcNow, granularity);
     }
 
     public override async Task<bool> TryAddAsync(TEntity entity)
