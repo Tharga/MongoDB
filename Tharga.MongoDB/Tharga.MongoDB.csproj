@@ -36,6 +36,7 @@
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Tharga.MongoDB.Tests" />
-    <InternalsVisibleTo Include="DynamicProxyGenAssembly2" />
+	<InternalsVisibleTo Include="DynamicProxyGenAssembly2" />
+    <InternalsVisibleTo Include="MongoDB.Driver" />
   </ItemGroup>
 </Project>

@@ -1,22 +1,19 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq.Expressions;
-using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using MongoDB.Driver;
-using Tharga.MongoDB.Buffer;
 
 namespace Tharga.MongoDB.Disk;
 
 internal class GenericDiskRepositoryCollection<TEntity, TKey> : DiskRepositoryCollectionBase<TEntity, TKey>
     where TEntity : EntityBase<TKey>
 {
-    private readonly BufferRepositoryCollectionBase<TEntity, TKey> _buffer;
+    private readonly RepositoryCollectionBase<TEntity, TKey> _buffer;
 
-    public GenericDiskRepositoryCollection(IMongoDbServiceFactory mongoDbServiceFactory, DatabaseContext databaseContext, ILogger<RepositoryCollectionBase<TEntity, TKey>> logger, BufferRepositoryCollectionBase<TEntity, TKey> buffer)
+    public GenericDiskRepositoryCollection(IMongoDbServiceFactory mongoDbServiceFactory, DatabaseContext databaseContext, ILogger<RepositoryCollectionBase<TEntity, TKey>> logger, RepositoryCollectionBase<TEntity, TKey> proxy)
         : base(mongoDbServiceFactory, logger, databaseContext)
     {
-        _buffer = buffer;
+        _buffer = proxy;
     }
 
     internal override string ServerName => _buffer?.ServerName ?? base.ServerName;

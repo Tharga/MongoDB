@@ -426,14 +426,14 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         }, true);
     }
 
-    public async Task<long> UpdateAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update)
-    {
-        return await Execute(nameof(UpdateAsync), async () =>
-        {
-            var result = await Collection.UpdateManyAsync(filter, update);
-            return result.ModifiedCount;
-        }, true);
-    }
+    //public async Task<long> UpdateAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update)
+    //{
+    //    return await Execute(nameof(UpdateAsync), async () =>
+    //    {
+    //        var result = await Collection.UpdateManyAsync(filter, update);
+    //        return result.ModifiedCount;
+    //    }, true);
+    //}
 
     public override async Task<EntityChangeResult<TEntity>> UpdateOneAsync(TKey id, UpdateDefinition<TEntity> update)
     {
