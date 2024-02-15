@@ -27,8 +27,12 @@ public static class StrataHelper
         CompressGranularity granularity;
         if (age.TotalDays > 365)
             granularity = CompressGranularity.Year;
-        else if (age.TotalDays > 31)
+        else if (age.TotalDays > 90)
+            granularity = CompressGranularity.Quarter;
+        else if (age.TotalDays > 30)
             granularity = CompressGranularity.Month;
+        else if (age.TotalDays > 7)
+            granularity = CompressGranularity.Week;
         else if (age.TotalDays > 1)
             granularity = CompressGranularity.Day;
         else if (age.TotalHours > 1)
@@ -39,5 +43,31 @@ public static class StrataHelper
             granularity = CompressGranularity.None;
 
         return granularity;
+    }
+
+    public static TimeSpan GetTimeSpan(CompressGranularity strataGranularity)
+    {
+        switch (strataGranularity)
+        {
+            case CompressGranularity.None:
+                return TimeSpan.Zero;
+                //throw new NotSupportedException($"Getting time span from '{nameof(strataGranularity)}' is not supported.");
+            case CompressGranularity.Minute:
+                return TimeSpan.FromMinutes(1);
+            case CompressGranularity.Hour:
+                return TimeSpan.FromHours(1);
+            case CompressGranularity.Day:
+                return TimeSpan.FromDays(1);
+            case CompressGranularity.Week:
+                return TimeSpan.FromDays(7);
+            case CompressGranularity.Month:
+                return TimeSpan.FromDays(30);
+            case CompressGranularity.Quarter:
+                return TimeSpan.FromDays(90);
+            case CompressGranularity.Year:
+                return TimeSpan.FromDays(365);
+            default:
+                throw new ArgumentOutOfRangeException(nameof(strataGranularity), strataGranularity, null);
+        }
     }
 }

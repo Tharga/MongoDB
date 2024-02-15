@@ -128,4 +128,26 @@ public class StrataHelperTests
             strata.CompressPer.Should().Be(CompressGranularity.Month);
         }
     }
+
+    [Theory]
+    [MemberData(nameof(GetGranularities))]
+    public void GetTimeSpan(CompressGranularity granularity)
+    {
+        //Arrange
+
+        //Act
+        var timeSpan = StrataHelper.GetTimeSpan(granularity);
+        var age = StrataHelper.GetAge(DateTime.UtcNow.Subtract(timeSpan));
+
+        //Assert
+        age.Should().Be(granularity);
+    }
+
+    public static IEnumerable<object[]> GetGranularities()
+    {
+        foreach (var suit in (CompressGranularity[])Enum.GetValues(typeof(CompressGranularity)))
+        {
+            yield return new object[] { suit };
+        }
+    }
 }
