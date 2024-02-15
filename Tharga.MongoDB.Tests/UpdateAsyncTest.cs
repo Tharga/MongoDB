@@ -32,7 +32,8 @@ public class UpdateAsyncTest : GenericBufferRepositoryCollectionBaseTestBase
         var sut = await GetCollection(CollectionType.Disk) as DiskRepositoryCollectionBase<TestEntity, ObjectId>;
 
         //Act
-        var result = await sut.UpdateAsync(filter, update);
+        //var result = await sut.UpdateAsync(filter, update);
+        var result = await sut.UpdateOneAsync(filter, update);
 
         //Assert
         result.Should().Be(InitialData.Length);
