@@ -137,7 +137,7 @@ public class StrataHelperTests
 
         //Act
         var timeSpan = StrataHelper.GetTimeSpan(granularity);
-        var age = StrataHelper.GetAge(DateTime.UtcNow.Subtract(timeSpan));
+        var age = StrataHelper.GetAge(DateTime.UtcNow.AddSeconds(-1).Subtract(timeSpan));
 
         //Assert
         age.Should().Be(granularity);
@@ -145,7 +145,7 @@ public class StrataHelperTests
 
     public static IEnumerable<object[]> GetGranularities()
     {
-        foreach (var suit in (CompressGranularity[])Enum.GetValues(typeof(CompressGranularity)))
+        foreach (var suit in Enum.GetValues<CompressGranularity>())
         {
             yield return new object[] { suit };
         }

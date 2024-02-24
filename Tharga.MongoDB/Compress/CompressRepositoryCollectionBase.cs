@@ -34,6 +34,7 @@ public abstract class CompressRepositoryCollectionBase<TEntity, TKey> : Reposito
     protected virtual IEnumerable<Strata> Stratas => null;
     public override IEnumerable<CreateIndexModel<TEntity>> Indicies => new CreateIndexModel<TEntity>[]
     {
+        //TODO: Enforce theese, even if indexes are overridden in the wrong way on the collection
         new(Builders<TEntity>.IndexKeys.Ascending(x => x.Timestamp), new CreateIndexOptions { Unique = false, Name = nameof(CompressEntityBase<TEntity, TKey>.Timestamp) }),
         new(Builders<TEntity>.IndexKeys.Ascending(x => x.Granularity), new CreateIndexOptions { Unique = false, Name = nameof(CompressEntityBase<TEntity, TKey>.Granularity) }),
     };
@@ -99,6 +100,9 @@ public abstract class CompressRepositoryCollectionBase<TEntity, TKey> : Reposito
 
     public override async Task AddAsync(TEntity entity)
     {
+        if (!entity.Timestamp.HasValue) throw new InvalidOperationException($"Cannot save an entity of type '{typeof(TEntity).Name}' without a {nameof(entity.Timestamp)}.");
+        if (entity.Timestamp?.Kind != DateTimeKind.Utc) throw new InvalidOperationException($"{nameof(entity.Timestamp)} for entity of type '{typeof(TEntity).Name}' must be Utc. {entity.Timestamp?.Kind} was provided.");
+
         var timeInfo = GetDateTime(entity);
         entity = entity with
         {
@@ -114,7 +118,15 @@ public abstract class CompressRepositoryCollectionBase<TEntity, TKey> : Reposito
         else
         {
             var merged = item.Merge(entity);
-            await Disk.ReplaceOneAsync(merged);
+            var result = await Disk.ReplaceOneAsync(merged);
+            var after = await result.GetAfterAsync();
+            if (after.Timestamp?.Kind != DateTimeKind.Utc)
+            {
+                Debugger.Break();
+            }
+            else
+            {
+            }
         }
     }
 
@@ -224,10 +236,10 @@ public abstract class CompressRepositoryCollectionBase<TEntity, TKey> : Reposito
             {
                 _logger.LogInformation("Compressing {collectionName} {count} items older than {olderThan} to {compressPer}.", CollectionName, toMove.Length, strata.WhenOlderThan, strata.CompressPer);
 
-                foreach (var entity1 in toMove)
+                foreach (var entityToMove in toMove)
                 {
-                    var timeInfo = GetDateTime(entity1);
-                    var entity = entity1 with
+                    var timeInfo = GetDateTime(entityToMove);
+                    var entity = entityToMove with
                     {
                         Timestamp = timeInfo.Time,
                         Granularity = timeInfo.Granularity
@@ -243,7 +255,15 @@ public abstract class CompressRepositoryCollectionBase<TEntity, TKey> : Reposito
                         else
                         {
                             var merged = item.Merge(entity);
-                            await Disk.ReplaceOneAsync(merged);
+                            var result = await Disk.ReplaceOneAsync(merged);
+                            var after = await result.GetAfterAsync();
+                            if (after.Timestamp?.Kind != DateTimeKind.Utc)
+                            {
+                                Debugger.Break();
+                            }
+                            else
+                            {
+                            }
                         }
                     }
                     catch (Exception e)
@@ -279,19 +299,19 @@ public abstract class CompressRepositoryCollectionBase<TEntity, TKey> : Reposito
                 case CompressGranularity.None:
                     break;
                 case CompressGranularity.Minute:
-                    time = new DateTime(entity.Timestamp.Value.Year, entity.Timestamp.Value.Month, entity.Timestamp.Value.Day, entity.Timestamp.Value.Hour, entity.Timestamp.Value.Minute, 0);
+                    time = new DateTime(entity.Timestamp.Value.Year, entity.Timestamp.Value.Month, entity.Timestamp.Value.Day, entity.Timestamp.Value.Hour, entity.Timestamp.Value.Minute, 0, DateTimeKind.Utc);
                     break;
                 case CompressGranularity.Hour:
-                    time = new DateTime(entity.Timestamp.Value.Year, entity.Timestamp.Value.Month, entity.Timestamp.Value.Day, entity.Timestamp.Value.Hour, 0, 0);
+                    time = new DateTime(entity.Timestamp.Value.Year, entity.Timestamp.Value.Month, entity.Timestamp.Value.Day, entity.Timestamp.Value.Hour, 0, 0, DateTimeKind.Utc);
                     break;
                 case CompressGranularity.Day:
-                    time = new DateTime(entity.Timestamp.Value.Year, entity.Timestamp.Value.Month, entity.Timestamp.Value.Day);
+                    time = new DateTime(entity.Timestamp.Value.Year, entity.Timestamp.Value.Month, entity.Timestamp.Value.Day, 0, 0, 0, DateTimeKind.Utc);
                     break;
                 case CompressGranularity.Month:
-                    time = new DateTime(entity.Timestamp.Value.Year, entity.Timestamp.Value.Month, 0);
+                    time = new DateTime(entity.Timestamp.Value.Year, entity.Timestamp.Value.Month, 0, 0, 0, 0, DateTimeKind.Utc);
                     break;
                 case CompressGranularity.Year:
-                    time = new DateTime(entity.Timestamp.Value.Year, 0, 0);
+                    time = new DateTime(entity.Timestamp.Value.Year, 0, 0, 0, 0, 0, DateTimeKind.Utc);
                     break;
                 default:
                     throw new ArgumentOutOfRangeException($"Unknown strata value '{strata.CompressPer}'.");
