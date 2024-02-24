@@ -15,9 +15,6 @@ namespace Tharga.MongoDB.Compress;
 public abstract class CompressRepositoryCollectionBase<TEntity, TKey> : RepositoryCollectionBase<TEntity, TKey>
     where TEntity : CompressEntityBase<TEntity, TKey>
 {
-    //TODO: Implement retention feature
-    //TODO: Implement compression feature
-
     private readonly IMongoDbServiceFactory _mongoDbServiceFactory;
     private DiskRepositoryCollectionBase<TEntity, TKey> _disk;
     private bool _diskConnected = true;
@@ -32,9 +29,8 @@ public abstract class CompressRepositoryCollectionBase<TEntity, TKey> : Reposito
     private RepositoryCollectionBase<TEntity, TKey> Disk => _diskConnected ? _disk ??= new GenericDiskRepositoryCollection<TEntity, TKey>(_mongoDbServiceFactory, _databaseContext ?? new DatabaseContext { CollectionName = CollectionName, DatabasePart = DatabasePart, ConfigurationName = ConfigurationName }, _logger, this) : null;
 
     protected virtual IEnumerable<Strata> Stratas => null;
-    public override IEnumerable<CreateIndexModel<TEntity>> Indicies => new CreateIndexModel<TEntity>[]
+    internal override IEnumerable<CreateIndexModel<TEntity>> CoreIndicies => new CreateIndexModel<TEntity>[]
     {
-        //TODO: Enforce theese, even if indexes are overridden in the wrong way on the collection
         new(Builders<TEntity>.IndexKeys.Ascending(x => x.Timestamp), new CreateIndexOptions { Unique = false, Name = nameof(CompressEntityBase<TEntity, TKey>.Timestamp) }),
         new(Builders<TEntity>.IndexKeys.Ascending(x => x.Granularity), new CreateIndexOptions { Unique = false, Name = nameof(CompressEntityBase<TEntity, TKey>.Granularity) }),
     };
@@ -118,15 +114,7 @@ public abstract class CompressRepositoryCollectionBase<TEntity, TKey> : Reposito
         else
         {
             var merged = item.Merge(entity);
-            var result = await Disk.ReplaceOneAsync(merged);
-            var after = await result.GetAfterAsync();
-            if (after.Timestamp?.Kind != DateTimeKind.Utc)
-            {
-                Debugger.Break();
-            }
-            else
-            {
-            }
+            await Disk.ReplaceOneAsync(merged);
         }
     }
 
@@ -224,61 +212,66 @@ public abstract class CompressRepositoryCollectionBase<TEntity, TKey> : Reposito
 
     private async Task CompressAsync(CancellationToken cancellationToken)
     {
+        //TODO: This only needs to be executed once. Better to do it on startup.
+        if (Stratas.GroupBy(x => x.WhenOlderThan).Any(x => x.Count() > 1))
+        {
+            throw new InvalidOperationException($"There are more than one value for the same '{nameof(Strata.WhenOlderThan)}' value for '{CollectionName}'.");
+        }
+
         //TODO: Do not execute this on every call, just do it when something might have changed. Different stratas should have different intervals.
-        //TODO: Also apply retention rules to the data.
         //TODO: Have a service do this in the background, even if data is not accessed.
 
         foreach (var strata in Stratas.OrderByDescending(x => x.WhenOlderThan))
         {
-            var time = DateTime.UtcNow.Subtract(StrataHelper.GetTimeSpan(strata.CompressPer));
-            var toMove = await Disk.GetAsync(x => x.Timestamp < time && x.Granularity < strata.CompressPer, cancellationToken: cancellationToken).ToArrayAsync(cancellationToken: cancellationToken);
-            if (toMove.Any())
+            var time = DateTime.UtcNow.Subtract(StrataHelper.GetTimeSpan(strata.WhenOlderThan));
+            var toCompress = await Disk.GetAsync(x => x.Timestamp < time && x.Granularity < strata.CompressPer, cancellationToken: cancellationToken).ToArrayAsync(cancellationToken: cancellationToken);
+            if (toCompress.Any())
             {
-                _logger.LogInformation("Compressing {collectionName} {count} items older than {olderThan} to {compressPer}.", CollectionName, toMove.Length, strata.WhenOlderThan, strata.CompressPer);
-
-                foreach (var entityToMove in toMove)
+                if (strata.CompressPer == CompressGranularity.Drop)
                 {
-                    var timeInfo = GetDateTime(entityToMove);
-                    var entity = entityToMove with
-                    {
-                        Timestamp = timeInfo.Time,
-                        Granularity = timeInfo.Granularity
-                    };
+                    //TODO: Drop this item
+                }
+                else
+                {
 
-                    var item = await Disk.DeleteOneAsync(x => x.AggregateKey == entity.AggregateKey && x.Timestamp == timeInfo.Time);
-                    try
+                    _logger.LogInformation("Compressing {collectionName} {count} items older than {olderThan} to {compressPer}.", CollectionName, toCompress.Length, strata.WhenOlderThan, strata.CompressPer);
+
+                    foreach (var entityToMove in toCompress)
                     {
-                        if (item == null)
+                        var timeInfo = GetDateTime(entityToMove);
+                        var entity = entityToMove with
                         {
-                            await Disk.AddOrReplaceAsync(entity);
-                        }
-                        else
+                            Timestamp = timeInfo.Time,
+                            Granularity = timeInfo.Granularity
+                        };
+
+                        var item = await Disk.DeleteOneAsync(x => x.AggregateKey == entity.AggregateKey && x.Timestamp == timeInfo.Time);
+                        try
                         {
-                            var merged = item.Merge(entity);
-                            var result = await Disk.ReplaceOneAsync(merged);
-                            var after = await result.GetAfterAsync();
-                            if (after.Timestamp?.Kind != DateTimeKind.Utc)
+                            if (item == null)
                             {
-                                Debugger.Break();
+                                await Disk.AddOrReplaceAsync(entity);
                             }
                             else
                             {
+                                var merged = item.Merge(entity);
+                                await Disk.ReplaceOneAsync(merged);
                             }
                         }
-                    }
-                    catch (Exception e)
-                    {
-                        Debugger.Break();
-                        _logger.LogError($"Item was deleted, but could not be merged. Trying to add it back again. {e.Message}", e);
-                        try
-                        {
-                            await Disk.AddAsync(item);
-                        }
-                        catch (Exception exception)
+                        catch (Exception e)
                         {
                             Debugger.Break();
-                            _logger.LogCritical($"Could not add item back to database. The data is lost. {exception.Message}", exception);
-                            throw;
+                            _logger.LogError($"Item was deleted, but could not be merged. Trying to add it back again. {e.Message}", e);
+                            try
+                            {
+                                await Disk.AddAsync(item);
+                            }
+                            catch (Exception exception)
+                            {
+                                Debugger.Break();
+                                _logger.LogCritical($"Could not add item back to database. The data is lost. {exception.Message}", exception);
+                                throw;
+                            }
                         }
                     }
                 }

@@ -820,9 +820,8 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 
     private async Task UpdateIndiciesAsync(IMongoCollection<TEntity> collection)
     {
-        var indices = Indicies?.ToArray();
-
-        if (indices == null) return;
+        var indices = (CoreIndicies?.ToArray() ?? Array.Empty<CreateIndexModel<TEntity>>()).Union(Indicies?.ToArray() ?? Array.Empty<CreateIndexModel<TEntity>>()).ToArray();
+        if (!indices.Any()) return;
 
         if (indices.Any(x => string.IsNullOrEmpty(x.Options.Name))) throw new InvalidOperationException("Indicies needs to have a name.");
 

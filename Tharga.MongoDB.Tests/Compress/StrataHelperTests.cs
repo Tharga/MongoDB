@@ -55,11 +55,10 @@ public class StrataHelperTests
         var timestamp = DateTime.UtcNow.Subtract(TimeSpan.Parse(timestampString));
         var stratas = new Strata[]
         {
-            new Strata(CompressGranularity.Month)
+            Strata.StartWith(CompressGranularity.Month)
         };
 
         //Act
-
         var strata = StrataHelper.GetStrata(stratas, timestamp);
 
         //Assert
@@ -79,11 +78,10 @@ public class StrataHelperTests
         var timestamp = DateTime.UtcNow.Subtract(TimeSpan.Parse(timestampString));
         var stratas = new Strata[]
         {
-            new Strata(CompressGranularity.Month,CompressGranularity.Month)
+            Strata.Compress(CompressGranularity.Month,CompressGranularity.Month)
         };
 
         //Act
-
         var strata = StrataHelper.GetStrata(stratas, timestamp);
 
         //Assert
@@ -110,12 +108,11 @@ public class StrataHelperTests
         var timestamp = DateTime.UtcNow.Subtract(TimeSpan.Parse(timestampString));
         var stratas = new Strata[]
         {
-            new Strata(CompressGranularity.Day),
-            new Strata(CompressGranularity.Month, CompressGranularity.Month)
+            Strata.StartWith(CompressGranularity.Day),
+            Strata.Compress(CompressGranularity.Month, CompressGranularity.Month)
         };
 
         //Act
-
         var strata = StrataHelper.GetStrata(stratas, timestamp);
 
         //Assert
@@ -145,7 +142,7 @@ public class StrataHelperTests
 
     public static IEnumerable<object[]> GetGranularities()
     {
-        foreach (var suit in Enum.GetValues<CompressGranularity>())
+        foreach (var suit in Enum.GetValues<CompressGranularity>().Where(x => x != CompressGranularity.Drop))
         {
             yield return new object[] { suit };
         }

@@ -1,19 +1,47 @@
-﻿namespace Tharga.MongoDB.Compress;
+﻿using System;
+
+namespace Tharga.MongoDB.Compress;
 
 public record Strata
 {
-    public Strata(CompressGranularity startWith)
+    private Strata()
     {
-        WhenOlderThan = CompressGranularity.None;
-        CompressPer = startWith;
     }
 
-    public Strata(CompressGranularity whenOlderThan, CompressGranularity compressPer)
+    public static Strata StartWith(CompressGranularity compressPer)
     {
-        WhenOlderThan = whenOlderThan;
-        CompressPer = compressPer;
+        if (compressPer == CompressGranularity.None) throw new ArgumentException($"Cannot provide the value {compressPer} for {nameof(compressPer)}");
+
+        return new Strata
+        {
+            WhenOlderThan = CompressGranularity.None,
+            CompressPer = compressPer
+        };
     }
 
-    public CompressGranularity WhenOlderThan { get; }
-    public CompressGranularity CompressPer { get; }
+    public static Strata Compress(CompressGranularity whenOlderThan, CompressGranularity compressPer)
+    {
+        if (whenOlderThan == CompressGranularity.Drop) throw new ArgumentException($"Cannot provide the value {whenOlderThan} for {nameof(whenOlderThan)}");
+        if (compressPer == CompressGranularity.None) throw new ArgumentException($"Cannot provide the value {compressPer} for {nameof(compressPer)}");
+
+        return new Strata
+        {
+            WhenOlderThan = whenOlderThan,
+            CompressPer = compressPer
+        };
+    }
+
+    public static Strata Drop(CompressGranularity whenOlderThan)
+    {
+        if (whenOlderThan == CompressGranularity.Drop) throw new ArgumentException($"Cannot provide the value {whenOlderThan} for {nameof(whenOlderThan)}");
+
+        return new Strata
+        {
+            WhenOlderThan = whenOlderThan,
+            CompressPer = CompressGranularity.Drop
+        };
+    }
+
+    public CompressGranularity WhenOlderThan { get; private init; }
+    public CompressGranularity CompressPer { get; private init; }
 }

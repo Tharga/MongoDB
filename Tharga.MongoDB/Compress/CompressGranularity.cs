@@ -9,5 +9,6 @@ public enum CompressGranularity
     Week = 4,
     Month = 5,
     Quarter = 6,
-    Year = 7
+    Year = 7,
+    Drop = 100
 }

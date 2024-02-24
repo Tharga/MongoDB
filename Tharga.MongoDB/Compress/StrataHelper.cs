@@ -51,7 +51,6 @@ public static class StrataHelper
         {
             case CompressGranularity.None:
                 return TimeSpan.Zero;
-                //throw new NotSupportedException($"Getting time span from '{nameof(strataGranularity)}' is not supported.");
             case CompressGranularity.Minute:
                 return TimeSpan.FromMinutes(1);
             case CompressGranularity.Hour:
@@ -66,6 +65,8 @@ public static class StrataHelper
                 return TimeSpan.FromDays(90);
             case CompressGranularity.Year:
                 return TimeSpan.FromDays(365);
+            case CompressGranularity.Drop:
+                throw new NotSupportedException($"Cannot get {nameof(CompressGranularity)} for {strataGranularity}.");
             default:
                 throw new ArgumentOutOfRangeException(nameof(strataGranularity), strataGranularity, null);
         }
