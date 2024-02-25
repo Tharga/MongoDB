@@ -10,7 +10,7 @@ public record Strata
 
     public static Strata StartWith(CompressGranularity compressPer)
     {
-        if (compressPer == CompressGranularity.None) throw new ArgumentException($"Cannot provide the value {compressPer} for {nameof(compressPer)}");
+        if (compressPer == CompressGranularity.None) throw new ArgumentException($"Cannot provide the value {compressPer} for {nameof(compressPer)}. You might not want a start value for this type.");
 
         return new Strata
         {
@@ -21,8 +21,8 @@ public record Strata
 
     public static Strata Compress(CompressGranularity whenOlderThan, CompressGranularity compressPer)
     {
-        if (whenOlderThan == CompressGranularity.Drop) throw new ArgumentException($"Cannot provide the value {whenOlderThan} for {nameof(whenOlderThan)}");
-        if (compressPer == CompressGranularity.None) throw new ArgumentException($"Cannot provide the value {compressPer} for {nameof(compressPer)}");
+        if (whenOlderThan == CompressGranularity.Drop) throw new ArgumentException($"Cannot provide the value {whenOlderThan} for {nameof(whenOlderThan)}.");
+        if (compressPer == CompressGranularity.None) throw new ArgumentException($"Cannot provide the value {compressPer} for {nameof(compressPer)}.");
 
         return new Strata
         {
@@ -33,7 +33,7 @@ public record Strata
 
     public static Strata Drop(CompressGranularity whenOlderThan)
     {
-        if (whenOlderThan == CompressGranularity.Drop) throw new ArgumentException($"Cannot provide the value {whenOlderThan} for {nameof(whenOlderThan)}");
+        if (whenOlderThan == CompressGranularity.Drop) throw new ArgumentException($"Cannot provide the value {whenOlderThan} for {nameof(whenOlderThan)}.");
 
         return new Strata
         {

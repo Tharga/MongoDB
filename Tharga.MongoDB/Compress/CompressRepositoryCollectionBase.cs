@@ -33,6 +33,7 @@ public abstract class CompressRepositoryCollectionBase<TEntity, TKey> : Reposito
     {
         new(Builders<TEntity>.IndexKeys.Ascending(x => x.Timestamp), new CreateIndexOptions { Unique = false, Name = nameof(CompressEntityBase<TEntity, TKey>.Timestamp) }),
         new(Builders<TEntity>.IndexKeys.Ascending(x => x.Granularity), new CreateIndexOptions { Unique = false, Name = nameof(CompressEntityBase<TEntity, TKey>.Granularity) }),
+        new(Builders<TEntity>.IndexKeys.Ascending(x => x.AggregateKey), new CreateIndexOptions { Unique = false, Name = nameof(CompressEntityBase<TEntity, TKey>.Timestamp) }),
     };
 
     public override async IAsyncEnumerable<TEntity> GetAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default)
@@ -229,48 +230,56 @@ public abstract class CompressRepositoryCollectionBase<TEntity, TKey> : Reposito
             {
                 if (strata.CompressPer == CompressGranularity.Drop)
                 {
-                    //TODO: Drop this item
+                    _logger.LogInformation("Dropping {collectionName} {count} items older than {olderThan} to {compressPer}.", CollectionName, toCompress.Length, strata.WhenOlderThan, strata.CompressPer);
+
+                    foreach (var entityToDelete in toCompress)
+                    {
+                        var item = await Disk.DeleteOneAsync(entityToDelete.Id);
+                    }
                 }
                 else
                 {
-
                     _logger.LogInformation("Compressing {collectionName} {count} items older than {olderThan} to {compressPer}.", CollectionName, toCompress.Length, strata.WhenOlderThan, strata.CompressPer);
 
-                    foreach (var entityToMove in toCompress)
+                    foreach (var enitytToMerge in toCompress)
                     {
-                        var timeInfo = GetDateTime(entityToMove);
-                        var entity = entityToMove with
-                        {
-                            Timestamp = timeInfo.Time,
-                            Granularity = timeInfo.Granularity
-                        };
+                        var timeInfo = GetDateTime(enitytToMerge);
 
-                        var item = await Disk.DeleteOneAsync(x => x.AggregateKey == entity.AggregateKey && x.Timestamp == timeInfo.Time);
-                        try
+                        var aggregate = await Disk.GetOneAsync(x => x.AggregateKey == enitytToMerge.AggregateKey && x.Timestamp == timeInfo.Time && x.Granularity == timeInfo.Granularity, cancellationToken: cancellationToken);
+                        var item = await Disk.GetOneAsync(enitytToMerge.Id, cancellationToken);
+                        if (aggregate == null)
                         {
-                            if (item == null)
+                            //NOTE: The first time the entity changes granularity.
+                            var merged = item with
                             {
-                                await Disk.AddOrReplaceAsync(entity);
-                            }
-                            else
-                            {
-                                var merged = item.Merge(entity);
-                                await Disk.ReplaceOneAsync(merged);
-                            }
+                                Timestamp = timeInfo.Time,
+                                Granularity = timeInfo.Granularity
+                            };
+                            await Disk.ReplaceOneAsync(merged);
                         }
-                        catch (Exception e)
+                        else
                         {
-                            Debugger.Break();
-                            _logger.LogError($"Item was deleted, but could not be merged. Trying to add it back again. {e.Message}", e);
+                            //NOTE: Merge with another entity with the same granularity.
+                            var merged = aggregate.Merge(item);
+                            await Disk.DeleteOneAsync(enitytToMerge.Id);
                             try
                             {
-                                await Disk.AddAsync(item);
+                                await Disk.ReplaceOneAsync(merged);
                             }
-                            catch (Exception exception)
+                            catch (Exception e)
                             {
                                 Debugger.Break();
-                                _logger.LogCritical($"Could not add item back to database. The data is lost. {exception.Message}", exception);
-                                throw;
+                                _logger.LogError($"Item was deleted, but could not be merged. Trying to add it back again. {e.Message}", e);
+                                try
+                                {
+                                    await Disk.AddAsync(enitytToMerge);
+                                }
+                                catch (Exception exception)
+                                {
+                                    Debugger.Break();
+                                    _logger.LogCritical($"Could not add item back to database. The data is lost. {exception.Message}", exception);
+                                    throw;
+                                }
                             }
                         }
                     }
@@ -286,10 +295,12 @@ public abstract class CompressRepositoryCollectionBase<TEntity, TKey> : Reposito
         if (entity.Timestamp.HasValue)
         {
             var strata = StrataHelper.GetStrata(Stratas, entity.Timestamp.Value);
-            granularity = strata.CompressPer;
-            switch (strata.CompressPer)
+            granularity = strata?.CompressPer ?? CompressGranularity.None;
+            switch (strata?.CompressPer)
             {
+                case null:
                 case CompressGranularity.None:
+                    time = entity.Timestamp.Value;
                     break;
                 case CompressGranularity.Minute:
                     time = new DateTime(entity.Timestamp.Value.Year, entity.Timestamp.Value.Month, entity.Timestamp.Value.Day, entity.Timestamp.Value.Hour, entity.Timestamp.Value.Minute, 0, DateTimeKind.Utc);
