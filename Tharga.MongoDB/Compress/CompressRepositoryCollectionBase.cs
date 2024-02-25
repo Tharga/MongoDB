@@ -23,6 +23,15 @@ public abstract class CompressRepositoryCollectionBase<TEntity, TKey> : Reposito
         : base(mongoDbServiceFactory, logger, databaseContext)
     {
         _mongoDbServiceFactory = mongoDbServiceFactory;
+        VerifySetup();
+    }
+
+    private void VerifySetup()
+    {
+        if (Debugger.IsAttached)
+        {
+            if (Stratas.GroupBy(x => x.WhenOlderThan).Any(x => x.Count() > 1)) throw new InvalidOperationException($"There are more than one value for the same '{nameof(Strata.WhenOlderThan)}' value for '{CollectionName}'.");
+        }
     }
 
     internal override IRepositoryCollection<TEntity, TKey> BaseCollection => _diskConnected ? Disk : this;
@@ -213,12 +222,6 @@ public abstract class CompressRepositoryCollectionBase<TEntity, TKey> : Reposito
 
     private async Task CompressAsync(CancellationToken cancellationToken)
     {
-        //TODO: This only needs to be executed once. Better to do it on startup.
-        if (Stratas.GroupBy(x => x.WhenOlderThan).Any(x => x.Count() > 1))
-        {
-            throw new InvalidOperationException($"There are more than one value for the same '{nameof(Strata.WhenOlderThan)}' value for '{CollectionName}'.");
-        }
-
         //TODO: Do not execute this on every call, just do it when something might have changed. Different stratas should have different intervals.
         //TODO: Have a service do this in the background, even if data is not accessed.
 
@@ -234,7 +237,7 @@ public abstract class CompressRepositoryCollectionBase<TEntity, TKey> : Reposito
 
                     foreach (var entityToDelete in toCompress)
                     {
-                        var item = await Disk.DeleteOneAsync(entityToDelete.Id);
+                        await Disk.DeleteOneAsync(entityToDelete.Id);
                     }
                 }
                 else
