@@ -65,8 +65,11 @@ public abstract class CompressRepositoryCollectionBase<TEntity, TKey> : Reposito
 
     public override async IAsyncEnumerable<T> GetAsync<T>(Expression<Func<T, bool>> predicate = null, Options<T> options = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        throw new NotImplementedException();
-        yield break;
+        await CompressAsync(cancellationToken);
+        await foreach (var item in Disk.GetAsync(predicate, options, cancellationToken))
+        {
+            yield return item;
+        }
     }
 
     public override Task<Result<TEntity, TKey>> QueryAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default)
@@ -84,9 +87,9 @@ public abstract class CompressRepositoryCollectionBase<TEntity, TKey> : Reposito
         throw new NotImplementedException();
     }
 
-    public override async Task<TEntity> GetOneAsync(TKey id, CancellationToken cancellationToken = default)
+    public override Task<TEntity> GetOneAsync(TKey id, CancellationToken cancellationToken = default)
     {
-        throw new NotImplementedException();
+        return Disk.GetOneAsync(id, cancellationToken);
     }
 
     public override Task<TEntity> GetOneAsync(Expression<Func<TEntity, bool>> predicate = null, OneOption<TEntity> options = null, CancellationToken cancellationToken = default)
@@ -96,12 +99,12 @@ public abstract class CompressRepositoryCollectionBase<TEntity, TKey> : Reposito
 
     public override Task<TEntity> GetOneAsync(FilterDefinition<TEntity> filter, OneOption<TEntity> options = null, CancellationToken cancellationToken = default)
     {
-        throw new NotImplementedException();
+        return Disk.GetOneAsync(filter, options, cancellationToken);
     }
 
-    public override async Task<T> GetOneAsync<T>(Expression<Func<T, bool>> predicate = null, OneOption<T> options = null, CancellationToken cancellationToken = default)
+    public override Task<T> GetOneAsync<T>(Expression<Func<T, bool>> predicate = null, OneOption<T> options = null, CancellationToken cancellationToken = default)
     {
-        throw new NotImplementedException();
+        return Disk.GetOneAsync(predicate, options, cancellationToken);
     }
 
     public override async Task AddAsync(TEntity entity)
@@ -144,59 +147,61 @@ public abstract class CompressRepositoryCollectionBase<TEntity, TKey> : Reposito
         throw new NotImplementedException();
     }
 
-    public override async Task<EntityChangeResult<TEntity>> ReplaceOneAsync(TEntity entity, OneOption<TEntity> options = null)
+    public override Task<EntityChangeResult<TEntity>> ReplaceOneAsync(TEntity entity, OneOption<TEntity> options = null)
     {
-        throw new NotImplementedException();
+        return Disk.ReplaceOneAsync(entity, options);
     }
 
-    public override async Task<EntityChangeResult<TEntity>> UpdateOneAsync(TKey id, UpdateDefinition<TEntity> update)
+    public override Task<EntityChangeResult<TEntity>> UpdateOneAsync(TKey id, UpdateDefinition<TEntity> update)
     {
-        throw new NotImplementedException();
+        return Disk.UpdateOneAsync(id, update);
     }
 
-    public override async Task<EntityChangeResult<TEntity>> UpdateOneAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update, FindOneAndUpdateOptions<TEntity> options)
+    public override Task<EntityChangeResult<TEntity>> UpdateOneAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update, FindOneAndUpdateOptions<TEntity> options)
     {
-        throw new NotImplementedException();
+        return Disk.UpdateOneAsync(filter, update, options);
     }
 
-    public override async Task<EntityChangeResult<TEntity>> UpdateOneAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update, OneOption<TEntity> options = default)
+    public override Task<EntityChangeResult<TEntity>> UpdateOneAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update, OneOption<TEntity> options = default)
     {
-        throw new NotImplementedException();
+        return Disk.UpdateOneAsync(filter, update, options);
     }
 
-    public override async Task<TEntity> DeleteOneAsync(TKey id)
+    public override Task<TEntity> DeleteOneAsync(TKey id)
     {
-        throw new NotImplementedException();
+        return Disk.DeleteOneAsync(id);
     }
 
-    public override async Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate, FindOneAndDeleteOptions<TEntity, TEntity> options)
+    public override Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate, FindOneAndDeleteOptions<TEntity, TEntity> options)
     {
-        throw new NotImplementedException();
+        return Disk.DeleteOneAsync(predicate, options);
     }
 
-    public override async Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate = default, OneOption<TEntity> options = default)
+    public override Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate = default, OneOption<TEntity> options = default)
     {
-        throw new NotImplementedException();
+        return Disk.DeleteOneAsync(predicate, options);
     }
 
-    public override async Task<long> DeleteManyAsync(Expression<Func<TEntity, bool>> predicate)
+    public override Task<long> DeleteManyAsync(Expression<Func<TEntity, bool>> predicate)
     {
-        throw new NotImplementedException();
+        return Disk.DeleteManyAsync(predicate);
     }
 
-    public override async Task DropCollectionAsync()
+    public override Task DropCollectionAsync()
     {
-        throw new NotImplementedException();
+        return Disk.DropCollectionAsync();
     }
 
     public override async Task<long> CountAsync(Expression<Func<TEntity, bool>> predicate, CancellationToken cancellationToken = default)
     {
-        throw new NotImplementedException();
+        await CompressAsync(cancellationToken);
+        return await Disk.CountAsync(predicate, cancellationToken);
     }
 
-    public override Task<long> CountAsync(FilterDefinition<TEntity> filter, CancellationToken cancellationToken = default)
+    public override async Task<long> CountAsync(FilterDefinition<TEntity> filter, CancellationToken cancellationToken = default)
     {
-        throw new NotImplementedException();
+        await CompressAsync(cancellationToken);
+        return await Disk.CountAsync(filter, cancellationToken);
     }
 
     public override IAsyncEnumerable<TTarget> AggregateAsync<TTarget>(FilterDefinition<TEntity> filter, EPrecision precision, AggregateOperations<TTarget> operations, CancellationToken cancellationToken = default)
@@ -206,7 +211,7 @@ public abstract class CompressRepositoryCollectionBase<TEntity, TKey> : Reposito
 
     public override Task<long> GetSizeAsync()
     {
-        throw new NotImplementedException();
+        return Disk.GetSizeAsync();
     }
 
     internal Task DisconnectDiskAsync()
