@@ -823,6 +823,9 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         var indices = (CoreIndicies?.ToArray() ?? Array.Empty<CreateIndexModel<TEntity>>()).Union(Indicies?.ToArray() ?? Array.Empty<CreateIndexModel<TEntity>>()).ToArray();
         if (!indices.Any()) return;
 
+        var firstInvalid = indices.GroupBy(x => x.Options.Name).FirstOrDefault(x => x.Count() > 1);
+        if (firstInvalid != null) throw new InvalidOperationException($"Indicies can only be defined once with the same name. Index {firstInvalid.First().Options.Name} has been defined {firstInvalid.Count()} times for collection {ProtectedCollectionName}.");
+
         if (indices.Any(x => string.IsNullOrEmpty(x.Options.Name))) throw new InvalidOperationException("Indicies needs to have a name.");
 
         var existingIndexNames = (await collection.Indexes.ListAsync()).ToList()
@@ -838,9 +841,6 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                 await collection.Indexes.DropOneAsync(indexName);
                 _logger?.LogInformation("Index {indexName} was dropped in collection {collection}.", indexName, ProtectedCollectionName);
             }
-            else
-            {
-            }
         }
 
         //NOTE: Create indexes in the list
@@ -850,9 +850,6 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             {
                 var message = await collection.Indexes.CreateOneAsync(index);
                 _logger?.LogInformation("Index {indexName} was created in collection {collection}.", message, ProtectedCollectionName);
-            }
-            else
-            {
             }
         }
     }

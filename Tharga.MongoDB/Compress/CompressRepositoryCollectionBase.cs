@@ -42,10 +42,10 @@ public abstract class CompressRepositoryCollectionBase<TEntity, TKey> : Reposito
     {
         new(Builders<TEntity>.IndexKeys.Ascending(x => x.Timestamp), new CreateIndexOptions { Unique = false, Name = nameof(CompressEntityBase<TEntity, TKey>.Timestamp) }),
         new(Builders<TEntity>.IndexKeys.Ascending(x => x.Granularity), new CreateIndexOptions { Unique = false, Name = nameof(CompressEntityBase<TEntity, TKey>.Granularity) }),
-        new(Builders<TEntity>.IndexKeys.Ascending(x => x.AggregateKey), new CreateIndexOptions { Unique = false, Name = nameof(CompressEntityBase<TEntity, TKey>.Timestamp) }),
+        new(Builders<TEntity>.IndexKeys.Ascending(x => x.AggregateKey), new CreateIndexOptions { Unique = false, Name = nameof(CompressEntityBase<TEntity, TKey>.AggregateKey) }),
     };
 
-    public override async IAsyncEnumerable<TEntity> GetAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default)
+    public override async IAsyncEnumerable<TEntity> GetAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         await CompressAsync(cancellationToken);
         await foreach (var item in Disk.GetAsync(predicate, options, cancellationToken))
@@ -54,7 +54,7 @@ public abstract class CompressRepositoryCollectionBase<TEntity, TKey> : Reposito
         }
     }
 
-    public override async IAsyncEnumerable<TEntity> GetAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default)
+    public override async IAsyncEnumerable<TEntity> GetAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         await CompressAsync(cancellationToken);
         await foreach (var item in Disk.GetAsync(filter, options, cancellationToken))
@@ -106,6 +106,7 @@ public abstract class CompressRepositoryCollectionBase<TEntity, TKey> : Reposito
 
     public override async Task AddAsync(TEntity entity)
     {
+        //TODO: Break out in reusable function
         if (!entity.Timestamp.HasValue) throw new InvalidOperationException($"Cannot save an entity of type '{typeof(TEntity).Name}' without a {nameof(entity.Timestamp)}.");
         if (entity.Timestamp?.Kind != DateTimeKind.Utc) throw new InvalidOperationException($"{nameof(entity.Timestamp)} for entity of type '{typeof(TEntity).Name}' must be Utc. {entity.Timestamp?.Kind} was provided.");
 
