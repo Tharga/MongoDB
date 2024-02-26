@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -15,6 +16,9 @@ namespace Tharga.MongoDB.Compress;
 public abstract class CompressRepositoryCollectionBase<TEntity, TKey> : RepositoryCollectionBase<TEntity, TKey>
     where TEntity : CompressEntityBase<TEntity, TKey>
 {
+    // ReSharper disable once StaticMemberInGenericType
+    private static readonly ConcurrentDictionary<string, DateTime> _compressHistory = new();
+    private readonly SemaphoreSlim _compressLock = new(1, 1);
     private readonly IMongoDbServiceFactory _mongoDbServiceFactory;
     private DiskRepositoryCollectionBase<TEntity, TKey> _disk;
     private bool _diskConnected = true;
@@ -109,7 +113,6 @@ public abstract class CompressRepositoryCollectionBase<TEntity, TKey> : Reposito
 
     public override async Task AddAsync(TEntity entity)
     {
-        //TODO: Break out in reusable function
         if (!entity.Timestamp.HasValue) throw new InvalidOperationException($"Cannot save an entity of type '{typeof(TEntity).Name}' without a {nameof(entity.Timestamp)}.");
         if (entity.Timestamp?.Kind != DateTimeKind.Utc) throw new InvalidOperationException($"{nameof(entity.Timestamp)} for entity of type '{typeof(TEntity).Name}' must be Utc. {entity.Timestamp?.Kind} was provided.");
 
@@ -226,68 +229,78 @@ public abstract class CompressRepositoryCollectionBase<TEntity, TKey> : Reposito
         return Task.CompletedTask;
     }
 
+    //TODO: Have a service do this in the background, even if data is not accessed.
     private async Task CompressAsync(CancellationToken cancellationToken)
     {
-        //TODO: Do not execute this on every call, just do it when something might have changed. Different stratas should have different intervals.
-        //TODO: Have a service do this in the background, even if data is not accessed.
+        if (!ShouldCompress()) return;
 
-        foreach (var strata in Stratas.OrderByDescending(x => x.WhenOlderThan))
+        await _compressLock.WaitAsync(cancellationToken);
+        try
         {
-            var time = DateTime.UtcNow.Subtract(StrataHelper.GetTimeSpan(strata.WhenOlderThan));
-            var toCompress = await Disk.GetAsync(x => x.Timestamp < time && x.Granularity < strata.CompressPer, cancellationToken: cancellationToken).ToArrayAsync(cancellationToken: cancellationToken);
-            if (toCompress.Any())
+            foreach (var strata in Stratas.OrderByDescending(x => x.WhenOlderThan))
             {
-                if (strata.CompressPer == CompressGranularity.Drop)
+                var time = DateTime.UtcNow.Subtract(StrataHelper.GetTimeSpan(strata.WhenOlderThan));
+                var toCompress = await Disk.GetAsync(x => x.Timestamp < time && x.Granularity < strata.CompressPer, cancellationToken: cancellationToken).ToArrayAsync(cancellationToken: cancellationToken);
+                if (toCompress.Any())
                 {
-                    _logger.LogInformation("Dropping {collectionName} {count} items older than {olderThan} to {compressPer}.", CollectionName, toCompress.Length, strata.WhenOlderThan, strata.CompressPer);
-
-                    foreach (var entityToDelete in toCompress)
+                    if (strata.CompressPer == CompressGranularity.Drop)
                     {
-                        await Disk.DeleteOneAsync(entityToDelete.Id);
-                    }
-                }
-                else
-                {
-                    _logger.LogInformation("Compressing {collectionName} {count} items older than {olderThan} to {compressPer}.", CollectionName, toCompress.Length, strata.WhenOlderThan, strata.CompressPer);
+                        _logger.LogInformation("Dropping {collectionName} {count} items older than {olderThan}.", CollectionName, toCompress.Length, strata.WhenOlderThan);
+                        InvokeAction(new ActionEventArgs.ActionData { Operation = "Compress-Drop", Message = $"Dropping {CollectionName} {toCompress.Length} items older than {strata.WhenOlderThan}.", Level = LogLevel.Information });
 
-                    foreach (var enitytToMerge in toCompress)
-                    {
-                        var timeInfo = GetDateTime(enitytToMerge);
-
-                        var aggregate = await Disk.GetOneAsync(x => x.AggregateKey == enitytToMerge.AggregateKey && x.Timestamp == timeInfo.Time && x.Granularity == timeInfo.Granularity, cancellationToken: cancellationToken);
-                        var item = await Disk.GetOneAsync(enitytToMerge.Id, cancellationToken);
-                        if (aggregate == null)
+                        foreach (var entityToDelete in toCompress)
                         {
-                            //NOTE: The first time the entity changes granularity.
-                            var merged = item with
-                            {
-                                Timestamp = timeInfo.Time,
-                                Granularity = timeInfo.Granularity
-                            };
-                            await Disk.ReplaceOneAsync(merged);
+                            await Disk.DeleteOneAsync(entityToDelete.Id);
                         }
-                        else
+                    }
+                    else
+                    {
+                        _logger.LogInformation("Compressing {collectionName} {count} items older than {olderThan} to {compressPer}.", CollectionName, toCompress.Length, strata.WhenOlderThan, strata.CompressPer);
+                        InvokeAction(new ActionEventArgs.ActionData { Operation = "Compress", Message = $"Compressing {CollectionName} {toCompress.Length} items older than {strata.WhenOlderThan} to {strata.CompressPer}.", Level = LogLevel.Information });
+
+                        foreach (var enitytToMerge in toCompress)
                         {
-                            //NOTE: Merge with another entity with the same granularity.
-                            var merged = aggregate.Merge(item);
-                            await Disk.DeleteOneAsync(enitytToMerge.Id);
-                            try
+                            var timeInfo = GetDateTime(enitytToMerge);
+
+                            var aggregate = await Disk.GetOneAsync(x => x.AggregateKey == enitytToMerge.AggregateKey && x.Timestamp == timeInfo.Time && x.Granularity == timeInfo.Granularity, cancellationToken: cancellationToken);
+                            var item = await Disk.GetOneAsync(enitytToMerge.Id, cancellationToken);
+                            if (aggregate == null)
                             {
+                                //NOTE: The first time the entity changes granularity.
+                                var merged = item with
+                                {
+                                    Timestamp = timeInfo.Time,
+                                    Granularity = timeInfo.Granularity
+                                };
                                 await Disk.ReplaceOneAsync(merged);
                             }
-                            catch (Exception e)
+                            else
                             {
-                                Debugger.Break();
-                                _logger.LogError($"Item was deleted, but could not be merged. Trying to add it back again. {e.Message}", e);
+                                //NOTE: Merge with another entity with the same granularity.
+                                var merged = aggregate.Merge(item);
+                                await Disk.DeleteOneAsync(enitytToMerge.Id);
                                 try
                                 {
-                                    await Disk.AddAsync(enitytToMerge);
+                                    await Disk.ReplaceOneAsync(merged);
                                 }
-                                catch (Exception exception)
+                                catch (Exception e)
                                 {
                                     Debugger.Break();
-                                    _logger.LogCritical($"Could not add item back to database. The data is lost. {exception.Message}", exception);
-                                    throw;
+                                    var message = $"Item was deleted, but could not be merged. Trying to add it back again. {e.Message}";
+                                    _logger.LogError(message, e);
+                                    InvokeAction(new ActionEventArgs.ActionData { Operation = "Compress", Message = message, Level = LogLevel.Error });
+                                    try
+                                    {
+                                        await Disk.AddAsync(enitytToMerge);
+                                    }
+                                    catch (Exception exception)
+                                    {
+                                        Debugger.Break();
+                                        var msg = $"Could not add item back to database. The data is lost. {exception.Message}";
+                                        _logger.LogCritical(msg, exception);
+                                        InvokeAction(new ActionEventArgs.ActionData { Operation = "Compress", Message = msg, Level = LogLevel.Critical });
+                                        throw;
+                                    }
                                 }
                             }
                         }
@@ -295,6 +308,45 @@ public abstract class CompressRepositoryCollectionBase<TEntity, TKey> : Reposito
                 }
             }
         }
+        finally
+        {
+            _compressHistory.TryAdd(CollectionName, DateTime.UtcNow);
+            _compressLock.Release();
+        }
+    }
+
+    private bool ShouldCompress()
+    {
+        if (_compressHistory.TryGetValue(CollectionName, out var last))
+        {
+            var since = DateTime.UtcNow - last;
+            var compressGranularity = Stratas.Where(x => x.WhenOlderThan != CompressGranularity.None).MinBy(x => x.WhenOlderThan)?.WhenOlderThan;
+            switch (compressGranularity)
+            {
+                case null:
+                case CompressGranularity.None:
+                    return false;
+                case CompressGranularity.Minute:
+                case CompressGranularity.Hour:
+                    if (since.TotalMinutes < 1) return false;
+                    break;
+                case CompressGranularity.Day:
+                case CompressGranularity.Week:
+                case CompressGranularity.Month:
+                    if (since.TotalHours < 1) return false;
+                    break;
+                case CompressGranularity.Quarter:
+                case CompressGranularity.Year:
+                    if (since.TotalDays < 1) return false;
+                    break;
+                case CompressGranularity.Drop:
+                    throw new NotSupportedException($"Strata granularity '{compressGranularity}' is not allowd.");
+                default:
+                    throw new ArgumentOutOfRangeException($"Unknown strata granularity '{compressGranularity}'.");
+            }
+        }
+
+        return true;
     }
 
     private (DateTime? Time, CompressGranularity Granularity) GetDateTime(TEntity entity)
