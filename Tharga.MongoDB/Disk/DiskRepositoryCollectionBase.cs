@@ -134,7 +134,8 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         var sw = new Stopwatch();
         sw.Start();
 
-        var o = options == null ? null : new FindOptions<TEntity, TEntity> { Projection = options.Projection, Sort = options.Sort, Limit = options.Limit, Skip = options.Skip };
+        //var o = options == null ? null : new FindOptions<TEntity, TEntity> { Projection = options.Projection, Sort = options.Sort, Limit = options.Limit, Skip = options.Skip };
+        var o = BuildOptions(options);
         var cursor = await FindAsync(Collection, filter, cancellationToken, o);
 
         var count = 0;
@@ -190,6 +191,29 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         var o = BuildOptions(options);
         var totalCount = await Collection.CountDocumentsAsync(predicate ?? FilterDefinition<TEntity>.Empty, cancellationToken: cancellationToken);
         var cursor = await FindAsync(Collection, predicate, cancellationToken, o);
+
+        var items = await BuildList(cursor, cancellationToken).ToArrayAsync(cancellationToken: cancellationToken);
+        var count = items.Length;
+
+        sw.Stop();
+        _logger?.LogInformation($"Executed {{repositoryType}} for {{CollectionName}} took {{elapsed}} ms and returned {{itemCount}} items. [action: Database, operation: {nameof(QueryAsync)}]", "DiskRepository", CollectionName, sw.Elapsed.TotalMilliseconds, count);
+        InvokeAction(new ActionEventArgs.ActionData { Operation = nameof(GetAsync), Elapsed = sw.Elapsed, ItemCount = count });
+
+        return new Result<TEntity, TKey>
+        {
+            Items = items,
+            TotalCount = (int)totalCount
+        };
+    }
+
+    public override async Task<Result<TEntity, TKey>> QueryAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default)
+    {
+        var sw = new Stopwatch();
+        sw.Start();
+
+        var o = BuildOptions(options);
+        var totalCount = await Collection.CountDocumentsAsync(filter, cancellationToken: cancellationToken);
+        var cursor = await FindAsync(Collection, filter, cancellationToken, o);
 
         var items = await BuildList(cursor, cancellationToken).ToArrayAsync(cancellationToken: cancellationToken);
         var count = items.Length;
@@ -426,14 +450,14 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         }, true);
     }
 
-    public async Task<long> UpdateAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update)
-    {
-        return await Execute(nameof(UpdateAsync), async () =>
-        {
-            var result = await Collection.UpdateManyAsync(filter, update);
-            return result.ModifiedCount;
-        }, true);
-    }
+    //public async Task<long> UpdateAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update)
+    //{
+    //    return await Execute(nameof(UpdateAsync), async () =>
+    //    {
+    //        var result = await Collection.UpdateManyAsync(filter, update);
+    //        return result.ModifiedCount;
+    //    }, true);
+    //}
 
     public override async Task<EntityChangeResult<TEntity>> UpdateOneAsync(TKey id, UpdateDefinition<TEntity> update)
     {
@@ -796,9 +820,11 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 
     private async Task UpdateIndiciesAsync(IMongoCollection<TEntity> collection)
     {
-        var indices = Indicies?.ToArray();
+        var indices = (CoreIndicies?.ToArray() ?? Array.Empty<CreateIndexModel<TEntity>>()).Union(Indicies?.ToArray() ?? Array.Empty<CreateIndexModel<TEntity>>()).ToArray();
+        if (!indices.Any()) return;
 
-        if (indices == null) return;
+        var firstInvalid = indices.GroupBy(x => x.Options.Name).FirstOrDefault(x => x.Count() > 1);
+        if (firstInvalid != null) throw new InvalidOperationException($"Indicies can only be defined once with the same name. Index {firstInvalid.First().Options.Name} has been defined {firstInvalid.Count()} times for collection {ProtectedCollectionName}.");
 
         if (indices.Any(x => string.IsNullOrEmpty(x.Options.Name))) throw new InvalidOperationException("Indicies needs to have a name.");
 
@@ -815,9 +841,6 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                 await collection.Indexes.DropOneAsync(indexName);
                 _logger?.LogInformation("Index {indexName} was dropped in collection {collection}.", indexName, ProtectedCollectionName);
             }
-            else
-            {
-            }
         }
 
         //NOTE: Create indexes in the list
@@ -827,9 +850,6 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             {
                 var message = await collection.Indexes.CreateOneAsync(index);
                 _logger?.LogInformation("Index {indexName} was created in collection {collection}.", message, ProtectedCollectionName);
-            }
-            else
-            {
             }
         }
     }

@@ -1,33 +1,31 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq.Expressions;
-using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using MongoDB.Driver;
-using Tharga.MongoDB.Buffer;
 
 namespace Tharga.MongoDB.Disk;
 
 internal class GenericDiskRepositoryCollection<TEntity, TKey> : DiskRepositoryCollectionBase<TEntity, TKey>
     where TEntity : EntityBase<TKey>
 {
-    private readonly BufferRepositoryCollectionBase<TEntity, TKey> _buffer;
+    private readonly RepositoryCollectionBase<TEntity, TKey> _proxy;
 
-    public GenericDiskRepositoryCollection(IMongoDbServiceFactory mongoDbServiceFactory, DatabaseContext databaseContext, ILogger<RepositoryCollectionBase<TEntity, TKey>> logger, BufferRepositoryCollectionBase<TEntity, TKey> buffer)
+    public GenericDiskRepositoryCollection(IMongoDbServiceFactory mongoDbServiceFactory, DatabaseContext databaseContext, ILogger<RepositoryCollectionBase<TEntity, TKey>> logger, RepositoryCollectionBase<TEntity, TKey> proxy)
         : base(mongoDbServiceFactory, logger, databaseContext)
     {
-        _buffer = buffer;
+        _proxy = proxy;
     }
 
-    internal override string ServerName => _buffer?.ServerName ?? base.ServerName;
-    internal override string DatabaseName => _buffer?.DatabaseName ?? base.DatabaseName;
-    public override string CollectionName => _buffer?.CollectionName ?? base.CollectionName;
-    public override string DatabasePart => _buffer?.DatabasePart ?? base.DatabasePart;
-    public override string ConfigurationName => _buffer?.ConfigurationName ?? base.ConfigurationName;
-    public override bool AutoClean => _buffer?.AutoClean ?? base.AutoClean;
-    public override bool CleanOnStartup => _buffer?.CleanOnStartup ?? base.CleanOnStartup;
-    public override bool DropEmptyCollections => _buffer?.DropEmptyCollections ?? base.DropEmptyCollections;
-    public override int? ResultLimit => _buffer?.ResultLimit ?? base.ResultLimit;
-    public override IEnumerable<CreateIndexModel<TEntity>> Indicies => _buffer?.Indicies ?? base.Indicies;
-    public override IEnumerable<Type> Types => _buffer?.Types ?? base.Types;
+    internal override string ServerName => _proxy?.ServerName ?? base.ServerName;
+    internal override string DatabaseName => _proxy?.DatabaseName ?? base.DatabaseName;
+    public override string CollectionName => _proxy?.CollectionName ?? base.CollectionName;
+    public override string DatabasePart => _proxy?.DatabasePart ?? base.DatabasePart;
+    public override string ConfigurationName => _proxy?.ConfigurationName ?? base.ConfigurationName;
+    public override bool AutoClean => _proxy?.AutoClean ?? base.AutoClean;
+    public override bool CleanOnStartup => _proxy?.CleanOnStartup ?? base.CleanOnStartup;
+    public override bool DropEmptyCollections => _proxy?.DropEmptyCollections ?? base.DropEmptyCollections;
+    public override int? ResultLimit => _proxy?.ResultLimit ?? base.ResultLimit;
+    public override IEnumerable<CreateIndexModel<TEntity>> Indicies => _proxy?.Indicies ?? base.Indicies;
+    internal override IEnumerable<CreateIndexModel<TEntity>> CoreIndicies => _proxy?.CoreIndicies ?? base.CoreIndicies;
+    public override IEnumerable<Type> Types => _proxy?.Types ?? base.Types;
 }

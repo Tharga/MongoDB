@@ -219,7 +219,7 @@ public static class AddMongoDbExtensions
         }
         else
         {
-            message = " Not registered in IOC (IServiceCollection), can not be injected in constructor because it requires ICollectionProvider.";
+            message = " Requires ICollectionProvider. Cannot be injected directly to constructor since it is not registered in IOC (IServiceCollection).";
         }
 
         _actionEvent?.Invoke(new ActionEventArgs(new ActionEventArgs.ActionData

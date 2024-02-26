@@ -51,12 +51,14 @@ public abstract class RepositoryCollectionBase<TEntity, TKey> : RepositoryCollec
     public virtual bool DropEmptyCollections => _mongoDbService.DropEmptyCollections();
     public virtual int? ResultLimit => _mongoDbService.GetResultLimit();
     public virtual IEnumerable<CreateIndexModel<TEntity>> Indicies => null;
+    internal virtual IEnumerable<CreateIndexModel<TEntity>> CoreIndicies => null;
     public virtual IEnumerable<Type> Types => null;
 
     public abstract IAsyncEnumerable<TEntity> GetAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default);
     public abstract IAsyncEnumerable<TEntity> GetAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default);
     public abstract IAsyncEnumerable<T> GetAsync<T>(Expression<Func<T, bool>> predicate = null, Options<T> options = null, CancellationToken cancellationToken = default) where T : TEntity;
     public abstract Task<Result<TEntity, TKey>> QueryAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default);
+    public abstract Task<Result<TEntity, TKey>> QueryAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default);
     public abstract IAsyncEnumerable<ResultPage<TEntity, TKey>> GetPagesAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default);
     public abstract Task<TEntity> GetOneAsync(TKey id, CancellationToken cancellationToken = default);
     public abstract Task<TEntity> GetOneAsync(Expression<Func<TEntity, bool>> predicate = null, OneOption<TEntity> options = null, CancellationToken cancellationToken = default);
