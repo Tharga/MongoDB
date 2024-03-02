@@ -213,6 +213,13 @@ public abstract class BufferRepositoryCollectionBase<TEntity, TKey> : Repository
         return result;
     }
 
+    public override async Task<long> UpdateAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update)
+    {
+        var result = await Disk.UpdateAsync(filter, update);
+        await InvalidateBufferAsync();
+        return result;
+    }
+
     public override async Task<EntityChangeResult<TEntity>> UpdateOneAsync(TKey id, UpdateDefinition<TEntity> update)
     {
         var result = await Disk.UpdateOneAsync(id, update);
@@ -220,6 +227,7 @@ public abstract class BufferRepositoryCollectionBase<TEntity, TKey> : Repository
         return result;
     }
 
+    [Obsolete("Use UpdateOneAsync with 'OneOption' instead.")]
     public override async Task<EntityChangeResult<TEntity>> UpdateOneAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update, FindOneAndUpdateOptions<TEntity> options)
     {
         var result = await Disk.UpdateOneAsync(filter, update, options);
@@ -244,6 +252,7 @@ public abstract class BufferRepositoryCollectionBase<TEntity, TKey> : Repository
         return result;
     }
 
+    [Obsolete("Use DeleteOneAsync with 'OneOption' instead.")]
     public override async Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate, FindOneAndDeleteOptions<TEntity, TEntity> options)
     {
         var result = await Disk.DeleteOneAsync(predicate, options);

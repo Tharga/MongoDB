@@ -70,7 +70,7 @@ internal class MongoDbService : IMongoDbService
     {
         if (_configuration.GetDatabaseUrl().Server.Host.Contains("localhost", StringComparison.InvariantCultureIgnoreCase)) return;
         var message = await _mongoDbFirewallStateService.AssureFirewallAccessAsync(_configuration.GetConfiguration().AccessInfo, force);
-        _logger.LogInformation(message);
+        _logger.LogDebug(message);
     }
 
     public string GetDatabaseName()
