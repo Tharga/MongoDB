@@ -450,14 +450,14 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         }, true);
     }
 
-    //public async Task<long> UpdateAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update)
-    //{
-    //    return await Execute(nameof(UpdateAsync), async () =>
-    //    {
-    //        var result = await Collection.UpdateManyAsync(filter, update);
-    //        return result.ModifiedCount;
-    //    }, true);
-    //}
+    public override async Task<long> UpdateAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update)
+    {
+        return await Execute(nameof(UpdateAsync), async () =>
+        {
+            var result = await Collection.UpdateManyAsync(filter, update);
+            return result.ModifiedCount;
+        }, true);
+    }
 
     public override async Task<EntityChangeResult<TEntity>> UpdateOneAsync(TKey id, UpdateDefinition<TEntity> update)
     {
@@ -474,6 +474,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         }, true);
     }
 
+    [Obsolete("Use UpdateOneAsync with 'OneOption' instead.")]
     public override async Task<EntityChangeResult<TEntity>> UpdateOneAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update, FindOneAndUpdateOptions<TEntity> options)
     {
         return await Execute(nameof(UpdateOneAsync), async () =>
@@ -541,6 +542,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         }, false);
     }
 
+    [Obsolete("Use DeleteOneAsync with 'OneOption' instead.")]
     public override async Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate, FindOneAndDeleteOptions<TEntity, TEntity> options)
     {
         return await Execute(nameof(DeleteOneAsync), async () =>
@@ -647,7 +649,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         var pipeline = new[] { new BsonDocument("$match", renderedFilter), new BsonDocument("$group", group) };
         var result = await Collection.AggregateAsync<TTarget>(pipeline, cancellationToken: cancellationToken);
 
-        await foreach (var item in AddTimeInfo(result, precision, cancellationToken).WithCancellation(cancellationToken))
+        await foreach (var item in AddTimeInfo(result, precision, cancellationToken))
         {
             yield return item;
         }

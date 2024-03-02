@@ -160,9 +160,10 @@ public abstract class CompressRepositoryCollectionBase<TEntity, TKey> : Reposito
         return Disk.UpdateOneAsync(id, update);
     }
 
+    [Obsolete("Use UpdateOneAsync with 'OneOption' instead.")]
     public override Task<EntityChangeResult<TEntity>> UpdateOneAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update, FindOneAndUpdateOptions<TEntity> options)
     {
-        return Disk.UpdateOneAsync(filter, update, options);
+        throw new NotSupportedException("This method has been deprecated.");
     }
 
     public override Task<EntityChangeResult<TEntity>> UpdateOneAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update, OneOption<TEntity> options = default)
@@ -175,9 +176,10 @@ public abstract class CompressRepositoryCollectionBase<TEntity, TKey> : Reposito
         return Disk.DeleteOneAsync(id);
     }
 
+    [Obsolete("Use DeleteOneAsync with 'OneOption' instead.")]
     public override Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate, FindOneAndDeleteOptions<TEntity, TEntity> options)
     {
-        return Disk.DeleteOneAsync(predicate, options);
+        throw new NotSupportedException("This method has been deprecated.");
     }
 
     public override Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate = default, OneOption<TEntity> options = default)
