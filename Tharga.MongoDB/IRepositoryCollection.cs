@@ -33,4 +33,6 @@ public interface IRepositoryCollection<TEntity, TKey> : IReadOnlyRepositoryColle
 
     Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate = default, OneOption<TEntity> options = default);
     Task<long> DeleteManyAsync(Expression<Func<TEntity, bool>> predicate);
+
+    IMongoCollection<TEntity> GetCollection();
 }
