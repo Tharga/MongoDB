@@ -192,6 +192,11 @@ public abstract class CompressRepositoryCollectionBase<TEntity, TKey> : Reposito
         return Disk.DeleteManyAsync(predicate);
     }
 
+    public override IMongoCollection<TEntity> GetCollection()
+    {
+        throw new NotSupportedException();
+    }
+
     public override Task DropCollectionAsync()
     {
         return Disk.DropCollectionAsync();

@@ -600,6 +600,11 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         }, false);
     }
 
+    public override IMongoCollection<TEntity> GetCollection()
+    {
+        return Collection;
+    }
+
     public override async Task DropCollectionAsync()
     {
         await Execute(nameof(DropCollectionAsync), async () =>

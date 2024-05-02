@@ -283,6 +283,11 @@ public abstract class BufferRepositoryCollectionBase<TEntity, TKey> : Repository
         return result;
     }
 
+    public override IMongoCollection<TEntity> GetCollection()
+    {
+        throw new NotSupportedException();
+    }
+
     public override async Task DropCollectionAsync()
     {
         await Disk.DropCollectionAsync();
