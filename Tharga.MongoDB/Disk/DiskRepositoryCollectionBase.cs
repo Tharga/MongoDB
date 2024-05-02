@@ -183,6 +183,84 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         InvokeAction(new ActionEventArgs.ActionData { Operation = $"{nameof(GetAsync)}<{typeof(T).Name}>", Elapsed = sw.Elapsed, ItemCount = count });
     }
 
+    public override async IAsyncEnumerable<T> GetProjectionAsync<T>(Expression<Func<T, bool>> predicate = null, Options<T> options = null, CancellationToken cancellationToken = default)
+    {
+        var sw = new Stopwatch();
+        sw.Start();
+
+        var filter = Builders<T>.Filter.And(new ExpressionFilterDefinition<T>(predicate ?? (_ => true)));
+        var o = options == null
+            ? new FindOptions<T, T>
+            {
+                Projection = BuildProjection<T>(),
+            }
+            : new FindOptions<T, T>
+            {
+                Projection = options.Projection ?? BuildProjection<T>(),
+                Sort = options.Sort,
+                Limit = options.Limit,
+                Skip = options.Skip
+            };
+
+        _ = Collection ?? throw new InvalidOperationException("Unable to initiate collection.");
+
+        var collection = await GetCollectionAsync<T>();
+        var cursor = await collection.FindAsync(filter ?? FilterDefinition<T>.Empty, o, cancellationToken);
+
+        var count = 0;
+        while (await cursor.MoveNextAsync(cancellationToken))
+        {
+            foreach (var current in cursor.Current)
+            {
+                count++;
+                if (ResultLimit != null && count > ResultLimit)
+                {
+                    throw new ResultLimitException(ResultLimit.Value);
+                }
+
+                yield return current;
+            }
+        }
+
+        sw.Stop();
+        _logger?.LogInformation($"Executed {{repositoryType}} for {{CollectionName}} took {{elapsed}} ms and returned {{itemCount}} items. [action: Database, operation: {nameof(GetAsync)}]", "DiskRepository", CollectionName, sw.Elapsed.TotalMilliseconds, count);
+        InvokeAction(new ActionEventArgs.ActionData { Operation = $"{nameof(GetProjectionAsync)}<{typeof(T).Name}>", Elapsed = sw.Elapsed, ItemCount = count });
+
+        //return await Execute($"{nameof(GetProjectionAsync)}<{typeof(T).Name}>", async () =>
+        //{
+        //    var filter = Builders<T>.Filter.And(new ExpressionFilterDefinition<T>(predicate ?? (_ => true)));
+
+        //    var projection = BuildProjection<T>();
+
+        //    var collection = await GetCollectionAsync<T>();
+        //    //var result = collection.Find(filter).Sort(options?.Sort).Project(projection).Limit(2);
+        //    //var findFluent = result.ToEnumerable().Select(x => BsonSerializer.Deserialize<T>(x)).ToAsyncEnumerable();
+
+        //    //T item;
+        //    //switch (options?.Mode)
+        //    //{
+        //    //    case null:
+        //    //    case EMode.SingleOrDefault:
+        //    //        item = await findFluent.SingleOrDefaultAsync(cancellationToken: cancellationToken);
+        //    //        break;
+        //    //    case EMode.Single:
+        //    //        item = await findFluent.SingleAsync(cancellationToken: cancellationToken);
+        //    //        break;
+        //    //    case EMode.FirstOrDefault:
+        //    //        item = await findFluent.FirstOrDefaultAsync(cancellationToken: cancellationToken);
+        //    //        break;
+        //    //    case EMode.First:
+        //    //        item = await findFluent.FirstAsync(cancellationToken: cancellationToken);
+        //    //        break;
+        //    //    default:
+        //    //        throw new ArgumentOutOfRangeException();
+        //    //}
+
+        //    //return item;
+        //}, false);
+
+    }
+
     public override async Task<Result<TEntity, TKey>> QueryAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default)
     {
         var sw = new Stopwatch();
@@ -379,6 +457,51 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             }
             return await CleanEntityAsync(collection, item);
         }, false);
+    }
+
+    public override async Task<T> GetOneProjectionAsync<T>(Expression<Func<T, bool>> predicate = null, OneOption<T> options = null, CancellationToken cancellationToken = default)
+    {
+        return await Execute($"{nameof(GetOneProjectionAsync)}<{typeof(T).Name}>", async () =>
+        {
+            var filter = Builders<T>.Filter.And(new ExpressionFilterDefinition<T>(predicate ?? (_ => true)));
+
+            var projection = BuildProjection<T>();
+
+            var collection = await GetCollectionAsync<T>();
+            var result = collection.Find(filter).Sort(options?.Sort).Project(projection).Limit(2);
+            var findFluent = result.ToEnumerable().Select(x => BsonSerializer.Deserialize<T>(x)).ToAsyncEnumerable();
+
+            T item;
+            switch (options?.Mode)
+            {
+                case null:
+                case EMode.SingleOrDefault:
+                    item = await findFluent.SingleOrDefaultAsync(cancellationToken: cancellationToken);
+                    break;
+                case EMode.Single:
+                    item = await findFluent.SingleAsync(cancellationToken: cancellationToken);
+                    break;
+                case EMode.FirstOrDefault:
+                    item = await findFluent.FirstOrDefaultAsync(cancellationToken: cancellationToken);
+                    break;
+                case EMode.First:
+                    item = await findFluent.FirstAsync(cancellationToken: cancellationToken);
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException();
+            }
+
+            return item;
+        }, false);
+    }
+
+    private static ProjectionDefinition<T> BuildProjection<T>()
+    {
+        var builder = new ProjectionDefinitionBuilder<T>();
+        var props = typeof(T).GetProperties().ToArray();
+        var projections = props.Select(x => Builders<T>.Projection.Include(x.Name));
+        var projectionDefinition = builder.Combine(projections);
+        return projectionDefinition;
     }
 
     protected virtual async Task<IMongoCollection<T>> GetCollectionAsync<T>()

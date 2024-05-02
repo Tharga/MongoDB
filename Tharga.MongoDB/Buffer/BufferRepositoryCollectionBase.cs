@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using MongoDB.Driver;
 using Tharga.MongoDB.Disk;
+using NotSupportedException = System.NotSupportedException;
 
 namespace Tharga.MongoDB.Buffer;
 
@@ -75,6 +76,11 @@ public abstract class BufferRepositoryCollectionBase<TEntity, TKey> : Repository
         {
             yield return entity as T;
         }
+    }
+
+    public override IAsyncEnumerable<T> GetProjectionAsync<T>(Expression<Func<T, bool>> predicate = null, Options<T> options = null, CancellationToken cancellationToken = default)
+    {
+        throw new NotSupportedException();
     }
 
     public override Task<Result<TEntity, TKey>> QueryAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default)
@@ -150,6 +156,11 @@ public abstract class BufferRepositoryCollectionBase<TEntity, TKey> : Repository
             default:
                 throw new ArgumentOutOfRangeException($"Unknown mode '{options.Mode}'.");
         }
+    }
+
+    public override Task<T> GetOneProjectionAsync<T>(Expression<Func<T, bool>> predicate = null, OneOption<T> options = null, CancellationToken cancellationToken = default)
+    {
+        throw new NotSupportedException();
     }
 
     public override async Task AddAsync(TEntity entity)
