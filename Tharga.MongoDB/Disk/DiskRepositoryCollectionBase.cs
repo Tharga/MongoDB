@@ -960,14 +960,17 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         if (indices.Any(x => string.IsNullOrEmpty(x.Options.Name)))
             throw new InvalidOperationException("Indices needs to have a name.");
 
-        var existingIndexNames = (await collection.Indexes.ListAsync()).ToList()
+        var allExistingIndexNames = (await collection.Indexes.ListAsync()).ToList()
             .Select(x => x.GetValue("name").AsString)
+            .ToArray();
+        var existingIndexNames = allExistingIndexNames
             .Where(x => !x.StartsWith("_id_"))
             .ToArray();
 
-        _logger?.LogTrace("Existing indices in collection {collection}: {indices}.", ProtectedCollectionName, string.Join(", ", existingIndexNames));
-        _logger?.LogTrace("Defined indices for collection {collection}: {indices}.", ProtectedCollectionName, string.Join(", ", indices.Select(x => x.Options.Name)));
-        _logger?.LogTrace("There are {count} documents in collection {collection}.", await collection.CountDocumentsAsync(x => true), ProtectedCollectionName);
+        _logger?.LogInformation("Assure index for collection {collection} with {count} documents.", ProtectedCollectionName, await collection.CountDocumentsAsync(x => true));
+        _logger?.LogTrace("All existing indices in collection {collection}: {indices}.", ProtectedCollectionName, string.Join(", ", allExistingIndexNames));
+        _logger?.LogDebug("Considered existing indices in collection {collection}: {indices}.", ProtectedCollectionName, string.Join(", ", existingIndexNames));
+        _logger?.LogDebug("Defined indices for collection {collection}: {indices}.", ProtectedCollectionName, string.Join(", ", indices.Select(x => x.Options.Name)));
 
         //NOTE: Drop indexes not in list
         foreach (var indexName in existingIndexNames)
@@ -982,7 +985,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                 catch (Exception e)
                 {
                     Debugger.Break();
-                    _logger?.LogError(e, "Failed to drop index {indexName} on collection {collection}. {message}", indexName, ProtectedCollectionName, e.Message);
+                    _logger?.LogError(e, "Failed to drop index {indexName} in collection {collection}. {message}", indexName, ProtectedCollectionName, e.Message);
                 }
             }
         }
@@ -1000,7 +1003,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                 catch (Exception e)
                 {
                     Debugger.Break();
-                    _logger?.LogError(e, "Failed to create index {indexName} on collection {collection}. {message}", index.Options.Name, ProtectedCollectionName, e.Message);
+                    _logger?.LogError(e, "Failed to create index {indexName} in collection {collection}. {message}", index.Options.Name, ProtectedCollectionName, e.Message);
                 }
             }
         }
