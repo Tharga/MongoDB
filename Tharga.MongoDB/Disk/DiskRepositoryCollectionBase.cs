@@ -925,7 +925,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             _logger?.LogTrace($"Assure index for collection {{collection}} in {{repositoryType}}. [action: Database, operation: {nameof(CleanAsync)}]", ProtectedCollectionName, "DiskRepository");
 
             await collection.Indexes.CreateOneAsync(new CreateIndexModel<TEntity>(Builders<TEntity>.IndexKeys.Ascending(x => x.Id).Ascending("_t"), new CreateIndexOptions()));
-            await UpdateIndiciesAsync(collection);
+            await UpdateIndicesAsync(collection);
         }
     }
 
@@ -948,28 +948,45 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         }
     }
 
-    private async Task UpdateIndiciesAsync(IMongoCollection<TEntity> collection)
+    private async Task UpdateIndicesAsync(IMongoCollection<TEntity> collection)
     {
-        var indices = (CoreIndicies?.ToArray() ?? Array.Empty<CreateIndexModel<TEntity>>()).Union(Indicies?.ToArray() ?? Array.Empty<CreateIndexModel<TEntity>>()).ToArray();
+        var indices = (CoreIndices?.ToArray() ?? Array.Empty<CreateIndexModel<TEntity>>()).Union(Indices?.ToArray() ?? Array.Empty<CreateIndexModel<TEntity>>()).ToArray();
         if (!indices.Any()) return;
 
         var firstInvalid = indices.GroupBy(x => x.Options.Name).FirstOrDefault(x => x.Count() > 1);
-        if (firstInvalid != null) throw new InvalidOperationException($"Indicies can only be defined once with the same name. Index {firstInvalid.First().Options.Name} has been defined {firstInvalid.Count()} times for collection {ProtectedCollectionName}.");
+        if (firstInvalid != null)
+            throw new InvalidOperationException($"Indices can only be defined once with the same name. Index {firstInvalid.First().Options.Name} has been defined {firstInvalid.Count()} times for collection {ProtectedCollectionName}.");
 
-        if (indices.Any(x => string.IsNullOrEmpty(x.Options.Name))) throw new InvalidOperationException("Indicies needs to have a name.");
+        if (indices.Any(x => string.IsNullOrEmpty(x.Options.Name)))
+            throw new InvalidOperationException("Indices needs to have a name.");
 
-        var existingIndexNames = (await collection.Indexes.ListAsync()).ToList()
+        var allExistingIndexNames = (await collection.Indexes.ListAsync()).ToList()
             .Select(x => x.GetValue("name").AsString)
+            .ToArray();
+        var existingIndexNames = allExistingIndexNames
             .Where(x => !x.StartsWith("_id_"))
             .ToArray();
+
+        _logger?.LogInformation("Assure index for collection {collection} with {count} documents.", ProtectedCollectionName, await collection.CountDocumentsAsync(x => true));
+        _logger?.LogTrace("All existing indices in collection {collection}: {indices}.", ProtectedCollectionName, string.Join(", ", allExistingIndexNames));
+        _logger?.LogDebug("Considered existing indices in collection {collection}: {indices}.", ProtectedCollectionName, string.Join(", ", existingIndexNames));
+        _logger?.LogDebug("Defined indices for collection {collection}: {indices}.", ProtectedCollectionName, string.Join(", ", indices.Select(x => x.Options.Name)));
 
         //NOTE: Drop indexes not in list
         foreach (var indexName in existingIndexNames)
         {
             if (indices.All(x => x.Options.Name != indexName))
             {
-                await collection.Indexes.DropOneAsync(indexName);
-                _logger?.LogInformation("Index {indexName} was dropped in collection {collection}.", indexName, ProtectedCollectionName);
+                try
+                {
+                    await collection.Indexes.DropOneAsync(indexName);
+                    _logger?.LogInformation("Index {indexName} was dropped in collection {collection}.", indexName, ProtectedCollectionName);
+                }
+                catch (Exception e)
+                {
+                    Debugger.Break();
+                    _logger?.LogError(e, "Failed to drop index {indexName} in collection {collection}. {message}", indexName, ProtectedCollectionName, e.Message);
+                }
             }
         }
 
@@ -978,8 +995,16 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         {
             if (existingIndexNames.All(x => index.Options.Name != x))
             {
-                var message = await collection.Indexes.CreateOneAsync(index);
-                _logger?.LogInformation("Index {indexName} was created in collection {collection}.", message, ProtectedCollectionName);
+                try
+                {
+                    var message = await collection.Indexes.CreateOneAsync(index);
+                    _logger?.LogInformation("Index {indexName} was created in collection {collection}. {message}", index.Options.Name, ProtectedCollectionName, message);
+                }
+                catch (Exception e)
+                {
+                    Debugger.Break();
+                    _logger?.LogError(e, "Failed to create index {indexName} in collection {collection}. {message}", index.Options.Name, ProtectedCollectionName, e.Message);
+                }
             }
         }
     }

@@ -25,7 +25,7 @@ internal class GenericDiskRepositoryCollection<TEntity, TKey> : DiskRepositoryCo
     public override bool CleanOnStartup => _proxy?.CleanOnStartup ?? base.CleanOnStartup;
     public override bool DropEmptyCollections => _proxy?.DropEmptyCollections ?? base.DropEmptyCollections;
     public override int? ResultLimit => _proxy?.ResultLimit ?? base.ResultLimit;
-    public override IEnumerable<CreateIndexModel<TEntity>> Indicies => _proxy?.Indicies ?? base.Indicies;
-    internal override IEnumerable<CreateIndexModel<TEntity>> CoreIndicies => _proxy?.CoreIndicies ?? base.CoreIndicies;
+    public override IEnumerable<CreateIndexModel<TEntity>> Indices => _proxy?.Indices ?? base.Indices;
+    internal override IEnumerable<CreateIndexModel<TEntity>> CoreIndices => _proxy?.CoreIndices ?? base.CoreIndices;
     public override IEnumerable<Type> Types => _proxy?.Types ?? base.Types;
 }

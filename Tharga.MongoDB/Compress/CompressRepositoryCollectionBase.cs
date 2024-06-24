@@ -42,7 +42,7 @@ public abstract class CompressRepositoryCollectionBase<TEntity, TKey> : Reposito
     private RepositoryCollectionBase<TEntity, TKey> Disk => _diskConnected ? _disk ??= new GenericDiskRepositoryCollection<TEntity, TKey>(_mongoDbServiceFactory, _databaseContext ?? new DatabaseContext { CollectionName = CollectionName, DatabasePart = DatabasePart, ConfigurationName = ConfigurationName }, _logger, this) : null;
 
     protected virtual IEnumerable<Strata> Stratas => null;
-    internal override IEnumerable<CreateIndexModel<TEntity>> CoreIndicies => new CreateIndexModel<TEntity>[]
+    internal override IEnumerable<CreateIndexModel<TEntity>> CoreIndices => new CreateIndexModel<TEntity>[]
     {
         new(Builders<TEntity>.IndexKeys.Ascending(x => x.Timestamp), new CreateIndexOptions { Unique = false, Name = nameof(CompressEntityBase<TEntity, TKey>.Timestamp) }),
         new(Builders<TEntity>.IndexKeys.Ascending(x => x.Granularity), new CreateIndexOptions { Unique = false, Name = nameof(CompressEntityBase<TEntity, TKey>.Granularity) }),

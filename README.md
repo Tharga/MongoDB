@@ -280,9 +280,9 @@ The properties `AutoClean`, `CleanOnStartup`, `DropEmptyCollections` and `Result
 
 To automatically register known types when using multiple types in the same collection, provide a value for `Types`.
 
-Create `Indicies` by overriding the property in your collection class.
-The list of `Indicies` is applied befor the first record is added to the collection.
-It is also reviewed once every time the application starts, removing `Indicies` that no longer exists and creates new ones if the code have changed.
+Create `Indices` by overriding the property in your collection class.
+The list of `Indices` is applied befor the first record is added to the collection.
+It is also reviewed once every time the application starts, removing `Indices` that no longer exists and creates new ones if the code have changed.
 
 ### MongoUrl Builder
 The `MongoUrl` is created by a built in implementation of `IMongoUrlBuilder`. It takes the raw version and parses variables to build `MongoUrl`.
