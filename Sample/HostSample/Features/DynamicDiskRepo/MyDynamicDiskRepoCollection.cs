@@ -15,7 +15,7 @@ public class MyDynamicDiskRepoCollection : DiskRepositoryCollectionBase<MyEntity
     {
     }
 
-    public override IEnumerable<CreateIndexModel<MyEntity>> Indicies => new[]
+    public override IEnumerable<CreateIndexModel<MyEntity>> Indices => new[]
     {
         new CreateIndexModel<MyEntity>(Builders<MyEntity>.IndexKeys.Ascending(x => x.Counter), new CreateIndexOptions { Unique = false, Name = nameof(MyEntity.Counter) })
     };

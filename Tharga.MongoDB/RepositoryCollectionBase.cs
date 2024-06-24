@@ -50,8 +50,8 @@ public abstract class RepositoryCollectionBase<TEntity, TKey> : RepositoryCollec
     public virtual bool CleanOnStartup => _mongoDbService.GetCleanOnStartup();
     public virtual bool DropEmptyCollections => _mongoDbService.DropEmptyCollections();
     public virtual int? ResultLimit => _mongoDbService.GetResultLimit();
-    public virtual IEnumerable<CreateIndexModel<TEntity>> Indicies => null;
-    internal virtual IEnumerable<CreateIndexModel<TEntity>> CoreIndicies => null;
+    public virtual IEnumerable<CreateIndexModel<TEntity>> Indices => null;
+    internal virtual IEnumerable<CreateIndexModel<TEntity>> CoreIndices => null;
     public virtual IEnumerable<Type> Types => null;
 
     public abstract IAsyncEnumerable<TEntity> GetAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default);
