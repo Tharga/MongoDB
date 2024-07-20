@@ -29,7 +29,25 @@ public abstract class BufferRepositoryCollectionBase<TEntity, TKey> : Repository
     private DiskRepositoryCollectionBase<TEntity, TKey> _disk;
     private bool _diskConnected = true;
 
-    protected BufferRepositoryCollectionBase(IMongoDbServiceFactory mongoDbServiceFactory, ILogger<BufferRepositoryCollectionBase<TEntity, TKey>> logger = null, DatabaseContext databaseContext = null)
+	/// <summary>
+	/// Override this constructor for static collections.
+	/// </summary>
+	/// <param name="mongoDbServiceFactory"></param>
+	/// <param name="logger"></param>
+	protected BufferRepositoryCollectionBase(IMongoDbServiceFactory mongoDbServiceFactory, ILogger<BufferRepositoryCollectionBase<TEntity, TKey>> logger = null)
+	    : base(mongoDbServiceFactory, logger)
+    {
+	    _mongoDbServiceFactory = mongoDbServiceFactory;
+	    _bufferCollection = BufferLibrary.GetBufferCollection<TEntity, TKey>(null);
+    }
+
+	/// <summary>
+	/// Use this constructor for dynamic collections together with ICollectionProvider.
+	/// </summary>
+	/// <param name="mongoDbServiceFactory"></param>
+	/// <param name="logger"></param>
+	/// <param name="databaseContext"></param>
+	protected BufferRepositoryCollectionBase(IMongoDbServiceFactory mongoDbServiceFactory, ILogger<BufferRepositoryCollectionBase<TEntity, TKey>> logger, DatabaseContext databaseContext)
         : base(mongoDbServiceFactory, logger, databaseContext)
     {
         _mongoDbServiceFactory = mongoDbServiceFactory;

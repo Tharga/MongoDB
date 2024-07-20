@@ -20,7 +20,23 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
     private readonly SemaphoreSlim _lock = new(1, 1);
     private IMongoCollection<TEntity> _collection;
 
-    protected DiskRepositoryCollectionBase(IMongoDbServiceFactory mongoDbServiceFactory, ILogger<RepositoryCollectionBase<TEntity, TKey>> logger = null, DatabaseContext databaseContext = null)
+    /// <summary>
+    /// Override this constructor for static collections.
+    /// </summary>
+    /// <param name="mongoDbServiceFactory"></param>
+    /// <param name="logger"></param>
+	protected DiskRepositoryCollectionBase(IMongoDbServiceFactory mongoDbServiceFactory, ILogger<RepositoryCollectionBase<TEntity, TKey>> logger = null)
+	    : base(mongoDbServiceFactory, logger)
+    {
+    }
+
+	/// <summary>
+	/// Use this constructor for dynamic collections together with ICollectionProvider.
+	/// </summary>
+	/// <param name="mongoDbServiceFactory"></param>
+	/// <param name="logger"></param>
+	/// <param name="databaseContext"></param>
+	protected DiskRepositoryCollectionBase(IMongoDbServiceFactory mongoDbServiceFactory, ILogger<RepositoryCollectionBase<TEntity, TKey>> logger, DatabaseContext databaseContext)
         : base(mongoDbServiceFactory, logger, databaseContext)
     {
     }
