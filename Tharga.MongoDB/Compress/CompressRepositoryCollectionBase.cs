@@ -76,6 +76,11 @@ public abstract class CompressRepositoryCollectionBase<TEntity, TKey> : Reposito
         }
     }
 
+    public override IAsyncEnumerable<T> GetProjectionAsync<T>(Expression<Func<T, bool>> predicate = null, Options<T> options = null, CancellationToken cancellationToken = default)
+    {
+        throw new NotImplementedException();
+    }
+
     public override Task<Result<TEntity, TKey>> QueryAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default)
     {
         throw new NotImplementedException();
@@ -109,6 +114,11 @@ public abstract class CompressRepositoryCollectionBase<TEntity, TKey> : Reposito
     public override Task<T> GetOneAsync<T>(Expression<Func<T, bool>> predicate = null, OneOption<T> options = null, CancellationToken cancellationToken = default)
     {
         return Disk.GetOneAsync(predicate, options, cancellationToken);
+    }
+
+    public override Task<T> GetOneProjectionAsync<T>(Expression<Func<T, bool>> predicate = null, OneOption<T> options = null, CancellationToken cancellationToken = default)
+    {
+        throw new NotImplementedException();
     }
 
     public override async Task AddAsync(TEntity entity)
@@ -153,6 +163,11 @@ public abstract class CompressRepositoryCollectionBase<TEntity, TKey> : Reposito
     public override Task<EntityChangeResult<TEntity>> ReplaceOneAsync(TEntity entity, OneOption<TEntity> options = null)
     {
         return Disk.ReplaceOneAsync(entity, options);
+    }
+
+    public override async Task<long> UpdateAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update)
+    {
+        throw new NotImplementedException();
     }
 
     public override Task<EntityChangeResult<TEntity>> UpdateOneAsync(TKey id, UpdateDefinition<TEntity> update)
