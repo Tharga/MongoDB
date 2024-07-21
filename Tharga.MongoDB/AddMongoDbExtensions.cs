@@ -151,7 +151,7 @@ public static class AddMongoDbExtensions
                 if (!_registeredRepositories.TryAdd(serviceType, implementationType))
                 {
                     _registeredRepositories.TryGetValue(serviceType, out var other);
-                    throw new InvalidOperationException($"There are multiple implementations for interface '{serviceType.Name}' ({implementationType.Name} and {other?.Name}). {nameof(DatabaseOptions.AutoRegisterRepositories)} in {nameof(DatabaseOptions)} cannot be used.");
+                    throw new InvalidOperationException($"There are multiple implementations for interface '{serviceType.Name}' ('{implementationType.AssemblyQualifiedName}' and '{other?.Name}'). {nameof(DatabaseOptions.AutoRegisterRepositories)} in {nameof(DatabaseOptions)} cannot be used.");
                 }
                 services.AddTransient(serviceType, implementationType);
 
@@ -209,7 +209,7 @@ public static class AddMongoDbExtensions
                 }
             }
 
-            throw new InvalidOperationException($"There are multiple implementations for interface '{serviceType.Name}' ({implementationType.Name} and {other?.Name}). {nameof(DatabaseOptions.AutoRegisterCollections)} in {nameof(DatabaseOptions)} cannot be used.");
+            throw new InvalidOperationException($"There are multiple implementations for interface '{serviceType.Name}' ('{implementationType.AssemblyQualifiedName}' and '{other?.AssemblyQualifiedName}'). {nameof(DatabaseOptions.AutoRegisterCollections)} in {nameof(DatabaseOptions)} cannot be used.");
         }
 
         string message = null;
