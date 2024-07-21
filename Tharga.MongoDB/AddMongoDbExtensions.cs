@@ -151,15 +151,27 @@ public static class AddMongoDbExtensions
                 if (!_registeredRepositories.TryAdd(serviceType, implementationType))
                 {
                     _registeredRepositories.TryGetValue(serviceType, out var other);
-                    throw new InvalidOperationException($"There are multiple implementations for interface '{serviceType.Name}' ('{implementationType.AssemblyQualifiedName}' and '{other?.Name}'). {nameof(DatabaseOptions.AutoRegisterRepositories)} in {nameof(DatabaseOptions)} cannot be used.");
-                }
-                services.AddTransient(serviceType, implementationType);
+                    if (implementationType.AssemblyQualifiedName != other?.AssemblyQualifiedName)
+                    {
+	                    throw new InvalidOperationException($"There are multiple implementations for interface '{serviceType.Name}' (\n'{implementationType.AssemblyQualifiedName}' and \n'{other?.AssemblyQualifiedName}'). {nameof(DatabaseOptions.AutoRegisterRepositories)} in {nameof(DatabaseOptions)} cannot be used.");
+                    }
 
-                _actionEvent?.Invoke(new ActionEventArgs(new ActionEventArgs.ActionData
+                    _actionEvent?.Invoke(new ActionEventArgs(new ActionEventArgs.ActionData
+                    {
+	                    Message = $"Trying to register the same repository types twice. Perhaps two assemblies in the same application are set to automatically register repositories.",
+	                    Level = LogLevel.Warning
+                    }, new ActionEventArgs.ContextData()));
+                }
+                else
                 {
-                    Message = $"Auto registered repository {serviceType.Name} ({implementationType.Name}).",
-                    Level = LogLevel.Debug
-                }, new ActionEventArgs.ContextData()));
+	                services.AddTransient(serviceType, implementationType);
+
+	                _actionEvent?.Invoke(new ActionEventArgs(new ActionEventArgs.ActionData
+	                {
+		                Message = $"Auto registered repository {serviceType.Name} ({implementationType.Name}).",
+		                Level = LogLevel.Debug
+	                }, new ActionEventArgs.ContextData()));
+                }
             }
         }
 
