@@ -66,12 +66,17 @@ internal class RepositoryConfiguration : IRepositoryConfiguration
 
     private IEnumerable<string> GetAllConfigurationNames()
     {
-        yield return _databaseOptions.ConfigurationName ?? "Default";
-
+        var any = false;
         var connectionStrings = _configuration.GetSection("ConnectionStrings");
         foreach (var connectionString in connectionStrings.GetChildren())
         {
+            any = true;
             yield return connectionString.Key;
+        }
+
+        if (!any || !string.IsNullOrEmpty(_databaseOptions.ConfigurationName))
+        {
+            yield return _databaseOptions.ConfigurationName ?? "Default";
         }
     }
 

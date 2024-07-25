@@ -16,58 +16,13 @@ public static class AddMongoDbExtensions
     private static readonly ConcurrentDictionary<Type, Type> _registeredRepositories = new();
     private static readonly ConcurrentDictionary<Type, Type> _registeredCollections = new();
     private static Action<ActionEventArgs> _actionEvent;
-
-    public static void UseMongoDB(this IServiceProvider services, Action<UseMongoOptions> options = null)
-    {
-        var repositoryConfiguration = services.GetService<IRepositoryConfiguration>();
-
-        var useMongoOptions = new UseMongoOptions
-        {
-            DatabaseUsage = new DatabaseUsage { FirewallConfigurationNames = repositoryConfiguration.GetDatabaseConfigurationNames().ToArray() }
-        };
-
-        options?.Invoke(useMongoOptions);
-
-        var mongoDbFirewallStateService = services.GetService<IMongoDbFirewallStateService>();
-        var mongoDbServiceFactory = services.GetService<IMongoDbServiceFactory>();
-
-        var task = Task.Run(async () =>
-        {
-            try
-            {
-                foreach (var configurationName in useMongoOptions.DatabaseUsage.FirewallConfigurationNames)
-                {
-                    var configuration = repositoryConfiguration.GetConfiguration(configurationName);
-                    if (configuration.AccessInfo.HasMongoDbApiAccess())
-                    {
-                        var mongoDbService = mongoDbServiceFactory.GetMongoDbService(() => new DatabaseContext { ConfigurationName = configurationName });
-                        if (!mongoDbService.GetDatabaseHostName().Contains("localhost", StringComparison.InvariantCultureIgnoreCase))
-                        {
-                            var message = await mongoDbFirewallStateService.AssureFirewallAccessAsync(configuration.AccessInfo);
-                            useMongoOptions.Logger?.LogInformation(message);
-                        }
-                        else
-                        {
-                            useMongoOptions.Logger?.LogInformation("Ignore firewall for {hostname}.", mongoDbService.GetDatabaseHostName());
-                        }
-                    }
-                    else
-                    {
-                        useMongoOptions.Logger?.LogInformation($"No firewall information for database configuration '{configurationName}'.");
-                    }
-                }
-            }
-            catch (Exception e)
-            {
-                useMongoOptions.Logger?.LogError(e, e.Message);
-            }
-        });
-
-        if (useMongoOptions.WaitToComplete) Task.WaitAll(task);
-    }
+    private static bool _hasBeenAdded;
 
     public static IServiceCollection AddMongoDB(this IServiceCollection services, Action<DatabaseOptions> options = null)
     {
+        if (_hasBeenAdded) throw new InvalidOperationException("Tharga MongoDB has already been added.");
+        _hasBeenAdded = true;
+
         var databaseOptions = new DatabaseOptions
         {
             ConfigurationName = "Default",
@@ -78,11 +33,9 @@ public static class AddMongoDbExtensions
         options?.Invoke(databaseOptions);
 
         _actionEvent = databaseOptions.ActionEvent;
+        _actionEvent?.Invoke(new ActionEventArgs(new ActionEventArgs.ActionData { Message = $"Entering {nameof(AddMongoDB)}.", Level = LogLevel.Debug }, new ActionEventArgs.ContextData()));
 
         RepositoryCollectionBase.ActionEvent += (_, e) => { _actionEvent?.Invoke(e); };
-        //AtlasAdministrationService.ActionEvent += (_, e) => { _actionEvent?.Invoke(e); };
-        //MongoDbFirewallService.ActionEvent += (_, e) => { _actionEvent?.Invoke(e); };
-        //ExternalIpAddressService.ActionEvent += (_, e) => { _actionEvent?.Invoke(e); };
 
         services.AddAssemblyService();
 
@@ -94,7 +47,7 @@ public static class AddMongoDbExtensions
         services.AddSingleton<IMongoDbServiceFactory>(serviceProvider =>
         {
             var repositoryConfigurationLoader = serviceProvider.GetService<IRepositoryConfigurationLoader>();
-            var mongoDbFirewallStateService = serviceProvider.GetService<IMongoDbFirewallStateService> ();
+            var mongoDbFirewallStateService = serviceProvider.GetService<IMongoDbFirewallStateService>();
             var logger = serviceProvider.GetService<ILogger<MongoDbServiceFactory>>();
             return new MongoDbServiceFactory(repositoryConfigurationLoader, mongoDbFirewallStateService, logger);
         });
@@ -153,24 +106,24 @@ public static class AddMongoDbExtensions
                     _registeredRepositories.TryGetValue(serviceType, out var other);
                     if (implementationType.AssemblyQualifiedName != other?.AssemblyQualifiedName)
                     {
-	                    throw new InvalidOperationException($"There are multiple implementations for interface '{serviceType.Name}' (\n'{implementationType.AssemblyQualifiedName}' and \n'{other?.AssemblyQualifiedName}'). {nameof(DatabaseOptions.AutoRegisterRepositories)} in {nameof(DatabaseOptions)} cannot be used.");
+                        throw new InvalidOperationException($"There are multiple implementations for interface '{serviceType.Name}' (\n'{implementationType.AssemblyQualifiedName}' and \n'{other?.AssemblyQualifiedName}'). {nameof(DatabaseOptions.AutoRegisterRepositories)} in {nameof(DatabaseOptions)} cannot be used.");
                     }
 
                     _actionEvent?.Invoke(new ActionEventArgs(new ActionEventArgs.ActionData
                     {
-	                    Message = $"Trying to register the same repository types twice. Perhaps two assemblies in the same application are set to automatically register repositories.",
-	                    Level = LogLevel.Warning
+                        Message = $"Trying to register the same repository types twice. Perhaps two assemblies in the same application are set to automatically register repositories.",
+                        Level = LogLevel.Warning
                     }, new ActionEventArgs.ContextData()));
                 }
                 else
                 {
-	                services.AddTransient(serviceType, implementationType);
+                    services.AddTransient(serviceType, implementationType);
 
-	                _actionEvent?.Invoke(new ActionEventArgs(new ActionEventArgs.ActionData
-	                {
-		                Message = $"Auto registered repository {serviceType.Name} ({implementationType.Name}).",
-		                Level = LogLevel.Debug
-	                }, new ActionEventArgs.ContextData()));
+                    _actionEvent?.Invoke(new ActionEventArgs(new ActionEventArgs.ActionData
+                    {
+                        Message = $"Auto registered repository {serviceType.Name} ({implementationType.Name}).",
+                        Level = LogLevel.Debug
+                    }, new ActionEventArgs.ContextData()));
                 }
             }
         }
@@ -202,6 +155,72 @@ public static class AddMongoDbExtensions
         }
 
         return services;
+    }
+
+    public static void UseMongoDB(this IServiceProvider services, Action<UseMongoOptions> options = null)
+    {
+        _actionEvent?.Invoke(new ActionEventArgs(new ActionEventArgs.ActionData { Message = $"Entering {nameof(UseMongoDB)}.", Level = LogLevel.Debug }, new ActionEventArgs.ContextData()));
+
+        if (!_hasBeenAdded) throw new InvalidOperationException($"Tharga MongoDB has not been added. Call {nameof(AddMongoDB)} first.");
+
+        var repositoryConfiguration = services.GetService<IRepositoryConfiguration>();
+
+        var useMongoOptions = new UseMongoOptions
+        {
+            DatabaseUsage = new DatabaseUsage
+            {
+                FirewallConfigurationNames = repositoryConfiguration.GetDatabaseConfigurationNames().ToArray()
+            }
+        };
+
+        options?.Invoke(useMongoOptions);
+
+        _actionEvent?.Invoke(new ActionEventArgs(new ActionEventArgs.ActionData { Message = $"Found {useMongoOptions.DatabaseUsage.FirewallConfigurationNames.Length} database configurations. ({string.Join(", ", useMongoOptions.DatabaseUsage.FirewallConfigurationNames)})", Level = LogLevel.Debug }, new ActionEventArgs.ContextData()));
+
+        var mongoDbFirewallStateService = services.GetService<IMongoDbFirewallStateService>();
+        var mongoDbServiceFactory = services.GetService<IMongoDbServiceFactory>();
+
+        var task = Task.Run(async () =>
+        {
+            try
+            {
+                foreach (var configurationName in useMongoOptions.DatabaseUsage.FirewallConfigurationNames)
+                {
+                    var configuration = repositoryConfiguration.GetConfiguration(configurationName);
+                    if (configuration.AccessInfo.HasMongoDbApiAccess())
+                    {
+                        var mongoDbService = mongoDbServiceFactory.GetMongoDbService(() => new DatabaseContext { ConfigurationName = configurationName });
+                        var databaseHostName = mongoDbService.GetDatabaseHostName();
+                        if (!databaseHostName.Contains("localhost", StringComparison.InvariantCultureIgnoreCase))
+                        {
+                            var message = await mongoDbFirewallStateService.AssureFirewallAccessAsync(configuration.AccessInfo);
+                            _actionEvent?.Invoke(new ActionEventArgs(new ActionEventArgs.ActionData { Message = message, Level = LogLevel.Information }, new ActionEventArgs.ContextData()));
+                            useMongoOptions.Logger?.LogInformation(message);
+                        }
+                        else
+                        {
+                            _actionEvent?.Invoke(new ActionEventArgs(new ActionEventArgs.ActionData { Message = $"Ignore firewall for {databaseHostName}.", Level = LogLevel.Information }, new ActionEventArgs.ContextData()));
+                            useMongoOptions.Logger?.LogInformation("Ignore firewall for {hostname}.", databaseHostName);
+                        }
+                    }
+                    else
+                    {
+                        _actionEvent?.Invoke(new ActionEventArgs(new ActionEventArgs.ActionData { Message = $"No firewall information for database configuration '{configurationName}'.", Level = LogLevel.Information }, new ActionEventArgs.ContextData()));
+                        useMongoOptions.Logger?.LogInformation("No firewall information for database configuration '{configurationName}'.", configurationName);
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                _actionEvent?.Invoke(new ActionEventArgs(new ActionEventArgs.ActionData { Message = e.Message, Level = LogLevel.Critical, Exception = e }, new ActionEventArgs.ContextData()));
+                useMongoOptions.Logger?.LogError(e, e.Message);
+            }
+
+            _actionEvent?.Invoke(new ActionEventArgs(new ActionEventArgs.ActionData { Message = "Firewall open process complete.", Level = LogLevel.Debug }, new ActionEventArgs.ContextData()));
+            useMongoOptions.Logger?.LogDebug("Firewall open process complete.");
+        });
+
+        if (useMongoOptions.WaitToComplete) Task.WaitAll(task);
     }
 
     private static void RegisterCollection(IServiceCollection services, Type serviceType, Type implementationType, string regTypeName)
