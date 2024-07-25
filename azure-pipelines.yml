@@ -15,9 +15,9 @@ stages:
 - stage: Build
   displayName: Build
   jobs:
+
   - job: Build
     displayName: Build and Test
-
     steps:
     - task: UseDotNet@2
       displayName: 'Use .NET 8'
@@ -56,20 +56,27 @@ stages:
       inputs:
         command: 'test'
         projects: '**/Tharga.MongoDB*.Tests.csproj'
-        arguments: '--collect "Code coverage" --configuration $(buildConfiguration) --filter "Category!=Database"'
+        arguments: '-c $(buildConfiguration) --no-build --filter "Category!=Database" /p:CollectCoverage=true /p:CoverletOutputFormat=cobertura /p:SkipAutoProps=true /p:ExcludeByAttribute="Obsolete"'
 
-    # - task: BuildQualityChecks@8
-    #   displayName: 'Build Quality Checks'
-    #   inputs:
-    #     checkWarnings: true
-    #     warningFailOption: 'build'
-    #     allowWarningVariance: true
-    #     warningVariance: '1'
-    #     checkCoverage: true
-    #     coverageFailOption: 'build'
-    #     coverageType: 'blocks'
-    #     allowCoverageVariance: true
-    #     coverageVariance: '5'
+    - task: PublishCodeCoverageResults@1
+      displayName: 'Publish code coverage results'
+      condition: succeededOrFailed()
+      inputs:
+        codeCoverageTool: 'Cobertura'
+        summaryFileLocation: '**/*coverage.cobertura.xml'
+
+    - task: BuildQualityChecks@8
+      displayName: 'Build Quality Checks'
+      inputs:
+        checkWarnings: true
+        warningFailOption: 'build'
+        allowWarningVariance: true
+        warningVariance: '5'
+        checkCoverage: false
+        coverageFailOption: 'build'
+        coverageType: 'lines'
+        allowCoverageVariance: true
+        coverageVariance: '5'
 
     - task: DotNetCoreCLI@2
       displayName: 'Pack Tharga.MongoDB'
@@ -105,9 +112,9 @@ stages:
   condition: |
     and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/master'))
   jobs:
+
   - job: Release
     displayName: Release
-
     steps:
     - download: current
       artifact: drop
