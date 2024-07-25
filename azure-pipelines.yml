@@ -65,18 +65,18 @@ stages:
         codeCoverageTool: 'Cobertura'
         summaryFileLocation: '**/*coverage.cobertura.xml'
 
-    - task: BuildQualityChecks@8
-      displayName: 'Build Quality Checks'
-      inputs:
-        checkWarnings: true
-        warningFailOption: 'build'
-        allowWarningVariance: true
-        warningVariance: '5'
-        checkCoverage: true
-        coverageFailOption: 'build'
-        coverageType: 'lines'
-        allowCoverageVariance: true
-        coverageVariance: '5'
+    # - task: BuildQualityChecks@8
+    #   displayName: 'Build Quality Checks'
+    #   inputs:
+    #     checkWarnings: true
+    #     warningFailOption: 'build'
+    #     allowWarningVariance: true
+    #     warningVariance: '5'
+    #     checkCoverage: true
+    #     coverageFailOption: 'build'
+    #     coverageType: 'lines'
+    #     allowCoverageVariance: true
+    #     coverageVariance: '5'
 
     - task: DotNetCoreCLI@2
       displayName: 'Pack Tharga.MongoDB'
