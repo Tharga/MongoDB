@@ -56,7 +56,7 @@ stages:
       inputs:
         command: 'test'
         projects: '**/Tharga.MongoDB*.Tests.csproj'
-        arguments: '-c $(buildConfiguration) --no-build /p:CollectCoverage=true /p:CoverletOutputFormat=cobertura /p:SkipAutoProps=true /p:ExcludeByAttribute="Obsolete"'
+        arguments: '-c $(buildConfiguration) --no-build --filter "Category!=Database" /p:CollectCoverage=true /p:CoverletOutputFormat=cobertura /p:SkipAutoProps=true /p:ExcludeByAttribute="Obsolete"'
 
     - task: PublishCodeCoverageResults@1
       displayName: 'Publish code coverage results'

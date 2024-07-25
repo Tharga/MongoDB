@@ -5,4 +5,12 @@
     <RdiConfigured>True</RdiConfigured>
     <SolutionConfigured>True</SolutionConfigured>
   </Settings>
+  <EngineModes>
+    <EngineMode>
+      <Name>No Integration</Name>
+      <Settings>
+        <TestsToExecuteAutomatically>DoesNotHaveCategory 'Database'</TestsToExecuteAutomatically>
+      </Settings>
+    </EngineMode>
+  </EngineModes>
 </SolutionConfiguration>
