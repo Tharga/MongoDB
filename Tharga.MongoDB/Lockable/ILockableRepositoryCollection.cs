@@ -2,7 +2,6 @@
 using System;
 using System.Diagnostics;
 using MongoDB.Bson;
-using System.Numerics;
 
 namespace Tharga.MongoDB.Lockable;
 
@@ -12,8 +11,8 @@ public interface ILockableRepositoryCollection<TEntity, TKey> : IReadOnlyReposit
     //IAsyncEnumerable<Entities.DistillerDocument> GetDocumentsAsync(PipelineContext pipelineContext, Expression<Func<Entities.DistillerDocument, bool>> expression);
     //Task<Entities.DistillerDocument> GetDocumentAsync(PipelineContext pipelineContext, Expression<Func<Entities.DistillerDocument, bool>> expression);
     //ValueTask<EntityScope<Entities.DistillerDocument>> PickForUpdate(PipelineContext pipelineContext, ObjectId documentId, IActor actor, TimeSpan timeout);
-    ValueTask<EntityScope<TEntity, TKey>> PickForUpdate(ObjectId documentId, TimeSpan? timeout = default, string actor = default);
-    ValueTask<EntityScope<TEntity, TKey>> WaitForUpdate(ObjectId documentId, TimeSpan? timeout = default, string actor = default);
+    ValueTask<EntityScope<TEntity, TKey>> PickForUpdate(TKey id, TimeSpan? timeout, string actor);
+    //ValueTask<EntityScope<TEntity, TKey>> WaitForUpdate(ObjectId documentId, TimeSpan? timeout = default, string actor = default);
     //Task AddOrReplaceDocumentAsync(PipelineContext pipelineContext, Entities.DistillerDocument document);
     //Task<bool> UnlockDocumentAsync(PipelineContext pipelineContext, ObjectId documentId, bool resetUnlockCounter = false);
     //Task DeleteAllDocumentsAsync(PipelineContext pipelineContext);

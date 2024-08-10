@@ -3,7 +3,7 @@ using MongoDB.Bson.Serialization.Attributes;
 
 namespace Tharga.MongoDB.Lockable;
 
-public record DocumentLock
+public record Lock
 {
     public Guid LockKey { get; internal init; }
     public DateTime LockTime { get; internal init; }
@@ -15,5 +15,5 @@ public record DocumentLock
     public string Actor { get; internal init; }
 
     [BsonIgnoreIfDefault]
-    public Exception Exception { get; internal init; }
+    public ExceptionInfo ExceptionInfo { get; internal init; }
 }
