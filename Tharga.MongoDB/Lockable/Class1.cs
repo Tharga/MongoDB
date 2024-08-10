@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using MongoDB.Driver;
+using Tharga.MongoDB.Disk;
 
 namespace Tharga.MongoDB.Lockable;
 
@@ -33,12 +34,12 @@ public record DocumentLock
     public Exception Exception { get; internal init; }
 }
 
-public interface ILockableRepositoryCollection<TEntity, TKey> : IRepositoryCollection<TEntity, TKey>
+public interface ILockableRepositoryCollection<TEntity, TKey> : IReadOnlyRepositoryCollection<TEntity, TKey>
     where TEntity : LockableEntityBase<TKey>
 {
 }
 
-public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollectionBase<TEntity, TKey>, ILockableRepositoryCollection<TEntity, TKey>
+public class LockableRepositoryCollectionBase<TEntity, TKey> : DiskRepositoryCollectionBase<TEntity, TKey>, ILockableRepositoryCollection<TEntity, TKey>
     where TEntity : LockableEntityBase<TKey>
 {
     /// <summary>
@@ -62,166 +63,69 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
     {
     }
 
-    public override IAsyncEnumerable<TEntity> GetAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null,
-        CancellationToken cancellationToken = default)
-    {
-        throw new NotImplementedException();
-    }
-
-    public override IAsyncEnumerable<TEntity> GetAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null,
-        CancellationToken cancellationToken = default)
-    {
-        throw new NotImplementedException();
-    }
-
-    public override IAsyncEnumerable<T> GetAsync<T>(Expression<Func<T, bool>> predicate = null, Options<T> options = null,
-        CancellationToken cancellationToken = default)
-    {
-        throw new NotImplementedException();
-    }
-
-    public override IAsyncEnumerable<T> GetProjectionAsync<T>(Expression<Func<T, bool>> predicate = null, Options<T> options = null,
-        CancellationToken cancellationToken = default)
-    {
-        throw new NotImplementedException();
-    }
-
-    public override Task<Result<TEntity, TKey>> QueryAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default)
-    {
-        throw new NotImplementedException();
-    }
-
-    public override Task<Result<TEntity, TKey>> QueryAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default)
-    {
-        throw new NotImplementedException();
-    }
-
-    public override IAsyncEnumerable<ResultPage<TEntity, TKey>> GetPagesAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null,
-        CancellationToken cancellationToken = default)
-    {
-        throw new NotImplementedException();
-    }
-
-    public override Task<TEntity> GetOneAsync(TKey id, CancellationToken cancellationToken = default)
-    {
-        throw new NotImplementedException();
-    }
-
-    public override Task<TEntity> GetOneAsync(Expression<Func<TEntity, bool>> predicate = null, OneOption<TEntity> options = null, CancellationToken cancellationToken = default)
-    {
-        throw new NotImplementedException();
-    }
-
-    public override Task<TEntity> GetOneAsync(FilterDefinition<TEntity> filter, OneOption<TEntity> options = null, CancellationToken cancellationToken = default)
-    {
-        throw new NotImplementedException();
-    }
-
-    public override Task<T> GetOneAsync<T>(Expression<Func<T, bool>> predicate = null, OneOption<T> options = null,
-        CancellationToken cancellationToken = default)
-    {
-        throw new NotImplementedException();
-    }
-
-    public override Task<T> GetOneProjectionAsync<T>(Expression<Func<T, bool>> predicate = null, OneOption<T> options = null,
-        CancellationToken cancellationToken = default)
-    {
-        throw new NotImplementedException();
-    }
-
-    public override Task<long> CountAsync(Expression<Func<TEntity, bool>> predicate, CancellationToken cancellationToken = default)
-    {
-        throw new NotImplementedException();
-    }
-
-    public override Task<long> CountAsync(FilterDefinition<TEntity> filter, CancellationToken cancellationToken = default)
-    {
-        throw new NotImplementedException();
-    }
-
     public override IAsyncEnumerable<TTarget> AggregateAsync<TTarget>(FilterDefinition<TEntity> filter, EPrecision precision, AggregateOperations<TTarget> operations,
         CancellationToken cancellationToken = default)
     {
         throw new NotImplementedException();
     }
 
-    public override Task<long> GetSizeAsync()
-    {
-        throw new NotImplementedException();
-    }
-
-    public override Task AddAsync(TEntity entity)
-    {
-        throw new NotImplementedException();
-    }
-
-    public override Task<bool> TryAddAsync(TEntity entity)
-    {
-        throw new NotImplementedException();
-    }
-
-    public override Task AddManyAsync(IEnumerable<TEntity> entities)
-    {
-        throw new NotImplementedException();
-    }
-
     public override Task<EntityChangeResult<TEntity>> AddOrReplaceAsync(TEntity entity)
     {
+        //TODO: Do not for locked entities
         throw new NotImplementedException();
     }
 
     public override Task<EntityChangeResult<TEntity>> ReplaceOneAsync(TEntity entity, OneOption<TEntity> options = null)
     {
+        //TODO: Do not for locked entities
         throw new NotImplementedException();
     }
 
     public override Task<long> UpdateAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update)
     {
+        //TODO: Do not for locked entities
         throw new NotImplementedException();
     }
 
     public override Task<EntityChangeResult<TEntity>> UpdateOneAsync(TKey id, UpdateDefinition<TEntity> update)
     {
+        //TODO: Do not for locked entities
         throw new NotImplementedException();
     }
 
     public override Task<EntityChangeResult<TEntity>> UpdateOneAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update, FindOneAndUpdateOptions<TEntity> options)
     {
+        //TODO: Do not for locked entities
         throw new NotImplementedException();
     }
 
     public override Task<EntityChangeResult<TEntity>> UpdateOneAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update, OneOption<TEntity> options = null)
     {
+        //TODO: Do not for locked entities
         throw new NotImplementedException();
     }
 
     public override Task<TEntity> DeleteOneAsync(TKey id)
     {
+        //TODO: Do not for locked entities
         throw new NotImplementedException();
     }
 
     public override Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate, FindOneAndDeleteOptions<TEntity, TEntity> options)
     {
+        //TODO: Do not for locked entities
         throw new NotImplementedException();
     }
 
     public override Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate = null, OneOption<TEntity> options = null)
     {
+        //TODO: Do not for locked entities
         throw new NotImplementedException();
     }
 
     public override Task<long> DeleteManyAsync(Expression<Func<TEntity, bool>> predicate)
     {
-        throw new NotImplementedException();
-    }
-
-    public override IMongoCollection<TEntity> GetCollection()
-    {
-        throw new NotImplementedException();
-    }
-
-    public override Task DropCollectionAsync()
-    {
+        //TODO: Do not for locked entities
         throw new NotImplementedException();
     }
 }
