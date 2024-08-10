@@ -1,5 +1,4 @@
-﻿using MongoDB.Bson.Serialization.Attributes;
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq.Expressions;
 using System.Threading;
@@ -9,35 +8,6 @@ using MongoDB.Driver;
 using Tharga.MongoDB.Disk;
 
 namespace Tharga.MongoDB.Lockable;
-
-public abstract record LockableEntityBase<TKey> : EntityBase<TKey>
-{
-    [BsonIgnoreIfNull]
-    public DocumentLock DocumentLock { get; internal init; }
-
-    [BsonIgnoreIfDefault]
-    public int UnlockCounter { get; internal init; }
-}
-
-public record DocumentLock
-{
-    public Guid LockKey { get; internal init; }
-    public DateTime LockTime { get; internal init; }
-
-    [BsonIgnoreIfDefault]
-    public DateTime? ExpireTime { get; internal init; }
-
-    [BsonIgnoreIfDefault]
-    public string Actor { get; internal init; }
-
-    [BsonIgnoreIfDefault]
-    public Exception Exception { get; internal init; }
-}
-
-public interface ILockableRepositoryCollection<TEntity, TKey> : IReadOnlyRepositoryCollection<TEntity, TKey>
-    where TEntity : LockableEntityBase<TKey>
-{
-}
 
 public class LockableRepositoryCollectionBase<TEntity, TKey> : DiskRepositoryCollectionBase<TEntity, TKey>, ILockableRepositoryCollection<TEntity, TKey>
     where TEntity : LockableEntityBase<TKey>
