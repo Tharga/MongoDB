@@ -5,8 +5,8 @@ namespace Tharga.MongoDB.Lockable;
 public abstract record LockableEntityBase<TKey> : EntityBase<TKey>
 {
     [BsonIgnoreIfNull]
-    public Lock Lock { get; internal init; }
+    internal Lock Lock { get; init; }
 
     [BsonIgnoreIfDefault]
-    public int UnlockCounter { get; internal init; }
+    internal int UnlockCounter { get; init; }
 }
