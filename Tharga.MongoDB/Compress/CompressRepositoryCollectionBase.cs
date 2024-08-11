@@ -165,6 +165,11 @@ public abstract class CompressRepositoryCollectionBase<TEntity, TKey> : Reposito
         return Disk.ReplaceOneAsync(entity, options);
     }
 
+    public override async Task<EntityChangeResult<TEntity>> ReplaceOneAsync(TEntity entity, FilterDefinition<TEntity> filter, OneOption<TEntity> options = null)
+    {
+        throw new NotImplementedException();
+    }
+
     public override Task<long> UpdateAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update)
     {
         throw new NotImplementedException();

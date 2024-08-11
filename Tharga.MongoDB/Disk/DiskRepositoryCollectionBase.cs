@@ -579,11 +579,46 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         }, true);
     }
 
-    public override async Task<EntityChangeResult<TEntity>> ReplaceOneAsync(TEntity entity, OneOption<TEntity> options = null)
+    public override Task<EntityChangeResult<TEntity>> ReplaceOneAsync(TEntity entity, OneOption<TEntity> options = null)
+    {
+        var filter = Builders<TEntity>.Filter.Eq(x => x.Id, entity.Id);
+        return ReplaceOneWithCheckAsync(entity, filter, options);
+    }
+
+    public override Task<EntityChangeResult<TEntity>> ReplaceOneAsync(TEntity entity, FilterDefinition<TEntity> filter, OneOption<TEntity> options = null)
+    {
+        return ReplaceOneWithCheckAsync(entity, filter, options);
+    }
+
+    private async Task<EntityChangeResult<TEntity>> ReplaceOneWithCheckAsync(TEntity entity, FilterDefinition<TEntity> filter, OneOption<TEntity> options)
     {
         return await Execute(nameof(ReplaceOneAsync), async () =>
         {
-            var filter = Builders<TEntity>.Filter.Eq(x => x.Id, entity.Id);
+            var sort = options?.Sort;
+            var findFluent = Collection.Find(filter).Sort(sort).Limit(2);
+            TEntity item;
+            switch (options?.Mode)
+            {
+                case null:
+                case EMode.SingleOrDefault:
+                    item = await findFluent.SingleOrDefaultAsync();
+                    break;
+                case EMode.Single:
+                    item = await findFluent.SingleAsync();
+                    break;
+                case EMode.FirstOrDefault:
+                    item = await findFluent.FirstOrDefaultAsync();
+                    break;
+                case EMode.First:
+                    item = await findFluent.FirstAsync();
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException();
+            }
+
+            if (!item.Id.Equals(entity.Id)) throw new InvalidOperationException("Entity not covered by filter.");
+            filter = Builders<TEntity>.Filter.Eq(x => x.Id, entity.Id);
+
             var before = await Collection.FindOneAndReplaceAsync(filter, entity);
             return new EntityChangeResult<TEntity>(before, entity);
         }, true);

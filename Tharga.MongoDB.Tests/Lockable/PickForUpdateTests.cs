@@ -23,7 +23,7 @@ public class PickForUpdateTests : LockableTestTestsBase
         await sut.AddAsync(entity);
 
         //Act
-        var result = await sut.PickForUpdate(entity.Id);
+        var result = await sut.GetForUpdateAsync(entity.Id);
 
         //Assert
         result.Entity.Should().NotBeNull();
@@ -47,7 +47,7 @@ public class PickForUpdateTests : LockableTestTestsBase
         await sut.AddAsync(entity);
 
         //Act
-        var act = () => sut.PickForUpdate(entity.Id);
+        var act = () => sut.GetForUpdateAsync(entity.Id);
 
         //Assert
         await act.Should()
@@ -72,7 +72,7 @@ public class PickForUpdateTests : LockableTestTestsBase
         await sut.AddAsync(entity);
 
         //Act
-        var act = () => sut.PickForUpdate(entity.Id);
+        var act = () => sut.GetForUpdateAsync(entity.Id);
 
         //Assert
         await act.Should()
@@ -95,7 +95,7 @@ public class PickForUpdateTests : LockableTestTestsBase
         };
 
         //Act
-        var act = () => sut.PickForUpdate(entity.Id);
+        var act = () => sut.GetForUpdateAsync(entity.Id);
 
         //Assert
         await act.Should()
@@ -122,7 +122,7 @@ public class PickForUpdateTests : LockableTestTestsBase
         await sut.AddAsync(entity);
 
         //Act
-        var result = await sut.PickForUpdate(entity.Id);
+        var result = await sut.GetForUpdateAsync(entity.Id);
 
         //Assert
         result.Entity.Should().NotBeNull();

@@ -43,67 +43,78 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : DiskRepositoryCol
         throw new NotImplementedException();
     }
 
-    public override Task<EntityChangeResult<TEntity>> AddOrReplaceAsync(TEntity entity)
+    public override async Task<EntityChangeResult<TEntity>> AddOrReplaceAsync(TEntity entity)
     {
-        //TODO: Check if an entity can be added. But do not allow updates.
-        throw new NotSupportedException($"Use {nameof(PickForUpdate)} to get an update {nameof(EntityScope<TEntity, TKey>)} that can be used for update.");
+        if (await TryAddAsync(entity))
+        {
+            return new EntityChangeResult<TEntity>(default, entity);
+        }
+
+        throw new NotSupportedException(BuildErrorMessage());
     }
 
     public override Task<EntityChangeResult<TEntity>> ReplaceOneAsync(TEntity entity, OneOption<TEntity> options = null)
     {
-        //TODO: Do not for locked entities
-        throw new NotImplementedException();
+        throw new NotSupportedException(BuildErrorMessage());
+    }
+
+    public override Task<EntityChangeResult<TEntity>> ReplaceOneAsync(TEntity entity, FilterDefinition<TEntity> filter, OneOption<TEntity> options = null)
+    {
+        throw new NotSupportedException(BuildErrorMessage());
     }
 
     public override Task<long> UpdateAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update)
     {
-        //TODO: Do not for locked entities
-        throw new NotImplementedException();
+        throw new NotSupportedException(BuildErrorMessage());
     }
 
     public override Task<EntityChangeResult<TEntity>> UpdateOneAsync(TKey id, UpdateDefinition<TEntity> update)
     {
-        //TODO: Do not for locked entities
-        throw new NotImplementedException();
+        throw new NotSupportedException(BuildErrorMessage());
     }
 
     public override Task<EntityChangeResult<TEntity>> UpdateOneAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update, FindOneAndUpdateOptions<TEntity> options)
     {
-        //TODO: Do not for locked entities
-        throw new NotImplementedException();
+        throw new NotSupportedException(BuildErrorMessage());
     }
 
     public override Task<EntityChangeResult<TEntity>> UpdateOneAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update, OneOption<TEntity> options = null)
     {
-        //TODO: Do not for locked entities
-        throw new NotImplementedException();
+        throw new NotSupportedException(BuildErrorMessage());
     }
 
-    public override Task<TEntity> DeleteOneAsync(TKey id)
+    //public override async Task<TEntity> DeleteOneAsync(TKey id)
+    //{
+    //    var item = await GetOneAsync(id);
+    //    if (item.Lock != null) throw new DeleteException();
+    //    return await base.DeleteOneAsync(id);
+    //}
+
+    //public override async Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate, FindOneAndDeleteOptions<TEntity, TEntity> options)
+    //{
+    //    var item = await GetOneAsync(predicate, options);
+    //    if (item.Lock != null) throw new DeleteException();
+    //    return await base.DeleteOneAsync(predicate, options);
+    //}
+
+    //public override Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate = null, OneOption<TEntity> options = null)
+    //{
+    //    //TODO: Check if the document is locked, if not allow delete.
+    //    throw new NotImplementedException();
+    //}
+
+    //public override Task<long> DeleteManyAsync(Expression<Func<TEntity, bool>> predicate)
+    //{
+    //    //TODO: Check if the document is locked, if not allow delete.
+    //    throw new NotImplementedException();
+    //}
+
+    private string BuildErrorMessage()
     {
-        //TODO: Do not for locked entities
-        throw new NotImplementedException();
+        return $"Use {nameof(GetForUpdateAsync)} to get an update {nameof(EntityScope<TEntity, TKey>)} that can be used for update.";
     }
 
-    public override Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate, FindOneAndDeleteOptions<TEntity, TEntity> options)
-    {
-        //TODO: Do not for locked entities
-        throw new NotImplementedException();
-    }
-
-    public override Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate = null, OneOption<TEntity> options = null)
-    {
-        //TODO: Do not for locked entities
-        throw new NotImplementedException();
-    }
-
-    public override Task<long> DeleteManyAsync(Expression<Func<TEntity, bool>> predicate)
-    {
-        //TODO: Do not for locked entities
-        throw new NotImplementedException();
-    }
-
-    public async Task<EntityScope<TEntity, TKey>> PickForUpdate(TKey id, TimeSpan? timeout = default, string actor = default)
+    public async Task<EntityScope<TEntity, TKey>> GetForUpdateAsync(TKey id, TimeSpan? timeout = default, string actor = default)
     {
         var lockTime = DateTime.UtcNow;
         var lockKey = Guid.NewGuid();
@@ -146,6 +157,11 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : DiskRepositoryCol
         return new EntityScope<TEntity, TKey>(result.Before, ReleaseEntity(entityLock));
     }
 
+    //TODO: List locked documents (Filter out documents with expired locks)
+    //TODO: List documents with errors.
+    //TODO: Create method to manually unlock errors, and reset the counter.
+    //TODO: Option to have a job that automatically unlocks documents.
+
     private Func<TEntity, Exception, Task> ReleaseEntity(Lock entityLock)
     {
         return (entity, exception) =>
@@ -177,15 +193,6 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : DiskRepositoryCol
         };
     }
 
-    //public ValueTask<EntityScope<TEntity, TKey>> WaitForUpdate(ObjectId documentId, TimeSpan? timeout = default, string actor = default)
-    //{
-    //    //TODO: Wait for the entity to be released, then take a lock for the item to be updated.
-    //    throw new NotImplementedException();
-    //}
-
-    //TODO: List documents with errors
-    //TODO: List locked documents
-
     private async Task<bool> ReleaseAsync(TEntity entity, Lock entityLock, Exception exception, bool externalUnlock /*bool resetUnlockCounter*/)
     {
         var lockTime = DateTime.UtcNow - entityLock.ExpireTime;
@@ -194,32 +201,28 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : DiskRepositoryCol
 
         if (!externalUnlock && lockTime > timeout)
         {
-            //_logger.LogWarning("Document was locked by '{actor}' for {elapsed} instead of {timeout}.", lockInfo.EntityLock.Actor, lockTime, timeout);
             throw new LockExpiredException($"Entity was locked for {lockTime} instead of {timeout}.");
         }
 
-        //var collection = GetDocumentRepositoryCollection(pipelineContext);
         var updatedEntity = entity with
         {
             Lock = lockInfo.EntityLock,
             UnlockCounter = lockInfo.UnlockCounter
         };
 
-        //TODO: Should use a filter to replace (not just use the ID-value)
-        //var filter = Builders<Entities.DistillerDocument>.Filter.And(
-        //    Builders<Entities.DistillerDocument>.Filter.Eq(x => x.Id, document.Id),
-        //    Builders<Entities.DistillerDocument>.Filter.Ne(x => x.DocumentLock, null),
-        //    Builders<Entities.DistillerDocument>.Filter.Eq(x => x.DocumentLock.LockKey, documentLock.LockKey)
-        //);
-        var result = await base.ReplaceOneAsync(updatedEntity);
+        //NOTE: This filter assures that the correct lock still exists on the entity.
+        var filter = Builders<TEntity>.Filter.And(
+            Builders<TEntity>.Filter.Eq(x => x.Id, entity.Id),
+            Builders<TEntity>.Filter.Ne(x => x.Lock, null),
+            Builders<TEntity>.Filter.Eq(x => x.Lock.LockKey, entityLock.LockKey)
+        );
+        var result = await base.ReplaceOneAsync(updatedEntity, filter);
 
         if (result.Before == null) throw new InvalidOperationException("Cannot find entity before release."); //.AddData("context", pipelineContext).AddData("documentId", document.Id);
         if (result.Before.Lock == null) throw new InvalidOperationException("No lock information for document before release."); //.AddData("context", pipelineContext).AddData("documentId", document.Id);
 
         var after = await result.GetAfterAsync();
         if (after == null) throw new InvalidOperationException("After is null.");
-
-        //NotifyAggregator(pipelineContext, result, after);
 
         return after.Lock == null;
     }
@@ -250,12 +253,15 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : DiskRepositoryCol
 
         if (exception != null)
         {
-            return (entityLock with { ExceptionInfo = new ExceptionInfo
+            return (entityLock with
             {
-                Type = exception.GetType().Name,
-                Message = exception.Message,
-                StackTrace = exception.StackTrace,
-            } }, entity.UnlockCounter);
+                ExceptionInfo = new ExceptionInfo
+                {
+                    Type = exception.GetType().Name,
+                    Message = exception.Message,
+                    StackTrace = exception.StackTrace
+                }
+            }, entity.UnlockCounter);
         }
 
         return (null, 0);
