@@ -24,15 +24,16 @@ internal class MongoDbServiceFactory : IMongoDbServiceFactory
     public IMongoDbService GetMongoDbService(Func<DatabaseContext> databaseContextLoader)
     {
         var mongoUrl = _repositoryConfigurationLoader.GetConfiguration(databaseContextLoader).GetDatabaseUrl();
-        if (_databaseDbServices.TryGetValue(mongoUrl.DatabaseName, out var dbService)) return dbService;
+        var cacheKey = mongoUrl.Url;
+        if (_databaseDbServices.TryGetValue(cacheKey, out var dbService)) return dbService;
 
         try
         {
             _lock.Wait();
-            if (_databaseDbServices.TryGetValue(mongoUrl.DatabaseName, out dbService)) return dbService;
+            if (_databaseDbServices.TryGetValue(cacheKey, out dbService)) return dbService;
 
             dbService = new MongoDbService(_repositoryConfigurationLoader.GetConfiguration(databaseContextLoader), _mongoDbFirewallStateService, _logger);
-            _databaseDbServices.TryAdd(mongoUrl.DatabaseName, dbService);
+            _databaseDbServices.TryAdd(cacheKey, dbService);
             return dbService;
         }
         finally
