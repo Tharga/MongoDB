@@ -18,10 +18,10 @@ public interface IMongoDbService
     void DropDatabase(string name);
     IEnumerable<string> GetDatabases();
     long GetSize(string collectionName, IMongoDatabase mongoDatabase = null);
-    Task<DatabaseInfo> GetInfoAsync();
+    Task<DatabaseInfo> GetInfoAsync(bool assureFirewall = true);
     int? GetResultLimit();
     bool GetAutoClean();
     bool GetCleanOnStartup();
     bool DropEmptyCollections();
-    ValueTask AssureFirewallAccessAsync(bool force = false);
+    ValueTask<string> AssureFirewallAccessAsync(bool force = false);
 }

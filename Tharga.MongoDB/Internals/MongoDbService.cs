@@ -66,11 +66,12 @@ internal class MongoDbService : IMongoDbService
         return _mongoDatabase.GetCollection<T>(collectionName);
     }
 
-    public async ValueTask AssureFirewallAccessAsync(bool force = false)
+    public async ValueTask<string> AssureFirewallAccessAsync(bool force = false)
     {
-        if (_configuration.GetDatabaseUrl().Server.Host.Contains("localhost", StringComparison.InvariantCultureIgnoreCase)) return;
+        if (_configuration.GetDatabaseUrl().Server.Host.Contains("localhost", StringComparison.InvariantCultureIgnoreCase)) return default;
         var message = await _mongoDbFirewallStateService.AssureFirewallAccessAsync(_configuration.GetConfiguration().AccessInfo, force);
         _logger.LogDebug(message);
+        return message;
     }
 
     public string GetDatabaseName()
@@ -132,23 +133,30 @@ internal class MongoDbService : IMongoDbService
         return size;
     }
 
-    public Task<DatabaseInfo> GetInfoAsync()
+    public async Task<DatabaseInfo> GetInfoAsync(bool assureFirewall = true)
     {
         try
         {
-            return Task.FromResult(new DatabaseInfo
+            var firewallMessage = string.Empty;
+            if (assureFirewall)
+            {
+                firewallMessage = await AssureFirewallAccessAsync();
+            }
+
+            return new DatabaseInfo
             {
                 CanConnect = true,
                 Message = GetDatabaseDescription(),
+                Firewall = firewallMessage,
                 CollectionCount = GetCollections().Count()
-            });
+            };
         }
         catch (Exception e)
         {
-            return Task.FromResult(new DatabaseInfo
+            return new DatabaseInfo
             {
                 Message = e.Message
-            });
+            };
         }
     }
 
