@@ -1,42 +1,42 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">﻿
-﻿  <PropertyGroup>﻿
-﻿    <TargetFrameworks>net8.0;net9.0</TargetFrameworks>﻿
-﻿    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>﻿
-﻿    <Version>1.0.0</Version>﻿
-﻿    <Authors>Daniel Bohlin</Authors>﻿
-﻿    <Company>Thargelion AB</Company>﻿
-﻿    <Product>Tharga MongoDB</Product>﻿
-﻿    <Description>Dynamic names for databases and collections.</Description>﻿
-﻿    <PackageIconUrl>http://thargelion.se/wp-content/uploads/2019/11/Thargelion-White-Icon-150.png</PackageIconUrl>﻿
-﻿    <GenerateDocumentationFile>True</GenerateDocumentationFile>﻿
-﻿    <PackageReadmeFile>README.md</PackageReadmeFile>﻿
-﻿    <PackageProjectUrl>https://github.com/Tharga/MongoDB</PackageProjectUrl>﻿
-﻿  </PropertyGroup>﻿
-﻿  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">﻿
-﻿    <NoWarn>1701;1702;CS1591;CS0809</NoWarn>﻿
-﻿  </PropertyGroup>﻿
-﻿  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">﻿
-﻿    <NoWarn>1701;1702;CS1591;CS0809</NoWarn>﻿
-﻿  </PropertyGroup>﻿
-﻿  <ItemGroup>﻿
-﻿    <None Include="README.md">﻿
-﻿      <Pack>True</Pack>﻿
-﻿      <PackagePath>\</PackagePath>﻿
-﻿    </None>﻿
-﻿  </ItemGroup>﻿
-﻿  <ItemGroup>﻿
-﻿    <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="9.0.0" />﻿
-﻿    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.0" />﻿
-﻿    <PackageReference Include="Microsoft.Extensions.Features" Version="9.0.0" />﻿
-﻿    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="9.0.0" />﻿
-﻿    <PackageReference Include="Microsoft.Extensions.Http" Version="9.0.0" />﻿
-﻿    <PackageReference Include="MongoDB.Driver" Version="2.30.0" />﻿
-﻿    <PackageReference Include="System.Linq.Async" Version="6.0.1" />﻿
-﻿    <PackageReference Include="Tharga.Toolkit" Version="1.12.5" />﻿
-﻿  </ItemGroup>﻿
-﻿  <ItemGroup>﻿
-﻿    <InternalsVisibleTo Include="Tharga.MongoDB.Tests" />﻿
-﻿	<InternalsVisibleTo Include="DynamicProxyGenAssembly2" />﻿
-﻿    <InternalsVisibleTo Include="MongoDB.Driver" />﻿
-﻿  </ItemGroup>﻿
-﻿</Project>
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net9.0</TargetFrameworks>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <Version>1.0.0</Version>
+    <Authors>Daniel Bohlin</Authors>
+    <Company>Thargelion AB</Company>
+    <Product>Tharga MongoDB</Product>
+    <Description>Dynamic names for databases and collections.</Description>
+    <PackageIconUrl>http://thargelion.se/wp-content/uploads/2019/11/Thargelion-White-Icon-150.png</PackageIconUrl>
+    <GenerateDocumentationFile>True</GenerateDocumentationFile>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageProjectUrl>https://github.com/Tharga/MongoDB</PackageProjectUrl>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
+    <NoWarn>1701;1702;CS1591;CS0809</NoWarn>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
+    <NoWarn>1701;1702;CS1591;CS0809</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="README.md">
+      <Pack>True</Pack>
+      <PackagePath>\</PackagePath>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="9.0.0" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Features" Version="9.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="9.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Http" Version="9.0.0" />
+    <PackageReference Include="MongoDB.Driver" Version="3.1.0" />
+    <PackageReference Include="System.Linq.Async" Version="6.0.1" />
+    <PackageReference Include="Tharga.Toolkit" Version="1.12.5" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Tharga.MongoDB.Tests" />
+	<InternalsVisibleTo Include="DynamicProxyGenAssembly2" />
+    <InternalsVisibleTo Include="MongoDB.Driver" />
+  </ItemGroup>
+</Project>
