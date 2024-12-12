@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq.Expressions;
-using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
@@ -113,8 +112,8 @@ public abstract class RepositoryCollectionBase<TEntity, TKey> : RepositoryCollec
         };
     }
 
-    protected ValueTask AssureFirewallAccessAsync()
+    protected async ValueTask AssureFirewallAccessAsync()
     {
-        return _mongoDbService.AssureFirewallAccessAsync(true);
+        await _mongoDbService.AssureFirewallAccessAsync(true);
     }
 }
