@@ -86,13 +86,6 @@ stages:
         versioningScheme: 'byBuildNumber'
 
     - task: DotNetCoreCLI@2
-      displayName: 'Pack Tharga.MongoDB.Web'
-      inputs:
-        command: 'pack'
-        packagesToPack: '**/Tharga.MongoDB.Web.csproj'
-        versioningScheme: 'byBuildNumber'
-
-    - task: DotNetCoreCLI@2
       displayName: 'Push nuget packages locally'
       inputs:
         command: 'push'
