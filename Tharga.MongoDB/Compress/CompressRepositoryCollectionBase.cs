@@ -234,10 +234,10 @@ public abstract class CompressRepositoryCollectionBase<TEntity, TKey> : Reposito
         return await Disk.CountAsync(filter, cancellationToken);
     }
 
-    public override IAsyncEnumerable<TTarget> AggregateAsync<TTarget>(FilterDefinition<TEntity> filter, EPrecision precision, AggregateOperations<TTarget> operations, CancellationToken cancellationToken = default)
-    {
-        throw new NotImplementedException();
-    }
+    //public override IAsyncEnumerable<TTarget> AggregateAsync<TTarget>(FilterDefinition<TEntity> filter, EPrecision precision, AggregateOperations<TTarget> operations, CancellationToken cancellationToken = default)
+    //{
+    //    throw new NotImplementedException();
+    //}
 
     public override Task<long> GetSizeAsync()
     {

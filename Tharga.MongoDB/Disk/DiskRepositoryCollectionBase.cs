@@ -806,132 +806,132 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         }, false);
     }
 
-    public override async IAsyncEnumerable<TTarget> AggregateAsync<TTarget>(FilterDefinition<TEntity> filter, EPrecision precision, AggregateOperations<TTarget> operations, [EnumeratorCancellation] CancellationToken cancellationToken = default)
-    {
-        var serializerRegistry = BsonSerializer.SerializerRegistry;
-        var documentSerializer = serializerRegistry.GetSerializer<TEntity>();
-        var renderedFilter = filter.Render(documentSerializer, serializerRegistry);
+    //public override async IAsyncEnumerable<TTarget> AggregateAsync<TTarget>(FilterDefinition<TEntity> filter, EPrecision precision, AggregateOperations<TTarget> operations, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    //{
+    //    var serializerRegistry = BsonSerializer.SerializerRegistry;
+    //    var documentSerializer = serializerRegistry.GetSerializer<TEntity>();
+    //    var renderedFilter = filter.Render(documentSerializer, serializerRegistry);
 
-        var properties = AggregatePropertyCache.GetProperties<TEntity, TTarget>().ToArray();
+    //    var properties = AggregatePropertyCache.GetProperties<TEntity, TTarget>().ToArray();
 
-        var timestampGrouping = BuildTimestampGrouping(precision);
-        timestampGrouping.AddRange(properties.ToDictionary(x => x, x => $"${x}"));
+    //    var timestampGrouping = BuildTimestampGrouping(precision);
+    //    timestampGrouping.AddRange(properties.ToDictionary(x => x, x => $"${x}"));
 
-        var group = new BsonDocument
-        {
-            { "_id", timestampGrouping },
-            { "Time", new BsonDocument("$first", "$Timestamp") },
-        };
-        group.AddRange(properties.ToDictionary(x => x, x => new BsonDocument("$first", $"${x}")));
-        group.AddRange(operations.Build());
+    //    var group = new BsonDocument
+    //    {
+    //        { "_id", timestampGrouping },
+    //        { "Time", new BsonDocument("$first", "$Timestamp") },
+    //    };
+    //    group.AddRange(properties.ToDictionary(x => x, x => new BsonDocument("$first", $"${x}")));
+    //    group.AddRange(operations.Build());
 
-        var pipeline = new[] { new BsonDocument("$match", renderedFilter), new BsonDocument("$group", group) };
-        var result = await Collection.AggregateAsync<TTarget>(pipeline, cancellationToken: cancellationToken);
+    //    var pipeline = new[] { new BsonDocument("$match", renderedFilter), new BsonDocument("$group", group) };
+    //    var result = await Collection.AggregateAsync<TTarget>(pipeline, cancellationToken: cancellationToken);
 
-        await foreach (var item in AddTimeInfo(result, precision, cancellationToken))
-        {
-            yield return item;
-        }
-    }
+    //    await foreach (var item in AddTimeInfo(result, precision, cancellationToken))
+    //    {
+    //        yield return item;
+    //    }
+    //}
 
-    private static BsonDocument BuildTimestampGrouping(EPrecision precision)
-    {
-        switch (precision)
-        {
-            case EPrecision.Second:
-                return new BsonDocument
-                {
-                    { "second", new BsonDocument("second", "$Timestamp") },
-                    { "minute", new BsonDocument("$minute", "$Timestamp") },
-                    { "hour", new BsonDocument("$hour", "$Timestamp") },
-                    { "dayOfMonth", new BsonDocument("$dayOfMonth", "$Timestamp") },
-                    { "month", new BsonDocument("$month", "$Timestamp") },
-                    { "year", new BsonDocument("$year", "$Timestamp") },
-                };
-            case EPrecision.Minute:
-                return new BsonDocument
-                {
-                    { "minute", new BsonDocument("$minute", "$Timestamp") },
-                    { "hour", new BsonDocument("$hour", "$Timestamp") },
-                    { "dayOfMonth", new BsonDocument("$dayOfMonth", "$Timestamp") },
-                    { "month", new BsonDocument("$month", "$Timestamp") },
-                    { "year", new BsonDocument("$year", "$Timestamp") },
-                };
-            case EPrecision.Hour:
-                return new BsonDocument
-                {
-                    { "hour", new BsonDocument("$hour", "$Timestamp") },
-                    { "dayOfMonth", new BsonDocument("$dayOfMonth", "$Timestamp") },
-                    { "month", new BsonDocument("$month", "$Timestamp") },
-                    { "year", new BsonDocument("$year", "$Timestamp") },
-                };
-            case EPrecision.Day:
-                return new BsonDocument
-                {
-                    { "dayOfMonth", new BsonDocument("$dayOfMonth", "$Timestamp") },
-                    { "month", new BsonDocument("$month", "$Timestamp") },
-                    { "year", new BsonDocument("$year", "$Timestamp") },
-                };
-            case EPrecision.Month:
-                return new BsonDocument
-                {
-                    { "month", new BsonDocument("$month", "$Timestamp") },
-                    { "year", new BsonDocument("$year", "$Timestamp") },
-                };
-            case EPrecision.Year:
-                return new BsonDocument
-                {
-                    { "year", new BsonDocument("$year", "$Timestamp") },
-                };
-            default:
-                throw new ArgumentOutOfRangeException(nameof(precision), precision, null);
-        }
-    }
+    //private static BsonDocument BuildTimestampGrouping(EPrecision precision)
+    //{
+    //    switch (precision)
+    //    {
+    //        case EPrecision.Second:
+    //            return new BsonDocument
+    //            {
+    //                { "second", new BsonDocument("second", "$Timestamp") },
+    //                { "minute", new BsonDocument("$minute", "$Timestamp") },
+    //                { "hour", new BsonDocument("$hour", "$Timestamp") },
+    //                { "dayOfMonth", new BsonDocument("$dayOfMonth", "$Timestamp") },
+    //                { "month", new BsonDocument("$month", "$Timestamp") },
+    //                { "year", new BsonDocument("$year", "$Timestamp") },
+    //            };
+    //        case EPrecision.Minute:
+    //            return new BsonDocument
+    //            {
+    //                { "minute", new BsonDocument("$minute", "$Timestamp") },
+    //                { "hour", new BsonDocument("$hour", "$Timestamp") },
+    //                { "dayOfMonth", new BsonDocument("$dayOfMonth", "$Timestamp") },
+    //                { "month", new BsonDocument("$month", "$Timestamp") },
+    //                { "year", new BsonDocument("$year", "$Timestamp") },
+    //            };
+    //        case EPrecision.Hour:
+    //            return new BsonDocument
+    //            {
+    //                { "hour", new BsonDocument("$hour", "$Timestamp") },
+    //                { "dayOfMonth", new BsonDocument("$dayOfMonth", "$Timestamp") },
+    //                { "month", new BsonDocument("$month", "$Timestamp") },
+    //                { "year", new BsonDocument("$year", "$Timestamp") },
+    //            };
+    //        case EPrecision.Day:
+    //            return new BsonDocument
+    //            {
+    //                { "dayOfMonth", new BsonDocument("$dayOfMonth", "$Timestamp") },
+    //                { "month", new BsonDocument("$month", "$Timestamp") },
+    //                { "year", new BsonDocument("$year", "$Timestamp") },
+    //            };
+    //        case EPrecision.Month:
+    //            return new BsonDocument
+    //            {
+    //                { "month", new BsonDocument("$month", "$Timestamp") },
+    //                { "year", new BsonDocument("$year", "$Timestamp") },
+    //            };
+    //        case EPrecision.Year:
+    //            return new BsonDocument
+    //            {
+    //                { "year", new BsonDocument("$year", "$Timestamp") },
+    //            };
+    //        default:
+    //            throw new ArgumentOutOfRangeException(nameof(precision), precision, null);
+    //    }
+    //}
 
-    private async IAsyncEnumerable<TTarget> AddTimeInfo<TTarget>(IAsyncCursor<TTarget> cursor, EPrecision precision, [EnumeratorCancellation] CancellationToken cancellationToken)
-        where TTarget : TimeEntityBase
-    {
-        while (await cursor.MoveNextAsync(cancellationToken))
-        {
-            var batch = cursor.Current;
-            foreach (var item in batch)
-            {
-                yield return item with { Time = TrunkateTime(item.Time, precision) };
-            }
-        }
-    }
+    //private async IAsyncEnumerable<TTarget> AddTimeInfo<TTarget>(IAsyncCursor<TTarget> cursor, EPrecision precision, [EnumeratorCancellation] CancellationToken cancellationToken)
+    //    where TTarget : TimeEntityBase
+    //{
+    //    while (await cursor.MoveNextAsync(cancellationToken))
+    //    {
+    //        var batch = cursor.Current;
+    //        foreach (var item in batch)
+    //        {
+    //            yield return item with { Time = TrunkateTime(item.Time, precision) };
+    //        }
+    //    }
+    //}
 
-    private DateTime TrunkateTime(DateTime itemTime, EPrecision precision)
-    {
-        itemTime = itemTime.AddMilliseconds(-itemTime.Millisecond);
+    //private DateTime TrunkateTime(DateTime itemTime, EPrecision precision)
+    //{
+    //    itemTime = itemTime.AddMilliseconds(-itemTime.Millisecond);
 
-        if (precision >= EPrecision.Minute)
-        {
-            itemTime = itemTime.AddSeconds(-itemTime.Second);
-        }
+    //    if (precision >= EPrecision.Minute)
+    //    {
+    //        itemTime = itemTime.AddSeconds(-itemTime.Second);
+    //    }
 
-        if (precision >= EPrecision.Hour)
-        {
-            itemTime = itemTime.AddMinutes(-itemTime.Minute);
-        }
+    //    if (precision >= EPrecision.Hour)
+    //    {
+    //        itemTime = itemTime.AddMinutes(-itemTime.Minute);
+    //    }
 
-        if (precision >= EPrecision.Day)
-        {
-            itemTime = itemTime.AddHours(-itemTime.Hour);
-        }
+    //    if (precision >= EPrecision.Day)
+    //    {
+    //        itemTime = itemTime.AddHours(-itemTime.Hour);
+    //    }
 
-        if (precision >= EPrecision.Month)
-        {
-            itemTime = itemTime.AddDays(-itemTime.Day);
-        }
+    //    if (precision >= EPrecision.Month)
+    //    {
+    //        itemTime = itemTime.AddDays(-itemTime.Day);
+    //    }
 
-        if (precision >= EPrecision.Year)
-        {
-            itemTime = itemTime.AddMonths(-itemTime.Month);
-        }
+    //    if (precision >= EPrecision.Year)
+    //    {
+    //        itemTime = itemTime.AddMonths(-itemTime.Month);
+    //    }
 
-        return itemTime;
-    }
+    //    return itemTime;
+    //}
 
     public override async Task<long> GetSizeAsync()
     {

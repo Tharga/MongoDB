@@ -1,4 +1,8 @@
 # Tharga MongoDB
+[![NuGet](https://img.shields.io/nuget/v/Tharga.MongoDB)](https://www.nuget.org/packages/Tharga.MongoDB)
+![Nuget](https://img.shields.io/nuget/dt/Tharga.MongoDB)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![GitHub repo Issues](https://img.shields.io/github/issues/Tharga/MongoDB?style=flat&logo=github&logoColor=red&label=Issues)](https://github.com/Tharga/MongoDB/issues?q=is%3Aopen)
 
 ## Get started
 Install the nuget package `Tharga.MongoDB`. It is available at [nuget.org](#https://www.nuget.org/packages/Tharga.MongoDB).

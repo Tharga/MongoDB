@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq.Expressions;
-using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
@@ -88,7 +87,7 @@ public abstract class RepositoryCollectionBase<TEntity, TKey> : RepositoryCollec
     public abstract Task<long> CountAsync(Expression<Func<TEntity, bool>> predicate, CancellationToken cancellationToken = default);
     public abstract Task<long> CountAsync(FilterDefinition<TEntity> filter, CancellationToken cancellationToken = default);
 
-    public abstract IAsyncEnumerable<TTarget> AggregateAsync<TTarget>(FilterDefinition<TEntity> filter, EPrecision precision, AggregateOperations<TTarget> operations, CancellationToken cancellationToken = default) where TTarget : TimeEntityBase;
+    //public abstract IAsyncEnumerable<TTarget> AggregateAsync<TTarget>(FilterDefinition<TEntity> filter, EPrecision precision, AggregateOperations<TTarget> operations, CancellationToken cancellationToken = default) where TTarget : TimeEntityBase;
 
     public abstract Task<long> GetSizeAsync();
 
@@ -114,8 +113,8 @@ public abstract class RepositoryCollectionBase<TEntity, TKey> : RepositoryCollec
         };
     }
 
-    protected ValueTask AssureFirewallAccessAsync()
+    protected async ValueTask AssureFirewallAccessAsync()
     {
-        return _mongoDbService.AssureFirewallAccessAsync(true);
+        await _mongoDbService.AssureFirewallAccessAsync(true);
     }
 }
