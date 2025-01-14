@@ -321,7 +321,7 @@ When configuring the `AccessInfo` and the database is accessing a database other
 There are more details on the [mongodb.com](https://www.mongodb.com/docs/atlas/configure-api-access/#std-label-create-org-api-key) site.
 
 ### Public- and PrivateKey
-To create a key-pair, select *Access Manager* for the *organization*. Then Select the tab *API Keys*. Here you can create keys with the correct access.
+To create a key-pair, select *Access Manager* for the *organization*. Then Select the tab *Applications* and *API Keys*. Here you can create keys with the correct access.
 
 #### GroupId
 The *GroupId* can be found as part of the URL on the *Atlas MongoDB* website.
