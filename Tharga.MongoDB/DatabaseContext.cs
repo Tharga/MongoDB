@@ -1,4 +1,5 @@
-﻿using Tharga.MongoDB.Configuration;
+﻿using Microsoft.Extensions.Logging;
+using Tharga.MongoDB.Configuration;
 
 namespace Tharga.MongoDB;
 

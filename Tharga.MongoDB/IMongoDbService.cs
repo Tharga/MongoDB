@@ -1,5 +1,6 @@
 ﻿using System.Collections.Generic;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 using MongoDB.Driver;
 
 namespace Tharga.MongoDB;
@@ -24,4 +25,5 @@ public interface IMongoDbService
     bool GetCleanOnStartup();
     bool DropEmptyCollections();
     ValueTask<string> AssureFirewallAccessAsync(bool force = false);
+    LogLevel GetExecuteInfoLogLevel();
 }
