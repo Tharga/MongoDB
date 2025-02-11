@@ -74,6 +74,11 @@ internal class MongoDbService : IMongoDbService
         return message;
     }
 
+    public LogLevel GetExecuteInfoLogLevel()
+    {
+        return _configuration?.GetExecuteInfoLogLevel() ?? LogLevel.Debug;
+    }
+
     public string GetDatabaseName()
     {
         return _mongoDatabase.DatabaseNamespace.DatabaseName;
