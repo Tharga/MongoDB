@@ -211,6 +211,16 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
 
     public async Task<EntityScope<TEntity, TKey>> WaitForUpdateAsync(TKey id, TimeSpan? timeout = default, string actor = default, CancellationToken cancellationToken = default)
     {
+        return await EntityScope(id, timeout, actor, cancellationToken, CommitMode.Update);
+    }
+
+    public async Task<EntityScope<TEntity, TKey>> WaitForDeleteAsync(TKey id, TimeSpan? timeout = default, string actor = default, CancellationToken cancellationToken = default)
+    {
+        return await EntityScope(id, timeout, actor, cancellationToken, CommitMode.Delete);
+    }
+
+    private async Task<EntityScope<TEntity, TKey>> EntityScope(TKey id, TimeSpan? timeout, string actor, CancellationToken cancellationToken, CommitMode commitMode)
+    {
         var actualTimeout = timeout ?? DefaultTimeout;
         var recheckTimeInterval = actualTimeout / 5;
         using var timeoutCts = new CancellationTokenSource(actualTimeout);
@@ -220,14 +230,14 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
 
         while (!linkedCts.Token.IsCancellationRequested)
         {
-            var result = await GetForUpdateAsync(Builders<TEntity>.Filter.Eq(x => x.Id, id), timeout, actor, CommitMode.Update);
+            var result = await GetForUpdateAsync(Builders<TEntity>.Filter.Eq(x => x.Id, id), timeout, actor, commitMode);
             if (!result.ShouldWait) return HandleFinalResult(result);
             WaitHandle.WaitAny(waitHandles, recheckTimeInterval);
         }
 
         if (cancellationToken.IsCancellationRequested) throw new OperationCanceledException("The operation was canceled.");
 
-        var finalCheckResult = await GetForUpdateAsync(Builders<TEntity>.Filter.Eq(x => x.Id, id), timeout, actor, CommitMode.Update);
+        var finalCheckResult = await GetForUpdateAsync(Builders<TEntity>.Filter.Eq(x => x.Id, id), timeout, actor, commitMode);
         if (!finalCheckResult.ShouldWait) return HandleFinalResult(finalCheckResult);
 
         throw new TimeoutException("No valid entity has been released for update.");
@@ -424,7 +434,6 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
     {
         var lockTime = DateTime.UtcNow - entityLock.ExpireTime;
         var timeout = entityLock.ExpireTime - entityLock.LockTime;
-        var lockInfo = BuildLockInfo(entity, entityLock, exception, false, false);
 
         if (!externalUnlock && lockTime > timeout)
         {
