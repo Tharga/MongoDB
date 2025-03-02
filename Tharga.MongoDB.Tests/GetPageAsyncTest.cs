@@ -36,7 +36,7 @@ public class GetPageAsyncTest : GenericBufferRepositoryCollectionBaseTestBase
         result.Length.Should().Be(2);
         foreach (var page in result)
         {
-            (await page.Items.ToArrayAsync()).Length.Should().BeLessOrEqualTo(5);
+            (await page.Items.ToArrayAsync()).Length.Should().BeLessThanOrEqualTo(5);
         }
     }
 
