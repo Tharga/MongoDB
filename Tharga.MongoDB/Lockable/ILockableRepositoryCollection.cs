@@ -19,11 +19,9 @@ public interface ILockableRepositoryCollection<TEntity, TKey> : IReadOnlyReposit
     Task<EntityScope<TEntity, TKey>> WaitForUpdateAsync(TKey id, TimeSpan? timeout = default, string actor = default, CancellationToken cancellationToken = default);
     Task<EntityScope<TEntity, TKey>> WaitForDeleteAsync(TKey id, TimeSpan? timeout = default, string actor = default, CancellationToken cancellationToken = default);
 
-    //TODO: List locked documents (Filter on locks, expired locks or exceptions)
-    //IAsyncEnumerable<EntityScope<TEntity, TKey>> GetAsync();
+    IAsyncEnumerable<EntityLock<TEntity, TKey>> GetLockedAsync(LockMode lockMode);
 
-    //TODO: Create method to manually unlock errors, and reset the counter.
-    //Task ReleaseAsync(TKey id);
+    Task<bool> ReleaseAsync(TKey id);
 }
 
 public interface ILockableRepositoryCollection<TEntity> : ILockableRepositoryCollection<TEntity, ObjectId>

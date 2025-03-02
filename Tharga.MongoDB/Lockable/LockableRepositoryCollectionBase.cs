@@ -219,6 +219,36 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
         return await EntityScope(id, timeout, actor, cancellationToken, CommitMode.Delete);
     }
 
+    public IAsyncEnumerable<EntityLock<TEntity, TKey>> GetLockedAsync(LockMode lockMode)
+    {
+        switch (lockMode)
+        {
+            case LockMode.Locked:
+                return Disk.GetAsync(x => x.Lock != null && x.Lock.ExceptionInfo == null && (x.Lock.ExpireTime ?? (x.Lock.LockTime + DefaultTimeout)) <= DateTime.UtcNow)
+                    .Select(x => new EntityLock<TEntity, TKey>(x, x.Lock));
+            case LockMode.Expired:
+                return Disk.GetAsync(x => x.Lock != null && x.Lock.ExceptionInfo == null && (x.Lock.ExpireTime ?? (x.Lock.LockTime + DefaultTimeout)) > DateTime.UtcNow)
+                    .Select(x => new EntityLock<TEntity, TKey>(x, x.Lock));
+            case LockMode.Exception:
+                return Disk.GetAsync(x => x.Lock != null && x.Lock.ExceptionInfo != null)
+                    .Select(x => new EntityLock<TEntity, TKey>(x, x.Lock));
+            default:
+                throw new ArgumentOutOfRangeException(nameof(lockMode), lockMode, null);
+        }
+    }
+
+    public async Task<bool> ReleaseAsync(TKey id)
+    {
+        var filter = Builders<TEntity>.Filter.And(
+            Builders<TEntity>.Filter.Eq(x => x.Id, id),
+            Builders<TEntity>.Filter.Ne(x => x.Lock, null),
+            Builders<TEntity>.Filter.Ne(x => x.Lock.ExceptionInfo, null)
+        );
+        var update = new UpdateDefinitionBuilder<TEntity>().Set(x => x.Lock, null);
+        var result = await Disk.UpdateAsync(filter, update);
+        return result == 1;
+    }
+
     private async Task<EntityScope<TEntity, TKey>> EntityScope(TKey id, TimeSpan? timeout, string actor, CancellationToken cancellationToken, CommitMode commitMode)
     {
         var actualTimeout = timeout ?? DefaultTimeout;
