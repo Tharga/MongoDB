@@ -91,7 +91,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 
             sw.Stop();
 
-            _logger?.LogInformation($"Executed {{repositoryType}} for {{CollectionName}} took {{elapsed}} ms. [action: Database, operation: {functionName}]", "DiskRepository", CollectionName, sw.Elapsed.TotalMilliseconds);
+            _logger?.Log(_executeInfoLogLevel, $"Executed {{repositoryType}} for {{CollectionName}} took {{elapsed}} ms. [action: Database, operation: {functionName}]", "DiskRepository", CollectionName, sw.Elapsed.TotalMilliseconds);
             InvokeAction(new ActionEventArgs.ActionData { Operation = functionName, Elapsed = sw.Elapsed });
 
             return result;
@@ -126,7 +126,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         }
 
         sw.Stop();
-        _logger?.LogInformation($"Executed {{repositoryType}} for {{CollectionName}} took {{elapsed}} ms and returned {{itemCount}} items. [action: Database, operation: {nameof(GetAsync)}]", "DiskRepository", CollectionName, sw.Elapsed.TotalMilliseconds, count);
+        _logger?.Log(_executeInfoLogLevel, $"Executed {{repositoryType}} for {{CollectionName}} took {{elapsed}} ms and returned {{itemCount}} items. [action: Database, operation: {nameof(GetAsync)}]", "DiskRepository", CollectionName, sw.Elapsed.TotalMilliseconds, count);
         InvokeAction(new ActionEventArgs.ActionData { Operation = nameof(GetAsync), Elapsed = sw.Elapsed, ItemCount = count });
     }
 
@@ -162,7 +162,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         }
 
         sw.Stop();
-        _logger?.LogInformation($"Executed {{repositoryType}} for {{CollectionName}} took {{elapsed}} ms and returned {{itemCount}} items. [action: Database, operation: {nameof(GetAsync)}]", "DiskRepository", CollectionName, sw.Elapsed.TotalMilliseconds, count);
+        _logger?.Log(_executeInfoLogLevel, $"Executed {{repositoryType}} for {{CollectionName}} took {{elapsed}} ms and returned {{itemCount}} items. [action: Database, operation: {nameof(GetAsync)}]", "DiskRepository", CollectionName, sw.Elapsed.TotalMilliseconds, count);
         InvokeAction(new ActionEventArgs.ActionData { Operation = nameof(GetAsync), Elapsed = sw.Elapsed, ItemCount = count });
     }
 
@@ -195,7 +195,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         }
 
         sw.Stop();
-        _logger?.LogInformation($"Executed {{repositoryType}} for {{CollectionName}} took {{elapsed}} ms and returned {{itemCount}} items. [action: Database, operation: {nameof(GetAsync)}]", "DiskRepository", CollectionName, sw.Elapsed.TotalMilliseconds, count);
+        _logger?.Log(_executeInfoLogLevel, $"Executed {{repositoryType}} for {{CollectionName}} took {{elapsed}} ms and returned {{itemCount}} items. [action: Database, operation: {nameof(GetAsync)}]", "DiskRepository", CollectionName, sw.Elapsed.TotalMilliseconds, count);
         InvokeAction(new ActionEventArgs.ActionData { Operation = $"{nameof(GetAsync)}<{typeof(T).Name}>", Elapsed = sw.Elapsed, ItemCount = count });
     }
 
@@ -239,7 +239,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         }
 
         sw.Stop();
-        _logger?.LogInformation($"Executed {{repositoryType}} for {{CollectionName}} took {{elapsed}} ms and returned {{itemCount}} items. [action: Database, operation: {nameof(GetAsync)}]", "DiskRepository", CollectionName, sw.Elapsed.TotalMilliseconds, count);
+        _logger?.Log(_executeInfoLogLevel, $"Executed {{repositoryType}} for {{CollectionName}} took {{elapsed}} ms and returned {{itemCount}} items. [action: Database, operation: {nameof(GetAsync)}]", "DiskRepository", CollectionName, sw.Elapsed.TotalMilliseconds, count);
         InvokeAction(new ActionEventArgs.ActionData { Operation = $"{nameof(GetProjectionAsync)}<{typeof(T).Name}>", Elapsed = sw.Elapsed, ItemCount = count });
 
         //return await Execute($"{nameof(GetProjectionAsync)}<{typeof(T).Name}>", async () =>
@@ -290,7 +290,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         var count = items.Length;
 
         sw.Stop();
-        _logger?.LogInformation($"Executed {{repositoryType}} for {{CollectionName}} took {{elapsed}} ms and returned {{itemCount}} items. [action: Database, operation: {nameof(QueryAsync)}]", "DiskRepository", CollectionName, sw.Elapsed.TotalMilliseconds, count);
+        _logger?.Log(_executeInfoLogLevel, $"Executed {{repositoryType}} for {{CollectionName}} took {{elapsed}} ms and returned {{itemCount}} items. [action: Database, operation: {nameof(QueryAsync)}]", "DiskRepository", CollectionName, sw.Elapsed.TotalMilliseconds, count);
         InvokeAction(new ActionEventArgs.ActionData { Operation = nameof(GetAsync), Elapsed = sw.Elapsed, ItemCount = count });
 
         return new Result<TEntity, TKey>
@@ -313,7 +313,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         var count = items.Length;
 
         sw.Stop();
-        _logger?.LogInformation($"Executed {{repositoryType}} for {{CollectionName}} took {{elapsed}} ms and returned {{itemCount}} items. [action: Database, operation: {nameof(QueryAsync)}]", "DiskRepository", CollectionName, sw.Elapsed.TotalMilliseconds, count);
+        _logger?.Log(_executeInfoLogLevel, $"Executed {{repositoryType}} for {{CollectionName}} took {{elapsed}} ms and returned {{itemCount}} items. [action: Database, operation: {nameof(QueryAsync)}]", "DiskRepository", CollectionName, sw.Elapsed.TotalMilliseconds, count);
         InvokeAction(new ActionEventArgs.ActionData { Operation = nameof(GetAsync), Elapsed = sw.Elapsed, ItemCount = count });
 
         return new Result<TEntity, TKey>
@@ -358,7 +358,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         }
 
         sw.Stop();
-        _logger?.LogInformation($"Executed {{repositoryType}} for {{CollectionName}} took {{elapsed}} ms and returned {{itemCount}} items on {{pages}} pages. [action: Database, operation: {nameof(GetPagesAsync)}]", "DiskRepository", CollectionName, sw.Elapsed.TotalMilliseconds, totalCount, pages);
+        _logger?.Log(_executeInfoLogLevel, $"Executed {{repositoryType}} for {{CollectionName}} took {{elapsed}} ms and returned {{itemCount}} items on {{pages}} pages. [action: Database, operation: {nameof(GetPagesAsync)}]", "DiskRepository", CollectionName, sw.Elapsed.TotalMilliseconds, totalCount, pages);
         InvokeAction(new ActionEventArgs.ActionData { Operation = nameof(GetPagesAsync), Elapsed = sw.Elapsed, ItemCount = totalCount, Data = new Dictionary<string, object> { { "pages", pages } } });
     }
 
@@ -1018,7 +1018,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             .Where(x => !x.StartsWith("_id_"))
             .ToArray();
 
-        _logger?.LogInformation("Assure index for collection {collection} with {count} documents.", ProtectedCollectionName, await collection.CountDocumentsAsync(x => true));
+        _logger?.Log(_executeInfoLogLevel, "Assure index for collection {collection} with {count} documents.", ProtectedCollectionName, await collection.CountDocumentsAsync(x => true));
         _logger?.LogTrace("All existing indices in collection {collection}: {indices}.", ProtectedCollectionName, string.Join(", ", allExistingIndexNames));
         _logger?.LogDebug("Considered existing indices in collection {collection}: {indices}.", ProtectedCollectionName, string.Join(", ", existingIndexNames));
         _logger?.LogDebug("Defined indices for collection {collection}: {indices}.", ProtectedCollectionName, string.Join(", ", indices.Select(x => x.Options.Name)));

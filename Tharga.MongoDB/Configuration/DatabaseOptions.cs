@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Reflection;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 using Tharga.MongoDB.Internals;
 
 namespace Tharga.MongoDB.Configuration;
@@ -73,4 +74,9 @@ public record DatabaseOptions
     /// This cache enabled by default.
     /// </summary>
     public bool UseCollectionProviderCache { get; set; } = true;
+
+    /// <summary>
+    /// Log level for execution information.
+    /// </summary>
+    public LogLevel? ExecuteInfoLogLevel { get; set; } = LogLevel.Debug;
 }

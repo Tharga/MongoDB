@@ -28,6 +28,7 @@ public static class AddMongoDbExtensions
             ConfigurationName = "Default",
             AutoRegisterRepositories = Constants.AutoRegisterRepositoriesDefault,
             AutoRegisterCollections = Constants.AutoRegisterCollectionsDefault,
+            ExecuteInfoLogLevel = LogLevel.Debug
         };
 
         options?.Invoke(databaseOptions);
