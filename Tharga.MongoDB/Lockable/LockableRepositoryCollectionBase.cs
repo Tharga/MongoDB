@@ -1,5 +1,7 @@
 ﻿using System;
 using System.Diagnostics;
+using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using MongoDB.Bson;
@@ -14,6 +16,8 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : DiskRepositoryCol
 {
     protected virtual int UnlockCounterLimit { get; init; } = 3;
     protected virtual TimeSpan DefaultTimeout { get; init; } = TimeSpan.FromSeconds(30);
+
+    private static readonly AutoResetEvent _releaseEvent = new(false);
 
     /// <summary>
     /// Override this constructor for static collections.
@@ -35,21 +39,6 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : DiskRepositoryCol
         : base(mongoDbServiceFactory, logger, databaseContext)
     {
     }
-
-    //public override Task AddAsync(TEntity entity)
-    //{
-    //    return base.AddAsync(entity);
-    //}
-
-    //public override Task<bool> TryAddAsync(TEntity entity)
-    //{
-    //    return base.TryAddAsync(entity);
-    //}
-
-    //public override async Task AddManyAsync(IEnumerable<TEntity> entities)
-    //{
-    //    throw new NotImplementedException();
-    //}
 
     public override async Task<EntityChangeResult<TEntity>> AddOrReplaceAsync(TEntity entity)
     {
@@ -88,26 +77,67 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : DiskRepositoryCol
 
     private string BuildErrorMessage()
     {
-        return $"Use {nameof(GetForUpdateAsync)} to get an update {nameof(EntityScope<TEntity, TKey>)} that can be used for update.";
+        return $"Use {nameof(PickForUpdateAsync)} to get an update {nameof(EntityScope<TEntity, TKey>)} that can be used for update.";
     }
 
-    public async Task<EntityScope<TEntity, TKey>> GetForUpdateAsync(TKey id, TimeSpan? timeout = default, string actor = default)
+    public async Task<EntityScope<TEntity, TKey>> PickForUpdateAsync(TKey id, TimeSpan? timeout = default, string actor = default)
+    {
+        var result = await GetForUpdateAsync(Builders<TEntity>.Filter.Eq(x => x.Id, id), timeout, actor);
+        if (!string.IsNullOrEmpty(result.ErrorMessage))
+        {
+            throw new InvalidOperationException(result.ErrorMessage);
+        }
+
+        return result.EntityScope;
+    }
+
+    public async Task<EntityScope<TEntity, TKey>> WaitForUpdateAsync(TKey id, TimeSpan? timeout = default, string actor = default, CancellationToken cancellationToken = default)
+    {
+        var actualTimeout = timeout ?? DefaultTimeout;
+        var recheckTimeInterval = actualTimeout / 5;
+        using var timeoutCts = new CancellationTokenSource(actualTimeout);
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
+
+        var waitHandles = new[] { _releaseEvent, linkedCts.Token.WaitHandle };
+
+        while (!linkedCts.Token.IsCancellationRequested)
+        {
+            var result = await GetForUpdateAsync(Builders<TEntity>.Filter.Eq(x => x.Id, id), timeout, actor);
+            if (!result.ShouldWait) return HandleFinalResult(result);
+            WaitHandle.WaitAny(waitHandles, recheckTimeInterval);
+        }
+
+        if (cancellationToken.IsCancellationRequested) throw new OperationCanceledException("The operation was canceled.");
+
+        var finalCheckResult = await GetForUpdateAsync(Builders<TEntity>.Filter.Eq(x => x.Id, id), timeout, actor);
+        if (!finalCheckResult.ShouldWait) return HandleFinalResult(finalCheckResult);
+
+        throw new TimeoutException("No valid entity has been released for update.");
+
+        EntityScope<TEntity, TKey> HandleFinalResult((EntityScope<TEntity, TKey> EntityScope, string ErrorMessage, bool ShouldWait) result2)
+        {
+            if (!string.IsNullOrEmpty(result2.ErrorMessage)) throw new InvalidOperationException(result2.ErrorMessage);
+            return result2.EntityScope;
+        }
+    }
+
+    private async Task<(EntityScope<TEntity, TKey> EntityScope, string ErrorMessage, bool ShouldWait)> GetForUpdateAsync(FilterDefinition<TEntity> filter, TimeSpan? timeout = default, string actor = default)
     {
         var lockTime = DateTime.UtcNow;
         var lockKey = Guid.NewGuid();
         actor = actor.NullIfEmpty();
 
         var unlockedFilter = Builders<TEntity>.Filter.And(
-            Builders<TEntity>.Filter.Eq(x => x.Id, id),
+            filter,
             Builders<TEntity>.Filter.Eq(x => x.Lock, null)
         );
         var expiredLockFilter = Builders<TEntity>.Filter.And(
-            Builders<TEntity>.Filter.Eq(x => x.Id, id),
+            filter,
             Builders<TEntity>.Filter.Ne(x => x.Lock, null),
             Builders<TEntity>.Filter.Eq(x => x.Lock.ExceptionInfo, null),
             Builders<TEntity>.Filter.Lte(x => x.Lock.ExpireTime, lockTime)
         );
-        var filter = Builders<TEntity>.Filter.Or(unlockedFilter, expiredLockFilter);
+        var matchFilter = Builders<TEntity>.Filter.Or(unlockedFilter, expiredLockFilter);
 
         var entityLock = new Lock
         {
@@ -120,23 +150,35 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : DiskRepositoryCol
 
         var update = new UpdateDefinitionBuilder<TEntity>().Set(x => x.Lock, entityLock);
 
-        var result = await base.UpdateOneAsync(filter, update);
+        var result = await base.UpdateOneAsync(matchFilter, update);
         if (result.Before == null)
         {
             //Document is missing or is already locked
-            var doc = await GetOneAsync(x => x.Id.Equals(id));
-            if (doc == null) throw new InvalidOperationException($"Cannot find entity with id '{id}'.");
-            if (doc.Lock?.ExceptionInfo == null)
+            var docs = await GetAsync(filter).ToArrayAsync();
+
+            //if (!docs.Any()) return (default, "Cannot find entity that matches the filter.", false);
+            if (!docs.Any()) return (default, null, false);
+
+            if (docs.Length == 1)
             {
-                var timeString = doc.Lock == null ? null : $" for {(doc.Lock.ExpireTime ?? (doc.Lock.LockTime + DefaultTimeout)) - DateTime.UtcNow}";
-                var actorString = doc.Lock?.Actor == null ? null : $" by '{doc.Lock.Actor}'";
-                throw new InvalidOperationException($"Entity with id '{id}' is locked{actorString}{timeString}.");
-            };
-            if (doc.Lock.ExceptionInfo != null) throw new InvalidOperationException($"Entity with id '{id}' has an exception attached.");
-            throw new InvalidOperationException($"Entity with id '{id}' has an unknown state.");
+                var doc = docs.Single();
+                if (doc.Lock?.ExceptionInfo == null)
+                {
+                    var timeString = doc.Lock == null ? null : $" for {(doc.Lock.ExpireTime ?? (doc.Lock.LockTime + DefaultTimeout)) - DateTime.UtcNow}";
+                    var actorString = doc.Lock?.Actor == null ? null : $" by '{doc.Lock.Actor}'";
+                    return (default, $"Entity with id '{doc.Id}' is locked{actorString}{timeString}.", true);
+                }
+
+                if (doc.Lock.ExceptionInfo != null) return (default, $"Entity with id '{doc.Id}' has an exception attached.", false);
+                return (default, $"Entity with id '{doc.Id}' has an unknown state.", false);
+            }
+            else
+            {
+                throw new NotImplementedException("Messages for documents with muliple matches but no hit, has not yet been implemented.");
+            }
         }
 
-        return new EntityScope<TEntity, TKey>(result.Before, ReleaseEntity(entityLock));
+        return (new EntityScope<TEntity, TKey>(result.Before, ReleaseEntity(entityLock)), null, false);
     }
 
     private Func<TEntity, Exception, Task> ReleaseEntity(Lock entityLock)
@@ -166,6 +208,10 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : DiskRepositoryCol
                 _ = base.ReplaceOneAsync(errorEntity);
                 _logger.LogError(e, e.Message);
                 return Task.FromResult(false);
+            }
+            finally
+            {
+                _releaseEvent.Set();
             }
         };
     }
@@ -243,11 +289,6 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : DiskRepositoryCol
 
         return (null, 0);
     }
-
-    //TODO: List locked documents (Filter out documents with expired locks) [locks, expired locks, exceptions]
-    //TODO: List documents with errors.
-    //TODO: Create method to manually unlock errors, and reset the counter.
-    //TODO: Wait for entity to be updated
 }
 
 public class LockableRepositoryCollectionBase<TEntity> : LockableRepositoryCollectionBase<TEntity, ObjectId>

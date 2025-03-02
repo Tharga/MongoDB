@@ -1,5 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
-using MongoDB.Bson;
+﻿using MongoDB.Bson;
 using Tharga.MongoDB;
 using Tharga.MongoDB.Lockable;
 

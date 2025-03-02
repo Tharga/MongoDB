@@ -23,13 +23,13 @@ public class MyLockableRepo : IMyLockableRepo
 
     public async Task<MyLockableEntity> BumpCountAsync(ObjectId id)
     {
-        var scope = await _collection.GetForUpdateAsync(id);
+        var scope = await _collection.PickForUpdateAsync(id);
         scope.Entity.Counter++;
         return await scope.CommitAsync();
     }
 
     public async Task LockAsync(ObjectId id, TimeSpan timeout, string actor)
     {
-        await _collection.GetForUpdateAsync(id, timeout, actor);
+        await _collection.PickForUpdateAsync(id, timeout, actor);
     }
 }
