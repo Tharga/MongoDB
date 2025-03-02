@@ -42,17 +42,22 @@ public class PickForUpdateTests : LockableTestTestsBase
         var entity = new LockableTestEntity
         {
             Id = ObjectId.GenerateNewId(),
-            Lock = new Lock()
+            Lock = new Lock
+            {
+                LockKey = Guid.NewGuid(),
+                LockTime = DateTime.UtcNow,
+                Actor = "some actor",
+            }
         };
         await sut.AddAsync(entity);
 
         //Act
-        var act = () => sut.GetForUpdateAsync(entity.Id);
+        var act = () => sut.GetForUpdateAsync(entity.Id, actor: "test actor");
 
         //Assert
         await act.Should()
             .ThrowAsync<InvalidOperationException>()
-            .WithMessage($"Entity with id '{entity.Id}' is locked.");
+            .WithMessage($"Entity with id '{entity.Id}' is locked by 'some actor' for *.");
         var item = await sut.GetOneAsync(entity.Id);
         item.Should().NotBeNull();
         item.Lock.Should().NotBeNull();
@@ -132,6 +137,4 @@ public class PickForUpdateTests : LockableTestTestsBase
         item.Lock.Should().NotBeNull();
         item.Lock.ExceptionInfo.Should().BeNull();
     }
-
-    //TODO: Wait for entity to be updated
 }

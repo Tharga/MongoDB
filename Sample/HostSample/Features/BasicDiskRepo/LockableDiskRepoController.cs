@@ -1,8 +1,6 @@
-﻿using System.Linq;
-using System.Threading.Tasks;
-using HostSample.Features.LockableRepo;
+﻿using HostSample.Features.LockableRepo;
 using Microsoft.AspNetCore.Mvc;
-using Tharga.MongoDB;
+using MongoDB.Bson;
 
 namespace HostSample.Features.BasicDiskRepo;
 
@@ -12,7 +10,7 @@ public class LockableDiskRepoController : ControllerBase
 {
     private readonly IMyLockableRepo _repository;
 
-    public LockableDiskRepoController(IMyLockableRepo repository, IRepositoryConfiguration configuration)
+    public LockableDiskRepoController(IMyLockableRepo repository)
     {
         _repository = repository;
     }
@@ -22,5 +20,27 @@ public class LockableDiskRepoController : ControllerBase
     {
         var items = await _repository.GetAll().ToArrayAsync();
         return Ok(items.Select(x => new { Id = x.Id.ToString(), x.Counter }));
+    }
+
+    [HttpPost]
+    public async Task<IActionResult> Create()
+    {
+        var myLockableEntity = new MyLockableEntity { Counter = 0 };
+        await _repository.AddAsync(myLockableEntity);
+        return Ok(myLockableEntity);
+    }
+
+    [HttpGet("BumpCount/{id}")]
+    public async Task<IActionResult> Count(string id)
+    {
+        var item = await _repository.BumpCountAsync(ObjectId.Parse(id));
+        return Ok(item);
+    }
+
+    [HttpPut("Lock/{id}")]
+    public async Task<IActionResult> Lock([FromRoute] string id)
+    {
+        await _repository.LockAsync(ObjectId.Parse(id), TimeSpan.FromSeconds(10), null);
+        return Accepted();
     }
 }

@@ -36,6 +36,21 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : DiskRepositoryCol
     {
     }
 
+    //public override Task AddAsync(TEntity entity)
+    //{
+    //    return base.AddAsync(entity);
+    //}
+
+    //public override Task<bool> TryAddAsync(TEntity entity)
+    //{
+    //    return base.TryAddAsync(entity);
+    //}
+
+    //public override async Task AddManyAsync(IEnumerable<TEntity> entities)
+    //{
+    //    throw new NotImplementedException();
+    //}
+
     public override async Task<EntityChangeResult<TEntity>> AddOrReplaceAsync(TEntity entity)
     {
         if (await TryAddAsync(entity))
@@ -111,18 +126,18 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : DiskRepositoryCol
             //Document is missing or is already locked
             var doc = await GetOneAsync(x => x.Id.Equals(id));
             if (doc == null) throw new InvalidOperationException($"Cannot find entity with id '{id}'.");
-            if (doc.Lock?.ExceptionInfo == null) throw new InvalidOperationException($"Entity with id '{id}' is locked.");
+            if (doc.Lock?.ExceptionInfo == null)
+            {
+                var timeString = doc.Lock == null ? null : $" for {(doc.Lock.ExpireTime ?? (doc.Lock.LockTime + DefaultTimeout)) - DateTime.UtcNow}";
+                var actorString = doc.Lock?.Actor == null ? null : $" by '{doc.Lock.Actor}'";
+                throw new InvalidOperationException($"Entity with id '{id}' is locked{actorString}{timeString}.");
+            };
             if (doc.Lock.ExceptionInfo != null) throw new InvalidOperationException($"Entity with id '{id}' has an exception attached.");
             throw new InvalidOperationException($"Entity with id '{id}' has an unknown state.");
         }
 
         return new EntityScope<TEntity, TKey>(result.Before, ReleaseEntity(entityLock));
     }
-
-    //TODO: List locked documents (Filter out documents with expired locks)
-    //TODO: List documents with errors.
-    //TODO: Create method to manually unlock errors, and reset the counter.
-    //TODO: Option to have a job that automatically unlocks documents.
 
     private Func<TEntity, Exception, Task> ReleaseEntity(Lock entityLock)
     {
@@ -228,6 +243,11 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : DiskRepositoryCol
 
         return (null, 0);
     }
+
+    //TODO: List locked documents (Filter out documents with expired locks) [locks, expired locks, exceptions]
+    //TODO: List documents with errors.
+    //TODO: Create method to manually unlock errors, and reset the counter.
+    //TODO: Wait for entity to be updated
 }
 
 public class LockableRepositoryCollectionBase<TEntity> : LockableRepositoryCollectionBase<TEntity, ObjectId>
