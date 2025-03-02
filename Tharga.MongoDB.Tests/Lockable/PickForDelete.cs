@@ -1,18 +1,18 @@
 ﻿using System;
 using System.Threading.Tasks;
 using FluentAssertions;
-using Tharga.MongoDB.Tests.Support;
-using Xunit;
 using MongoDB.Bson;
 using Tharga.MongoDB.Lockable;
 using Tharga.MongoDB.Tests.Lockable.Base;
+using Tharga.MongoDB.Tests.Support;
+using Xunit;
 
 namespace Tharga.MongoDB.Tests.Lockable;
 
 [Collection("Sequential")]
 [CollectionDefinition("Sequential", DisableParallelization = true)]
 //[Trait("Category", "Database")]
-public class PickForUpdate : LockableTestTestsBase
+public class PickForDelete : LockableTestTestsBase
 {
     [Fact]
     public async Task PickEntity()
@@ -23,7 +23,7 @@ public class PickForUpdate : LockableTestTestsBase
         await sut.AddAsync(entity);
 
         //Act
-        var result = await sut.PickForUpdateAsync(entity.Id);
+        var result = await sut.PickForDeleteAsync(entity.Id);
 
         //Assert
         result.Entity.Should().NotBeNull();
@@ -52,7 +52,7 @@ public class PickForUpdate : LockableTestTestsBase
         await sut.AddAsync(entity);
 
         //Act
-        var act = () => sut.PickForUpdateAsync(entity.Id, actor: "test actor");
+        var act = () => sut.PickForDeleteAsync(entity.Id, actor: "test actor");
 
         //Assert
         await act.Should()
@@ -77,7 +77,7 @@ public class PickForUpdate : LockableTestTestsBase
         await sut.AddAsync(entity);
 
         //Act
-        var act = () => sut.PickForUpdateAsync(entity.Id);
+        var act = () => sut.PickForDeleteAsync(entity.Id);
 
         //Assert
         await act.Should()
@@ -100,7 +100,7 @@ public class PickForUpdate : LockableTestTestsBase
         };
 
         //Act
-        var result = await sut.PickForUpdateAsync(entity.Id);
+        var result = await sut.PickForDeleteAsync(entity.Id);
 
         //Assert
         result.Should().BeNull();
@@ -123,7 +123,7 @@ public class PickForUpdate : LockableTestTestsBase
         await sut.AddAsync(entity);
 
         //Act
-        var result = await sut.PickForUpdateAsync(entity.Id);
+        var result = await sut.PickForDeleteAsync(entity.Id);
 
         //Assert
         result.Entity.Should().NotBeNull();
