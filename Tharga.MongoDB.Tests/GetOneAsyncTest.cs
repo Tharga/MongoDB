@@ -1,9 +1,7 @@
 ﻿using System;
 using System.Linq;
 using System.Threading.Tasks;
-using AutoFixture;
 using FluentAssertions;
-using MongoDB.Bson;
 using MongoDB.Driver;
 using Tharga.MongoDB.Tests.Support;
 using Xunit;
@@ -16,12 +14,7 @@ public class GetOneAsyncTest : GenericBufferRepositoryCollectionBaseTestBase
 {
     public GetOneAsyncTest()
     {
-        Prepare(new []
-        {
-            new Fixture().Build<TestEntity>().With(x => x.Id, ObjectId.GenerateNewId()).Create(),
-            new Fixture().Build<TestSubEntity>().With(x => x.Id, ObjectId.GenerateNewId()).Create(),
-            new Fixture().Build<TestEntity>().With(x => x.Id, ObjectId.GenerateNewId()).Create()
-        });
+        Prepare([TestEntityFactory.CreateTestEntity, TestEntityFactory.CreateTestSubEntity, TestEntityFactory.CreateTestEntity]);
     }
 
     [Theory]

@@ -4,6 +4,9 @@ using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using MongoDB.Bson;
+using MongoDB.Bson.Serialization.Serializers;
+using MongoDB.Bson.Serialization;
 using Tharga.MongoDB.Atlas;
 using Tharga.MongoDB.Configuration;
 using Tharga.MongoDB.Internals;
@@ -32,6 +35,8 @@ public static class AddMongoDbExtensions
         };
 
         options?.Invoke(databaseOptions);
+
+        BsonSerializer.TryRegisterSerializer(new GuidSerializer(databaseOptions.GuidRepresentation ?? GuidRepresentation.CSharpLegacy));
 
         _actionEvent = databaseOptions.ActionEvent;
         _actionEvent?.Invoke(new ActionEventArgs(new ActionEventArgs.ActionData { Message = $"Entering {nameof(AddMongoDB)}.", Level = LogLevel.Debug }, new ActionEventArgs.ContextData()));

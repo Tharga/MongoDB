@@ -2,6 +2,9 @@
 using System.Collections.Concurrent;
 using System.Threading;
 using Microsoft.Extensions.Logging;
+using MongoDB.Bson;
+using MongoDB.Bson.Serialization.Serializers;
+using MongoDB.Bson.Serialization;
 using Tharga.MongoDB.Atlas;
 
 namespace Tharga.MongoDB.Internals;
@@ -23,6 +26,14 @@ internal class MongoDbServiceFactory : IMongoDbServiceFactory
 
     public IMongoDbService GetMongoDbService(Func<DatabaseContext> databaseContextLoader)
     {
+        try
+        {
+            BsonSerializer.TryRegisterSerializer(new GuidSerializer(GuidRepresentation.CSharpLegacy));
+        }
+        catch (BsonSerializationException)
+        {
+        }
+
         var mongoUrl = _repositoryConfigurationLoader.GetConfiguration(databaseContextLoader).GetDatabaseUrl();
         var cacheKey = mongoUrl.Url;
         if (_databaseDbServices.TryGetValue(cacheKey, out var dbService)) return dbService;

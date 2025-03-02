@@ -152,4 +152,7 @@ public class ReleaseTests : LockableTestTestsBase
     }
 
     public static IEnumerable<object[]> ReleaseTypes => Enum.GetValues<ReleaseType>().Select(x => new object[] { x });
+
+    //TODO: Release entity that have an exception
+    //TODO: List entities that have locks, expired locks, exceptions
 }

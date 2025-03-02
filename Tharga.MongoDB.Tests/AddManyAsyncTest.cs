@@ -1,6 +1,6 @@
 ﻿using System.Linq;
 using System.Threading.Tasks;
-using AutoFixture;
+using Bogus;
 using FluentAssertions;
 using MongoDB.Bson;
 using MongoDB.Driver;
@@ -18,11 +18,11 @@ public class AddManyAsyncTest : GenericBufferRepositoryCollectionBaseTestBase
     {
         //Arrange
         var id = ObjectId.GenerateNewId();
-        var newEntity = new Fixture().Build<TestEntity>().With(x => x.Id, id).Create();
+        var newEntity = new Faker<TestEntity>().RuleFor(x => x.Id, id).Generate();
         var sut = await GetCollection(collectionType);
 
         //Act
-        await sut.AddManyAsync(new[] { newEntity });
+        await sut.AddManyAsync([newEntity]);
 
         //Assert
         (await sut.GetAsync(x => x.Id == id).ToArrayAsync()).Should().HaveCount(1);
@@ -36,11 +36,11 @@ public class AddManyAsyncTest : GenericBufferRepositoryCollectionBaseTestBase
     {
         //Arrange
         var id = ObjectId.GenerateNewId();
-        var newEntity = new Fixture().Build<TestEntity>().With(x => x.Id, id).Create();
+        var newEntity = new Faker<TestEntity>().RuleFor(x => x.Id, id).Generate();
         var sut = await GetCollection(collectionType);
 
         //Act
-        var act = () => sut.AddManyAsync(new[] { newEntity, newEntity });
+        var act = () => sut.AddManyAsync([newEntity, newEntity]);
 
         //Assert
         await act.Should().ThrowAsync<MongoBulkWriteException>();

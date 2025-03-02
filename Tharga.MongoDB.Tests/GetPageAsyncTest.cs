@@ -1,9 +1,7 @@
 ﻿using System;
 using System.Linq;
 using System.Threading.Tasks;
-using AutoFixture;
 using FluentAssertions;
-using MongoDB.Bson;
 using Tharga.MongoDB.Tests.Support;
 using Xunit;
 
@@ -15,7 +13,8 @@ public class GetPageAsyncTest : GenericBufferRepositoryCollectionBaseTestBase
 {
     public GetPageAsyncTest()
     {
-        Prepare(Enumerable.Range(0, 6).Select(_ => new Fixture().Build<TestEntity>().With(x => x.Id, ObjectId.GenerateNewId()).Create()));
+        //Prepare(TestEntityFactory.CreateMany(6));
+        Prepare([TestEntityFactory.CreateTestEntity, TestEntityFactory.CreateTestEntity, TestEntityFactory.CreateTestEntity, TestEntityFactory.CreateTestEntity, TestEntityFactory.CreateTestEntity, TestEntityFactory.CreateTestEntity]);
     }
 
     [Fact]
@@ -24,8 +23,8 @@ public class GetPageAsyncTest : GenericBufferRepositoryCollectionBaseTestBase
     {
         //Arrange
         var sut = await GetCollection(CollectionType.Disk);
-        sut.ResultLimit.Should().BeLessThan(InitialData.Length);
-        InitialData.Length.Should().Be((int)await sut.CountAsync(x => true));
+        sut.ResultLimit.Should().BeLessThan(InitialDataLoader.Length);
+        InitialDataLoader.Length.Should().Be((int)await sut.CountAsync(x => true));
         sut.ResultLimit.Should().Be(5);
 
         //Act
@@ -46,15 +45,15 @@ public class GetPageAsyncTest : GenericBufferRepositoryCollectionBaseTestBase
     {
         //Arrange
         var sut = await GetCollection(CollectionType.Disk);
-        sut.ResultLimit.Should().BeLessThan(InitialData.Length);
-        InitialData.Length.Should().Be((int)await sut.CountAsync(x => true));
+        sut.ResultLimit.Should().BeLessThan(InitialDataLoader.Length);
+        InitialDataLoader.Length.Should().Be((int)await sut.CountAsync(x => true));
 
         //Act
         var result = await sut.GetPagesAsync(x => true).SelectMany(x => x.Items).ToArrayAsync();
 
         //Assert
         result.Should().NotBeNull();
-        result.Length.Should().Be(InitialData.Length);
+        result.Length.Should().Be(InitialDataLoader.Length);
     }
 
     [Fact]
@@ -63,8 +62,8 @@ public class GetPageAsyncTest : GenericBufferRepositoryCollectionBaseTestBase
     {
         //Arrange
         var sut = await GetCollection(CollectionType.Disk);
-        sut.ResultLimit.Should().BeLessThan(InitialData.Length);
-        InitialData.Length.Should().Be((int)await sut.CountAsync(x => true));
+        sut.ResultLimit.Should().BeLessThan(InitialDataLoader.Length);
+        InitialDataLoader.Length.Should().Be((int)await sut.CountAsync(x => true));
 
         //Act
         var act = async () => await sut.GetAsync(x => true).ToArrayAsync();

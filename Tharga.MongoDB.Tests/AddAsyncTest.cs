@@ -1,6 +1,6 @@
 ﻿using System.Linq;
 using System.Threading.Tasks;
-using AutoFixture;
+using Bogus;
 using FluentAssertions;
 using MongoDB.Bson;
 using MongoDB.Driver;
@@ -15,10 +15,7 @@ public class AddAsyncTest : GenericBufferRepositoryCollectionBaseTestBase
 {
     public AddAsyncTest()
     {
-        Prepare(new[]
-        {
-            new Fixture().Build<TestEntity>().With(x => x.Id, ObjectId.GenerateNewId()).Create(),
-        });
+        Prepare([TestEntityFactory.CreateTestEntity]);
     }
 
     [Theory]
@@ -28,7 +25,7 @@ public class AddAsyncTest : GenericBufferRepositoryCollectionBaseTestBase
     {
         //Arrange
         var id = ObjectId.GenerateNewId();
-        var newEntity = new Fixture().Build<TestEntity>().With(x => x.Id, id).Create();
+        var newEntity = new Faker<TestEntity>().RuleFor(x => x.Id, id).Generate();
         var sut = await GetCollection(collectionType);
 
         //Act
@@ -45,7 +42,7 @@ public class AddAsyncTest : GenericBufferRepositoryCollectionBaseTestBase
     {
         //Arrange
         var id = ObjectId.GenerateNewId();
-        var newEntity = new Fixture().Build<TestEntity>().With(x => x.Id, id).Create();
+        var newEntity = new Faker<TestEntity>().RuleFor(x => x.Id, id).Generate();
         var sut = await GetCollection(CollectionType.Disk);
 
         //Act

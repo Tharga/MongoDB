@@ -27,7 +27,8 @@ public class WeatherForecastController : ControllerBase
             {
                 Date = DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
                 TemperatureC = Random.Shared.Next(-20, 55),
-                Summary = _summaries[Random.Shared.Next(_summaries.Length)]
+                Summary = _summaries[Random.Shared.Next(_summaries.Length)],
+                SomeGuid = Guid.NewGuid()
             })
             .ToArray();
 

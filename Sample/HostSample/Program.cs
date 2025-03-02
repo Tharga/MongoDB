@@ -1,3 +1,4 @@
+using MongoDB.Bson;
 using Tharga.MongoDB;
 
 var builder = WebApplication.CreateBuilder(args);

@@ -2,6 +2,7 @@
 using System.Diagnostics;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
+using MongoDB.Bson;
 using MongoDB.Driver;
 using Tharga.MongoDB.Disk;
 using Tharga.MongoDB.Internals;
@@ -65,41 +66,10 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : DiskRepositoryCol
         throw new NotSupportedException(BuildErrorMessage());
     }
 
-    public override Task<EntityChangeResult<TEntity>> UpdateOneAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update, FindOneAndUpdateOptions<TEntity> options)
-    {
-        throw new NotSupportedException(BuildErrorMessage());
-    }
-
     public override Task<EntityChangeResult<TEntity>> UpdateOneAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update, OneOption<TEntity> options = null)
     {
         throw new NotSupportedException(BuildErrorMessage());
     }
-
-    //public override async Task<TEntity> DeleteOneAsync(TKey id)
-    //{
-    //    var item = await GetOneAsync(id);
-    //    if (item.Lock != null) throw new DeleteException();
-    //    return await base.DeleteOneAsync(id);
-    //}
-
-    //public override async Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate, FindOneAndDeleteOptions<TEntity, TEntity> options)
-    //{
-    //    var item = await GetOneAsync(predicate, options);
-    //    if (item.Lock != null) throw new DeleteException();
-    //    return await base.DeleteOneAsync(predicate, options);
-    //}
-
-    //public override Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate = null, OneOption<TEntity> options = null)
-    //{
-    //    //TODO: Check if the document is locked, if not allow delete.
-    //    throw new NotImplementedException();
-    //}
-
-    //public override Task<long> DeleteManyAsync(Expression<Func<TEntity, bool>> predicate)
-    //{
-    //    //TODO: Check if the document is locked, if not allow delete.
-    //    throw new NotImplementedException();
-    //}
 
     private string BuildErrorMessage()
     {
@@ -257,5 +227,14 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : DiskRepositoryCol
         }
 
         return (null, 0);
+    }
+}
+
+public class LockableRepositoryCollectionBase<TEntity> : LockableRepositoryCollectionBase<TEntity, ObjectId>
+    where TEntity : LockableEntityBase
+{
+    protected LockableRepositoryCollectionBase(IMongoDbServiceFactory mongoDbServiceFactory, ILogger<LockableRepositoryCollectionBase<TEntity, ObjectId>> logger, DatabaseContext databaseContext)
+        : base(mongoDbServiceFactory, logger, databaseContext)
+    {
     }
 }

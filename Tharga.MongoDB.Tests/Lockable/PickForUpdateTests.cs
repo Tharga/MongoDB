@@ -132,4 +132,6 @@ public class PickForUpdateTests : LockableTestTestsBase
         item.Lock.Should().NotBeNull();
         item.Lock.ExceptionInfo.Should().BeNull();
     }
+
+    //TODO: Wait for entity to be updated
 }

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Reflection;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
+using MongoDB.Bson;
 using Tharga.MongoDB.Internals;
 
 namespace Tharga.MongoDB.Configuration;
@@ -79,4 +80,10 @@ public record DatabaseOptions
     /// Log level for execution information.
     /// </summary>
     public LogLevel? ExecuteInfoLogLevel { get; set; } = LogLevel.Debug;
+
+    /// <summary>
+    /// Set the Guid Representation in the database.
+    /// CSharpLegacy is default.
+    /// </summary>
+    public GuidRepresentation? GuidRepresentation { get; set; }
 }

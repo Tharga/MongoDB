@@ -446,12 +446,13 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
     {
         return await Execute($"{nameof(GetOneAsync)}<{typeof(T).Name}>", async () =>
         {
-            var filter = Builders<T>.Filter.And(Builders<T>.Filter.OfType<T>(), new ExpressionFilterDefinition<T>(predicate ?? (_ => true)));
+            //var filter = Builders<T>.Filter.And(Builders<T>.Filter.OfType<T>(), new ExpressionFilterDefinition<T>(predicate ?? (_ => true)));
+            var filter = Builders<T>.Filter.And(Builders<T>.Filter.Eq("_t", typeof(T).Name), new ExpressionFilterDefinition<T>(predicate ?? (_ => true)));
 
             _ = Collection ?? throw new InvalidOperationException("Unable to initiate collection.");
 
             var collection = await GetCollectionAsync<T>();
-            var findFluent = collection.Find(filter).Sort(options?.Sort).Limit(2);
+            var findFluent = collection.Find(filter).Sort(options?.Sort); //.Limit(2);
             T item;
             switch (options?.Mode)
             {
