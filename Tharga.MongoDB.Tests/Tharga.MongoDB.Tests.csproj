@@ -11,12 +11,13 @@
 		<NoWarn>1701;1702;CS1591;CS0809</NoWarn>
 	</PropertyGroup>
 	<ItemGroup>
-		<PackageReference Include="AutoFixture" Version="4.18.1" />
 		<PackageReference Include="FluentAssertions" Version="8.1.1" />
 		<PackageReference Include="JetBrains.Annotations" Version="2024.3.0" />
-		<PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+		<PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.13.0" />
 		<PackageReference Include="Moq" Version="4.20.72" />
 		<PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="9.0.2" />
+		<PackageReference Include="System.Net.Http" Version="4.3.4" />
+		<PackageReference Include="System.Text.RegularExpressions" Version="4.3.1" />
 		<PackageReference Include="Tharga.Test.Toolkit" Version="1.12.5" />
 		<PackageReference Include="xunit" Version="2.9.3" />
 		<PackageReference Include="xunit.runner.visualstudio" Version="3.0.2">

@@ -86,12 +86,21 @@ The *collection* can be of different types that acts in different ways, it can a
 ![Collections](Resources/Repository.png)
 
 ### More about collections
-The collection interfaces are separated
-- a
-- b
+There are three implemented types of collections, *IDiskRepositoryCollection*, *IBufferCollection* and *ILockableRepositoryCollection* that can be used in different types of scenarios.
+
+#### IDiskRepositoryCollection
+This is the main type of collection. It does what you expect, saving and loading data directly from the database.
+
+#### IBufferCollection
+This type of collection stores the entire dataset in memory but keeps the disk in sync behind the scenes.
+
+#### ILockableRepositoryCollection
+This is a write-protected collection that you can only update by requesting an exclusive lock.
+It can be used similar to a queue.
 
 ### Simpler way of doing repositories
 The simplest way is to have the *repository* implement the *collection* directly.
+The downside is that you cannot protect access to methods, the cosumer will have access to it all.
 ```
 public class MySimpleRepo : DiskRepositoryCollectionBase<MyEntity>
 {
@@ -105,18 +114,6 @@ public record MyEntity : EntityBase
 {
 }
 ```
-
----
-## Index
-
-## Configuration
-- Config file, Code and on collection level
-- Patterns
-- Dynamic
-
-## Firewall
-
----
 
 ## Simple Console Sample
 This is a simple demo for a console application written in .NET 7.
