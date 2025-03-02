@@ -1,6 +1,6 @@
 ﻿using System.Linq;
 using System.Threading.Tasks;
-using AutoFixture;
+using Bogus;
 using FluentAssertions;
 using MongoDB.Bson;
 using MongoDB.Driver;
@@ -15,10 +15,7 @@ public class AddOrReplaceAsync : GenericBufferRepositoryCollectionBaseTestBase
 {
     public AddOrReplaceAsync()
     {
-        Prepare(new[]
-        {
-            new Fixture().Build<TestEntity>().With(x => x.Id, ObjectId.GenerateNewId()).Create(),
-        });
+        Prepare([TestEntityFactory.CreateTestEntity]);
     }
 
     [Theory]
@@ -27,9 +24,8 @@ public class AddOrReplaceAsync : GenericBufferRepositoryCollectionBaseTestBase
     public async Task BasicUpdate(CollectionType collectionType)
     {
         //Arrange
-        var id = ObjectId.GenerateNewId();
-        var newEntity = new Fixture().Build<TestEntity>().With(x => x.Id, InitialData.First().Id).Create();
         var sut = await GetCollection(collectionType);
+        var newEntity = TestEntityFactory.CreateTestEntity(InitialData.First().Id);
 
         //Act
         var result = await sut.AddOrReplaceAsync(newEntity);
@@ -47,7 +43,7 @@ public class AddOrReplaceAsync : GenericBufferRepositoryCollectionBaseTestBase
     {
         //Arrange
         var id = ObjectId.GenerateNewId();
-        var newEntity = new Fixture().Build<TestEntity>().With(x => x.Id, id).Create();
+        var newEntity = new Faker<TestEntity>().RuleFor(x => x.Id, id).Generate();
         var sut = await GetCollection(collectionType);
 
         //Act
@@ -65,12 +61,12 @@ public class AddOrReplaceAsync : GenericBufferRepositoryCollectionBaseTestBase
     public async Task FailedToAdd(CollectionType collectionType)
     {
         //Arrange
-        var id = ObjectId.GenerateNewId();
-        var newEntity = new Fixture().Build<TestEntity>()
-            .With(x => x.Id, id)
-            .With(x => x.Value, InitialData.First().Value)
-            .Create();
         var sut = await GetCollection(collectionType);
+        var id = ObjectId.GenerateNewId();
+        var newEntity = new Faker<TestEntity>()
+            .RuleFor(x => x.Id, id)
+            .RuleFor(x => x.Value, InitialData.First().Value)
+            .Generate();
 
         //Act
         var act = () => sut.AddOrReplaceAsync(newEntity);

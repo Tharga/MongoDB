@@ -1,6 +1,6 @@
 ﻿using System.Linq;
 using System.Threading.Tasks;
-using AutoFixture;
+using Bogus;
 using FluentAssertions;
 using MongoDB.Bson;
 using MongoDB.Driver;
@@ -15,11 +15,7 @@ public class UpdateOneAsyncTest : GenericBufferRepositoryCollectionBaseTestBase
 {
     public UpdateOneAsyncTest()
     {
-        Prepare(new[]
-        {
-            new Fixture().Build<TestEntity>().With(x => x.Id, ObjectId.GenerateNewId()).Create(),
-            new Fixture().Build<TestEntity>().With(x => x.Id, ObjectId.GenerateNewId()).Create(),
-        });
+        Prepare([TestEntityFactory.CreateTestEntity, TestEntityFactory.CreateTestEntity]);
     }
 
     [Theory]
@@ -28,10 +24,10 @@ public class UpdateOneAsyncTest : GenericBufferRepositoryCollectionBaseTestBase
     public async Task BasicWithFilter(CollectionType collectionType)
     {
         //Arrange
-        var filter = new FilterDefinitionBuilder<TestEntity>().Eq(x => x.Id, InitialData.First().Id);
-        var updatedValue = new Fixture().Create<string>();
-        var update = new UpdateDefinitionBuilder<TestEntity>().Set(x => x.Value, updatedValue);
         var sut = await GetCollection(collectionType);
+        var filter = new FilterDefinitionBuilder<TestEntity>().Eq(x => x.Id, InitialData.First().Id);
+        var updatedValue = new Faker().Random.String2(20);
+        var update = new UpdateDefinitionBuilder<TestEntity>().Set(x => x.Value, updatedValue);
 
         //Act
         var result = await sut.UpdateOneAsync(filter, update);
@@ -49,7 +45,7 @@ public class UpdateOneAsyncTest : GenericBufferRepositoryCollectionBaseTestBase
     {
         //Arrange
         var filter = new FilterDefinitionBuilder<TestEntity>().Eq(x => x.Id, ObjectId.GenerateNewId());
-        var updatedValue = new Fixture().Create<string>();
+        var updatedValue = new Faker().Random.String2(20);
         var update = new UpdateDefinitionBuilder<TestEntity>().Set(x => x.Value, updatedValue);
         var sut = await GetCollection(collectionType);
 
@@ -67,9 +63,9 @@ public class UpdateOneAsyncTest : GenericBufferRepositoryCollectionBaseTestBase
     public async Task FailedWithFilter(CollectionType collectionType)
     {
         //Arrange
+        var sut = await GetCollection(collectionType);
         var filter = new FilterDefinitionBuilder<TestEntity>().Eq(x => x.Id, InitialData.First().Id);
         var update = new UpdateDefinitionBuilder<TestEntity>().Set(x => x.Value, InitialData.Last().Value);
-        var sut = await GetCollection(collectionType);
 
         //Act
         var act = () => sut.UpdateOneAsync(filter, update);
@@ -85,7 +81,7 @@ public class UpdateOneAsyncTest : GenericBufferRepositoryCollectionBaseTestBase
     public async Task BasicWithId(CollectionType collectionType)
     {
         //Arrange
-        var updatedValue = new Fixture().Create<string>();
+        var updatedValue = new Faker().Random.String2(20);
         var update = new UpdateDefinitionBuilder<TestEntity>().Set(x => x.Value, updatedValue);
         var sut = await GetCollection(collectionType);
 
@@ -104,7 +100,7 @@ public class UpdateOneAsyncTest : GenericBufferRepositoryCollectionBaseTestBase
     public async Task MissingWithId(CollectionType collectionType)
     {
         //Arrange
-        var updatedValue = new Fixture().Create<string>();
+        var updatedValue = new Faker().Random.String2(20);
         var update = new UpdateDefinitionBuilder<TestEntity>().Set(x => x.Value, updatedValue);
         var sut = await GetCollection(collectionType);
 
@@ -122,8 +118,8 @@ public class UpdateOneAsyncTest : GenericBufferRepositoryCollectionBaseTestBase
     public async Task FailedWithId(CollectionType collectionType)
     {
         //Arrange
-        var update = new UpdateDefinitionBuilder<TestEntity>().Set(x => x.Value, InitialData.Last().Value);
         var sut = await GetCollection(collectionType);
+        var update = new UpdateDefinitionBuilder<TestEntity>().Set(x => x.Value, InitialData.Last().Value);
 
         //Act
         var act = () => sut.UpdateOneAsync(InitialData.First().Id, update);

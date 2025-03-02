@@ -19,6 +19,7 @@ public interface IRepositoryCollection<TEntity, TKey> : IReadOnlyRepositoryColle
     Task AddManyAsync(IEnumerable<TEntity> entities);
     Task<EntityChangeResult<TEntity>> AddOrReplaceAsync(TEntity entity);
     Task<EntityChangeResult<TEntity>> ReplaceOneAsync(TEntity entity, OneOption<TEntity> options = null);
+    Task<EntityChangeResult<TEntity>> ReplaceOneAsync(TEntity entity, FilterDefinition<TEntity> filter, OneOption<TEntity> options = null);
     Task<long> UpdateAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update);
     Task<EntityChangeResult<TEntity>> UpdateOneAsync(TKey id, UpdateDefinition<TEntity> update);
 

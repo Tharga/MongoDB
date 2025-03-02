@@ -446,12 +446,13 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
     {
         return await Execute($"{nameof(GetOneAsync)}<{typeof(T).Name}>", async () =>
         {
-            var filter = Builders<T>.Filter.And(Builders<T>.Filter.OfType<T>(), new ExpressionFilterDefinition<T>(predicate ?? (_ => true)));
+            //var filter = Builders<T>.Filter.And(Builders<T>.Filter.OfType<T>(), new ExpressionFilterDefinition<T>(predicate ?? (_ => true)));
+            var filter = Builders<T>.Filter.And(Builders<T>.Filter.Eq("_t", typeof(T).Name), new ExpressionFilterDefinition<T>(predicate ?? (_ => true)));
 
             _ = Collection ?? throw new InvalidOperationException("Unable to initiate collection.");
 
             var collection = await GetCollectionAsync<T>();
-            var findFluent = collection.Find(filter).Sort(options?.Sort).Limit(2);
+            var findFluent = collection.Find(filter).Sort(options?.Sort); //.Limit(2);
             T item;
             switch (options?.Mode)
             {
@@ -579,11 +580,46 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         }, true);
     }
 
-    public override async Task<EntityChangeResult<TEntity>> ReplaceOneAsync(TEntity entity, OneOption<TEntity> options = null)
+    public override Task<EntityChangeResult<TEntity>> ReplaceOneAsync(TEntity entity, OneOption<TEntity> options = null)
+    {
+        var filter = Builders<TEntity>.Filter.Eq(x => x.Id, entity.Id);
+        return ReplaceOneWithCheckAsync(entity, filter, options);
+    }
+
+    public override Task<EntityChangeResult<TEntity>> ReplaceOneAsync(TEntity entity, FilterDefinition<TEntity> filter, OneOption<TEntity> options = null)
+    {
+        return ReplaceOneWithCheckAsync(entity, filter, options);
+    }
+
+    private async Task<EntityChangeResult<TEntity>> ReplaceOneWithCheckAsync(TEntity entity, FilterDefinition<TEntity> filter, OneOption<TEntity> options)
     {
         return await Execute(nameof(ReplaceOneAsync), async () =>
         {
-            var filter = Builders<TEntity>.Filter.Eq(x => x.Id, entity.Id);
+            var sort = options?.Sort;
+            var findFluent = Collection.Find(filter).Sort(sort).Limit(2);
+            TEntity item;
+            switch (options?.Mode)
+            {
+                case null:
+                case EMode.SingleOrDefault:
+                    item = await findFluent.SingleOrDefaultAsync();
+                    break;
+                case EMode.Single:
+                    item = await findFluent.SingleAsync();
+                    break;
+                case EMode.FirstOrDefault:
+                    item = await findFluent.FirstOrDefaultAsync();
+                    break;
+                case EMode.First:
+                    item = await findFluent.FirstAsync();
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException();
+            }
+
+            if (!item.Id.Equals(entity.Id)) throw new InvalidOperationException("Entity not covered by filter.");
+            filter = Builders<TEntity>.Filter.Eq(x => x.Id, entity.Id);
+
             var before = await Collection.FindOneAndReplaceAsync(filter, entity);
             return new EntityChangeResult<TEntity>(before, entity);
         }, true);
@@ -771,133 +807,6 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         }, false);
     }
 
-    //public override async IAsyncEnumerable<TTarget> AggregateAsync<TTarget>(FilterDefinition<TEntity> filter, EPrecision precision, AggregateOperations<TTarget> operations, [EnumeratorCancellation] CancellationToken cancellationToken = default)
-    //{
-    //    var serializerRegistry = BsonSerializer.SerializerRegistry;
-    //    var documentSerializer = serializerRegistry.GetSerializer<TEntity>();
-    //    var renderedFilter = filter.Render(documentSerializer, serializerRegistry);
-
-    //    var properties = AggregatePropertyCache.GetProperties<TEntity, TTarget>().ToArray();
-
-    //    var timestampGrouping = BuildTimestampGrouping(precision);
-    //    timestampGrouping.AddRange(properties.ToDictionary(x => x, x => $"${x}"));
-
-    //    var group = new BsonDocument
-    //    {
-    //        { "_id", timestampGrouping },
-    //        { "Time", new BsonDocument("$first", "$Timestamp") },
-    //    };
-    //    group.AddRange(properties.ToDictionary(x => x, x => new BsonDocument("$first", $"${x}")));
-    //    group.AddRange(operations.Build());
-
-    //    var pipeline = new[] { new BsonDocument("$match", renderedFilter), new BsonDocument("$group", group) };
-    //    var result = await Collection.AggregateAsync<TTarget>(pipeline, cancellationToken: cancellationToken);
-
-    //    await foreach (var item in AddTimeInfo(result, precision, cancellationToken))
-    //    {
-    //        yield return item;
-    //    }
-    //}
-
-    //private static BsonDocument BuildTimestampGrouping(EPrecision precision)
-    //{
-    //    switch (precision)
-    //    {
-    //        case EPrecision.Second:
-    //            return new BsonDocument
-    //            {
-    //                { "second", new BsonDocument("second", "$Timestamp") },
-    //                { "minute", new BsonDocument("$minute", "$Timestamp") },
-    //                { "hour", new BsonDocument("$hour", "$Timestamp") },
-    //                { "dayOfMonth", new BsonDocument("$dayOfMonth", "$Timestamp") },
-    //                { "month", new BsonDocument("$month", "$Timestamp") },
-    //                { "year", new BsonDocument("$year", "$Timestamp") },
-    //            };
-    //        case EPrecision.Minute:
-    //            return new BsonDocument
-    //            {
-    //                { "minute", new BsonDocument("$minute", "$Timestamp") },
-    //                { "hour", new BsonDocument("$hour", "$Timestamp") },
-    //                { "dayOfMonth", new BsonDocument("$dayOfMonth", "$Timestamp") },
-    //                { "month", new BsonDocument("$month", "$Timestamp") },
-    //                { "year", new BsonDocument("$year", "$Timestamp") },
-    //            };
-    //        case EPrecision.Hour:
-    //            return new BsonDocument
-    //            {
-    //                { "hour", new BsonDocument("$hour", "$Timestamp") },
-    //                { "dayOfMonth", new BsonDocument("$dayOfMonth", "$Timestamp") },
-    //                { "month", new BsonDocument("$month", "$Timestamp") },
-    //                { "year", new BsonDocument("$year", "$Timestamp") },
-    //            };
-    //        case EPrecision.Day:
-    //            return new BsonDocument
-    //            {
-    //                { "dayOfMonth", new BsonDocument("$dayOfMonth", "$Timestamp") },
-    //                { "month", new BsonDocument("$month", "$Timestamp") },
-    //                { "year", new BsonDocument("$year", "$Timestamp") },
-    //            };
-    //        case EPrecision.Month:
-    //            return new BsonDocument
-    //            {
-    //                { "month", new BsonDocument("$month", "$Timestamp") },
-    //                { "year", new BsonDocument("$year", "$Timestamp") },
-    //            };
-    //        case EPrecision.Year:
-    //            return new BsonDocument
-    //            {
-    //                { "year", new BsonDocument("$year", "$Timestamp") },
-    //            };
-    //        default:
-    //            throw new ArgumentOutOfRangeException(nameof(precision), precision, null);
-    //    }
-    //}
-
-    //private async IAsyncEnumerable<TTarget> AddTimeInfo<TTarget>(IAsyncCursor<TTarget> cursor, EPrecision precision, [EnumeratorCancellation] CancellationToken cancellationToken)
-    //    where TTarget : TimeEntityBase
-    //{
-    //    while (await cursor.MoveNextAsync(cancellationToken))
-    //    {
-    //        var batch = cursor.Current;
-    //        foreach (var item in batch)
-    //        {
-    //            yield return item with { Time = TrunkateTime(item.Time, precision) };
-    //        }
-    //    }
-    //}
-
-    //private DateTime TrunkateTime(DateTime itemTime, EPrecision precision)
-    //{
-    //    itemTime = itemTime.AddMilliseconds(-itemTime.Millisecond);
-
-    //    if (precision >= EPrecision.Minute)
-    //    {
-    //        itemTime = itemTime.AddSeconds(-itemTime.Second);
-    //    }
-
-    //    if (precision >= EPrecision.Hour)
-    //    {
-    //        itemTime = itemTime.AddMinutes(-itemTime.Minute);
-    //    }
-
-    //    if (precision >= EPrecision.Day)
-    //    {
-    //        itemTime = itemTime.AddHours(-itemTime.Hour);
-    //    }
-
-    //    if (precision >= EPrecision.Month)
-    //    {
-    //        itemTime = itemTime.AddDays(-itemTime.Day);
-    //    }
-
-    //    if (precision >= EPrecision.Year)
-    //    {
-    //        itemTime = itemTime.AddMonths(-itemTime.Month);
-    //    }
-
-    //    return itemTime;
-    //}
-
     public override async Task<long> GetSizeAsync()
     {
         return await Execute(nameof(GetSizeAsync), () => Task.FromResult(_mongoDbService.GetSize(ProtectedCollectionName)), false);
@@ -966,7 +875,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 
     private async Task UpdateIndicesAsync(IMongoCollection<TEntity> collection)
     {
-        var indices = (CoreIndices?.ToArray() ?? Array.Empty<CreateIndexModel<TEntity>>()).Union(Indices?.ToArray() ?? Array.Empty<CreateIndexModel<TEntity>>()).ToArray();
+        var indices = (CoreIndices?.ToArray() ?? []).Union(Indices?.ToArray() ?? []).ToArray();
         if (!indices.Any()) return;
 
         var firstInvalid = indices.GroupBy(x => x.Options.Name).FirstOrDefault(x => x.Count() > 1);

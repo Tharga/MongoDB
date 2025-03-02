@@ -18,7 +18,16 @@ public abstract class GenericBufferRepositoryCollectionBaseTestBase : MongoDbTes
     private readonly RepositoryCollectionBase<TestEntity, ObjectId> _buffer;
     private readonly RepositoryCollectionBase<TestEntity, ObjectId> _disk;
     private bool _prepared;
-    protected TestEntity[] InitialData { get; private set; }
+    private List<TestEntity> _initialData;
+    protected Func<TestEntity>[] InitialDataLoader { get; private set; }
+    protected TestEntity[] InitialData
+    {
+        get
+        {
+            if (_initialData == null) throw new InvalidOperationException($"Need to call {nameof(GetCollection)} before accessing this property.");
+            return _initialData.ToArray();
+        }
+    }
 
     protected GenericBufferRepositoryCollectionBaseTestBase()
     {
@@ -33,22 +42,17 @@ public abstract class GenericBufferRepositoryCollectionBaseTestBase : MongoDbTes
             new object[] { CollectionType.Buffer }
         };
 
-    //protected async Task<T> GetCollection<T>(CollectionType collectionType, Func<RepositoryCollectionBase<TestEntity, ObjectId>, Task> action = null, bool disconnectDisk = false)
-    //    //where T : IRepositoryCollection<TestEntity, ObjectId>
-    //    where T : class
-    //{
-    //    var collection = GetCollection(collectionType, action, disconnectDisk);
-    //    return collection as T ?? throw new InvalidOperationException($"Cannot cast {collection.GetType().Name} to {typeof(T).Name}.");
-    //}
-
     protected async Task<RepositoryCollectionBase<TestEntity, ObjectId>> GetCollection(CollectionType collectionType, Func<RepositoryCollectionBase<TestEntity, ObjectId>, Task> action = null, bool disconnectDisk = false)
     {
-        if (!_prepared && InitialData != null && InitialData.Any())
+        if (!_prepared && InitialDataLoader != null && InitialDataLoader.Any())
         {
+            _initialData = new List<TestEntity>();
             _prepared = true;
-            foreach (var data in InitialData)
+            foreach (var data in InitialDataLoader)
             {
-                await _disk.AddAsync(data);
+                var item = data.Invoke();
+                await _disk.AddAsync(item);
+                _initialData.Add(item);
             }
         }
 
@@ -82,9 +86,9 @@ public abstract class GenericBufferRepositoryCollectionBaseTestBase : MongoDbTes
         return sut;
     }
 
-    protected void Prepare(IEnumerable<TestEntity> data)
+    protected void Prepare(IEnumerable<Func<TestEntity>> data)
     {
-        InitialData = data.ToArray();
+        InitialDataLoader = data.ToArray();
     }
 
     protected async Task VerifyContentAsync(RepositoryCollectionBase<TestEntity, ObjectId> sut)

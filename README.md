@@ -7,24 +7,102 @@
 ## Get started
 Install the nuget package `Tharga.MongoDB`. It is available at [nuget.org](#https://www.nuget.org/packages/Tharga.MongoDB).
 
-### Register to use
-Register this package at startup by calling `AddMongoDB` as an extension to `IServiceCollection`.
-
+Add *MongoDB* usage to services.
 ```
-public void ConfigureServices(IServiceCollection services)
+builder.Services.AddMongoDB();
+```
+
+Add configuration to *appsettings.json*.
+```
+"ConnectionStrings": {
+  "Default": "mongodb://localhost:27017/HostSample{Environment}{Part}"
+},
+```
+Create your entity, repository and collection.
+```
+public record WeatherForecast : EntityBase
 {
-    services.AddMongoDB();
+    public DateOnly Date { get; set; }
+    public int TemperatureC { get; set; }
+    public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
+    public string? Summary { get; set; }
+}
+
+public interface IWeatherForecastRepository : IRepository
+{
+    IAsyncEnumerable<WeatherForecast> GetAsync();
+    Task AddRangeAsync(WeatherForecast[] weatherForecasts);
+}
+
+internal class WeatherForecastRepository : IWeatherForecastRepository
+{
+    private readonly IWeatherForecastRepositoryCollection _collection;
+
+    public WeatherForecastRepository(IWeatherForecastRepositoryCollection collection)
+    {
+        _collection = collection;
+    }
+
+    public IAsyncEnumerable<WeatherForecast> GetAsync()
+    {
+        return _collection.GetAsync();
+    }
+
+    public async Task AddRangeAsync(WeatherForecast[] weatherForecasts)
+    {
+        foreach (var weatherForecast in weatherForecasts)
+        {
+            await _collection.AddAsync(weatherForecast);
+        }
+    }
+}
+
+public interface IWeatherForecastRepositoryCollection : IDiskRepositoryCollection<WeatherForecast>
+{
+}
+
+internal class WeatherForecastRepositoryCollection : DiskRepositoryCollectionBase<WeatherForecast>, IWeatherForecastRepositoryCollection
+{
+    public WeatherForecastRepositoryCollection(IMongoDbServiceFactory mongoDbServiceFactory, ILogger<RepositoryCollectionBase<WeatherForecast, ObjectId>> logger)
+        : base(mongoDbServiceFactory, logger)
+    {
+    }
 }
 ```
 
-By default the configuration setting `ConnectionStrings:Default` is used to get the connection string.
-Customize by providing `DatabaseOptions` to `AddMongoDB`.
+### Repositories and collections
+The framework is based on *repositories* and *collections* and the *entity* to be saved.
+- Repositories implements *IRepository*
+- Collections implements *IRepositoryCollection*
+- Entities implements *IEntity&lt;TKey&gt;*
 
-### Create entities, repositories and collections.
+The repositories and collections are registered in the IOC automatically.
 
-The simplest way is to have the repository implement the collection directly.
+The pattern is built up like this.
+The *repository* holds the *collection* inside.
+The *repository* exposes the functions, that you create, protecting any operation to be used directly.
+The *collection* can be of different types that acts in different ways, it can also be dynamic for *multi tennant* systems.
+
+![Collections](Resources/Repository.png)
+
+### More about collections
+There are three implemented types of collections, *IDiskRepositoryCollection*, *IBufferCollection* and *ILockableRepositoryCollection* that can be used in different types of scenarios.
+
+#### IDiskRepositoryCollection
+This is the main type of collection. It does what you expect, saving and loading data directly from the database.
+
+#### IBufferCollection
+This type of collection stores the entire dataset in memory but keeps the disk in sync behind the scenes.
+
+#### ILockableRepositoryCollection
+This is a write-protected collection that you can only update by requesting an exclusive lock.
+It can be used similar to a queue.
+
+### Simpler way of doing repositories
+The simplest way is to have the *repository* implement the *collection* directly.
+The downside is that you cannot protect access to methods, the cosumer will have access to it all.
 ```
-public class MySimpleRepo : DiskRepositoryCollectionBase<MyEntity, ObjectId>
+public class MySimpleRepo : DiskRepositoryCollectionBase<MyEntity>
 {
     public MySimpleRepo(IMongoDbServiceFactory mongoDbServiceFactory)
         : base(mongoDbServiceFactory)
@@ -32,58 +110,10 @@ public class MySimpleRepo : DiskRepositoryCollectionBase<MyEntity, ObjectId>
     }
 }
 
-public record MyEntity : EntityBase<ObjectId>
+public record MyEntity : EntityBase
 {
 }
 ```
-
-The more complex way that gives more control is to implement one class for the repo and another for the collection.
-This way you can control what methods repo methods are exposed to consumers.
-Here implemented with interfaces and the collection made internal.
-```
-public interface IMySimpleRepo : IRepository
-{
-    public Task<MyEntity> GetFirstOrDefaultAsync();
-}
-
-public class MySimpleRepo : IMySimpleRepo
-{
-    private readonly IMySimpleCollection _mySimpleCollection;
-
-    public MySimpleRepo(IMySimpleCollection mySimpleCollection)
-    {
-        _mySimpleCollection = mySimpleCollection;
-    }
-
-    public Task<MyEntity> GetFirstOrDefaultAsync()
-    {
-        return _mySimpleCollection.GetOneAsync(x => true);
-    }
-}
-
-public interface IMySimpleCollection : IRepositoryCollection<MyEntity, ObjectId>
-{
-}
-
-internal class MySimpleCollection : DiskRepositoryCollectionBase<MyEntity, ObjectId>, IMySimpleCollection
-{
-    public MySimpleCollection(IMongoDbServiceFactory mongoDbServiceFactory)
-        : base(mongoDbServiceFactory)
-    {
-    }
-
-    public Task<MyEntity> GetFirstOrDefaultAsync()
-    {
-        throw new NotImplementedException();
-    }
-}
-
-public record MyEntity : EntityBase<ObjectId>
-{
-}
-```
-
----
 
 ## Simple Console Sample
 This is a simple demo for a console application written in .NET 7.

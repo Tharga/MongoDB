@@ -1,6 +1,6 @@
 ﻿using System.Linq;
 using System.Threading.Tasks;
-using AutoFixture;
+using Bogus;
 using FluentAssertions;
 using MongoDB.Bson;
 using MongoDB.Driver;
@@ -14,11 +14,7 @@ public class UpdateAsyncTest : GenericBufferRepositoryCollectionBaseTestBase
 {
     public UpdateAsyncTest()
     {
-        Prepare(new[]
-        {
-            new Fixture().Build<TestSubEntity>().With(x => x.Id, ObjectId.GenerateNewId()).Create(),
-            new Fixture().Build<TestSubEntity>().With(x => x.Id, ObjectId.GenerateNewId()).Create(),
-        });
+        Prepare([TestEntityFactory.CreateTestSubEntity, TestEntityFactory.CreateTestSubEntity]);
     }
 
     [Fact(Skip = "Fix")]
@@ -27,7 +23,7 @@ public class UpdateAsyncTest : GenericBufferRepositoryCollectionBaseTestBase
     {
         //Arrange
         var filter = new FilterDefinitionBuilder<TestEntity>().Empty;
-        var updatedValue = new Fixture().Create<string>();
+        var updatedValue = new Faker<string>().Generate();
         var update = new UpdateDefinitionBuilder<TestEntity>().Set(x => x.ExtraValue, updatedValue);
         var sut = await GetCollection(CollectionType.Disk) as DiskRepositoryCollectionBase<TestEntity, ObjectId>;
 
@@ -35,7 +31,7 @@ public class UpdateAsyncTest : GenericBufferRepositoryCollectionBaseTestBase
         var result = await sut.UpdateOneAsync(filter, update);
 
         //Assert
-        result.Should().Be(InitialData.Length);
+        result.Should().Be(InitialDataLoader.Length);
         var data = await sut.GetAsync(x => true).ToArrayAsync();
         data.All(x => x.ExtraValue == updatedValue).Should().BeTrue();
     }

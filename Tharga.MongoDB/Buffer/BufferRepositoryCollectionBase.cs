@@ -242,6 +242,11 @@ public abstract class BufferRepositoryCollectionBase<TEntity, TKey> : Repository
         return result;
     }
 
+    public override async Task<EntityChangeResult<TEntity>> ReplaceOneAsync(TEntity entity, FilterDefinition<TEntity> filter, OneOption<TEntity> options = null)
+    {
+        throw new NotImplementedException();
+    }
+
     public override async Task<long> UpdateAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update)
     {
         var result = await Disk.UpdateAsync(filter, update);
