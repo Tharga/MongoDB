@@ -11,10 +11,10 @@ namespace Tharga.MongoDB.Tests.Lockable;
 
 [Collection("Sequential")]
 [CollectionDefinition("Sequential", DisableParallelization = true)]
-//[Trait("Category", "Database")]
 public class PickForUpdate : LockableTestTestsBase
 {
     [Fact]
+    [Trait("Category", "Database")]
     public async Task PickEntity()
     {
         //Arrange
@@ -35,6 +35,7 @@ public class PickForUpdate : LockableTestTestsBase
     }
 
     [Fact]
+    [Trait("Category", "Database")]
     public async Task PickLockedEntity()
     {
         //Arrange
@@ -65,6 +66,7 @@ public class PickForUpdate : LockableTestTestsBase
     }
 
     [Fact]
+    [Trait("Category", "Database")]
     public async Task PickedEntityWithException()
     {
         //Arrange
@@ -90,6 +92,7 @@ public class PickForUpdate : LockableTestTestsBase
     }
 
     [Fact]
+    [Trait("Category", "Database")]
     public async Task PickedEntityThatDoesNotExist()
     {
         //Arrange
@@ -107,6 +110,7 @@ public class PickForUpdate : LockableTestTestsBase
     }
 
     [Fact]
+    [Trait("Category", "Database")]
     public async Task PickEntityWithExpiredLock()
     {
         //Arrange
