@@ -6,8 +6,3 @@ public interface IMongoUrlBuilder
 {
     MongoUrl Build(string connectionString, string databasePart);
 }
-
-//public interface IConnectionStringBuilder
-//{
-//    MongoUrl Build(string connectionString, IDictionary<string, string> variables);
-//}

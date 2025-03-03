@@ -9,7 +9,7 @@ pool:
 variables:
   buildPlatform: 'Any CPU'
   buildConfiguration: 'Release'
-  BQC.ForceNewBaseline: false
+  BQC.ForceNewBaseline: true
 
 stages:
 - stage: Build
