@@ -52,21 +52,21 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         {
             try
             {
-                _logger.LogWarning(e, "Failed to get collection, trying to open firewall.");
+                _logger?.LogWarning(e, "Failed to get collection, trying to open firewall.");
                 await AssureFirewallAccessAsync();
                 return await FetchCollectionAsync();
             }
             catch (Exception exception)
             {
                 Debugger.Break();
-                _logger.LogError(exception, exception.Message);
+                _logger?.LogError(exception, exception.Message);
                 throw;
             }
         }
         catch (Exception e)
         {
             Debugger.Break();
-            _logger.LogError(e, e.Message);
+            _logger?.LogError(e, e.Message);
             throw;
         }
         finally

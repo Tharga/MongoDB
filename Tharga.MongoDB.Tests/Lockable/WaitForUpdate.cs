@@ -14,6 +14,7 @@ namespace Tharga.MongoDB.Tests.Lockable;
 public class WaitForUpdate : LockableTestTestsBase
 {
     [Fact]
+    [Trait("Category", "Database")]
     public async Task WaitForEntity()
     {
         //Arrange
@@ -34,6 +35,7 @@ public class WaitForUpdate : LockableTestTestsBase
     }
 
     [Fact]
+    [Trait("Category", "Database")]
     public async Task WaitForLockedEntityThatIsNotReleased()
     {
         //Arrange
@@ -65,6 +67,7 @@ public class WaitForUpdate : LockableTestTestsBase
     }
 
     [Fact]
+    [Trait("Category", "Database")]
     public async Task WaitForLockedEntityThatIsReleased()
     {
         //Arrange
@@ -94,6 +97,7 @@ public class WaitForUpdate : LockableTestTestsBase
     }
 
     [Fact]
+    [Trait("Category", "Database")]
     public async Task PickedEntityWithException()
     {
         //Arrange
@@ -119,6 +123,7 @@ public class WaitForUpdate : LockableTestTestsBase
     }
 
     [Fact]
+    [Trait("Category", "Database")]
     public async Task PickedEntityThatDoesNotExist()
     {
         //Arrange
@@ -136,6 +141,7 @@ public class WaitForUpdate : LockableTestTestsBase
     }
 
     [Fact]
+    [Trait("Category", "Database")]
     public async Task PickEntityWithExpiredLock()
     {
         //Arrange

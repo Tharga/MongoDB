@@ -16,10 +16,10 @@ public class DiskTestRepositoryCollection : DiskRepositoryCollectionBase<TestEnt
     public override string CollectionName => "Test";
     public override int? ResultLimit => 5;
 
-    public override IEnumerable<CreateIndexModel<TestEntity>> Indices => new[]
-    {
-        new CreateIndexModel<TestEntity>(Builders<TestEntity>.IndexKeys.Ascending(f => f.Value), new CreateIndexOptions { Unique = true, Name = nameof(TestEntity.Value) })
-    };
+    public override IEnumerable<CreateIndexModel<TestEntity>> Indices =>
+    [
+        new(Builders<TestEntity>.IndexKeys.Ascending(f => f.Value), new CreateIndexOptions { Unique = true, Name = nameof(TestEntity.Value) })
+    ];
 
-    public override IEnumerable<Type> Types => new[] { typeof(TestSubEntity), typeof(TestEntity) };
+    public override IEnumerable<Type> Types => [typeof(TestSubEntity), typeof(TestEntity)];
 }

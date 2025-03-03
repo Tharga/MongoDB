@@ -17,6 +17,7 @@ public class ReleaseDeleteTests : LockableTestTestsBase
 {
     [Theory]
     [MemberData(nameof(ReleaseTypes))]
+    [Trait("Category", "Database")]
     public async Task ReleaseLockedEntity(ReleaseType release)
     {
         //Arrange
@@ -37,6 +38,7 @@ public class ReleaseDeleteTests : LockableTestTestsBase
 
     [Theory]
     [MemberData(nameof(ReleaseTypes))]
+    [Trait("Category", "Database")]
     public async Task ReleaseEntityWithExpiredLock(ReleaseType release)
     {
         //Arrange
@@ -59,6 +61,7 @@ public class ReleaseDeleteTests : LockableTestTestsBase
 
     [Theory]
     [MemberData(nameof(ReleaseTypes))]
+    [Trait("Category", "Database")]
     public async Task ReleaseEntityTwice(ReleaseType release)
     {
         //Arrange
@@ -81,6 +84,7 @@ public class ReleaseDeleteTests : LockableTestTestsBase
 
     [Theory]
     [MemberData(nameof(ReleaseTypes))]
+    [Trait("Category", "Database")]
     public async Task ReleasOtherEntity(ReleaseType release)
     {
         //Arrange
@@ -106,6 +110,7 @@ public class ReleaseDeleteTests : LockableTestTestsBase
 
     [Theory]
     [MemberData(nameof(ReleaseTypes))]
+    [Trait("Category", "Database")]
     public async Task ReleasEntityLockedByOtherScope(ReleaseType release)
     {
         //Arrange
