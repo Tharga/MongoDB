@@ -13,7 +13,7 @@ using Tharga.MongoDB.Internals;
 
 namespace Tharga.MongoDB.Lockable;
 
-public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollectionBase<TEntity, TKey>
+public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollectionBase<TEntity, TKey>, ILockableRepositoryCollection<TEntity, TKey>
     where TEntity : LockableEntityBase<TKey>
 {
     private readonly IMongoDbServiceFactory _mongoDbServiceFactory;
@@ -172,9 +172,10 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
         throw new NotSupportedException(BuildErrorMessage());
     }
 
-    public override Task<long> DeleteManyAsync(Expression<Func<TEntity, bool>> predicate)
+    public override async Task<long> DeleteManyAsync(Expression<Func<TEntity, bool>> predicate)
     {
-        throw new NotSupportedException(BuildErrorMessage());
+        Expression<Func<TEntity, bool>> expression = x => x.Lock == null || (x.Lock != null && x.Lock.ExceptionInfo == null && (x.Lock.ExpireTime ?? (x.Lock.LockTime + DefaultTimeout)) > DateTime.UtcNow);
+        return await Disk.DeleteManyAsync(predicate.AndAlso(expression));
     }
 
     public override IMongoCollection<TEntity> GetCollection()
@@ -520,7 +521,7 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
 public class LockableRepositoryCollectionBase<TEntity> : LockableRepositoryCollectionBase<TEntity, ObjectId>
     where TEntity : LockableEntityBase
 {
-    protected LockableRepositoryCollectionBase(IMongoDbServiceFactory mongoDbServiceFactory, ILogger<LockableRepositoryCollectionBase<TEntity, ObjectId>> logger, DatabaseContext databaseContext)
+    protected LockableRepositoryCollectionBase(IMongoDbServiceFactory mongoDbServiceFactory, ILogger<LockableRepositoryCollectionBase<TEntity, ObjectId>> logger = null, DatabaseContext databaseContext = null)
         : base(mongoDbServiceFactory, logger, databaseContext)
     {
     }
