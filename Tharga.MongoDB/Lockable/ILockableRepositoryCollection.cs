@@ -3,6 +3,8 @@ using System;
 using MongoDB.Bson;
 using System.Collections.Generic;
 using System.Threading;
+using MongoDB.Driver;
+using System.Linq.Expressions;
 
 namespace Tharga.MongoDB.Lockable;
 
@@ -22,6 +24,11 @@ public interface ILockableRepositoryCollection<TEntity, TKey> : IReadOnlyReposit
     IAsyncEnumerable<EntityLock<TEntity, TKey>> GetLockedAsync(LockMode lockMode);
 
     Task<bool> ReleaseAsync(TKey id);
+
+    Task<long> DeleteManyAsync(Expression<Func<TEntity, bool>> predicate);
+
+    [Obsolete("Do not use this feature. It overrides the lock-protection.")]
+    IMongoCollection<TEntity> GetCollection();
 }
 
 public interface ILockableRepositoryCollection<TEntity> : ILockableRepositoryCollection<TEntity, ObjectId>
