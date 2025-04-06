@@ -11,7 +11,7 @@ namespace Tharga.MongoDB.Tests.Lockable;
 
 [Collection("Sequential")]
 [CollectionDefinition("Sequential", DisableParallelization = true)]
-public class WaitForUpdate : LockableTestTestsBase
+public class WaitForUpdateTests : LockableTestTestsBase
 {
     [Fact]
     [Trait("Category", "Database")]
@@ -150,10 +150,7 @@ public class WaitForUpdate : LockableTestTestsBase
         {
             Id = ObjectId.GenerateNewId(),
             Count = 1,
-            Lock = new Lock
-            {
-                ExpireTime = DateTime.UtcNow
-            }
+            Lock = new Lock { ExpireTime = DateTime.UtcNow }
         };
         await sut.AddAsync(entity);
 

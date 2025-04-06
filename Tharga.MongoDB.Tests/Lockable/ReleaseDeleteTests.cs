@@ -33,7 +33,10 @@ public class ReleaseDeleteTests : LockableTestTestsBase
         //Assert
         await act.Should().NotThrowAsync();
         var item = await collection.GetOneAsync(sut.Entity.Id);
-        item.Should().BeNull();
+        if (release == ReleaseType.Commit)
+            item.Should().BeNull();
+        else
+            item.Should().NotBeNull();
     }
 
     [Theory]
@@ -79,7 +82,10 @@ public class ReleaseDeleteTests : LockableTestTestsBase
             .ThrowAsync<LockAlreadyReleasedException>()
             .WithMessage("Entity has already been released.");
         var item = await collection.GetOneAsync(sut.Entity.Id);
-        item.Should().BeNull();
+        if (release == ReleaseType.Commit)
+            item.Should().BeNull();
+        else
+            item.Should().NotBeNull();
     }
 
     [Theory]

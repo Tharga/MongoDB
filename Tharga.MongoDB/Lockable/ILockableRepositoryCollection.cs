@@ -11,6 +11,8 @@ namespace Tharga.MongoDB.Lockable;
 public interface ILockableRepositoryCollection<TEntity, TKey> : IReadOnlyRepositoryCollection<TEntity, TKey>
     where TEntity : LockableEntityBase<TKey>
 {
+    IAsyncEnumerable<TEntity> GetUnlockedAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default);
+
     Task AddAsync(TEntity entity);
     Task<bool> TryAddAsync(TEntity entity);
     Task AddManyAsync(IEnumerable<TEntity> entities);
@@ -23,7 +25,7 @@ public interface ILockableRepositoryCollection<TEntity, TKey> : IReadOnlyReposit
 
     IAsyncEnumerable<EntityLock<TEntity, TKey>> GetLockedAsync(LockMode lockMode);
 
-    Task<bool> ReleaseAsync(TKey id);
+    Task<bool> ReleaseAsync(TKey id, ReleaseMode mode);
 
     Task<long> DeleteManyAsync(Expression<Func<TEntity, bool>> predicate);
 

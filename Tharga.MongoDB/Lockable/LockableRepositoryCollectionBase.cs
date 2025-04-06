@@ -107,6 +107,11 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
         return Disk.GetSizeAsync();
     }
 
+    public IAsyncEnumerable<TEntity> GetUnlockedAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default)
+    {
+        return Disk.GetAsync(UnlockedOrExporedFilter.AndAlso(predicate ?? (x => true)), options, cancellationToken);
+    }
+
     public override Task AddAsync(TEntity entity)
     {
         return Disk.AddAsync(entity);
@@ -157,9 +162,11 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
         throw new NotSupportedException(BuildErrorMessage());
     }
 
-    public override Task<TEntity> DeleteOneAsync(TKey id)
+    public override async Task<TEntity> DeleteOneAsync(TKey id)
     {
-        throw new NotSupportedException(BuildErrorMessage());
+        var scope = await PickForDeleteAsync(id);
+        var item = await scope.CommitAsync();
+        return item;
     }
 
     public override Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate, FindOneAndDeleteOptions<TEntity, TEntity> options)
@@ -174,8 +181,28 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
 
     public override async Task<long> DeleteManyAsync(Expression<Func<TEntity, bool>> predicate)
     {
-        Expression<Func<TEntity, bool>> expression = x => x.Lock == null || (x.Lock != null && x.Lock.ExceptionInfo == null && (x.Lock.ExpireTime ?? (x.Lock.LockTime + DefaultTimeout)) > DateTime.UtcNow);
-        return await Disk.DeleteManyAsync(predicate.AndAlso(expression));
+        return await Disk.DeleteManyAsync(UnlockedOrExporedFilter.AndAlso(predicate));
+    }
+
+    private Expression<Func<TEntity, bool>> UnlockedOrExporedFilter
+    {
+        get
+        {
+            var now = DateTime.UtcNow;
+            var timeout = DefaultTimeout;
+
+            Expression<Func<TEntity, bool>> expression = x =>
+                x.Lock == null
+                || (
+                    x.Lock.ExceptionInfo == null
+                    && (
+                        (x.Lock.ExpireTime != null && x.Lock.ExpireTime <= now)
+                        || (x.Lock.ExpireTime == null && x.Lock.LockTime.Add(timeout) <= now)
+                    )
+                );
+
+            return expression;
+        }
     }
 
     public override IMongoCollection<TEntity> GetCollection()
@@ -222,29 +249,76 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
 
     public IAsyncEnumerable<EntityLock<TEntity, TKey>> GetLockedAsync(LockMode lockMode)
     {
+        var now = DateTime.UtcNow;
+        var timeout = DefaultTimeout;
+
         switch (lockMode)
         {
             case LockMode.Locked:
-                return Disk.GetAsync(x => x.Lock != null && x.Lock.ExceptionInfo == null && (x.Lock.ExpireTime ?? (x.Lock.LockTime + DefaultTimeout)) <= DateTime.UtcNow)
+                return Disk.GetAsync(x =>
+                        x.Lock != null
+                        && x.Lock.ExceptionInfo == null
+                        && (
+                            (x.Lock.ExpireTime != null && x.Lock.ExpireTime > now)
+                            || (x.Lock.ExpireTime == null && x.Lock.LockTime.Add(timeout) > now)
+                        ))
                     .Select(x => new EntityLock<TEntity, TKey>(x, x.Lock));
+
             case LockMode.Expired:
-                return Disk.GetAsync(x => x.Lock != null && x.Lock.ExceptionInfo == null && (x.Lock.ExpireTime ?? (x.Lock.LockTime + DefaultTimeout)) > DateTime.UtcNow)
+                return Disk.GetAsync(x =>
+                        x.Lock != null
+                        && x.Lock.ExceptionInfo == null
+                        && (
+                            (x.Lock.ExpireTime != null && x.Lock.ExpireTime <= now)
+                            || (x.Lock.ExpireTime == null && x.Lock.LockTime.Add(timeout) <= now)
+                        ))
                     .Select(x => new EntityLock<TEntity, TKey>(x, x.Lock));
             case LockMode.Exception:
-                return Disk.GetAsync(x => x.Lock != null && x.Lock.ExceptionInfo != null)
+                return Disk.GetAsync(x =>
+                        x.Lock != null
+                        && x.Lock.ExceptionInfo != null)
                     .Select(x => new EntityLock<TEntity, TKey>(x, x.Lock));
+
             default:
                 throw new ArgumentOutOfRangeException(nameof(lockMode), lockMode, null);
         }
     }
 
-    public async Task<bool> ReleaseAsync(TKey id)
+    /// <summary>
+    /// Release locked document depending on mode.
+    /// </summary>
+    /// <param name="id"></param>
+    /// <param name="mode"></param>
+    /// <returns></returns>
+    public async Task<bool> ReleaseAsync(TKey id, ReleaseMode mode)
     {
-        var filter = Builders<TEntity>.Filter.And(
-            Builders<TEntity>.Filter.Eq(x => x.Id, id),
-            Builders<TEntity>.Filter.Ne(x => x.Lock, null),
-            Builders<TEntity>.Filter.Ne(x => x.Lock.ExceptionInfo, null)
-        );
+        FilterDefinition<TEntity> filter;
+        switch (mode)
+        {
+            case ReleaseMode.ExceptionOnly:
+                filter = Builders<TEntity>.Filter.And(
+                    Builders<TEntity>.Filter.Eq(x => x.Id, id),
+                    Builders<TEntity>.Filter.Ne(x => x.Lock, null),
+                    Builders<TEntity>.Filter.Ne(x => x.Lock.ExceptionInfo, null)
+                );
+                break;
+            case ReleaseMode.LockOnly:
+                filter = Builders<TEntity>.Filter.And(
+                    Builders<TEntity>.Filter.Eq(x => x.Id, id),
+                    Builders<TEntity>.Filter.Ne(x => x.Lock, null),
+                    Builders<TEntity>.Filter.Eq(x => x.Lock.ExceptionInfo, null)
+                );
+                break;
+            case ReleaseMode.Any:
+                filter = Builders<TEntity>.Filter.And(
+                    Builders<TEntity>.Filter.Eq(x => x.Id, id),
+                    Builders<TEntity>.Filter.Ne(x => x.Lock, null)
+                );
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(mode), mode, null);
+        }
+
         var update = new UpdateDefinitionBuilder<TEntity>().Set(x => x.Lock, null);
         var result = await Disk.UpdateAsync(filter, update);
         return result == 1;
@@ -337,11 +411,11 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
             }
             else
             {
-                throw new NotImplementedException("Messages for documents with muliple matches but no hit, has not yet been implemented.");
+                throw new NotSupportedException("Multiple documents matches with the provided expression.");
             }
         }
 
-        Func<TEntity, Exception, Task> releaseAction;
+        Func<TEntity, bool, Exception, Task> releaseAction;
         switch (commitMode)
         {
             case CommitMode.Update:
@@ -357,13 +431,13 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
         return (new EntityScope<TEntity, TKey>(result.Before, releaseAction), null, false);
     }
 
-    private Func<TEntity, Exception, Task> DeleteEntity(Lock entityLock)
+    private Func<TEntity, bool, Exception, Task> DeleteEntity(Lock entityLock)
     {
-        return (entity, exception) =>
+        return (entity, commit, exception) =>
         {
             try
             {
-                return DeleteAsync(entity, entityLock, exception, false);
+                return DeleteAsync(entity, entityLock, commit, exception, false);
             }
             catch (Exception e)
             {
@@ -392,13 +466,13 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
         };
     }
 
-    private Func<TEntity, Exception, Task> ReleaseEntity(Lock entityLock)
+    private Func<TEntity, bool, Exception, Task> ReleaseEntity(Lock entityLock)
     {
-        return (entity, exception) =>
+        return (entity, commit, exception) =>
         {
             try
             {
-                return ReleaseAsync(entity, entityLock, exception, false);
+                return ReleaseAsync(entity, entityLock, commit, exception, false);
             }
             catch (Exception e)
             {
@@ -427,7 +501,7 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
         };
     }
 
-    private async Task<bool> ReleaseAsync(TEntity entity, Lock entityLock, Exception exception, bool externalUnlock /*bool resetUnlockCounter*/)
+    private async Task<bool> ReleaseAsync(TEntity entity, Lock entityLock, bool commit, Exception exception, bool externalUnlock)
     {
         var lockTime = DateTime.UtcNow - entityLock.ExpireTime;
         var timeout = entityLock.ExpireTime - entityLock.LockTime;
@@ -438,19 +512,30 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
             throw new LockExpiredException($"Entity was locked for {lockTime} instead of {timeout}.");
         }
 
-        var updatedEntity = entity with
+        EntityChangeResult<TEntity> result;
+        if (commit)
         {
-            Lock = lockInfo.EntityLock,
-            UnlockCounter = lockInfo.UnlockCounter
-        };
+            var updatedEntity = entity with
+            {
+                Lock = lockInfo.EntityLock,
+                //UnlockCounter = lockInfo.UnlockCounter
+            };
 
-        //NOTE: This filter assures that the correct lock still exists on the entity.
-        var filter = Builders<TEntity>.Filter.And(
-            Builders<TEntity>.Filter.Eq(x => x.Id, entity.Id),
-            Builders<TEntity>.Filter.Ne(x => x.Lock, null),
-            Builders<TEntity>.Filter.Eq(x => x.Lock.LockKey, entityLock.LockKey)
-        );
-        var result = await Disk.ReplaceOneAsync(updatedEntity, filter);
+            //NOTE: This filter assures that the correct lock still exists on the entity.
+            var filter = Builders<TEntity>.Filter.And(
+                Builders<TEntity>.Filter.Eq(x => x.Id, entity.Id),
+                Builders<TEntity>.Filter.Ne(x => x.Lock, null),
+                Builders<TEntity>.Filter.Eq(x => x.Lock.LockKey, entityLock.LockKey)
+            );
+            result = await Disk.ReplaceOneAsync(updatedEntity, filter);
+        }
+        else
+        {
+            var update = new UpdateDefinitionBuilder<TEntity>()
+                .Set(x => x.Lock, lockInfo.EntityLock)
+                /*.Set(x => x.UnlockCounter, lockInfo.UnlockCounter)*/;
+            result = await Disk.UpdateOneAsync(entity.Id, update);
+        }
 
         if (result.Before == null) throw new InvalidOperationException("Cannot find entity before release."); //.AddData("context", pipelineContext).AddData("documentId", document.Id);
         if (result.Before.Lock == null) throw new InvalidOperationException("No lock information for document before release."); //.AddData("context", pipelineContext).AddData("documentId", document.Id);
@@ -461,7 +546,7 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
         return after.Lock == null;
     }
 
-    private async Task<bool> DeleteAsync(TEntity entity, Lock entityLock, Exception exception, bool externalUnlock /*bool resetUnlockCounter*/)
+    private async Task<bool> DeleteAsync(TEntity entity, Lock entityLock, bool commit, Exception exception, bool externalUnlock)
     {
         var lockTime = DateTime.UtcNow - entityLock.ExpireTime;
         var timeout = entityLock.ExpireTime - entityLock.LockTime;
@@ -471,34 +556,55 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
             throw new LockExpiredException($"Entity was locked for {lockTime} instead of {timeout}.");
         }
 
-        var after = await Disk.DeleteOneAsync(x => x.Id.Equals(entity.Id) && x.Lock != null && x.Lock.LockKey == entityLock.LockKey);
-        if (after == null) throw new InvalidOperationException("After is null.");
+        if (commit)
+        {
+            var after = await Disk.DeleteOneAsync(x => x.Id.Equals(entity.Id) && x.Lock != null && x.Lock.LockKey == entityLock.LockKey);
+            if (after == null) throw new InvalidOperationException("After is null.");
 
-        return after.Lock == null;
+            return after.Lock == null;
+        }
+        else
+        {
+            var lockInfo = BuildLockInfo(entity, entityLock, exception, false, false);
+
+            var update = new UpdateDefinitionBuilder<TEntity>()
+                .Set(x => x.Lock, lockInfo.EntityLock)
+                /*.Set(x => x.UnlockCounter, lockInfo.UnlockCounter)*/;
+            var result = await Disk.UpdateOneAsync(entity.Id, update);
+
+            if (result.Before == null) throw new InvalidOperationException("Cannot find entity before release."); //.AddData("context", pipelineContext).AddData("documentId", document.Id);
+            if (result.Before.Lock == null) throw new InvalidOperationException("No lock information for document before release."); //.AddData("context", pipelineContext).AddData("documentId", document.Id);
+
+            var after = await result.GetAfterAsync();
+            if (after == null) throw new InvalidOperationException("After is null.");
+
+            return after.Lock == null;
+        }
     }
 
     private (Lock EntityLock, int UnlockCounter) BuildLockInfo(TEntity entity, Lock entityLock, Exception exception, bool externalUnlock, bool resetUnlockCounter)
     {
         if (externalUnlock)
         {
-            var failMessage = $"Give up unlock after {entity.UnlockCounter + 1} tries. {entityLock.ExceptionInfo?.Message}".TrimEnd();
-            return (resetUnlockCounter || entity.UnlockCounter < UnlockCounterLimit
-                ? null
-                : entityLock with
-                {
-                    ExceptionInfo = entityLock.ExceptionInfo == null
-                        ? new ExceptionInfo
-                        {
-                            Type = null,
-                            Message = failMessage,
-                            StackTrace = null
-                        }
-                        : entityLock.ExceptionInfo with
-                        {
-                            Message = failMessage
-                        },
-                    ExpireTime = DateTime.MaxValue
-                }, entity.UnlockCounter + 1);
+            //var failMessage = $"Give up unlock after {entity.UnlockCounter + 1} tries. {entityLock.ExceptionInfo?.Message}".TrimEnd();
+            //return (resetUnlockCounter || entity.UnlockCounter < UnlockCounterLimit
+            //    ? null
+            //    : entityLock with
+            //    {
+            //        ExceptionInfo = entityLock.ExceptionInfo == null
+            //            ? new ExceptionInfo
+            //            {
+            //                Type = null,
+            //                Message = failMessage,
+            //                StackTrace = null
+            //            }
+            //            : entityLock.ExceptionInfo with
+            //            {
+            //                Message = failMessage
+            //            },
+            //        ExpireTime = DateTime.MaxValue
+            //    }, entity.UnlockCounter + 1);
+            throw new NotImplementedException("External unlock has not been implemented.");
         }
 
         if (exception != null)
@@ -511,7 +617,7 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
                     Message = exception.Message,
                     StackTrace = exception.StackTrace
                 }
-            }, entity.UnlockCounter);
+            }, 0); //entity.UnlockCounter);
         }
 
         return (null, 0);

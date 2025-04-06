@@ -1,21 +1,21 @@
 ﻿using System;
 using System.Threading.Tasks;
 using FluentAssertions;
-using Tharga.MongoDB.Tests.Support;
-using Xunit;
 using MongoDB.Bson;
 using Tharga.MongoDB.Lockable;
 using Tharga.MongoDB.Tests.Lockable.Base;
+using Tharga.MongoDB.Tests.Support;
+using Xunit;
 
 namespace Tharga.MongoDB.Tests.Lockable;
 
 [Collection("Sequential")]
 [CollectionDefinition("Sequential", DisableParallelization = true)]
-public class PickForUpdate : LockableTestTestsBase
+public class WaitForDeleteTests : LockableTestTestsBase
 {
     [Fact]
     [Trait("Category", "Database")]
-    public async Task PickEntity()
+    public async Task WaitForDelete()
     {
         //Arrange
         var sut = new LockableTestRepositoryCollection(_mongoDbServiceFactory);
@@ -23,7 +23,7 @@ public class PickForUpdate : LockableTestTestsBase
         await sut.AddAsync(entity);
 
         //Act
-        var result = await sut.PickForUpdateAsync(entity.Id);
+        var result = await sut.WaitForDeleteAsync(entity.Id);
 
         //Assert
         result.Entity.Should().NotBeNull();
@@ -36,7 +36,7 @@ public class PickForUpdate : LockableTestTestsBase
 
     [Fact]
     [Trait("Category", "Database")]
-    public async Task PickLockedEntity()
+    public async Task WaitForLockedEntityThatIsNotReleased()
     {
         //Arrange
         var sut = new LockableTestRepositoryCollection(_mongoDbServiceFactory);
@@ -48,17 +48,18 @@ public class PickForUpdate : LockableTestTestsBase
                 LockKey = Guid.NewGuid(),
                 LockTime = DateTime.UtcNow,
                 Actor = "some actor",
+                ExpireTime = DateTime.UtcNow.AddSeconds(5)
             }
         };
         await sut.AddAsync(entity);
 
         //Act
-        var act = () => sut.PickForUpdateAsync(entity.Id, actor: "test actor");
+        var act = () => sut.WaitForDeleteAsync(entity.Id, TimeSpan.FromSeconds(1), "test actor");
 
         //Assert
         await act.Should()
-            .ThrowAsync<InvalidOperationException>()
-            .WithMessage($"Entity with id '{entity.Id}' is locked by 'some actor' for *.");
+            .ThrowAsync<TimeoutException>()
+            .WithMessage("No valid entity has been released for update.");
         var item = await sut.GetOneAsync(entity.Id);
         item.Should().NotBeNull();
         item.Lock.Should().NotBeNull();
@@ -67,71 +68,28 @@ public class PickForUpdate : LockableTestTestsBase
 
     [Fact]
     [Trait("Category", "Database")]
-    public async Task PickedEntityWithException()
+    public async Task WaitForLockedEntityThatIsReleased()
     {
         //Arrange
         var sut = new LockableTestRepositoryCollection(_mongoDbServiceFactory);
         var entity = new LockableTestEntity
         {
             Id = ObjectId.GenerateNewId(),
-            Lock = new Lock { ExceptionInfo = new ExceptionInfo() }
-        };
-        await sut.AddAsync(entity);
-
-        //Act
-        var act = () => sut.PickForUpdateAsync(entity.Id);
-
-        //Assert
-        await act.Should()
-            .ThrowAsync<InvalidOperationException>()
-            .WithMessage($"Entity with id '{entity.Id}' has an exception attached.");
-        var item = await sut.GetOneAsync(entity.Id);
-        item.Should().NotBeNull();
-        item.Lock.Should().NotBeNull();
-        item.Lock.ExceptionInfo.Should().NotBeNull();
-    }
-
-    [Fact]
-    [Trait("Category", "Database")]
-    public async Task PickedEntityThatDoesNotExist()
-    {
-        //Arrange
-        var sut = new LockableTestRepositoryCollection(_mongoDbServiceFactory);
-        var entity = new LockableTestEntity
-        {
-            Id = ObjectId.GenerateNewId(),
-        };
-
-        //Act
-        var result = await sut.PickForUpdateAsync(entity.Id);
-
-        //Assert
-        result.Should().BeNull();
-    }
-
-    [Fact]
-    [Trait("Category", "Database")]
-    public async Task PickEntityWithExpiredLock()
-    {
-        //Arrange
-        var sut = new LockableTestRepositoryCollection(_mongoDbServiceFactory);
-        var entity = new LockableTestEntity
-        {
-            Id = ObjectId.GenerateNewId(),
-            Count = 1,
             Lock = new Lock
             {
-                ExpireTime = DateTime.UtcNow
+                LockKey = Guid.NewGuid(),
+                LockTime = DateTime.UtcNow,
+                Actor = "some actor",
+                ExpireTime = DateTime.UtcNow.AddSeconds(1)
             }
         };
         await sut.AddAsync(entity);
 
         //Act
-        var result = await sut.PickForUpdateAsync(entity.Id);
+        var result = await sut.WaitForDeleteAsync(entity.Id, TimeSpan.FromSeconds(5));
 
         //Assert
         result.Entity.Should().NotBeNull();
-        result.Entity.Count.Should().Be(entity.Count);
         var item = await sut.GetOneAsync(entity.Id);
         item.Should().NotBeNull();
         item.Lock.Should().NotBeNull();
