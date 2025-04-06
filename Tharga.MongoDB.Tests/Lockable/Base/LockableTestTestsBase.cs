@@ -5,16 +5,18 @@ using Moq;
 using Tharga.MongoDB.Atlas;
 using Tharga.MongoDB.Configuration;
 using Tharga.MongoDB.Internals;
+using Tharga.MongoDB.Tests.Support;
+using Xunit;
 
 namespace Tharga.MongoDB.Tests.Lockable.Base;
 
-public abstract class LockableTestTestsBase
+public abstract class LockableTestTestsBase : IDisposable // MongoDbTestBase
 {
     private readonly Mock<IRepositoryConfigurationInternal> _configurationMock;
     private readonly DatabaseContext _databaseContext;
     internal readonly MongoDbServiceFactory _mongoDbServiceFactory;
 
-    public LockableTestTestsBase()
+    protected LockableTestTestsBase()
     {
         _databaseContext = Mock.Of<DatabaseContext>(x => x.DatabasePart == Guid.NewGuid().ToString());
         _configurationMock = new Mock<IRepositoryConfigurationInternal>(MockBehavior.Strict);
@@ -29,5 +31,11 @@ public abstract class LockableTestTestsBase
         var mongoDbFirewallStateService = new Mock<IMongoDbFirewallStateService>(MockBehavior.Strict);
 
         _mongoDbServiceFactory = new MongoDbServiceFactory(configurationLoaderMock.Object, mongoDbFirewallStateService.Object, loggerMock.Object);
+    }
+
+    public void Dispose()
+    {
+        var databaseName = _configurationMock.Object.GetDatabaseUrl().DatabaseName;
+        _mongoDbServiceFactory.GetMongoDbService(() => null).DropDatabase(databaseName);
     }
 }
