@@ -12,7 +12,7 @@ namespace Tharga.MongoDB.Tests.Lockable;
 
 [Collection("Sequential")]
 [CollectionDefinition("Sequential", DisableParallelization = true)]
-public class GetLocked : LockableTestTestsBase
+public class GetLockedTests : LockableTestTestsBase
 {
     [Fact]
     public async Task GetLockedExceptions()

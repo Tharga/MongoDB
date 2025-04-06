@@ -107,7 +107,7 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
         return Disk.GetSizeAsync();
     }
 
-    public IAsyncEnumerable<TEntity> GetUnlocked(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default)
+    public IAsyncEnumerable<TEntity> GetUnlockedAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default)
     {
         return Disk.GetAsync(UnlockedOrExporedFilter.AndAlso(predicate ?? (x => true)), options, cancellationToken);
     }
@@ -162,9 +162,11 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
         throw new NotSupportedException(BuildErrorMessage());
     }
 
-    public override Task<TEntity> DeleteOneAsync(TKey id)
+    public override async Task<TEntity> DeleteOneAsync(TKey id)
     {
-        throw new NotSupportedException(BuildErrorMessage());
+        var scope = await PickForDeleteAsync(id);
+        var item = await scope.CommitAsync();
+        return item;
     }
 
     public override Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate, FindOneAndDeleteOptions<TEntity, TEntity> options)
@@ -629,11 +631,4 @@ public class LockableRepositoryCollectionBase<TEntity> : LockableRepositoryColle
         : base(mongoDbServiceFactory, logger, databaseContext)
     {
     }
-}
-
-public enum ReleaseMode
-{
-    ExceptionOnly,
-    LockOnly,
-    Any
 }

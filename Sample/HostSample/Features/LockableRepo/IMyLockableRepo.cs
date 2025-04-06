@@ -8,7 +8,7 @@ public interface IMyLockableRepo : IRepository
 {
     Task AddAsync(MyLockableEntity myLockableEntity);
     IAsyncEnumerable<MyLockableEntity> GetAll();
-    IAsyncEnumerable<MyLockableEntity> GetUnlocked();
+    IAsyncEnumerable<MyLockableEntity> GetUnlockedAsync();
     Task<MyLockableEntity> BumpCountAsync(ObjectId id);
     Task ThrowAsync(ObjectId id);
     Task LockAsync(ObjectId id, TimeSpan timeout, string actor);

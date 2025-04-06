@@ -11,11 +11,11 @@ namespace Tharga.MongoDB.Tests.Lockable;
 
 [Collection("Sequential")]
 [CollectionDefinition("Sequential", DisableParallelization = true)]
-public class WaitForUpdate : LockableTestTestsBase
+public class WaitForDeleteTests : LockableTestTestsBase
 {
     [Fact]
     [Trait("Category", "Database")]
-    public async Task WaitForEntity()
+    public async Task WaitForDelete()
     {
         //Arrange
         var sut = new LockableTestRepositoryCollection(_mongoDbServiceFactory);
@@ -23,7 +23,7 @@ public class WaitForUpdate : LockableTestTestsBase
         await sut.AddAsync(entity);
 
         //Act
-        var result = await sut.WaitForUpdateAsync(entity.Id);
+        var result = await sut.WaitForDeleteAsync(entity.Id);
 
         //Assert
         result.Entity.Should().NotBeNull();
@@ -54,7 +54,7 @@ public class WaitForUpdate : LockableTestTestsBase
         await sut.AddAsync(entity);
 
         //Act
-        var act = () => sut.WaitForUpdateAsync(entity.Id, TimeSpan.FromSeconds(1), "test actor");
+        var act = () => sut.WaitForDeleteAsync(entity.Id, TimeSpan.FromSeconds(1), "test actor");
 
         //Assert
         await act.Should()
@@ -86,83 +86,10 @@ public class WaitForUpdate : LockableTestTestsBase
         await sut.AddAsync(entity);
 
         //Act
-        var result = await sut.WaitForUpdateAsync(entity.Id, TimeSpan.FromSeconds(5));
+        var result = await sut.WaitForDeleteAsync(entity.Id, TimeSpan.FromSeconds(5));
 
         //Assert
         result.Entity.Should().NotBeNull();
-        var item = await sut.GetOneAsync(entity.Id);
-        item.Should().NotBeNull();
-        item.Lock.Should().NotBeNull();
-        item.Lock.ExceptionInfo.Should().BeNull();
-    }
-
-    [Fact]
-    [Trait("Category", "Database")]
-    public async Task PickedEntityWithException()
-    {
-        //Arrange
-        var sut = new LockableTestRepositoryCollection(_mongoDbServiceFactory);
-        var entity = new LockableTestEntity
-        {
-            Id = ObjectId.GenerateNewId(),
-            Lock = new Lock { ExceptionInfo = new ExceptionInfo() }
-        };
-        await sut.AddAsync(entity);
-
-        //Act
-        var act = () => sut.WaitForUpdateAsync(entity.Id);
-
-        //Assert
-        await act.Should()
-            .ThrowAsync<InvalidOperationException>()
-            .WithMessage($"Entity with id '{entity.Id}' has an exception attached.");
-        var item = await sut.GetOneAsync(entity.Id);
-        item.Should().NotBeNull();
-        item.Lock.Should().NotBeNull();
-        item.Lock.ExceptionInfo.Should().NotBeNull();
-    }
-
-    [Fact]
-    [Trait("Category", "Database")]
-    public async Task PickedEntityThatDoesNotExist()
-    {
-        //Arrange
-        var sut = new LockableTestRepositoryCollection(_mongoDbServiceFactory);
-        var entity = new LockableTestEntity
-        {
-            Id = ObjectId.GenerateNewId(),
-        };
-
-        //Act
-        var result = await sut.WaitForUpdateAsync(entity.Id);
-
-        //Assert
-        result.Should().BeNull();
-    }
-
-    [Fact]
-    [Trait("Category", "Database")]
-    public async Task PickEntityWithExpiredLock()
-    {
-        //Arrange
-        var sut = new LockableTestRepositoryCollection(_mongoDbServiceFactory);
-        var entity = new LockableTestEntity
-        {
-            Id = ObjectId.GenerateNewId(),
-            Count = 1,
-            Lock = new Lock
-            {
-                ExpireTime = DateTime.UtcNow
-            }
-        };
-        await sut.AddAsync(entity);
-
-        //Act
-        var result = await sut.WaitForUpdateAsync(entity.Id);
-
-        //Assert
-        result.Entity.Should().NotBeNull();
-        result.Entity.Count.Should().Be(entity.Count);
         var item = await sut.GetOneAsync(entity.Id);
         item.Should().NotBeNull();
         item.Lock.Should().NotBeNull();

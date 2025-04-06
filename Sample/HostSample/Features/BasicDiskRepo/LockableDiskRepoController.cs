@@ -26,7 +26,7 @@ public class LockableDiskRepoController : ControllerBase
     [HttpGet("unlocked")]
     public async Task<IActionResult> GetUnlocked()
     {
-        var items = await _repository.GetUnlocked().ToArrayAsync();
+        var items = await _repository.GetUnlockedAsync().ToArrayAsync();
         return Ok(items.Select(x => new { Id = x.Id.ToString(), x.Counter }));
     }
 

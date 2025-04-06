@@ -11,7 +11,7 @@ namespace Tharga.MongoDB.Tests.Lockable;
 
 [Collection("Sequential")]
 [CollectionDefinition("Sequential", DisableParallelization = true)]
-public class GetUnlocked : LockableTestTestsBase
+public class GetUnlockedTests : LockableTestTestsBase
 {
     [Fact]
     public async Task Basic()
@@ -36,7 +36,7 @@ public class GetUnlocked : LockableTestTestsBase
         await sut.AddAsync(new LockableTestEntity { Id = ObjectId.GenerateNewId() });
 
         //Act
-        var items = await sut.GetUnlocked().ToArrayAsync();
+        var items = await sut.GetUnlockedAsync().ToArrayAsync();
 
         //Assert
         items.Length.Should().Be(3);

@@ -23,9 +23,9 @@ public class MyLockableRepo : IMyLockableRepo
         return _collection.GetAsync(x => true);
     }
 
-    public IAsyncEnumerable<MyLockableEntity> GetUnlocked()
+    public IAsyncEnumerable<MyLockableEntity> GetUnlockedAsync()
     {
-        return _collection.GetUnlocked(x => true);
+        return _collection.GetUnlockedAsync(x => true);
     }
 
     public async Task<MyLockableEntity> BumpCountAsync(ObjectId id)

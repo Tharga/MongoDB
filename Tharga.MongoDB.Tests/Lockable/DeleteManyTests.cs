@@ -10,7 +10,7 @@ namespace Tharga.MongoDB.Tests.Lockable;
 
 [Collection("Sequential")]
 [CollectionDefinition("Sequential", DisableParallelization = true)]
-public class DeleteMany : LockableTestTestsBase
+public class DeleteManyTests : LockableTestTestsBase
 {
     [Theory]
     [Trait("Category", "Database")]

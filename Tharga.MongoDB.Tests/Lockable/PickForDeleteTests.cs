@@ -1,18 +1,18 @@
 ﻿using System;
+using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
-using Tharga.MongoDB.Tests.Support;
-using Xunit;
 using MongoDB.Bson;
 using Tharga.MongoDB.Lockable;
 using Tharga.MongoDB.Tests.Lockable.Base;
-using System.Linq;
+using Tharga.MongoDB.Tests.Support;
+using Xunit;
 
 namespace Tharga.MongoDB.Tests.Lockable;
 
 [Collection("Sequential")]
 [CollectionDefinition("Sequential", DisableParallelization = true)]
-public class PickForUpdate : LockableTestTestsBase
+public class PickForDeleteTests : LockableTestTestsBase
 {
     [Fact]
     [Trait("Category", "Database")]
@@ -24,7 +24,7 @@ public class PickForUpdate : LockableTestTestsBase
         await sut.AddAsync(entity);
 
         //Act
-        var result = await sut.PickForUpdateAsync(entity.Id);
+        var result = await sut.PickForDeleteAsync(entity.Id);
 
         //Assert
         result.Entity.Should().NotBeNull();
@@ -54,7 +54,7 @@ public class PickForUpdate : LockableTestTestsBase
         await sut.AddAsync(entity);
 
         //Act
-        var act = () => sut.PickForUpdateAsync(entity.Id, actor: "test actor");
+        var act = () => sut.PickForDeleteAsync(entity.Id, actor: "test actor");
 
         //Assert
         await act.Should()
@@ -80,7 +80,7 @@ public class PickForUpdate : LockableTestTestsBase
         await sut.AddAsync(entity);
 
         //Act
-        var act = () => sut.PickForUpdateAsync(entity.Id);
+        var act = () => sut.PickForDeleteAsync(entity.Id);
 
         //Assert
         await act.Should()
@@ -104,7 +104,7 @@ public class PickForUpdate : LockableTestTestsBase
         };
 
         //Act
-        var result = await sut.PickForUpdateAsync(entity.Id);
+        var result = await sut.PickForDeleteAsync(entity.Id);
 
         //Assert
         result.Should().BeNull();
@@ -125,7 +125,7 @@ public class PickForUpdate : LockableTestTestsBase
         await sut.AddAsync(entity);
 
         //Act
-        var result = await sut.PickForUpdateAsync(entity.Id);
+        var result = await sut.PickForDeleteAsync(entity.Id);
 
         //Assert
         result.Entity.Should().NotBeNull();
@@ -138,69 +138,38 @@ public class PickForUpdate : LockableTestTestsBase
 
     [Fact]
     [Trait("Category", "Database")]
-    public async Task PickForUpdateCommitSame()
+    public async Task PickForDeleteCommit()
     {
         //Arrange
         var sut = new LockableTestRepositoryCollection(_mongoDbServiceFactory);
-        var entity = new LockableTestEntity { Id = ObjectId.GenerateNewId(), Data = "initial" };
+        var entity = new LockableTestEntity { Id = ObjectId.GenerateNewId() };
         await sut.AddAsync(entity);
-        var scope = await sut.PickForUpdateAsync(entity.Id);
-        scope.Entity.Data = "updated";
+        var result = await sut.PickForDeleteAsync(entity.Id);
 
         //Act
-        var r = await scope.CommitAsync();
+        var r = await result.CommitAsync();
 
         //Assert
-        r.Should().Be(scope.Entity);
-        r.Data.Should().Be("updated");
-        (await sut.CountAsync(x => true)).Should().Be(1);
-        var post = await sut.GetAsync(x => x.Id == entity.Id).FirstAsync();
-        post.Data.Should().Be("updated");
-        (await sut.CountAsync(x => true)).Should().Be(1);
+        r.Should().Be(entity);
+        (await sut.CountAsync(x => true)).Should().Be(0);
     }
 
     [Fact]
     [Trait("Category", "Database")]
-    public async Task PickForUpdateCommitOther()
+    public async Task PickForDeleteAbandon()
     {
         //Arrange
         var sut = new LockableTestRepositoryCollection(_mongoDbServiceFactory);
         var entity = new LockableTestEntity { Id = ObjectId.GenerateNewId(), Data = "initial" };
         await sut.AddAsync(entity);
-        var scope = await sut.PickForUpdateAsync(entity.Id);
-        var updated = scope.Entity with { Count = 1, Data = "updated" };
-
-        //Act
-        var r = await scope.CommitAsync(updated);
-
-        //Assert
-        r.Should().Be(updated);
-        r.Data.Should().Be("updated");
-        var post = await sut.GetAsync(x => x.Id == entity.Id).FirstAsync();
-        post.Count.Should().Be(1);
-        post.Data.Should().Be("updated");
-        //post.UnlockCounter.Should().Be(0);
-        post.Lock.Should().BeNull();
-        (await sut.CountAsync(x => true)).Should().Be(1);
-        (await sut.GetLockedAsync(LockMode.Exception).CountAsync()).Should().Be(0);
-    }
-
-    [Fact]
-    [Trait("Category", "Database")]
-    public async Task PickForUpdateAbandon()
-    {
-        //Arrange
-        var sut = new LockableTestRepositoryCollection(_mongoDbServiceFactory);
-        var entity = new LockableTestEntity { Id = ObjectId.GenerateNewId(), Data = "initial" };
-        await sut.AddAsync(entity);
-        var scope = await sut.PickForUpdateAsync(entity.Id);
+        var scope = await sut.PickForDeleteAsync(entity.Id);
         scope.Entity.Data = "updated";
 
         //Act
         await scope.AbandonAsync();
 
         //Assert
-        var post = await sut.GetAsync(x => x.Id == entity.Id).FirstAsync();
+        var post = await sut.GetAsync(x => x.Id == entity.Id).FirstOrDefaultAsync();
         post.Data.Should().Be("initial");
         //post.UnlockCounter.Should().Be(0);
         post.Lock.Should().BeNull();
@@ -210,13 +179,13 @@ public class PickForUpdate : LockableTestTestsBase
 
     [Fact]
     [Trait("Category", "Database")]
-    public async Task PickForUpdateException()
+    public async Task PickForDeleteException()
     {
         //Arrange
         var sut = new LockableTestRepositoryCollection(_mongoDbServiceFactory);
         var entity = new LockableTestEntity { Id = ObjectId.GenerateNewId(), Data = "initial" };
         await sut.AddAsync(entity);
-        var scope = await sut.PickForUpdateAsync(entity.Id);
+        var scope = await sut.PickForDeleteAsync(entity.Id);
         scope.Entity.Data = "updated";
 
         //Act
@@ -242,14 +211,13 @@ public class PickForUpdate : LockableTestTestsBase
     [InlineData(ActionHelper.EndAction.Exception, ActionHelper.EndAction.Abandon, false)]
     [InlineData(ActionHelper.EndAction.Exception, ActionHelper.EndAction.Commit, false)]
     [InlineData(ActionHelper.EndAction.Exception, ActionHelper.EndAction.Exception, false)]
-    public async Task CloseTwice(ActionHelper.EndAction first, ActionHelper.EndAction then, bool updated)
+    public async Task CloseTwice(ActionHelper.EndAction first, ActionHelper.EndAction then, bool deleted)
     {
         //Arrange
         var sut = new LockableTestRepositoryCollection(_mongoDbServiceFactory);
-        var entity = new LockableTestEntity { Id = ObjectId.GenerateNewId(), Data = "initial" };
+        var entity = new LockableTestEntity { Id = ObjectId.GenerateNewId() };
         await sut.AddAsync(entity);
-        var scope = await sut.PickForUpdateAsync(entity.Id);
-        scope.Entity.Data = "updated";
+        var scope = await sut.PickForDeleteAsync(entity.Id);
         var firstAct = ActionHelper.Action(first, scope);
 
         await firstAct.Invoke();
@@ -262,14 +230,13 @@ public class PickForUpdate : LockableTestTestsBase
             .ThrowAsync<InvalidOperationException>()
             .WithMessage("Entity has already been released.");
         var item = await sut.GetOneAsync(entity.Id);
-        item.Should().NotBeNull();
-        if (updated)
+        if (deleted)
         {
-            item.Data.Should().Be("updated");
+            item.Should().BeNull();
         }
         else
         {
-            item.Data.Should().Be("initial");
+            item.Should().NotBeNull();
         }
     }
 }
