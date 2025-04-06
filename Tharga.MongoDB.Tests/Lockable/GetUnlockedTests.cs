@@ -14,6 +14,7 @@ namespace Tharga.MongoDB.Tests.Lockable;
 public class GetUnlockedTests : LockableTestTestsBase
 {
     [Fact]
+    [Trait("Category", "Database")]
     public async Task Basic()
     {
         //Arrange
