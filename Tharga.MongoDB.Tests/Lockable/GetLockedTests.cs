@@ -15,6 +15,7 @@ namespace Tharga.MongoDB.Tests.Lockable;
 public class GetLockedTests : LockableTestTestsBase
 {
     [Fact]
+    [Trait("Category", "Database")]
     public async Task GetLockedExceptions()
     {
         //Arrange
@@ -34,6 +35,7 @@ public class GetLockedTests : LockableTestTestsBase
     }
 
     [Fact]
+    [Trait("Category", "Database")]
     public async Task GetLockedExpired()
     {
         //Arrange
@@ -52,6 +54,7 @@ public class GetLockedTests : LockableTestTestsBase
     }
 
     [Fact]
+    [Trait("Category", "Database")]
     public async Task GetLockedLocked()
     {
         //Arrange

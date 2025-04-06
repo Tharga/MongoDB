@@ -242,6 +242,7 @@ public class PickForUpdateTests : LockableTestTestsBase
     [InlineData(ActionHelper.EndAction.Exception, ActionHelper.EndAction.Abandon, false)]
     [InlineData(ActionHelper.EndAction.Exception, ActionHelper.EndAction.Commit, false)]
     [InlineData(ActionHelper.EndAction.Exception, ActionHelper.EndAction.Exception, false)]
+    [Trait("Category", "Database")]
     public async Task CloseTwice(ActionHelper.EndAction first, ActionHelper.EndAction then, bool updated)
     {
         //Arrange
