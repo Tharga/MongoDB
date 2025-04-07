@@ -112,6 +112,14 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
         return Disk.GetAsync(UnlockedOrExporedFilter.AndAlso(predicate ?? (x => true)), options, cancellationToken);
     }
 
+    public IAsyncEnumerable<TEntity> GetUnlockedAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default)
+    {
+        var baseFilter = Builders<TEntity>.Filter.Where(UnlockedOrExporedFilter);
+        var combinedFilter = Builders<TEntity>.Filter.And(baseFilter, filter);
+
+        return Disk.GetAsync(combinedFilter, options, cancellationToken);
+    }
+
     public override Task AddAsync(TEntity entity)
     {
         return Disk.AddAsync(entity);
