@@ -12,6 +12,7 @@ public interface ILockableRepositoryCollection<TEntity, TKey> : IReadOnlyReposit
     where TEntity : LockableEntityBase<TKey>
 {
     IAsyncEnumerable<TEntity> GetUnlockedAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default);
+    IAsyncEnumerable<TEntity> GetUnlockedAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default);
 
     Task AddAsync(TEntity entity);
     Task<bool> TryAddAsync(TEntity entity);
