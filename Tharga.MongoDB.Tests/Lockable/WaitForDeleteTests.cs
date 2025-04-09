@@ -54,7 +54,7 @@ public class WaitForDeleteTests : LockableTestTestsBase
         await sut.AddAsync(entity);
 
         //Act
-        var act = () => sut.WaitForDeleteAsync(entity.Id, TimeSpan.FromSeconds(1), "test actor");
+        var act = () => sut.WaitForDeleteAsync(entity.Id, TimeSpan.FromSeconds(1), default, "test actor");
 
         //Assert
         await act.Should()

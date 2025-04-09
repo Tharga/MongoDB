@@ -245,14 +245,14 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
         return result.EntityScope;
     }
 
-    public async Task<EntityScope<TEntity, TKey>> WaitForUpdateAsync(TKey id, TimeSpan? timeout = default, string actor = default, CancellationToken cancellationToken = default)
+    public async Task<EntityScope<TEntity, TKey>> WaitForUpdateAsync(TKey id, TimeSpan? lockTimeout = default, TimeSpan? waitTimeout = default, string actor = default, CancellationToken cancellationToken = default)
     {
-        return await EntityScope(id, timeout, actor, cancellationToken, CommitMode.Update);
+        return await EntityScope(id, lockTimeout, waitTimeout, actor, cancellationToken, CommitMode.Update);
     }
 
-    public async Task<EntityScope<TEntity, TKey>> WaitForDeleteAsync(TKey id, TimeSpan? timeout = default, string actor = default, CancellationToken cancellationToken = default)
+    public async Task<EntityScope<TEntity, TKey>> WaitForDeleteAsync(TKey id, TimeSpan? lockTimeout = default, TimeSpan? waitTimeout = default, string actor = default, CancellationToken cancellationToken = default)
     {
-        return await EntityScope(id, timeout, actor, cancellationToken, CommitMode.Delete);
+        return await EntityScope(id, lockTimeout, waitTimeout, actor, cancellationToken, CommitMode.Delete);
     }
 
     public IAsyncEnumerable<EntityLock<TEntity, TKey>> GetLockedAsync(LockMode lockMode)
@@ -332,9 +332,9 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
         return result == 1;
     }
 
-    private async Task<EntityScope<TEntity, TKey>> EntityScope(TKey id, TimeSpan? timeout, string actor, CancellationToken cancellationToken, CommitMode commitMode)
+    private async Task<EntityScope<TEntity, TKey>> EntityScope(TKey id, TimeSpan? lockTimeout, TimeSpan? waitTimeout, string actor, CancellationToken cancellationToken, CommitMode commitMode)
     {
-        var actualTimeout = timeout ?? DefaultTimeout;
+        var actualTimeout = lockTimeout ?? waitTimeout ?? DefaultTimeout;
         var recheckTimeInterval = actualTimeout / 5;
         using var timeoutCts = new CancellationTokenSource(actualTimeout);
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
@@ -343,14 +343,14 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
 
         while (!linkedCts.Token.IsCancellationRequested)
         {
-            var result = await GetForUpdateAsync(Builders<TEntity>.Filter.Eq(x => x.Id, id), timeout, actor, commitMode);
+            var result = await GetForUpdateAsync(Builders<TEntity>.Filter.Eq(x => x.Id, id), lockTimeout ?? DefaultTimeout, actor, commitMode);
             if (!result.ShouldWait) return HandleFinalResult(result);
             WaitHandle.WaitAny(waitHandles, recheckTimeInterval);
         }
 
         if (cancellationToken.IsCancellationRequested) throw new OperationCanceledException("The operation was canceled.");
 
-        var finalCheckResult = await GetForUpdateAsync(Builders<TEntity>.Filter.Eq(x => x.Id, id), timeout, actor, commitMode);
+        var finalCheckResult = await GetForUpdateAsync(Builders<TEntity>.Filter.Eq(x => x.Id, id), lockTimeout ?? DefaultTimeout, actor, commitMode);
         if (!finalCheckResult.ShouldWait) return HandleFinalResult(finalCheckResult);
 
         throw new TimeoutException("No valid entity has been released for update.");

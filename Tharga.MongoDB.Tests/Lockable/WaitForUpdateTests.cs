@@ -54,7 +54,7 @@ public class WaitForUpdateTests : LockableTestTestsBase
         await sut.AddAsync(entity);
 
         //Act
-        var act = () => sut.WaitForUpdateAsync(entity.Id, TimeSpan.FromSeconds(1), "test actor");
+        var act = () => sut.WaitForUpdateAsync(entity.Id, TimeSpan.FromSeconds(1), default, "test actor");
 
         //Assert
         await act.Should()
