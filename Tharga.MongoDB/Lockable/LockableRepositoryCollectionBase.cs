@@ -226,22 +226,32 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
     public async Task<EntityScope<TEntity, TKey>> PickForUpdateAsync(TKey id, TimeSpan? timeout = default, string actor = default)
     {
         var result = await GetForUpdateAsync(Builders<TEntity>.Filter.Eq(x => x.Id, id), timeout, actor, CommitMode.Update);
-        if (!string.IsNullOrEmpty(result.ErrorMessage))
-        {
-            throw new InvalidOperationException(result.ErrorMessage);
-        }
-
+        BuildException(result);
         return result.EntityScope;
+    }
+
+    private static void BuildException((EntityScope<TEntity, TKey> EntityScope, ErrorInfo errorInfo, bool ShouldWait) result)
+    {
+        if (result.errorInfo != null)
+        {
+            switch (result.errorInfo.Type)
+            {
+                case ErrorInfoType.Locked:
+                    throw new LockException(result.errorInfo.Message);
+                case ErrorInfoType.Error:
+                    throw new LockErrorException(result.errorInfo.Message);
+                case ErrorInfoType.Unknown:
+                    throw new UnknownException(result.errorInfo.Message);
+                default:
+                    throw new ArgumentOutOfRangeException();
+            }
+        }
     }
 
     public async Task<EntityScope<TEntity, TKey>> PickForDeleteAsync(TKey id, TimeSpan? timeout = default, string actor = default)
     {
         var result = await GetForUpdateAsync(Builders<TEntity>.Filter.Eq(x => x.Id, id), timeout, actor, CommitMode.Delete);
-        if (!string.IsNullOrEmpty(result.ErrorMessage))
-        {
-            throw new InvalidOperationException(result.ErrorMessage);
-        }
-
+        BuildException(result);
         return result.EntityScope;
     }
 
@@ -355,10 +365,10 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
 
         throw new TimeoutException("No valid entity has been released for update.");
 
-        EntityScope<TEntity, TKey> HandleFinalResult((EntityScope<TEntity, TKey> EntityScope, string ErrorMessage, bool ShouldWait) result2)
+        EntityScope<TEntity, TKey> HandleFinalResult((EntityScope<TEntity, TKey> EntityScope, ErrorInfo errorInfo, bool ShouldWait) result)
         {
-            if (!string.IsNullOrEmpty(result2.ErrorMessage)) throw new InvalidOperationException(result2.ErrorMessage);
-            return result2.EntityScope;
+            BuildException(result);
+            return result.EntityScope;
         }
     }
 
@@ -367,7 +377,7 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
         return $"Use {nameof(PickForUpdateAsync)} to get an update {nameof(EntityScope<TEntity, TKey>)} that can be used for update.";
     }
 
-    private async Task<(EntityScope<TEntity, TKey> EntityScope, string ErrorMessage, bool ShouldWait)> GetForUpdateAsync(FilterDefinition<TEntity> filter, TimeSpan? timeout, string actor, CommitMode commitMode)
+    private async Task<(EntityScope<TEntity, TKey> EntityScope, ErrorInfo errorInfo, bool ShouldWait)> GetForUpdateAsync(FilterDefinition<TEntity> filter, TimeSpan? timeout, string actor, CommitMode commitMode)
     {
         var lockTime = DateTime.UtcNow;
         var lockKey = Guid.NewGuid();
@@ -411,11 +421,23 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
                 {
                     var timeString = doc.Lock == null ? null : $" for {(doc.Lock.ExpireTime ?? (doc.Lock.LockTime + DefaultTimeout)) - DateTime.UtcNow}";
                     var actorString = doc.Lock?.Actor == null ? null : $" by '{doc.Lock.Actor}'";
-                    return (default, $"Entity with id '{doc.Id}' is locked{actorString}{timeString}.", true);
+                    return (default, new ErrorInfo
+                    {
+                        Message = $"Entity with id '{doc.Id}' is locked{actorString}{timeString}.",
+                        Type = ErrorInfoType.Locked
+                    }, true);
                 }
 
-                if (doc.Lock.ExceptionInfo != null) return (default, $"Entity with id '{doc.Id}' has an exception attached.", false);
-                return (default, $"Entity with id '{doc.Id}' has an unknown state.", false);
+                if (doc.Lock.ExceptionInfo != null) return (default, new ErrorInfo
+                {
+                    Message = $"Entity with id '{doc.Id}' has an exception attached.",
+                    Type = ErrorInfoType.Error
+                }, false);
+                return (default, new ErrorInfo
+                {
+                    Message = $"Entity with id '{doc.Id}' has an unknown state.",
+                    Type = ErrorInfoType.Unknown
+                }, false);
             }
             else
             {
@@ -545,8 +567,8 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
             result = await Disk.UpdateOneAsync(entity.Id, update);
         }
 
-        if (result.Before == null) throw new InvalidOperationException("Cannot find entity before release."); //.AddData("context", pipelineContext).AddData("documentId", document.Id);
-        if (result.Before.Lock == null) throw new InvalidOperationException("No lock information for document before release."); //.AddData("context", pipelineContext).AddData("documentId", document.Id);
+        if (result.Before == null) throw new InvalidOperationException("Cannot find entity before release.");
+        if (result.Before.Lock == null) throw new InvalidOperationException("No lock information for document before release.");
 
         var after = await result.GetAfterAsync();
         if (after == null) throw new InvalidOperationException("After is null.");
@@ -576,12 +598,11 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
             var lockInfo = BuildLockInfo(entity, entityLock, exception, false, false);
 
             var update = new UpdateDefinitionBuilder<TEntity>()
-                .Set(x => x.Lock, lockInfo.EntityLock)
-                /*.Set(x => x.UnlockCounter, lockInfo.UnlockCounter)*/;
+                .Set(x => x.Lock, lockInfo.EntityLock);
             var result = await Disk.UpdateOneAsync(entity.Id, update);
 
-            if (result.Before == null) throw new InvalidOperationException("Cannot find entity before release."); //.AddData("context", pipelineContext).AddData("documentId", document.Id);
-            if (result.Before.Lock == null) throw new InvalidOperationException("No lock information for document before release."); //.AddData("context", pipelineContext).AddData("documentId", document.Id);
+            if (result.Before == null) throw new InvalidOperationException("Cannot find entity before release.");
+            if (result.Before.Lock == null) throw new InvalidOperationException("No lock information for document before release.");
 
             var after = await result.GetAfterAsync();
             if (after == null) throw new InvalidOperationException("After is null.");

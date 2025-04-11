@@ -7,9 +7,6 @@ public abstract record LockableEntityBase<TKey> : EntityBase<TKey>
 {
     [BsonIgnoreIfNull]
     internal Lock Lock { get; init; }
-
-    //[BsonIgnoreIfDefault]
-    //internal int UnlockCounter { get; init; }
 }
 
 public abstract record LockableEntityBase : LockableEntityBase<ObjectId>;
