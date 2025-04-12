@@ -114,7 +114,7 @@ public class WaitForUpdateTests : LockableTestTestsBase
 
         //Assert
         await act.Should()
-            .ThrowAsync<InvalidOperationException>()
+            .ThrowAsync<LockErrorException>()
             .WithMessage($"Entity with id '{entity.Id}' has an exception attached.");
         var item = await sut.GetOneAsync(entity.Id);
         item.Should().NotBeNull();

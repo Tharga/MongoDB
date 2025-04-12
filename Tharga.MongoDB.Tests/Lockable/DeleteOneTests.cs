@@ -2,6 +2,7 @@
 using System.Threading.Tasks;
 using FluentAssertions;
 using MongoDB.Bson;
+using Tharga.MongoDB.Lockable;
 using Tharga.MongoDB.Tests.Lockable.Base;
 using Tharga.MongoDB.Tests.Support;
 using Xunit;
@@ -44,7 +45,7 @@ public class DeleteOneTests : LockableTestTestsBase
 
         //Assert
         await act.Should()
-            .ThrowAsync<InvalidOperationException>()
+            .ThrowAsync<LockException>()
             .WithMessage($"Entity with id '{entity.Id}' is locked by 'some actor' for *.");
         (await sut.CountAsync(x => true)).Should().Be(1);
     }
@@ -65,7 +66,7 @@ public class DeleteOneTests : LockableTestTestsBase
 
         //Assert
         await act.Should()
-            .ThrowAsync<InvalidOperationException>()
+            .ThrowAsync<LockErrorException>()
             .WithMessage($"Entity with id '{entity.Id}' has an exception attached.");
         (await sut.CountAsync(x => true)).Should().Be(1);
     }
