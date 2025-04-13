@@ -26,8 +26,10 @@ public interface ILockableRepositoryCollection<TEntity, TKey> : IReadOnlyReposit
 
     IAsyncEnumerable<EntityLock<TEntity, TKey>> GetLockedAsync(LockMode lockMode);
 
-    Task<bool> ReleaseAsync(TKey id, ReleaseMode mode);
+    Task<bool> ReleaseOneAsync(TKey id, ReleaseMode mode);
+    Task<bool> ReleaseManyAsync(ReleaseMode mode);
 
+    Task<long> UpdateManyAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update);
     Task<long> DeleteManyAsync(Expression<Func<TEntity, bool>> predicate);
 
     [Obsolete("Do not use this feature. It overrides the lock-protection.")]

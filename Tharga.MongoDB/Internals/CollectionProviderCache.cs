@@ -10,7 +10,7 @@ internal class CollectionProviderCache : ICollectionProviderCache
     private readonly SemaphoreSlim _lock = new(1, 1);
 
     public TCollection GetCollection<TCollection>(DatabaseContext databaseContext, Func<DatabaseContext, TCollection> loader)
-        where TCollection : IRepositoryCollection
+        where TCollection : IReadOnlyRepositoryCollection
     {
         var key = $"{typeof(TCollection).FullName}.{databaseContext.CollectionName}.{databaseContext.DatabasePart}.{databaseContext.ConfigurationName?.Value}";
 
