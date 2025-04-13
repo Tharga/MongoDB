@@ -4,5 +4,5 @@ namespace Tharga.MongoDB;
 
 public interface ICollectionProviderCache
 {
-    TCollection GetCollection<TCollection>(DatabaseContext databaseContext, Func<DatabaseContext, TCollection> loader) where TCollection : IRepositoryCollection;
+    TCollection GetCollection<TCollection>(DatabaseContext databaseContext, Func<DatabaseContext, TCollection> loader) where TCollection : IReadOnlyRepositoryCollection;
 }

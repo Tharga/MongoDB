@@ -29,7 +29,7 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
     internal override IRepositoryCollection<TEntity, TKey> BaseCollection => Disk;
     private RepositoryCollectionBase<TEntity, TKey> Disk => _disk ??= new GenericDiskRepositoryCollection<TEntity, TKey>(_mongoDbServiceFactory, _databaseContext ?? new DatabaseContext { CollectionName = CollectionName, DatabasePart = DatabasePart, ConfigurationName = ConfigurationName }, _logger, this);
 
-    protected virtual int UnlockCounterLimit { get; init; } = 3;
+    //protected virtual int UnlockCounterLimit { get; init; } = 3;
     protected virtual TimeSpan DefaultTimeout { get; init; } = TimeSpan.FromSeconds(30);
 
     public override IAsyncEnumerable<TEntity> GetAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default)
@@ -109,12 +109,12 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
 
     public IAsyncEnumerable<TEntity> GetUnlockedAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default)
     {
-        return Disk.GetAsync(UnlockedOrExporedFilter.AndAlso(predicate ?? (x => true)), options, cancellationToken);
+        return Disk.GetAsync(UnlockedOrExpiredFilter.AndAlso(predicate ?? (x => true)), options, cancellationToken);
     }
 
     public IAsyncEnumerable<TEntity> GetUnlockedAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default)
     {
-        var baseFilter = Builders<TEntity>.Filter.Where(UnlockedOrExporedFilter);
+        var baseFilter = Builders<TEntity>.Filter.Where(UnlockedOrExpiredFilter);
         var combinedFilter = Builders<TEntity>.Filter.And(baseFilter, filter);
 
         return Disk.GetAsync(combinedFilter, options, cancellationToken);
@@ -187,12 +187,18 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
         throw new NotSupportedException(BuildErrorMessage());
     }
 
-    public override async Task<long> DeleteManyAsync(Expression<Func<TEntity, bool>> predicate)
+    public async Task<long> UpdateManyAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update)
     {
-        return await Disk.DeleteManyAsync(UnlockedOrExporedFilter.AndAlso(predicate));
+        var filters = new FilterDefinitionBuilder<TEntity>().And(UnlockedOrExpiredFilter, filter);
+        return await Disk.UpdateAsync(filters, update);
     }
 
-    private Expression<Func<TEntity, bool>> UnlockedOrExporedFilter
+    public override async Task<long> DeleteManyAsync(Expression<Func<TEntity, bool>> predicate)
+    {
+        return await Disk.DeleteManyAsync(UnlockedOrExpiredFilter.AndAlso(predicate));
+    }
+
+    private Expression<Func<TEntity, bool>> UnlockedOrExpiredFilter
     {
         get
         {
@@ -308,28 +314,44 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
     /// <param name="id"></param>
     /// <param name="mode"></param>
     /// <returns></returns>
-    public async Task<bool> ReleaseAsync(TKey id, ReleaseMode mode)
+    public async Task<bool> ReleaseOneAsync(TKey id, ReleaseMode mode)
+    {
+        var filter = Builders<TEntity>.Filter.And(Builders<TEntity>.Filter.Eq(x => x.Id, id), BuildReleaseFilter(mode));
+        var update = new UpdateDefinitionBuilder<TEntity>().Set(x => x.Lock, null);
+        var result = await Disk.UpdateAsync(filter, update);
+        return result == 1;
+    }
+
+    public async Task<bool> ReleaseManyAsync(ReleaseMode mode)
+    {
+        var filter = BuildReleaseFilter(mode);
+        var update = new UpdateDefinitionBuilder<TEntity>().Set(x => x.Lock, null);
+        var result = await Disk.UpdateAsync(filter, update);
+        return result == 1;
+    }
+
+    private static FilterDefinition<TEntity> BuildReleaseFilter(ReleaseMode mode)
     {
         FilterDefinition<TEntity> filter;
         switch (mode)
         {
             case ReleaseMode.ExceptionOnly:
                 filter = Builders<TEntity>.Filter.And(
-                    Builders<TEntity>.Filter.Eq(x => x.Id, id),
+                    //Builders<TEntity>.Filter.Eq(x => x.Id, id),
                     Builders<TEntity>.Filter.Ne(x => x.Lock, null),
                     Builders<TEntity>.Filter.Ne(x => x.Lock.ExceptionInfo, null)
                 );
                 break;
             case ReleaseMode.LockOnly:
                 filter = Builders<TEntity>.Filter.And(
-                    Builders<TEntity>.Filter.Eq(x => x.Id, id),
+                    //Builders<TEntity>.Filter.Eq(x => x.Id, id),
                     Builders<TEntity>.Filter.Ne(x => x.Lock, null),
                     Builders<TEntity>.Filter.Eq(x => x.Lock.ExceptionInfo, null)
                 );
                 break;
             case ReleaseMode.Any:
                 filter = Builders<TEntity>.Filter.And(
-                    Builders<TEntity>.Filter.Eq(x => x.Id, id),
+                    //Builders<TEntity>.Filter.Eq(x => x.Id, id),
                     Builders<TEntity>.Filter.Ne(x => x.Lock, null)
                 );
                 break;
@@ -337,9 +359,7 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
                 throw new ArgumentOutOfRangeException(nameof(mode), mode, null);
         }
 
-        var update = new UpdateDefinitionBuilder<TEntity>().Set(x => x.Lock, null);
-        var result = await Disk.UpdateAsync(filter, update);
-        return result == 1;
+        return filter;
     }
 
     private async Task<EntityScope<TEntity, TKey>> EntityScope(TKey id, TimeSpan? lockTimeout, TimeSpan? waitTimeout, string actor, CancellationToken cancellationToken, CommitMode commitMode)

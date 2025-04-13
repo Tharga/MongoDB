@@ -50,7 +50,7 @@ internal class CollectionProvider : ICollectionProvider
     }
 
     public TCollection GetCollection<TCollection, TEntity, TKey>(DatabaseContext databaseContext)
-        where TCollection : IRepositoryCollection<TEntity, TKey>
+        where TCollection : IReadOnlyRepositoryCollection<TEntity, TKey>
         where TEntity : EntityBase<TKey>
     {
         return _collectionProviderCache.GetCollection(databaseContext, dc =>
