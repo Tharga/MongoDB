@@ -28,7 +28,7 @@ public class ReleaseAsyncTests : LockableTestTestsBase
         await sut.AddAsync(lockedEntity);
 
         //Act
-        var result = await sut.ReleaseAsync(lockedEntity.Id, mode);
+        var result = await sut.ReleaseOneAsync(lockedEntity.Id, mode);
 
         //Assert
         result.Should().Be(locked == 0);
@@ -53,7 +53,7 @@ public class ReleaseAsyncTests : LockableTestTestsBase
         await sut.AddAsync(lockedEntity);
 
         //Act
-        var result = await sut.ReleaseAsync(lockedEntity.Id, mode);
+        var result = await sut.ReleaseOneAsync(lockedEntity.Id, mode);
 
         //Assert
         result.Should().Be(locked == 0);
@@ -79,7 +79,7 @@ public class ReleaseAsyncTests : LockableTestTestsBase
         await Task.Delay(500);
 
         //Act
-        var result = await sut.ReleaseAsync(lockedEntity.Id, mode);
+        var result = await sut.ReleaseOneAsync(lockedEntity.Id, mode);
 
         //Assert
         result.Should().Be(mode != ReleaseMode.ExceptionOnly);
@@ -104,7 +104,7 @@ public class ReleaseAsyncTests : LockableTestTestsBase
         await sut.AddAsync(lockedEntity);
 
         //Act
-        var result = await sut.ReleaseAsync(lockedEntity.Id, mode);
+        var result = await sut.ReleaseOneAsync(lockedEntity.Id, mode);
 
         //Assert
         result.Should().BeFalse();

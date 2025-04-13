@@ -87,7 +87,9 @@ internal class CollectionProvider : ICollectionProvider
         });
     }
 
-    public TCollection GetCollection<TCollection, TEntity>(DatabaseContext databaseContext = null) where TCollection : IRepositoryCollection<TEntity, ObjectId> where TEntity : EntityBase
+    public TCollection GetCollection<TCollection, TEntity>(DatabaseContext databaseContext = null)
+        where TCollection : IReadOnlyRepositoryCollection<TEntity, ObjectId>
+        where TEntity : EntityBase
     {
         return GetCollection<TCollection, TEntity, ObjectId>(databaseContext);
     }
