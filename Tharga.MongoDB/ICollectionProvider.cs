@@ -33,7 +33,7 @@ public interface ICollectionProvider
     /// <param name="databaseContext"></param>
     /// <returns></returns>
     TCollection GetCollection<TCollection, TEntity, TKey>(DatabaseContext databaseContext = null)
-        where TCollection : IRepositoryCollection<TEntity, TKey>
+        where TCollection : IReadOnlyRepositoryCollection<TEntity, TKey>
         where TEntity : EntityBase<TKey>;
 
     /// <summary>
@@ -44,6 +44,6 @@ public interface ICollectionProvider
     /// <param name="databaseContext"></param>
     /// <returns></returns>
     TCollection GetCollection<TCollection, TEntity>(DatabaseContext databaseContext = null)
-        where TCollection : IRepositoryCollection<TEntity, ObjectId>
+        where TCollection : IReadOnlyRepositoryCollection<TEntity, ObjectId>
         where TEntity : EntityBase;
 }
