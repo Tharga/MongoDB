@@ -15,8 +15,8 @@ public class MySimpleBufferRepo : BufferRepositoryCollectionBase<MyBaseEntity, O
     {
     }
 
-    public override IEnumerable<Type> Types => new[] { typeof(MyEntity), typeof(MyOtherEntity) };
-    public override IEnumerable<CreateIndexModel<MyBaseEntity>> Indices => new[] { new CreateIndexModel<MyBaseEntity>(Builders<MyBaseEntity>.IndexKeys.Ascending(x => x.Value), new CreateIndexOptions { Unique = false, Name = "FarmId" }) };
+    public override IEnumerable<Type> Types => [typeof(MyEntity), typeof(MyOtherEntity)];
+    public override IEnumerable<CreateIndexModel<MyBaseEntity>> Indices => [new(Builders<MyBaseEntity>.IndexKeys.Ascending(x => x.Value), new CreateIndexOptions { Unique = false, Name = "FarmId" })];
     public override bool AutoClean => true;
     public override bool CleanOnStartup => true;
 }
