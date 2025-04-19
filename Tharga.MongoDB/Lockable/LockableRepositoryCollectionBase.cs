@@ -28,8 +28,18 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
 
     internal override IRepositoryCollection<TEntity, TKey> BaseCollection => Disk;
     private RepositoryCollectionBase<TEntity, TKey> Disk => _disk ??= new GenericDiskRepositoryCollection<TEntity, TKey>(_mongoDbServiceFactory, _databaseContext ?? new DatabaseContext { CollectionName = CollectionName, DatabasePart = DatabasePart, ConfigurationName = ConfigurationName }, _logger, this);
+    internal override IEnumerable<CreateIndexModel<TEntity>> CoreIndices =>
+    [
+        new(Builders<TEntity>.IndexKeys.Ascending(x => x.Lock), new CreateIndexOptions { Name = nameof(LockableEntityBase.Lock) }),
+        new(
+            Builders<TEntity>.IndexKeys
+                .Ascending(x => x.Lock.ExceptionInfo)
+                .Ascending(x => x.Lock.ExpireTime)
+                .Ascending(x => x.Lock.LockTime),
+            new CreateIndexOptions { Name = "LockStatus" }
+        )
+    ];
 
-    //protected virtual int UnlockCounterLimit { get; init; } = 3;
     protected virtual TimeSpan DefaultTimeout { get; init; } = TimeSpan.FromSeconds(30);
 
     public override IAsyncEnumerable<TEntity> GetAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default)
@@ -337,21 +347,18 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
         {
             case ReleaseMode.ExceptionOnly:
                 filter = Builders<TEntity>.Filter.And(
-                    //Builders<TEntity>.Filter.Eq(x => x.Id, id),
                     Builders<TEntity>.Filter.Ne(x => x.Lock, null),
                     Builders<TEntity>.Filter.Ne(x => x.Lock.ExceptionInfo, null)
                 );
                 break;
             case ReleaseMode.LockOnly:
                 filter = Builders<TEntity>.Filter.And(
-                    //Builders<TEntity>.Filter.Eq(x => x.Id, id),
                     Builders<TEntity>.Filter.Ne(x => x.Lock, null),
                     Builders<TEntity>.Filter.Eq(x => x.Lock.ExceptionInfo, null)
                 );
                 break;
             case ReleaseMode.Any:
                 filter = Builders<TEntity>.Filter.And(
-                    //Builders<TEntity>.Filter.Eq(x => x.Id, id),
                     Builders<TEntity>.Filter.Ne(x => x.Lock, null)
                 );
                 break;
