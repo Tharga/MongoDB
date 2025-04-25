@@ -593,6 +593,8 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 
     private async Task<EntityChangeResult<TEntity>> ReplaceOneWithCheckAsync(TEntity entity, FilterDefinition<TEntity> filter, OneOption<TEntity> options)
     {
+        if (entity == null) throw new ArgumentNullException(nameof(entity));
+
         return await Execute(nameof(ReplaceOneAsync), async () =>
         {
             var sort = options?.Sort;
@@ -617,11 +619,12 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                     throw new ArgumentOutOfRangeException();
             }
 
-            if (!item.Id.Equals(entity.Id)) throw new InvalidOperationException("Entity not covered by filter.");
-            filter = Builders<TEntity>.Filter.Eq(x => x.Id, entity.Id);
+            if (item == null) return new EntityChangeResult<TEntity>(default, (TEntity)default);
 
+            filter = Builders<TEntity>.Filter.Eq(x => x.Id, item.Id);
             var before = await Collection.FindOneAndReplaceAsync(filter, entity);
             return new EntityChangeResult<TEntity>(before, entity);
+
         }, true);
     }
 
