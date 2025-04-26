@@ -332,12 +332,12 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
         return result;
     }
 
-    public async Task<bool> ReleaseManyAsync(ReleaseMode mode)
+    public async Task<long> ReleaseManyAsync(ReleaseMode mode)
     {
         var filter = BuildReleaseFilter(mode);
         var update = new UpdateDefinitionBuilder<TEntity>().Set(x => x.Lock, null);
         var result = await Disk.UpdateAsync(filter, update);
-        return result == 1;
+        return result;
     }
 
     private static FilterDefinition<TEntity> BuildReleaseFilter(ReleaseMode mode)
