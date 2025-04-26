@@ -11,6 +11,9 @@ namespace Tharga.MongoDB.Lockable;
 public interface ILockableRepositoryCollection<TEntity, TKey> : IReadOnlyRepositoryCollection<TEntity, TKey>
     where TEntity : LockableEntityBase<TKey>
 {
+    Expression<Func<TEntity, bool>> UnlockedOrExpiredFilter { get; }
+    Expression<Func<TEntity, bool>> LockedOrExceptionFilter { get; }
+
     IAsyncEnumerable<TEntity> GetUnlockedAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default);
     IAsyncEnumerable<TEntity> GetUnlockedAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default);
 
@@ -24,16 +27,14 @@ public interface ILockableRepositoryCollection<TEntity, TKey> : IReadOnlyReposit
     Task<EntityScope<TEntity, TKey>> WaitForUpdateAsync(TKey id, TimeSpan? lockTimeout = default, TimeSpan? waitTimeout = default, string actor = default, Func<CallbackResult<TEntity>, Task> completed = default, CancellationToken cancellationToken = default);
     Task<EntityScope<TEntity, TKey>> WaitForDeleteAsync(TKey id, TimeSpan? lockTimeout = default, TimeSpan? waitTimeout = default, string actor = default, Func<CallbackResult<TEntity>, Task> completed = default, CancellationToken cancellationToken = default);
 
-    IAsyncEnumerable<EntityLock<TEntity, TKey>> GetLockedAsync(LockMode lockMode);
+    IAsyncEnumerable<EntityLock<TEntity, TKey>> GetLockedAsync(LockMode lockMode, FilterDefinition<TEntity> filter = default, Options<TEntity> options = null, CancellationToken cancellationToken = default);
+    IAsyncEnumerable<EntityLock<TEntity, TKey>> GetExpiredAsync(FilterDefinition<TEntity> filter = default, Options<TEntity> options = null, CancellationToken cancellationToken = default);
 
     Task<EntityChangeResult<TEntity>> ReleaseOneAsync(TKey id, ReleaseMode mode);
     Task<bool> ReleaseManyAsync(ReleaseMode mode);
 
-    Task<long> UpdateManyAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update);
+    Task<long> UpdateAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update);
     Task<long> DeleteManyAsync(Expression<Func<TEntity, bool>> predicate);
-
-    [Obsolete("Do not use this feature. It overrides the lock-protection.")]
-    IMongoCollection<TEntity> GetCollection();
 }
 
 public interface ILockableRepositoryCollection<TEntity> : ILockableRepositoryCollection<TEntity, ObjectId>

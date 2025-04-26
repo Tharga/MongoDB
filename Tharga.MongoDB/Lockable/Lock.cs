@@ -7,9 +7,7 @@ public record Lock
 {
     public Guid LockKey { get; internal init; }
     public DateTime LockTime { get; internal init; }
-
-    [BsonIgnoreIfDefault]
-    public DateTime? ExpireTime { get; internal init; }
+    public DateTime ExpireTime { get; internal init; }
 
     [BsonIgnoreIfDefault]
     public string Actor { get; internal init; }
