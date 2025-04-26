@@ -105,7 +105,13 @@ public class WaitForUpdateTests : LockableTestTestsBase
         var entity = new LockableTestEntity
         {
             Id = ObjectId.GenerateNewId(),
-            Lock = new Lock { ExceptionInfo = new ExceptionInfo() }
+            Lock = new Lock
+            {
+                LockKey = Guid.NewGuid(),
+                LockTime = DateTime.UtcNow,
+                ExceptionInfo = new ExceptionInfo(),
+                ExpireTime = DateTime.UtcNow.AddSeconds(30)
+            }
         };
         await sut.AddAsync(entity);
 
@@ -150,7 +156,12 @@ public class WaitForUpdateTests : LockableTestTestsBase
         {
             Id = ObjectId.GenerateNewId(),
             Count = 1,
-            Lock = new Lock { ExpireTime = DateTime.UtcNow }
+            Lock = new Lock
+            {
+                LockKey = Guid.NewGuid(),
+                LockTime = DateTime.UtcNow,
+                ExpireTime = DateTime.UtcNow
+            }
         };
         await sut.AddAsync(entity);
 

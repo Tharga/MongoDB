@@ -49,6 +49,7 @@ public class PickForDeleteTests : LockableTestTestsBase
                 LockKey = Guid.NewGuid(),
                 LockTime = DateTime.UtcNow,
                 Actor = "some actor",
+                ExpireTime = DateTime.UtcNow.AddSeconds(30)
             }
         };
         await sut.AddAsync(entity);
@@ -75,7 +76,13 @@ public class PickForDeleteTests : LockableTestTestsBase
         var entity = new LockableTestEntity
         {
             Id = ObjectId.GenerateNewId(),
-            Lock = new Lock { ExceptionInfo = new ExceptionInfo() }
+            Lock = new Lock
+            {
+                LockKey = Guid.NewGuid(),
+                LockTime = DateTime.UtcNow,
+                ExpireTime = DateTime.UtcNow.AddSeconds(30),
+                ExceptionInfo = new ExceptionInfo(),
+            }
         };
         await sut.AddAsync(entity);
 
@@ -120,7 +127,12 @@ public class PickForDeleteTests : LockableTestTestsBase
         {
             Id = ObjectId.GenerateNewId(),
             Count = 1,
-            Lock = new Lock { ExpireTime = DateTime.UtcNow }
+            Lock = new Lock
+            {
+                LockKey = Guid.NewGuid(),
+                LockTime = DateTime.UtcNow,
+                ExpireTime = DateTime.UtcNow
+            }
         };
         await sut.AddAsync(entity);
 

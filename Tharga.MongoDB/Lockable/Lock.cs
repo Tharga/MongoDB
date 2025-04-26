@@ -5,13 +5,17 @@ namespace Tharga.MongoDB.Lockable;
 
 public record Lock
 {
-    public Guid LockKey { get; internal init; }
-    public DateTime LockTime { get; internal init; }
-    public DateTime ExpireTime { get; internal init; }
+    internal Lock()
+    {
+    }
+
+    public required Guid LockKey { get; init; }
+    public required DateTime LockTime { get; init; }
+    public required DateTime ExpireTime { get; init; }
 
     [BsonIgnoreIfDefault]
-    public string Actor { get; internal init; }
+    public string Actor { get; init; }
 
     [BsonIgnoreIfDefault]
-    public ExceptionInfo ExceptionInfo { get; internal init; }
+    public ExceptionInfo ExceptionInfo { get; init; }
 }
