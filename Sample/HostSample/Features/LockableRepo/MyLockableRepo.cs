@@ -49,7 +49,8 @@ public class MyLockableRepo : IMyLockableRepo
 
     public async Task<bool> UnlockAsync(ObjectId id)
     {
-        return await _collection.ReleaseOneAsync(id, ReleaseMode.Any);
+        await _collection.ReleaseOneAsync(id, ReleaseMode.Any);
+        return true;
     }
 
     public Task<long> DeleteAllAsync()

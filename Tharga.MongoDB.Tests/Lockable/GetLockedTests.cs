@@ -47,7 +47,7 @@ public class GetLockedTests : LockableTestTestsBase
         await sut.PickForUpdateAsync(lockableTestEntity.Id, TimeSpan.Zero);
 
         //Act
-        var items = await sut.GetLockedAsync(LockMode.Expired).ToArrayAsync();
+        var items = await sut.GetExpiredAsync().ToArrayAsync();
 
         //Assert
         items.Length.Should().Be(1);

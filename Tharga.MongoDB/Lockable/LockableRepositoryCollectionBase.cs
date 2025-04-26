@@ -263,7 +263,7 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
         return await EntityScope(id, lockTimeout, waitTimeout, actor, cancellationToken, CommitMode.Delete, completed);
     }
 
-    public IAsyncEnumerable<EntityLock<TEntity, TKey>> GetLockedAsync(LockMode lockMode, FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default)
+    public IAsyncEnumerable<EntityLock<TEntity, TKey>> GetLockedAsync(LockMode lockMode, FilterDefinition<TEntity> filter = default, Options<TEntity> options = null, CancellationToken cancellationToken = default)
     {
         var now = DateTime.UtcNow;
 
@@ -409,7 +409,10 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
 
     private async Task<(EntityScope<TEntity, TKey> EntityScope, ErrorInfo errorInfo, bool ShouldWait)> GetForUpdateAsync(FilterDefinition<TEntity> filter, TimeSpan? timeout, string actor, CommitMode commitMode, Func<CallbackResult<TEntity>, Task> completed)
     {
-        var lockTime = DateTime.UtcNow;
+        var defaultTimeout = timeout ?? DefaultTimeout;
+        if (defaultTimeout.Ticks < 0) throw new ArgumentException($"{nameof(timeout)} cannot be less than zero. Provided or default value is {defaultTimeout}.");
+
+        var now = DateTime.UtcNow;
         var lockKey = Guid.NewGuid();
         actor = actor.NullIfEmpty();
 
@@ -421,17 +424,15 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
             filter,
             Builders<TEntity>.Filter.Ne(x => x.Lock, null),
             Builders<TEntity>.Filter.Eq(x => x.Lock.ExceptionInfo, null),
-            Builders<TEntity>.Filter.Lte(x => x.Lock.ExpireTime, lockTime)
+            Builders<TEntity>.Filter.Lte(x => x.Lock.ExpireTime, now)
         );
         var matchFilter = Builders<TEntity>.Filter.Or(unlockedFilter, expiredLockFilter);
 
-        var defaultTimeout = timeout ?? DefaultTimeout;
-        var hrs = defaultTimeout.TotalHours;
         var entityLock = new Lock
         {
             LockKey = lockKey,
-            LockTime = lockTime,
-            ExpireTime = lockTime.Add(defaultTimeout),
+            LockTime = now,
+            ExpireTime = now.Add(defaultTimeout),
             Actor = actor,
             ExceptionInfo = default,
         };
@@ -452,7 +453,7 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
                 if (doc.Lock?.ExceptionInfo == null)
                 {
                     //var timeString = doc.Lock == null ? null : $" for {(doc.Lock.ExpireTime ?? (doc.Lock.LockTime + DefaultTimeout)) - DateTime.UtcNow}";
-                    var timeString = doc.Lock == null ? null : $" for {doc.Lock.ExpireTime - DateTime.UtcNow}";
+                    var timeString = doc.Lock == null ? null : $" for {doc.Lock.ExpireTime - now}";
                     var actorString = doc.Lock?.Actor == null ? null : $" by '{doc.Lock.Actor}'";
                     return (default, new ErrorInfo
                     {
