@@ -143,6 +143,31 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
         }
     }
 
+    public Expression<Func<TEntity, bool>> ExceptionFilter
+    {
+        get
+        {
+            Expression<Func<TEntity, bool>> expression = x =>
+                x.Lock != null
+                && x.Lock.ExceptionInfo != null;
+
+            return expression;
+        }
+    }
+
+    public Expression<Func<TEntity, bool>> LockedFilter
+    {
+        get
+        {
+            var now = DateTime.UtcNow;
+            Expression<Func<TEntity, bool>> expression = x =>
+                x.Lock != null
+                && x.Lock.ExpireTime > now;
+
+            return expression;
+        }
+    }
+
     public IAsyncEnumerable<TEntity> GetUnlockedAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default)
     {
         return Disk.GetAsync(UnlockedOrExpiredFilter.AndAlso(predicate ?? (x => true)), options, cancellationToken);

@@ -13,6 +13,8 @@ public interface ILockableRepositoryCollection<TEntity, TKey> : IReadOnlyReposit
 {
     Expression<Func<TEntity, bool>> UnlockedOrExpiredFilter { get; }
     Expression<Func<TEntity, bool>> LockedOrExceptionFilter { get; }
+    Expression<Func<TEntity, bool>> ExceptionFilter { get; }
+    Expression<Func<TEntity, bool>> LockedFilter { get; }
 
     IAsyncEnumerable<TEntity> GetUnlockedAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default);
     IAsyncEnumerable<TEntity> GetUnlockedAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default);
