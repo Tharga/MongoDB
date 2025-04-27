@@ -21,11 +21,11 @@ public interface ILockableRepositoryCollection<TEntity, TKey> : IReadOnlyReposit
     Task<bool> TryAddAsync(TEntity entity);
     Task AddManyAsync(IEnumerable<TEntity> entities);
 
-    Task<EntityScope<TEntity, TKey>> PickForUpdateAsync(TKey id, TimeSpan? timeout = default, string actor = default, Func<CallbackResult<TEntity>, Task> completed = default);
-    Task<EntityScope<TEntity, TKey>> PickForDeleteAsync(TKey id, TimeSpan? timeout = default, string actor = default, Func<CallbackResult<TEntity>, Task> completed = default);
+    Task<EntityScope<TEntity, TKey>> PickForUpdateAsync(TKey id, TimeSpan? timeout = default, string actor = default, Func<CallbackResult<TEntity>, Task> completeAction = default);
+    Task<EntityScope<TEntity, TKey>> PickForDeleteAsync(TKey id, TimeSpan? timeout = default, string actor = default, Func<CallbackResult<TEntity>, Task> completeAction = default);
 
-    Task<EntityScope<TEntity, TKey>> WaitForUpdateAsync(TKey id, TimeSpan? lockTimeout = default, TimeSpan? waitTimeout = default, string actor = default, Func<CallbackResult<TEntity>, Task> completed = default, CancellationToken cancellationToken = default);
-    Task<EntityScope<TEntity, TKey>> WaitForDeleteAsync(TKey id, TimeSpan? lockTimeout = default, TimeSpan? waitTimeout = default, string actor = default, Func<CallbackResult<TEntity>, Task> completed = default, CancellationToken cancellationToken = default);
+    Task<EntityScope<TEntity, TKey>> WaitForUpdateAsync(TKey id, TimeSpan? lockTimeout = default, TimeSpan? waitTimeout = default, string actor = default, Func<CallbackResult<TEntity>, Task> completeAction = default, CancellationToken cancellationToken = default);
+    Task<EntityScope<TEntity, TKey>> WaitForDeleteAsync(TKey id, TimeSpan? lockTimeout = default, TimeSpan? waitTimeout = default, string actor = default, Func<CallbackResult<TEntity>, Task> completeAction = default, CancellationToken cancellationToken = default);
 
     IAsyncEnumerable<EntityLock<TEntity, TKey>> GetLockedAsync(LockMode lockMode, FilterDefinition<TEntity> filter = default, Options<TEntity> options = null, CancellationToken cancellationToken = default);
     IAsyncEnumerable<EntityLock<TEntity, TKey>> GetExpiredAsync(FilterDefinition<TEntity> filter = default, Options<TEntity> options = null, CancellationToken cancellationToken = default);
