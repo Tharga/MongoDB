@@ -13,6 +13,8 @@ public interface ILockableRepositoryCollection<TEntity, TKey> : IReadOnlyReposit
 {
     Expression<Func<TEntity, bool>> UnlockedOrExpiredFilter { get; }
     Expression<Func<TEntity, bool>> LockedOrExceptionFilter { get; }
+    Expression<Func<TEntity, bool>> ExceptionFilter { get; }
+    Expression<Func<TEntity, bool>> LockedFilter { get; }
 
     IAsyncEnumerable<TEntity> GetUnlockedAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default);
     IAsyncEnumerable<TEntity> GetUnlockedAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default);
@@ -35,6 +37,7 @@ public interface ILockableRepositoryCollection<TEntity, TKey> : IReadOnlyReposit
 
     Task<long> UpdateAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update);
     Task<long> DeleteManyAsync(Expression<Func<TEntity, bool>> predicate);
+    Task<long> DeleteManyAsync(DeleteMode deleteMode, Expression<Func<TEntity, bool>> predicate = default);
 }
 
 public interface ILockableRepositoryCollection<TEntity> : ILockableRepositoryCollection<TEntity, ObjectId>

@@ -143,6 +143,31 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
         }
     }
 
+    public Expression<Func<TEntity, bool>> ExceptionFilter
+    {
+        get
+        {
+            Expression<Func<TEntity, bool>> expression = x =>
+                x.Lock != null
+                && x.Lock.ExceptionInfo != null;
+
+            return expression;
+        }
+    }
+
+    public Expression<Func<TEntity, bool>> LockedFilter
+    {
+        get
+        {
+            var now = DateTime.UtcNow;
+            Expression<Func<TEntity, bool>> expression = x =>
+                x.Lock != null
+                && x.Lock.ExpireTime > now;
+
+            return expression;
+        }
+    }
+
     public IAsyncEnumerable<TEntity> GetUnlockedAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default)
     {
         return Disk.GetAsync(UnlockedOrExpiredFilter.AndAlso(predicate ?? (x => true)), options, cancellationToken);
@@ -227,6 +252,17 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
     public override async Task<long> DeleteManyAsync(Expression<Func<TEntity, bool>> predicate)
     {
         return await Disk.DeleteManyAsync(UnlockedOrExpiredFilter.AndAlso(predicate));
+    }
+
+    public async Task<long> DeleteManyAsync(DeleteMode deleteMode, Expression<Func<TEntity, bool>> predicate = default)
+    {
+        switch (deleteMode)
+        {
+            case DeleteMode.Exception:
+                return await Disk.DeleteManyAsync(ExceptionFilter.AndAlso(predicate ?? (_ => true)));
+            default:
+                throw new ArgumentOutOfRangeException(nameof(deleteMode), deleteMode, null);
+        }
     }
 
     public override IMongoCollection<TEntity> GetCollection()
@@ -515,8 +551,7 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
                             Type = e.GetType().Name,
                             Message = $"Failed to delete entity. {e.Message}",
                             StackTrace = e.StackTrace,
-                        },
-                        //ExpireTime = DateTime.MaxValue
+                        }
                     }
                 };
                 _ = Disk.ReplaceOneAsync(errorEntity);
@@ -550,8 +585,7 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
                             Type = e.GetType().Name,
                             Message = $"Failed to release lock. {e.Message}",
                             StackTrace = e.StackTrace,
-                        },
-                        //ExpireTime = DateTime.MaxValue
+                        }
                     }
                 };
                 _ = Disk.ReplaceOneAsync(errorEntity);
