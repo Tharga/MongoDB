@@ -254,6 +254,17 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
         return await Disk.DeleteManyAsync(UnlockedOrExpiredFilter.AndAlso(predicate));
     }
 
+    public async Task<long> DeleteManyAsync(DeleteMode deleteMode, Expression<Func<TEntity, bool>> predicate = default)
+    {
+        switch (deleteMode)
+        {
+            case DeleteMode.Exception:
+                return await Disk.DeleteManyAsync(ExceptionFilter.AndAlso(predicate ?? (_ => true)));
+            default:
+                throw new ArgumentOutOfRangeException(nameof(deleteMode), deleteMode, null);
+        }
+    }
+
     public override IMongoCollection<TEntity> GetCollection()
     {
         return Disk.GetCollection();
@@ -540,8 +551,7 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
                             Type = e.GetType().Name,
                             Message = $"Failed to delete entity. {e.Message}",
                             StackTrace = e.StackTrace,
-                        },
-                        //ExpireTime = DateTime.MaxValue
+                        }
                     }
                 };
                 _ = Disk.ReplaceOneAsync(errorEntity);
@@ -575,8 +585,7 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
                             Type = e.GetType().Name,
                             Message = $"Failed to release lock. {e.Message}",
                             StackTrace = e.StackTrace,
-                        },
-                        //ExpireTime = DateTime.MaxValue
+                        }
                     }
                 };
                 _ = Disk.ReplaceOneAsync(errorEntity);

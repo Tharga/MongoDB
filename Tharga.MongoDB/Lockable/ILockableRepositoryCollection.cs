@@ -37,6 +37,7 @@ public interface ILockableRepositoryCollection<TEntity, TKey> : IReadOnlyReposit
 
     Task<long> UpdateAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update);
     Task<long> DeleteManyAsync(Expression<Func<TEntity, bool>> predicate);
+    Task<long> DeleteManyAsync(DeleteMode deleteMode, Expression<Func<TEntity, bool>> predicate = default);
 }
 
 public interface ILockableRepositoryCollection<TEntity> : ILockableRepositoryCollection<TEntity, ObjectId>
