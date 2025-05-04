@@ -3,22 +3,21 @@ using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
 using MongoDB.Bson;
+using MongoDB.Driver;
 using Tharga.MongoDB.Tests.Lockable.Base;
 using Tharga.MongoDB.Tests.Support;
 using Xunit;
 
 namespace Tharga.MongoDB.Tests.Lockable;
 
-[Collection("Sequential")]
-[CollectionDefinition("Sequential", DisableParallelization = true)]
-public class DeleteManyTests : LockableTestBase
+public class UpdateManyTests : LockableTestBase
 {
     [Theory]
     [Trait("Category", "Database")]
     [InlineData(0)]
     [InlineData(1)]
     [InlineData(2)]
-    public async Task DeleteManyAsync(int count)
+    public async Task UpdateManyAsync(int count)
     {
         //Arrange
         var sut = new LockableTestRepositoryCollection(_mongoDbServiceFactory);
@@ -27,78 +26,89 @@ public class DeleteManyTests : LockableTestBase
             await sut.AddAsync(new LockableTestEntity { Id = ObjectId.GenerateNewId() });
         }
 
+        var filter = new FilterDefinitionBuilder<LockableTestEntity>().Empty;
+        var update = new UpdateDefinitionBuilder<LockableTestEntity>().Set(x => x.Count, 1);
+
         //Act
-        var result = await sut.DeleteManyAsync(x => true);
+        var result = await sut.UpdateAsync(filter, update);
 
         //Assert
         result.Should().Be(count);
-
         var stored = await sut.GetAsync(x => true).ToArrayAsync();
-        stored.Should().HaveCount(0);
+        stored.Sum(x => x.Count).Should().Be(count);
     }
 
     [Fact]
     [Trait("Category", "Database")]
-    public async Task DeleteWhenOneIsLocked()
+    public async Task UpdateWhenOneIsLocked()
     {
         //Arrange
         var sut = new LockableTestRepositoryCollection(_mongoDbServiceFactory);
         var generateNewId = ObjectId.GenerateNewId();
         await sut.AddAsync(new LockableTestEntity { Id = generateNewId });
         await sut.AddAsync(new LockableTestEntity { Id = ObjectId.GenerateNewId() });
-        await sut.PickForUpdateAsync(generateNewId);
-
-        //Act
-        var result = await sut.DeleteManyAsync(x => true);
-
-        //Assert
-        result.Should().Be(1);
-
-        var stored = await sut.GetAsync(x => true).ToArrayAsync();
-        stored.Should().HaveCount(1);
-    }
-
-    [Fact]
-    [Trait("Category", "Database")]
-    public async Task DeleteWhenOneIsExpired()
-    {
-        //Arrange
-        var sut = new LockableTestRepositoryCollection(_mongoDbServiceFactory);
-        var generateNewId = ObjectId.GenerateNewId();
-        await sut.AddAsync(new LockableTestEntity { Id = generateNewId });
         await sut.AddAsync(new LockableTestEntity { Id = ObjectId.GenerateNewId() });
-        await sut.PickForUpdateAsync(generateNewId, TimeSpan.Zero);
+        await using var scope = await sut.PickForUpdateAsync(generateNewId);
+
+        var filter = new FilterDefinitionBuilder<LockableTestEntity>().Empty;
+        var update = new UpdateDefinitionBuilder<LockableTestEntity>().Set(x => x.Count, 1);
 
         //Act
-        var result = await sut.DeleteManyAsync(x => true);
+        var result = await sut.UpdateAsync(filter, update);
 
         //Assert
         result.Should().Be(2);
-
         var stored = await sut.GetAsync(x => true).ToArrayAsync();
-        stored.Should().HaveCount(0);
+        stored.Sum(x => x.Count).Should().Be(2);
     }
 
     [Fact]
     [Trait("Category", "Database")]
-    public async Task DeleteWhenOneHasError()
+    public async Task UpdateWhenOneIsExpired()
     {
         //Arrange
         var sut = new LockableTestRepositoryCollection(_mongoDbServiceFactory);
         var generateNewId = ObjectId.GenerateNewId();
         await sut.AddAsync(new LockableTestEntity { Id = generateNewId });
         await sut.AddAsync(new LockableTestEntity { Id = ObjectId.GenerateNewId() });
-        var scoped = await sut.PickForUpdateAsync(generateNewId, TimeSpan.FromSeconds(1));
-        await scoped.SetErrorStateAsync(new Exception("some issue"));
-        await Task.Delay(TimeSpan.FromSeconds(1));
+        await sut.AddAsync(new LockableTestEntity { Id = ObjectId.GenerateNewId() });
+        await using var scope = await sut.PickForUpdateAsync(generateNewId, TimeSpan.Zero);
+
+        var filter = new FilterDefinitionBuilder<LockableTestEntity>().Empty;
+        var update = new UpdateDefinitionBuilder<LockableTestEntity>().Set(x => x.Count, 1);
 
         //Act
-        var result = await sut.DeleteManyAsync(x => true);
+        var result = await sut.UpdateAsync(filter, update);
 
         //Assert
-        result.Should().Be(1);
-
+        result.Should().Be(3);
         var stored = await sut.GetAsync(x => true).ToArrayAsync();
-        stored.Should().HaveCount(1);
+        stored.Sum(x => x.Count).Should().Be(3);
+    }
+
+    [Fact]
+    [Trait("Category", "Database")]
+    public async Task UpdateWhenOneHasError()
+    {
+        //Arrange
+        var sut = new LockableTestRepositoryCollection(_mongoDbServiceFactory);
+        var generateNewId = ObjectId.GenerateNewId();
+        await sut.AddAsync(new LockableTestEntity { Id = generateNewId });
+        await sut.AddAsync(new LockableTestEntity { Id = ObjectId.GenerateNewId() });
+        await sut.AddAsync(new LockableTestEntity { Id = ObjectId.GenerateNewId() });
+        await using var scope = await sut.PickForUpdateAsync(generateNewId, TimeSpan.FromSeconds(1));
+        await scope.SetErrorStateAsync(new Exception("some issue"));
+        await Task.Delay(TimeSpan.FromSeconds(1));
+
+        var filter = new FilterDefinitionBuilder<LockableTestEntity>().Empty;
+        var update = new UpdateDefinitionBuilder<LockableTestEntity>().Set(x => x.Count, 1);
+
+        //Act
+        var result = await sut.UpdateAsync(filter, update);
+
+        //Assert
+        result.Should().Be(2);
+        var stored = await sut.GetAsync(x => true).ToArrayAsync();
+        stored.Sum(x => x.Count).Should().Be(2);
     }
 }

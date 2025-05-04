@@ -13,7 +13,7 @@ namespace Tharga.MongoDB.Tests.Lockable;
 
 [Collection("Sequential")]
 [CollectionDefinition("Sequential", DisableParallelization = true)]
-public class ReleaseUpdateTests : LockableTestTestsBase
+public class ReleaseUpdateTests : LockableTestBase
 {
     [Theory]
     [MemberData(nameof(ReleaseTypes))]
@@ -24,13 +24,25 @@ public class ReleaseUpdateTests : LockableTestTestsBase
         var collection = new LockableTestRepositoryCollection(_mongoDbServiceFactory);
         var entity = new LockableTestEntity { Id = ObjectId.GenerateNewId() };
         await collection.AddAsync(entity);
-        var sut = await collection.PickForUpdateAsync(entity.Id);
+        var eventCount = 0;
+        CallbackResult<LockableTestEntity> callbackResult = null;
+        await using var sut = await collection.PickForUpdateAsync(entity.Id, completeAction: e =>
+        {
+            eventCount++;
+            callbackResult = e;
+            return Task.CompletedTask;
+        });
 
         //Act
         var act = () => ReleaseAsync(release, sut, sut.Entity with { Count = 1 });
 
         //Assert
         await act.Should().NotThrowAsync();
+        eventCount.Should().Be(1);
+        callbackResult.Should().NotBeNull();
+        callbackResult.Before.Id.Should().Be(entity.Id);
+        callbackResult.After.Id.Should().Be(entity.Id);
+        callbackResult.Commit.Should().Be(release == ReleaseType.Commit);
         var item = await collection.GetOneAsync(sut.Entity.Id);
         item.Should().NotBeNull();
         if (release != ReleaseType.SetErrorState) item.Lock.Should().BeNull(); else item.Lock.Should().NotBeNull();
@@ -45,18 +57,33 @@ public class ReleaseUpdateTests : LockableTestTestsBase
         var collection = new LockableTestRepositoryCollection(_mongoDbServiceFactory);
         var entity = new LockableTestEntity { Id = ObjectId.GenerateNewId() };
         await collection.AddAsync(entity);
-        var sut = await collection.PickForUpdateAsync(entity.Id, TimeSpan.Zero);
+        var eventCount = 0;
+        CallbackResult<LockableTestEntity> callbackResult = null;
+        await using var sut = await collection.PickForUpdateAsync(entity.Id, TimeSpan.Zero, completeAction: e =>
+        {
+            eventCount++;
+            callbackResult = e;
+            return Task.CompletedTask;
+        });
 
         //Act
         var act = () => ReleaseAsync(release, sut, sut.Entity with { Count = 1 });
 
         //Assert
-        await act.Should()
-            .ThrowAsync<LockExpiredException>()
-            .WithMessage("Entity was locked for *");
+        if (release != ReleaseType.Abandon)
+        {
+            await act.Should()
+                .ThrowAsync<LockExpiredException>()
+                .WithMessage($"Entity of type {nameof(LockableTestEntity)} was locked for *");
+        }
+        else
+        {
+            await act.Should().NotThrowAsync();
+        }
+        eventCount.Should().Be(0);
+        callbackResult.Should().BeNull();
         var item = await collection.GetOneAsync(sut.Entity.Id);
         item.Should().NotBeNull();
-        item.Lock.Should().NotBeNull();
     }
 
     [Theory]
@@ -68,7 +95,7 @@ public class ReleaseUpdateTests : LockableTestTestsBase
         var collection = new LockableTestRepositoryCollection(_mongoDbServiceFactory);
         var entity = new LockableTestEntity { Id = ObjectId.GenerateNewId() };
         await collection.AddAsync(entity);
-        var sut = await collection.PickForUpdateAsync(entity.Id);
+        await using var sut = await collection.PickForUpdateAsync(entity.Id);
         await ReleaseAsync(release, sut, sut.Entity with { Count = 1 });
 
         //Act
@@ -92,7 +119,7 @@ public class ReleaseUpdateTests : LockableTestTestsBase
         var collection = new LockableTestRepositoryCollection(_mongoDbServiceFactory);
         var entity = new LockableTestEntity { Id = ObjectId.GenerateNewId() };
         await collection.AddAsync(entity);
-        var sut = await collection.PickForUpdateAsync(entity.Id);
+        await using var sut = await collection.PickForUpdateAsync(entity.Id);
 
         //Act
         var act = () => ReleaseAsync(release, sut, sut.Entity with { Id = ObjectId.GenerateNewId(), Count = 1 });
@@ -118,24 +145,31 @@ public class ReleaseUpdateTests : LockableTestTestsBase
         var collection = new LockableTestRepositoryCollection(_mongoDbServiceFactory);
         var entity = new LockableTestEntity { Id = ObjectId.GenerateNewId() };
         await collection.AddAsync(entity);
-        var sut = await collection.PickForUpdateAsync(entity.Id, TimeSpan.Zero);
-        var other = await collection.PickForUpdateAsync(entity.Id);
+        var eventCount = 0;
+        CallbackResult<LockableTestEntity> callbackResult = null;
+        await using var sut = await collection.PickForUpdateAsync(entity.Id, TimeSpan.Zero, completeAction: e =>
+        {
+            eventCount++;
+            callbackResult = e;
+            return Task.CompletedTask;
+        });
 
         //Act
         var act = () => ReleaseAsync(release, sut, sut.Entity with { Count = 1 });
 
         //Assert
-        if (release == ReleaseType.Commit)
+        if (release != ReleaseType.Abandon)
         {
             await act.Should().ThrowAsync<LockExpiredException>();
         }
-
+        else
+        {
+            await act.Should().NotThrowAsync();
+        }
+        eventCount.Should().Be(0);
+        callbackResult.Should().BeNull();
         var item = await collection.GetOneAsync(sut.Entity.Id);
         item.Should().NotBeNull();
-
-        //NOTE: Possible to release the other lock.
-        var otherAct = () => ReleaseAsync(release, other, other.Entity with { Count = 1 });
-        await otherAct.Should().NotThrowAsync();
     }
 
     private static Task ReleaseAsync(ReleaseType release, EntityScope<LockableTestEntity, ObjectId> sut, LockableTestEntity entity)

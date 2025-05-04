@@ -12,7 +12,7 @@ namespace Tharga.MongoDB.Tests.Lockable;
 
 [Collection("Sequential")]
 [CollectionDefinition("Sequential", DisableParallelization = true)]
-public class GetLockedTests : LockableTestTestsBase
+public class GetLockedTests : LockableTestBase
 {
     [Fact]
     [Trait("Category", "Database")]

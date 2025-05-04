@@ -74,7 +74,13 @@ public record EntityScope<T, TKey> : IAsyncDisposable, IDisposable
     {
         if (_released) throw new LockAlreadyReleasedException("Entity has already been released.");
         if (!updatedEntity.Id.Equals(_originalId)) throw new UnlockDifferentEntityException($"Cannot release entity with different id. Original was '{_entity.Id}', releasing {updatedEntity.Id}.");
-        await _releaseAction.Invoke(updatedEntity, commit, exception);
-        _released = true;
+        try
+        {
+            await _releaseAction.Invoke(updatedEntity, commit, exception);
+        }
+        finally
+        {
+            _released = true;
+        }
     }
 }

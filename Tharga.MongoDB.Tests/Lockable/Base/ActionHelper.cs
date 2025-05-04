@@ -4,7 +4,7 @@ using MongoDB.Bson;
 using Tharga.MongoDB.Lockable;
 using Tharga.MongoDB.Tests.Support;
 
-namespace Tharga.MongoDB.Tests.Lockable;
+namespace Tharga.MongoDB.Tests.Lockable.Base;
 
 public static class ActionHelper
 {
