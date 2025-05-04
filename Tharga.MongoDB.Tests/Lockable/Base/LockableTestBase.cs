@@ -10,13 +10,13 @@ using Xunit;
 
 namespace Tharga.MongoDB.Tests.Lockable.Base;
 
-public abstract class LockableTestTestsBase : IDisposable // MongoDbTestBase
+public abstract class LockableTestBase : IDisposable // MongoDbTestBase
 {
     private readonly Mock<IRepositoryConfigurationInternal> _configurationMock;
     private readonly DatabaseContext _databaseContext;
     internal readonly MongoDbServiceFactory _mongoDbServiceFactory;
 
-    protected LockableTestTestsBase()
+    protected LockableTestBase()
     {
         _databaseContext = Mock.Of<DatabaseContext>(x => x.DatabasePart == Guid.NewGuid().ToString());
         _configurationMock = new Mock<IRepositoryConfigurationInternal>(MockBehavior.Strict);

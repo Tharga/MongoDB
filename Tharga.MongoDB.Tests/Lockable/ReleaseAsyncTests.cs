@@ -12,7 +12,7 @@ namespace Tharga.MongoDB.Tests.Lockable;
 
 [Collection("Sequential")]
 [CollectionDefinition("Sequential", DisableParallelization = true)]
-public class ReleaseAsyncTests : LockableTestTestsBase
+public class ReleaseAsyncTests : LockableTestBase
 {
     [Theory]
     [InlineData(ReleaseMode.ExceptionOnly, 1)]
@@ -33,7 +33,6 @@ public class ReleaseAsyncTests : LockableTestTestsBase
         var result = await sut.ReleaseOneAsync(lockedEntity.Id, mode);
 
         //Assert
-        //result.Should().Be(locked == 0);
         (await sut.CountAsync(x => true)).Should().Be(1);
         (await sut.GetLockedAsync(LockMode.Locked).ToArrayAsync()).Length.Should().Be(locked);
         (await sut.GetExpiredAsync().ToArrayAsync()).Length.Should().Be(0);
@@ -57,7 +56,6 @@ public class ReleaseAsyncTests : LockableTestTestsBase
         var result = await sut.ReleaseOneAsync(lockedEntity.Id, mode);
 
         //Assert
-        //result.Should().Be(locked == 0);
         (await sut.CountAsync(x => true)).Should().Be(1);
         (await sut.GetLockedAsync(LockMode.Locked).ToArrayAsync()).Length.Should().Be(0);
         (await sut.GetExpiredAsync().ToArrayAsync()).Length.Should().Be(0);

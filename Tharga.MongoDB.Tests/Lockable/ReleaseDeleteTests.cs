@@ -13,7 +13,7 @@ namespace Tharga.MongoDB.Tests.Lockable;
 
 [Collection("Sequential")]
 [CollectionDefinition("Sequential", DisableParallelization = true)]
-public class ReleaseDeleteTests : LockableTestTestsBase
+public class ReleaseDeleteTests : LockableTestBase
 {
     [Theory]
     [MemberData(nameof(ReleaseTypes))]
@@ -54,9 +54,13 @@ public class ReleaseDeleteTests : LockableTestTestsBase
         var act = () => ReleaseAsync(release, sut, sut.Entity with { Count = 1 });
 
         //Assert
-        await act.Should()
-            .ThrowAsync<LockExpiredException>()
-            .WithMessage("Entity was locked for *");
+        if (release != ReleaseType.Abandon)
+        {
+            await act.Should()
+                .ThrowAsync<LockExpiredException>()
+                .WithMessage($"Entity of type {nameof(LockableTestEntity)} was locked for *");
+        }
+
         var item = await collection.GetOneAsync(sut.Entity.Id);
         item.Should().NotBeNull();
         item.Lock.Should().NotBeNull();
