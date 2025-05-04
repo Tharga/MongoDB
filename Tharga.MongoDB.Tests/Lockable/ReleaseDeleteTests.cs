@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Diagnostics.Tracing;
 using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -95,8 +94,6 @@ public class ReleaseDeleteTests : LockableTestBase
         item.Should().NotBeNull();
     }
 
-    //-->
-
     [Theory]
     [MemberData(nameof(ReleaseTypes))]
     [Trait("Category", "Database")]
@@ -106,7 +103,7 @@ public class ReleaseDeleteTests : LockableTestBase
         var collection = new LockableTestRepositoryCollection(_mongoDbServiceFactory);
         var entity = new LockableTestEntity { Id = ObjectId.GenerateNewId() };
         await collection.AddAsync(entity);
-        int eventCount = 0;
+        var eventCount = 0;
         CallbackResult<LockableTestEntity> callbackResult = null;
         var sut = await collection.PickForDeleteAsync(entity.Id, completeAction: e =>
         {
@@ -167,8 +164,6 @@ public class ReleaseDeleteTests : LockableTestBase
         item.Should().NotBeNull();
     }
 
-    //<--
-
     [Theory]
     [MemberData(nameof(ReleaseTypes))]
     [Trait("Category", "Database")]
@@ -186,7 +181,6 @@ public class ReleaseDeleteTests : LockableTestBase
             callbackResult = e;
             return Task.CompletedTask;
         });
-        var other = await collection.PickForDeleteAsync(entity.Id);
 
         //Act
         var act = () => ReleaseAsync(release, sut, sut.Entity with { Count = 1 });

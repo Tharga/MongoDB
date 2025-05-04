@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Diagnostics.Tracing;
 using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -87,8 +86,6 @@ public class ReleaseUpdateTests : LockableTestBase
         item.Should().NotBeNull();
     }
 
-    //-->
-
     [Theory]
     [MemberData(nameof(ReleaseTypes))]
     [Trait("Category", "Database")]
@@ -139,8 +136,6 @@ public class ReleaseUpdateTests : LockableTestBase
         item.Should().NotBeNull();
     }
 
-    //<--
-
     [Theory]
     [MemberData(nameof(ReleaseTypes))]
     [Trait("Category", "Database")]
@@ -158,7 +153,6 @@ public class ReleaseUpdateTests : LockableTestBase
             callbackResult = e;
             return Task.CompletedTask;
         });
-        var other = await collection.PickForUpdateAsync(entity.Id);
 
         //Act
         var act = () => ReleaseAsync(release, sut, sut.Entity with { Count = 1 });
