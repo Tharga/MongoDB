@@ -20,7 +20,7 @@ public class PickForDeleteTests : LockableTestBase
         var sut = new LockableTestRepositoryCollection(_mongoDbServiceFactory);
         var entity = new LockableTestEntity { Id = ObjectId.GenerateNewId() };
         await sut.AddAsync(entity);
-        var result = await sut.PickForDeleteAsync(entity.Id);
+        await using var result = await sut.PickForDeleteAsync(entity.Id);
 
         //Act
         var r = await result.CommitAsync();
@@ -29,8 +29,6 @@ public class PickForDeleteTests : LockableTestBase
         r.Should().Be(entity);
         (await sut.CountAsync(x => true)).Should().Be(0);
     }
-
-//--->
 
     [Theory]
     [InlineData(ActionHelper.EndAction.Abandon, ActionHelper.EndAction.Abandon, false)]
@@ -49,7 +47,7 @@ public class PickForDeleteTests : LockableTestBase
         var sut = new LockableTestRepositoryCollection(_mongoDbServiceFactory);
         var entity = new LockableTestEntity { Id = ObjectId.GenerateNewId() };
         await sut.AddAsync(entity);
-        var scope = await sut.PickForDeleteAsync(entity.Id);
+        await using var scope = await sut.PickForDeleteAsync(entity.Id);
         var firstAct = ActionHelper.Action(first, scope);
 
         await firstAct.Invoke();

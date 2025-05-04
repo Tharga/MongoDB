@@ -22,7 +22,7 @@ public class PickForUpdateTests : LockableTestBase
         var sut = new LockableTestRepositoryCollection(_mongoDbServiceFactory);
         var entity = new LockableTestEntity { Id = ObjectId.GenerateNewId(), Data = "initial" };
         await sut.AddAsync(entity);
-        var scope = await sut.PickForUpdateAsync(entity.Id);
+        await using var scope = await sut.PickForUpdateAsync(entity.Id);
         scope.Entity.Data = "updated";
 
         //Act
@@ -45,7 +45,7 @@ public class PickForUpdateTests : LockableTestBase
         var sut = new LockableTestRepositoryCollection(_mongoDbServiceFactory);
         var entity = new LockableTestEntity { Id = ObjectId.GenerateNewId(), Data = "initial" };
         await sut.AddAsync(entity);
-        var scope = await sut.PickForUpdateAsync(entity.Id);
+        await using var scope = await sut.PickForUpdateAsync(entity.Id);
         var updated = scope.Entity with { Count = 1, Data = "updated" };
 
         //Act
@@ -57,7 +57,6 @@ public class PickForUpdateTests : LockableTestBase
         var post = await sut.GetAsync(x => x.Id == entity.Id).FirstAsync();
         post.Count.Should().Be(1);
         post.Data.Should().Be("updated");
-        //post.UnlockCounter.Should().Be(0);
         post.Lock.Should().BeNull();
         (await sut.CountAsync(x => true)).Should().Be(1);
         (await sut.GetLockedAsync(LockMode.Exception).CountAsync()).Should().Be(0);
@@ -82,7 +81,7 @@ public class PickForUpdateTests : LockableTestBase
         var sut = new LockableTestRepositoryCollection(_mongoDbServiceFactory);
         var entity = new LockableTestEntity { Id = ObjectId.GenerateNewId(), Data = "initial" };
         await sut.AddAsync(entity);
-        var scope = await sut.PickForUpdateAsync(entity.Id);
+        await using var scope = await sut.PickForUpdateAsync(entity.Id);
         scope.Entity.Data = "updated";
         var firstAct = ActionHelper.Action(first, scope);
 

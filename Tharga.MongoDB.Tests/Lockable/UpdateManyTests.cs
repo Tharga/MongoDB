@@ -48,7 +48,7 @@ public class UpdateManyTests : LockableTestBase
         await sut.AddAsync(new LockableTestEntity { Id = generateNewId });
         await sut.AddAsync(new LockableTestEntity { Id = ObjectId.GenerateNewId() });
         await sut.AddAsync(new LockableTestEntity { Id = ObjectId.GenerateNewId() });
-        await sut.PickForUpdateAsync(generateNewId);
+        await using var scope = await sut.PickForUpdateAsync(generateNewId);
 
         var filter = new FilterDefinitionBuilder<LockableTestEntity>().Empty;
         var update = new UpdateDefinitionBuilder<LockableTestEntity>().Set(x => x.Count, 1);
@@ -72,7 +72,7 @@ public class UpdateManyTests : LockableTestBase
         await sut.AddAsync(new LockableTestEntity { Id = generateNewId });
         await sut.AddAsync(new LockableTestEntity { Id = ObjectId.GenerateNewId() });
         await sut.AddAsync(new LockableTestEntity { Id = ObjectId.GenerateNewId() });
-        await sut.PickForUpdateAsync(generateNewId, TimeSpan.Zero);
+        await using var scope = await sut.PickForUpdateAsync(generateNewId, TimeSpan.Zero);
 
         var filter = new FilterDefinitionBuilder<LockableTestEntity>().Empty;
         var update = new UpdateDefinitionBuilder<LockableTestEntity>().Set(x => x.Count, 1);
@@ -96,8 +96,8 @@ public class UpdateManyTests : LockableTestBase
         await sut.AddAsync(new LockableTestEntity { Id = generateNewId });
         await sut.AddAsync(new LockableTestEntity { Id = ObjectId.GenerateNewId() });
         await sut.AddAsync(new LockableTestEntity { Id = ObjectId.GenerateNewId() });
-        var scoped = await sut.PickForUpdateAsync(generateNewId, TimeSpan.FromSeconds(1));
-        await scoped.SetErrorStateAsync(new Exception("some issue"));
+        await using var scope = await sut.PickForUpdateAsync(generateNewId, TimeSpan.FromSeconds(1));
+        await scope.SetErrorStateAsync(new Exception("some issue"));
         await Task.Delay(TimeSpan.FromSeconds(1));
 
         var filter = new FilterDefinitionBuilder<LockableTestEntity>().Empty;

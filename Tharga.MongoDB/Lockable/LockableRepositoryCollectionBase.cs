@@ -494,11 +494,6 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
                     var timeString = doc.Lock == null ? null : $" for {doc.Lock.ExpireTime - now}";
                     var actorString = doc.Lock?.Actor == null ? null : $" by '{doc.Lock.Actor}'";
 
-                    //if (completeAction != null)
-                    //{
-                    //    await completeAction.Invoke(new CallbackResult<TEntity> { Commit = false, Before = result.Before, After = after });
-                    //}
-
                     return (default, new ErrorInfo
                     {
                         Message = $"Entity with id '{doc.Id}' is locked{actorString}{timeString}.",

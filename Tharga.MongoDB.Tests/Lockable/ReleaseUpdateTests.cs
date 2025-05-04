@@ -26,7 +26,7 @@ public class ReleaseUpdateTests : LockableTestBase
         await collection.AddAsync(entity);
         var eventCount = 0;
         CallbackResult<LockableTestEntity> callbackResult = null;
-        var sut = await collection.PickForUpdateAsync(entity.Id, completeAction: e =>
+        await using var sut = await collection.PickForUpdateAsync(entity.Id, completeAction: e =>
         {
             eventCount++;
             callbackResult = e;
@@ -59,7 +59,7 @@ public class ReleaseUpdateTests : LockableTestBase
         await collection.AddAsync(entity);
         var eventCount = 0;
         CallbackResult<LockableTestEntity> callbackResult = null;
-        var sut = await collection.PickForUpdateAsync(entity.Id, TimeSpan.Zero, completeAction: e =>
+        await using var sut = await collection.PickForUpdateAsync(entity.Id, TimeSpan.Zero, completeAction: e =>
         {
             eventCount++;
             callbackResult = e;
@@ -95,7 +95,7 @@ public class ReleaseUpdateTests : LockableTestBase
         var collection = new LockableTestRepositoryCollection(_mongoDbServiceFactory);
         var entity = new LockableTestEntity { Id = ObjectId.GenerateNewId() };
         await collection.AddAsync(entity);
-        var sut = await collection.PickForUpdateAsync(entity.Id);
+        await using var sut = await collection.PickForUpdateAsync(entity.Id);
         await ReleaseAsync(release, sut, sut.Entity with { Count = 1 });
 
         //Act
@@ -119,7 +119,7 @@ public class ReleaseUpdateTests : LockableTestBase
         var collection = new LockableTestRepositoryCollection(_mongoDbServiceFactory);
         var entity = new LockableTestEntity { Id = ObjectId.GenerateNewId() };
         await collection.AddAsync(entity);
-        var sut = await collection.PickForUpdateAsync(entity.Id);
+        await using var sut = await collection.PickForUpdateAsync(entity.Id);
 
         //Act
         var act = () => ReleaseAsync(release, sut, sut.Entity with { Id = ObjectId.GenerateNewId(), Count = 1 });
@@ -147,7 +147,7 @@ public class ReleaseUpdateTests : LockableTestBase
         await collection.AddAsync(entity);
         var eventCount = 0;
         CallbackResult<LockableTestEntity> callbackResult = null;
-        var sut = await collection.PickForUpdateAsync(entity.Id, TimeSpan.Zero, completeAction: e =>
+        await using var sut = await collection.PickForUpdateAsync(entity.Id, TimeSpan.Zero, completeAction: e =>
         {
             eventCount++;
             callbackResult = e;

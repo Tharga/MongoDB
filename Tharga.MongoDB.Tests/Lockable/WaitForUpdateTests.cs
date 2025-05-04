@@ -23,7 +23,7 @@ public class WaitForUpdateTests : LockableTestBase
         await sut.AddAsync(entity);
 
         //Act
-        var result = await sut.WaitForUpdateAsync(entity.Id);
+        await using var result = await sut.WaitForUpdateAsync(entity.Id);
 
         //Assert
         result.Entity.Should().NotBeNull();
@@ -69,9 +69,8 @@ public class WaitForUpdateTests : LockableTestBase
         await sut.AddAsync(entity);
         await sut.PickForUpdateAsync(entity.Id, actor: firstActor, timeout: TimeSpan.FromSeconds(1));
 
-
         //Act
-        var result = await sut.WaitForUpdateAsync(entity.Id, TimeSpan.FromSeconds(2));
+        await using var result = await sut.WaitForUpdateAsync(entity.Id, TimeSpan.FromSeconds(2));
 
         //Assert
         result.Entity.Should().NotBeNull();
@@ -114,7 +113,7 @@ public class WaitForUpdateTests : LockableTestBase
         var sut = new LockableTestRepositoryCollection(_mongoDbServiceFactory);
 
         //Act
-        var result = await sut.WaitForUpdateAsync(ObjectId.GenerateNewId());
+        await using var result = await sut.WaitForUpdateAsync(ObjectId.GenerateNewId());
 
         //Assert
         result.Should().BeNull();
@@ -132,7 +131,7 @@ public class WaitForUpdateTests : LockableTestBase
         await sut.PickForUpdateAsync(entity.Id, actor: firstActor, timeout: TimeSpan.Zero);
 
         //Act
-        var result = await sut.WaitForUpdateAsync(entity.Id);
+        await using var result = await sut.WaitForUpdateAsync(entity.Id);
 
         //Assert
         result.Entity.Should().NotBeNull();

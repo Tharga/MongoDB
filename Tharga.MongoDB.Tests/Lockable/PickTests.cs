@@ -29,7 +29,7 @@ public class PickTests : LockableTestBase
         await sut.AddAsync(entity);
 
         //Act
-        var scope = await PickAsync(type, sut, entity.Id);
+        await using var scope = await PickAsync(type, sut, entity.Id);
 
         //Assert
         scope.Entity.Should().NotBeNull();
@@ -76,7 +76,7 @@ public class PickTests : LockableTestBase
         var sut = new LockableTestRepositoryCollection(_mongoDbServiceFactory);
         var entity = new LockableTestEntity { Id = ObjectId.GenerateNewId() };
         await sut.AddAsync(entity);
-        var scope = await PickAsync(type, sut, entity.Id, "first actor");
+        await using var scope = await PickAsync(type, sut, entity.Id, "first actor");
         await scope.SetErrorStateAsync(new Exception("Some issue"));
 
         //Act
@@ -102,7 +102,7 @@ public class PickTests : LockableTestBase
         var sut = new LockableTestRepositoryCollection(_mongoDbServiceFactory);
 
         //Act
-        var scope = await PickAsync(type, sut, ObjectId.GenerateNewId());
+        await using var scope = await PickAsync(type, sut, ObjectId.GenerateNewId());
 
         //Assert
         scope.Should().BeNull();
@@ -121,7 +121,7 @@ public class PickTests : LockableTestBase
         await PickAsync(type, sut, entity.Id, "first actor", TimeSpan.Zero);
 
         //Act
-        var result = await PickAsync(type, sut, entity.Id, "second actor");
+        await using var result = await PickAsync(type, sut, entity.Id, "second actor");
 
         //Assert
         result.Entity.Should().NotBeNull();
@@ -142,7 +142,7 @@ public class PickTests : LockableTestBase
         var sut = new LockableTestRepositoryCollection(_mongoDbServiceFactory);
         var entity = new LockableTestEntity { Id = ObjectId.GenerateNewId(), Data = "initial" };
         await sut.AddAsync(entity);
-        var scope = await PickAsync(type, sut, entity.Id);
+        await using var scope = await PickAsync(type, sut, entity.Id);
         scope.Entity.Data = "updated";
 
         //Act
@@ -166,7 +166,7 @@ public class PickTests : LockableTestBase
         var sut = new LockableTestRepositoryCollection(_mongoDbServiceFactory);
         var entity = new LockableTestEntity { Id = ObjectId.GenerateNewId(), Data = "initial" };
         await sut.AddAsync(entity);
-        var scope = await PickAsync(type, sut, entity.Id);
+        await using var scope = await PickAsync(type, sut, entity.Id);
         scope.Entity.Data = "updated";
         var key = await sut.GetLockedAsync(LockMode.Locked).FirstOrDefaultAsync(x => x.Entity.Id == entity.Id);
 
@@ -223,7 +223,7 @@ public class PickTests : LockableTestBase
         var entity = new LockableTestEntity { Id = ObjectId.GenerateNewId(), Data = "initial" };
         await sut.AddAsync(entity);
         var timeSpan = TimeSpan.Zero;
-        var scope = await PickAsync(type, sut, entity.Id, firstActor, timeSpan);
+        await using var scope = await PickAsync(type, sut, entity.Id, firstActor, timeSpan);
         var updated = scope.Entity with { Count = 1, Data = "updated" };
 
         //Act
@@ -251,7 +251,7 @@ public class PickTests : LockableTestBase
         var entity = new LockableTestEntity { Id = ObjectId.GenerateNewId(), Data = "initial" };
         await sut.AddAsync(entity);
         var timeSpan = TimeSpan.Zero;
-        var scope = await PickAsync(type, sut, entity.Id, firstActor, timeSpan);
+        await using var scope = await PickAsync(type, sut, entity.Id, firstActor, timeSpan);
 
         //Act
         var act = () => scope.SetErrorStateAsync(new Exception("some issue."));
@@ -278,7 +278,7 @@ public class PickTests : LockableTestBase
         var entity = new LockableTestEntity { Id = ObjectId.GenerateNewId(), Data = "initial" };
         await sut.AddAsync(entity);
         var timeSpan = TimeSpan.Zero;
-        var scope = await PickAsync(type, sut, entity.Id, firstActor, timeSpan);
+        await using var scope = await PickAsync(type, sut, entity.Id, firstActor, timeSpan);
 
         //Act
         var act = () => scope.AbandonAsync();
@@ -301,7 +301,7 @@ public class PickTests : LockableTestBase
         var entity = new LockableTestEntity { Id = ObjectId.GenerateNewId(), Data = "initial" };
         await sut.AddAsync(entity);
         var timeSpan = TimeSpan.Zero;
-        var scope = await PickAsync(type, sut, entity.Id, firstActor, timeSpan);
+        await using var scope = await PickAsync(type, sut, entity.Id, firstActor, timeSpan);
         var updated = scope.Entity with { Count = 1, Data = "updated" };
         var preAct = () => scope.CommitAsync(updated);
         await preAct.Should().ThrowAsync<LockExpiredException>();
@@ -311,8 +311,8 @@ public class PickTests : LockableTestBase
 
         //Assert
         await act.Should()
-            .ThrowAsync<LockExpiredException>()
-            .WithMessage($"Entity of type {nameof(LockableTestEntity)} was locked for * instead of {timeSpan}.");
+            .ThrowAsync<LockAlreadyReleasedException>()
+            .WithMessage("Entity has already been released.");
         var item = await sut.GetOneAsync(entity.Id);
         item.Should().NotBeNull();
         item.Lock.Should().NotBeNull();
@@ -334,7 +334,7 @@ public class PickTests : LockableTestBase
         var scope = await PickAsync(type, sut, entity.Id, firstActor, timeSpan);
         var updated = scope.Entity with { Count = 1, Data = "updated" };
         await Task.Delay(timeSpan);
-        var otherScope = await PickAsync(type, sut, entity.Id, firstActor, TimeSpan.FromSeconds(2));
+        await using var otherScope = await PickAsync(type, sut, entity.Id, firstActor, TimeSpan.FromSeconds(2));
         await otherScope.CommitAsync(scope.Entity with { Count = 1, Data = "hijacked" });
         await Task.Delay(timeSpan);
 
@@ -345,6 +345,8 @@ public class PickTests : LockableTestBase
         await act.Should()
             .ThrowAsync<LockExpiredException>()
             .WithMessage($"Entity of type {nameof(LockableTestEntity)} was locked for * instead of {timeSpan}.");
+
+        await scope.DisposeAsync();
     }
 
     private static async Task<EntityScope<LockableTestEntity, ObjectId>> PickAsync(PickType type, LockableTestRepositoryCollection sut, ObjectId entityId, string actor = "some actor", TimeSpan? timeSpan = default, Func<CallbackResult<LockableTestEntity>, Task> completeAction = default)

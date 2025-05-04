@@ -22,7 +22,7 @@ public class WaitForDeleteTests : LockableTestBase
         await sut.AddAsync(entity);
 
         //Act
-        var result = await sut.WaitForDeleteAsync(entity.Id);
+        await using var result = await sut.WaitForDeleteAsync(entity.Id);
 
         //Assert
         result.Entity.Should().NotBeNull();
@@ -69,7 +69,7 @@ public class WaitForDeleteTests : LockableTestBase
         await sut.PickForUpdateAsync(entity.Id, actor: firstActor, timeout: TimeSpan.FromSeconds(1));
 
         //Act
-        var result = await sut.WaitForDeleteAsync(entity.Id, TimeSpan.FromSeconds(2));
+        await using var result = await sut.WaitForDeleteAsync(entity.Id, TimeSpan.FromSeconds(2));
 
         //Assert
         result.Entity.Should().NotBeNull();

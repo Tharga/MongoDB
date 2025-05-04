@@ -27,7 +27,7 @@ public class ReleaseDeleteTests : LockableTestBase
         await collection.AddAsync(entity);
         CallbackResult<LockableTestEntity> callbackResult = null;
         var eventCount = 0;
-        var sut = await collection.PickForDeleteAsync(entity.Id, completeAction: e =>
+        await using var sut = await collection.PickForDeleteAsync(entity.Id, completeAction: e =>
         {
             eventCount++;
             callbackResult = e;
@@ -67,7 +67,7 @@ public class ReleaseDeleteTests : LockableTestBase
         await collection.AddAsync(entity);
         CallbackResult<LockableTestEntity> callbackResult = null;
         var eventCount = 0;
-        var sut = await collection.PickForDeleteAsync(entity.Id, TimeSpan.Zero, completeAction: e =>
+        await using var sut = await collection.PickForDeleteAsync(entity.Id, TimeSpan.Zero, completeAction: e =>
         {
             eventCount++;
             callbackResult = e;
@@ -105,7 +105,7 @@ public class ReleaseDeleteTests : LockableTestBase
         await collection.AddAsync(entity);
         var eventCount = 0;
         CallbackResult<LockableTestEntity> callbackResult = null;
-        var sut = await collection.PickForDeleteAsync(entity.Id, completeAction: e =>
+        await using var sut = await collection.PickForDeleteAsync(entity.Id, completeAction: e =>
         {
             eventCount++;
             callbackResult = e;
@@ -140,7 +140,7 @@ public class ReleaseDeleteTests : LockableTestBase
         await collection.AddAsync(entity);
         var eventCount = 0;
         CallbackResult<LockableTestEntity> callbackResult = null;
-        var sut = await collection.PickForDeleteAsync(entity.Id, completeAction: e =>
+        await using var sut = await collection.PickForDeleteAsync(entity.Id, completeAction: e =>
         {
             eventCount++;
             callbackResult = e;
@@ -175,7 +175,7 @@ public class ReleaseDeleteTests : LockableTestBase
         await collection.AddAsync(entity);
         var eventCount = 0;
         CallbackResult<LockableTestEntity> callbackResult = null;
-        var sut = await collection.PickForDeleteAsync(entity.Id, TimeSpan.Zero, completeAction: e =>
+        await using var sut = await collection.PickForDeleteAsync(entity.Id, TimeSpan.Zero, completeAction: e =>
         {
             eventCount++;
             callbackResult = e;
