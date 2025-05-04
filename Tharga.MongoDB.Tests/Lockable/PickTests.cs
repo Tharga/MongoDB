@@ -13,6 +13,8 @@ namespace Tharga.MongoDB.Tests.Lockable;
 /// <summary>
 /// Tests that have the same outcome for PickForUpdate and PickForDelete.
 /// </summary>
+[Collection("Sequential")]
+[CollectionDefinition("Sequential", DisableParallelization = true)]
 public class PickTests : LockableTestBase
 {
     [Theory]
@@ -116,7 +118,7 @@ public class PickTests : LockableTestBase
         var sut = new LockableTestRepositoryCollection(_mongoDbServiceFactory);
         var entity = new LockableTestEntity { Id = ObjectId.GenerateNewId() };
         await sut.AddAsync(entity);
-        var scope = await PickAsync(type, sut, entity.Id, "first actor", TimeSpan.Zero);
+        await PickAsync(type, sut, entity.Id, "first actor", TimeSpan.Zero);
 
         //Act
         var result = await PickAsync(type, sut, entity.Id, "second actor");
@@ -250,7 +252,6 @@ public class PickTests : LockableTestBase
         await sut.AddAsync(entity);
         var timeSpan = TimeSpan.Zero;
         var scope = await PickAsync(type, sut, entity.Id, firstActor, timeSpan);
-        var updated = scope.Entity with { Count = 1, Data = "updated" };
 
         //Act
         var act = () => scope.SetErrorStateAsync(new Exception("some issue."));
@@ -278,7 +279,6 @@ public class PickTests : LockableTestBase
         await sut.AddAsync(entity);
         var timeSpan = TimeSpan.Zero;
         var scope = await PickAsync(type, sut, entity.Id, firstActor, timeSpan);
-        var updated = scope.Entity with { Count = 1, Data = "updated" };
 
         //Act
         var act = () => scope.AbandonAsync();
@@ -345,20 +345,15 @@ public class PickTests : LockableTestBase
         await act.Should()
             .ThrowAsync<LockExpiredException>()
             .WithMessage($"Entity of type {nameof(LockableTestEntity)} was locked for * instead of {timeSpan}.");
-        //var item = await sut.GetOneAsync(entity.Id);
-        //item.Should().NotBeNull();
-        //item.Lock.Should().NotBeNull();
-        //item.Lock.ExceptionInfo.Should().BeNull();
     }
 
-
-    private static async Task<EntityScope<LockableTestEntity, ObjectId>> PickAsync(PickType type, LockableTestRepositoryCollection sut, ObjectId entityId, string actor = "some actor", TimeSpan? timeSpan = default)
+    private static async Task<EntityScope<LockableTestEntity, ObjectId>> PickAsync(PickType type, LockableTestRepositoryCollection sut, ObjectId entityId, string actor = "some actor", TimeSpan? timeSpan = default, Func<CallbackResult<LockableTestEntity>, Task> completeAction = default)
     {
         EntityScope<LockableTestEntity, ObjectId> scope = null;
         if (type == PickType.Update)
-            scope = await sut.PickForUpdateAsync(entityId, actor: actor, timeout: timeSpan);
+            scope = await sut.PickForUpdateAsync(entityId, actor: actor, timeout: timeSpan, completeAction: completeAction);
         else if (type == PickType.Delete)
-            scope = await sut.PickForDeleteAsync(entityId, actor: actor, timeout: timeSpan);
+            scope = await sut.PickForDeleteAsync(entityId, actor: actor, timeout: timeSpan, completeAction: completeAction);
         return scope;
     }
 

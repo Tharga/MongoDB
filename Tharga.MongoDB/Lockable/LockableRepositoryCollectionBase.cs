@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Diagnostics.Metrics;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Threading;
@@ -481,16 +482,24 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
             //Document is missing or is already locked
             var docs = await GetAsync(filter).ToArrayAsync();
 
-            if (!docs.Any()) return (default, null, false);
+            if (!docs.Any())
+            {
+                return (default, null, false);
+            }
 
             if (docs.Length == 1)
             {
                 var doc = docs.Single();
                 if (doc.Lock?.ExceptionInfo == null)
                 {
-                    //var timeString = doc.Lock == null ? null : $" for {(doc.Lock.ExpireTime ?? (doc.Lock.LockTime + DefaultTimeout)) - DateTime.UtcNow}";
                     var timeString = doc.Lock == null ? null : $" for {doc.Lock.ExpireTime - now}";
                     var actorString = doc.Lock?.Actor == null ? null : $" by '{doc.Lock.Actor}'";
+
+                    //if (completeAction != null)
+                    //{
+                    //    await completeAction.Invoke(new CallbackResult<TEntity> { Commit = false, Before = result.Before, After = after });
+                    //}
+
                     return (default, new ErrorInfo
                     {
                         Message = $"Entity with id '{doc.Id}' is locked{actorString}{timeString}.",
@@ -498,115 +507,56 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
                     }, true);
                 }
 
-                if (doc.Lock.ExceptionInfo != null) return (default, new ErrorInfo
+                if (doc.Lock.ExceptionInfo != null)
                 {
-                    Message = $"Entity with id '{doc.Id}' has an exception attached.",
-                    Type = ErrorInfoType.Error
-                }, false);
+                    return (default, new ErrorInfo
+                    {
+                        Message = $"Entity with id '{doc.Id}' has an exception attached.",
+                        Type = ErrorInfoType.Error
+                    }, false);
+                }
+
                 return (default, new ErrorInfo
                 {
                     Message = $"Entity with id '{doc.Id}' has an unknown state.",
                     Type = ErrorInfoType.Unknown
                 }, false);
             }
-            else
-            {
-                throw new NotSupportedException("Multiple documents matches with the provided expression.");
-            }
+
+            throw new NotSupportedException("Multiple documents matches with the provided expression.");
         }
 
         Func<TEntity, bool, Exception, Task> releaseAction;
-        switch (commitMode)
+        try
         {
-            case CommitMode.Update:
-                releaseAction = ReleaseEntity(entityLock, completeAction);
-                break;
-            case CommitMode.Delete:
-                releaseAction = DeleteEntity(entityLock, completeAction);
-                break;
-            default:
-                throw new ArgumentOutOfRangeException(nameof(commitMode), commitMode, null);
+            switch (commitMode)
+            {
+                case CommitMode.Update:
+                    releaseAction = (entity, commit, exception) => ReleaseAsync(entity, entityLock, commit, exception, completeAction, PrepareCommitForUpdateAsync);
+                    break;
+                case CommitMode.Delete:
+                    releaseAction = (entity, commit, exception) => ReleaseAsync(entity, entityLock, commit, exception, completeAction, PerformCommitForDeleteAsync);
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(commitMode), commitMode, null);
+            }
+        }
+        finally
+        {
+            _releaseEvent.Set();
         }
 
         return (new EntityScope<TEntity, TKey>(result.Before, releaseAction), null, false);
     }
 
-    private Func<TEntity, bool, Exception, Task> DeleteEntity(Lock entityLock, Func<CallbackResult<TEntity>, Task> completeAction)
+    private async Task<bool> ReleaseAsync(TEntity entity, Lock entityLock, bool commit, Exception exception, Func<CallbackResult<TEntity>, Task> completeAction, Func<TEntity, Lock, Func<CallbackResult<TEntity>, Task>, TimeSpan, TimeSpan, Lock, Task<EntityChangeResult<TEntity>>> releaseAction)
     {
-        return (entity, commit, exception) =>
-        {
-            //try
-            //{
-                return DeleteAsync(entity, entityLock, commit, exception, completeAction);
-            //}
-            //catch (Exception e)
-            //{
-            //    Debugger.Break();
-            //    var errorEntity = entity with
-            //    {
-            //        Lock = entity.Lock with
-            //        {
-            //            ExceptionInfo = new ExceptionInfo
-            //            {
-            //                Type = e.GetType().Name,
-            //                Message = $"Failed to delete entity. {e.Message}",
-            //                StackTrace = e.StackTrace,
-            //            }
-            //        }
-            //    };
-            //    _ = Disk.ReplaceOneAsync(errorEntity);
-            //    _logger.LogError(e, e.Message);
-            //    return Task.FromResult(false);
-            //}
-            //finally
-            //{
-            //    _releaseEvent.Set();
-            //}
-        };
-    }
-
-    private Func<TEntity, bool, Exception, Task> ReleaseEntity(Lock entityLock, Func<CallbackResult<TEntity>, Task> completeAction)
-    {
-        return (entity, commit, exception) =>
-        {
-            //try
-            //{
-                return ReleaseAsync(entity, entityLock, commit, exception, completeAction);
-            //}
-            //catch (Exception e)
-            //{
-            //    Debugger.Break();
-            //    var errorEntity = entity with
-            //    {
-            //        Lock = entity.Lock with
-            //        {
-            //            ExceptionInfo = new ExceptionInfo
-            //            {
-            //                Type = e.GetType().Name,
-            //                Message = $"Failed to release lock. {e.Message}",
-            //                StackTrace = e.StackTrace,
-            //            }
-            //        }
-            //    };
-            //    _ = Disk.ReplaceOneAsync(errorEntity);
-            //    _logger.LogError(e, e.Message);
-            //    return Task.FromResult(false);
-            //}
-            //finally
-            //{
-            //    _releaseEvent.Set();
-            //}
-        };
-    }
-
-    private async Task<bool> ReleaseAsync(TEntity entity, Lock entityLock, bool commit, Exception exception, Func<CallbackResult<TEntity>, Task> completeAction)
-    {
-        //TODO: Some suplicate code with "DeleteAsync".
         var lockTime = DateTime.UtcNow - entityLock.ExpireTime;
         var timeout = entityLock.ExpireTime - entityLock.LockTime;
         var lockInfo = BuildLockInfo(entityLock, exception);
+        var expired = lockTime > timeout;
 
-        if ((commit || exception != null) && lockTime > timeout)
+        if ((commit || exception != null) && expired)
         {
             throw new LockExpiredException($"Entity of type {typeof(TEntity).Name} was locked for {lockTime} instead of {timeout}.");
         }
@@ -614,18 +564,8 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
         EntityChangeResult<TEntity> result;
         if (commit)
         {
-            var updatedEntity = entity with
-            {
-                Lock = lockInfo
-            };
-
-            //NOTE: This filter assures that the correct lock still exists on the entity.
-            var filter = Builders<TEntity>.Filter.And(
-                Builders<TEntity>.Filter.Eq(x => x.Id, entity.Id),
-                Builders<TEntity>.Filter.Ne(x => x.Lock, null),
-                Builders<TEntity>.Filter.Eq(x => x.Lock.LockKey, entityLock.LockKey)
-            );
-            result = await Disk.ReplaceOneAsync(updatedEntity, filter);
+            result = await releaseAction.Invoke(entity, entityLock, completeAction, lockTime, timeout, lockInfo);
+            if (result == default) return true;
         }
         else
         {
@@ -640,7 +580,7 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
         var after = await result.GetAfterAsync();
         if (after == null && Debugger.IsAttached) throw new InvalidOperationException($"Entity {typeof(TEntity).Name} with id '{entity.Id}' does not exist after release.");
 
-        if (completeAction != null)
+        if (completeAction != null && !expired)
         {
             await completeAction.Invoke(new CallbackResult<TEntity> { Commit = commit, Before = result.Before, After = after });
         }
@@ -648,53 +588,39 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
         return after?.Lock == null;
     }
 
-    private async Task<bool> DeleteAsync(TEntity entity, Lock entityLock, bool commit, Exception exception, Func<CallbackResult<TEntity>, Task> completeAction)
+    private async Task<EntityChangeResult<TEntity>> PrepareCommitForUpdateAsync(TEntity entity, Lock entityLock, Func<CallbackResult<TEntity>, Task> completeAction, TimeSpan lockTime, TimeSpan timeout, Lock lockInfo)
     {
-        var lockTime = DateTime.UtcNow - entityLock.ExpireTime;
-        var timeout = entityLock.ExpireTime - entityLock.LockTime;
-        var lockInfo = BuildLockInfo(entityLock, exception);
-
-        if ((commit || exception != null) && lockTime > timeout)
+        var updatedEntity = entity with
         {
-            throw new LockExpiredException($"Entity of type {typeof(TEntity).Name} was locked for {lockTime} instead of {timeout}.");
-        }
+            Lock = lockInfo
+        };
 
-        if (commit)
+        //NOTE: This filter assures that the correct lock still exists on the entity.
+        var filter = Builders<TEntity>.Filter.And(
+            Builders<TEntity>.Filter.Eq(x => x.Id, entity.Id),
+            Builders<TEntity>.Filter.Ne(x => x.Lock, null),
+            Builders<TEntity>.Filter.Eq(x => x.Lock.LockKey, entityLock.LockKey)
+        );
+        var result = await Disk.ReplaceOneAsync(updatedEntity, filter);
+        return result;
+    }
+
+    private async Task<EntityChangeResult<TEntity>> PerformCommitForDeleteAsync(TEntity entity, Lock entityLock, Func<CallbackResult<TEntity>, Task> completeAction, TimeSpan lockTime, TimeSpan timeout, Lock lockInfo)
+    {
+        var before = await Disk.DeleteOneAsync(x => x.Id.Equals(entity.Id) && x.Lock != null && x.Lock.LockKey == entityLock.LockKey);
+        if (before == null)
         {
-            var before = await Disk.DeleteOneAsync(x => x.Id.Equals(entity.Id) && x.Lock != null && x.Lock.LockKey == entityLock.LockKey);
-            if (before == null)
-            {
-                var item = await Disk.GetOneAsync(x => x.Id.Equals(entity.Id));
-                if (item == null) throw new InvalidOperationException($"Entity of type {typeof(TEntity).Name} with id '{entity.Id}' was not deleted on commit, it did not exist.");
-                throw new InvalidOperationException($"Entity of type {typeof(TEntity).Name} with id '{entity.Id}' was not deleted on commit, lock key missmatch. [LockTime: {lockTime}, Timeout: {timeout}, Actor: {entityLock.Actor}, ProvidedLockKey: {entityLock.LockKey}, CurrentLockKey: {item.Lock?.LockKey}, CurrentActor: {entity.Lock?.Actor} ]");
-            }
-
-            if (completeAction != null)
-            {
-                await completeAction.Invoke(new CallbackResult<TEntity> { Commit = true, Before = before, After = null });
-            }
-
-            return true;
+            var item = await Disk.GetOneAsync(x => x.Id.Equals(entity.Id));
+            if (item == null) throw new InvalidOperationException($"Entity of type {typeof(TEntity).Name} with id '{entity.Id}' was not deleted on commit, it did not exist.");
+            throw new InvalidOperationException($"Entity of type {typeof(TEntity).Name} with id '{entity.Id}' was not deleted on commit, lock key missmatch. [LockTime: {lockTime}, Timeout: {timeout}, Actor: {entityLock.Actor}, ProvidedLockKey: {entityLock.LockKey}, CurrentLockKey: {item.Lock?.LockKey}, CurrentActor: {entity.Lock?.Actor} ]");
         }
-
-        //var lockInfo = BuildLockInfo(entityLock, exception);
-
-        var update = new UpdateDefinitionBuilder<TEntity>()
-            .Set(x => x.Lock, lockInfo);
-        var result = await Disk.UpdateOneAsync(entity.Id, update);
-
-        if (result.Before == null) throw new InvalidOperationException("Cannot find entity before release.");
-        if (result.Before.Lock == null) throw new InvalidOperationException("No lock information for document before release.");
-
-        var after = await result.GetAfterAsync();
-        if (after == null && Debugger.IsAttached) throw new InvalidOperationException($"Entity {typeof(TEntity).Name} with id '{entity.Id}' does not exist after release.");
 
         if (completeAction != null)
         {
-            await completeAction.Invoke(new CallbackResult<TEntity> { Commit = false, Before = result.Before, After = after });
+            await completeAction.Invoke(new CallbackResult<TEntity> { Commit = true, Before = before, After = null });
         }
 
-        return after?.Lock == null;
+        return default;
     }
 
     private Lock BuildLockInfo(Lock entityLock, Exception exception)
