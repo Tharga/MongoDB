@@ -84,6 +84,7 @@ stages:
         command: 'pack'
         packagesToPack: '**/Tharga.MongoDB.csproj'
         versioningScheme: 'byBuildNumber'
+        arguments: '--configuration Release /p:IncludeSymbols=true /p:IncludeSource=true /p:SymbolPackageFormat=snupkg /p:ContinuousIntegrationBuild=true'
 
     # - task: DotNetCoreCLI@2
     #   displayName: 'Push nuget packages locally'
@@ -114,10 +115,18 @@ stages:
       persistCredentials: true
 
     - task: NuGetCommand@2
-      displayName: 'Push nuget packages to nuget.org'
+      displayName: 'Push .nupkg to NuGet.org'
       inputs:
         command: 'push'
         packagesToPush: '$(Pipeline.Workspace)/**/*.nupkg;!$(Pipeline.Workspace)/**/*.symbols.nupkg'
+        nuGetFeedType: 'external'
+        publishFeedCredentials: 'Nuget.org'
+
+    - task: NuGetCommand@2
+      displayName: 'Push .snupkg to NuGet.org Symbol Server'
+      inputs:
+        command: 'push'
+        packagesToPush: '$(Pipeline.Workspace)/**/*.symbols.nupkg'
         nuGetFeedType: 'external'
         publishFeedCredentials: 'Nuget.org'
 

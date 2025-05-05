@@ -15,15 +15,16 @@ public static class EntityScopeExtensions
     /// <param name="func">The function to be executed within the scope.</param>
     /// <returns></returns>
     /// <exception cref="ArgumentNullException"></exception>
-    public static async Task<T> ExecuteAsync<T, TKey>(this EntityScope<T, TKey> item, Func<Task<T>> func)
+    public static async Task<T> ExecuteAsync<T, TKey>(this EntityScope<T, TKey> item, Func<T, Task<T>> func)
         where T : LockableEntityBase<TKey>
     {
-        if (func == null) throw new ArgumentNullException(nameof(func));
+        if (item == default) return default;
+        if (func == null) throw new ArgumentNullException(nameof(func), $"{nameof(func)} needs to be provided.");
 
         T entity;
         try
         {
-            entity = await func.Invoke();
+            entity = await func.Invoke(item.Entity);
             if (entity == default)
             {
                 await item.AbandonAsync();
