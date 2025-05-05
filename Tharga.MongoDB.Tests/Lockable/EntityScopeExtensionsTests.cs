@@ -24,9 +24,9 @@ public class EntityScopeExtensionsTests : LockableTestBase
         await using var scope = await repository.PickForUpdateAsync(entity.Id);
 
         //Act
-        var result = await scope.ExecuteAsync(() =>
+        var result = await scope.ExecuteAsync(e =>
         {
-            entity.Data = "updated";
+            e.Data = "updated";
             return Task.FromResult<LockableTestEntity>(default);
         });
 
@@ -48,7 +48,7 @@ public class EntityScopeExtensionsTests : LockableTestBase
         await using var scope = await repository.PickForUpdateAsync(entity.Id);
 
         //Act
-        var result = await scope.ExecuteAsync(() => Task.FromResult(entity with { Data = "updated" }));
+        var result = await scope.ExecuteAsync(e => Task.FromResult(e with { Data = "updated" }));
 
         //Assert
         result.Should().NotBeNull();
@@ -69,9 +69,9 @@ public class EntityScopeExtensionsTests : LockableTestBase
         await using var scope = await repository.PickForUpdateAsync(entity.Id);
 
         //Act
-        var act = () => scope.ExecuteAsync(() =>
+        var act = () => scope.ExecuteAsync(e =>
         {
-            entity.Data = "updated";
+            e.Data = "updated";
             throw new InvalidOperationException("Oups");
         });
 
@@ -96,7 +96,7 @@ public class EntityScopeExtensionsTests : LockableTestBase
         await using var scope = await repository.PickForDeleteAsync(entity.Id);
 
         //Act
-        var result = await scope.ExecuteAsync(() => Task.FromResult<LockableTestEntity>(default));
+        var result = await scope.ExecuteAsync(e => Task.FromResult<LockableTestEntity>(default));
 
         //Assert
         result.Should().BeNull();
@@ -116,7 +116,7 @@ public class EntityScopeExtensionsTests : LockableTestBase
         await using var scope = await repository.PickForDeleteAsync(entity.Id);
 
         //Act
-        var result = await scope.ExecuteAsync(() => Task.FromResult(entity));
+        var result = await scope.ExecuteAsync(Task.FromResult);
 
         //Assert
         result.Should().NotBeNull();
@@ -135,7 +135,7 @@ public class EntityScopeExtensionsTests : LockableTestBase
         await using var scope = await repository.PickForDeleteAsync(entity.Id);
 
         //Act
-        var act = () => scope.ExecuteAsync(() => throw new InvalidOperationException("Oups"));
+        var act = () => scope.ExecuteAsync(_ => throw new InvalidOperationException("Oups"));
 
         //Assert
         await act.Should()
