@@ -9,4 +9,6 @@ internal class LockableTestRepositoryCollection : LockableRepositoryCollectionBa
         : base(mongoDbServiceFactory)
     {
     }
+
+    protected override bool RequireActor => false;
 }
