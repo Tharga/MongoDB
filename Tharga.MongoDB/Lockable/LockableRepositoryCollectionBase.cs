@@ -10,6 +10,7 @@ using MongoDB.Bson;
 using MongoDB.Driver;
 using Tharga.MongoDB.Disk;
 using Tharga.MongoDB.Internals;
+using Tharga.Toolkit;
 
 namespace Tharga.MongoDB.Lockable;
 
@@ -41,6 +42,7 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
     ];
 
     protected virtual TimeSpan DefaultTimeout { get; init; } = TimeSpan.FromSeconds(30);
+    protected virtual bool RequireActor => true;
 
     public override IAsyncEnumerable<TEntity> GetAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default)
     {
@@ -291,12 +293,12 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
 
     public async Task<EntityScope<TEntity, TKey>> WaitForUpdateAsync(TKey id, TimeSpan? lockTimeout = default, TimeSpan? waitTimeout = default, string actor = default, Func<CallbackResult<TEntity>, Task> completeAction = default, CancellationToken cancellationToken = default)
     {
-        return await EntityScope(id, lockTimeout, waitTimeout, actor, cancellationToken, CommitMode.Update, completeAction);
+        return await WaitForLock(id, lockTimeout, waitTimeout, actor, cancellationToken, CommitMode.Update, completeAction);
     }
 
     public async Task<EntityScope<TEntity, TKey>> WaitForDeleteAsync(TKey id, TimeSpan? lockTimeout = default, TimeSpan? waitTimeout = default, string actor = default, Func<CallbackResult<TEntity>, Task> completeAction = default, CancellationToken cancellationToken = default)
     {
-        return await EntityScope(id, lockTimeout, waitTimeout, actor, cancellationToken, CommitMode.Delete, completeAction);
+        return await WaitForLock(id, lockTimeout, waitTimeout, actor, cancellationToken, CommitMode.Delete, completeAction);
     }
 
     public IAsyncEnumerable<EntityLock<TEntity, TKey>> GetLockedAsync(LockMode lockMode, FilterDefinition<TEntity> filter = default, Options<TEntity> options = null, CancellationToken cancellationToken = default)
@@ -405,7 +407,7 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
         return filter;
     }
 
-    private async Task<EntityScope<TEntity, TKey>> EntityScope(TKey id, TimeSpan? lockTimeout, TimeSpan? waitTimeout, string actor, CancellationToken cancellationToken, CommitMode commitMode, Func<CallbackResult<TEntity>, Task> completeAction)
+    private async Task<EntityScope<TEntity, TKey>> WaitForLock(TKey id, TimeSpan? lockTimeout, TimeSpan? waitTimeout, string actor, CancellationToken cancellationToken, CommitMode commitMode, Func<CallbackResult<TEntity>, Task> completeAction)
     {
         var actualTimeout = lockTimeout ?? waitTimeout ?? DefaultTimeout;
         var recheckTimeInterval = actualTimeout / 5;
@@ -447,10 +449,11 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
     {
         var timeoutTotUse = timeout ?? DefaultTimeout;
         if (timeoutTotUse.Ticks < 0) throw new ArgumentException($"{nameof(timeout)} cannot be less than zero. Provided or default value is {timeoutTotUse}.");
+        if (RequireActor && actor.IsNullOrEmpty()) throw new ArgumentNullException(nameof(actor), $"No {nameof(actor)} provided.");
 
         var now = DateTime.UtcNow;
         var lockKey = Guid.NewGuid();
-        actor = actor.NullIfEmpty();
+        actor = StringExtensions.NullIfEmpty(actor);
 
         var unlockedFilter = Builders<TEntity>.Filter.And(
             filter,
