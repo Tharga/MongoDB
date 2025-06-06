@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using MongoDB.Driver;
+using Tharga.MongoDB.Disk;
 using Tharga.MongoDB.Internals;
 
 namespace Tharga.MongoDB;
@@ -94,7 +95,7 @@ public abstract class RepositoryCollectionBase<TEntity, TKey> : RepositoryCollec
     public abstract Task<long> GetSizeAsync();
 
     public abstract IAsyncEnumerable<TEntity> GetDirtyAsync();
-    //public abstract IAsyncEnumerable<CreateIndexModel<TEntity>> GetMissingIndices();
+    public abstract IEnumerable<(IndexFailOperation Operation, string Name)> GetFailedIndices();
 
     internal void InvokeAction(ActionEventArgs.ActionData actionData)
     {

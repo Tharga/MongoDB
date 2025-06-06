@@ -350,14 +350,19 @@ public abstract class BufferRepositoryCollectionBase<TEntity, TKey> : Repository
     //    throw new NotSupportedException($"{nameof(AggregateAsync)} is not supported for {nameof(BufferRepositoryCollectionBase<TEntity, TKey>)}");
     //}
 
-    public override Task<long> GetSizeAsync()
-    {
-        return Disk.GetSizeAsync();
-    }
-
     public override IAsyncEnumerable<TEntity> GetDirtyAsync()
     {
         return Disk.GetDirtyAsync();
+    }
+
+    public override IEnumerable<(IndexFailOperation Operation, string Name)> GetFailedIndices()
+    {
+        return Disk.GetFailedIndices();
+    }
+
+    public override Task<long> GetSizeAsync()
+    {
+        return Disk.GetSizeAsync();
     }
 
     /// <summary>

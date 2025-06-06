@@ -120,14 +120,19 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
         return Disk.CountAsync(filter, cancellationToken);
     }
 
-    public override Task<long> GetSizeAsync()
-    {
-        return Disk.GetSizeAsync();
-    }
-
     public override IAsyncEnumerable<TEntity> GetDirtyAsync()
     {
         return Disk.GetDirtyAsync();
+    }
+
+    public override IEnumerable<(IndexFailOperation Operation, string Name)> GetFailedIndices()
+    {
+        return Disk.GetFailedIndices();
+    }
+
+    public override Task<long> GetSizeAsync()
+    {
+        return Disk.GetSizeAsync();
     }
 
     public Expression<Func<TEntity, bool>> UnlockedOrExpiredFilter

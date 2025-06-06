@@ -19,6 +19,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 {
     private readonly SemaphoreSlim _lock = new(1, 1);
     private IMongoCollection<TEntity> _collection;
+    private readonly List<(IndexFailOperation Operation, string Name)> _failedIndices = new();
 
     /// <summary>
     /// Override this constructor for static collections.
@@ -817,20 +818,35 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         }, false);
     }
 
-    public override async Task<long> GetSizeAsync()
-    {
-        return await Execute(nameof(GetSizeAsync), () => Task.FromResult(_mongoDbService.GetSize(ProtectedCollectionName)), false);
-    }
-
     public override async IAsyncEnumerable<TEntity> GetDirtyAsync()
     {
-        await foreach (var page in GetPagesAsync())
+        if (ResultLimit == null)
         {
-            await foreach (var item in page.Items)
+            await foreach (var item in GetAsync())
             {
                 if (item.NeedsCleaning()) yield return item;
             }
         }
+        else
+        {
+            await foreach (var page in GetPagesAsync())
+            {
+                await foreach (var item in page.Items)
+                {
+                    if (item.NeedsCleaning()) yield return item;
+                }
+            }
+        }
+    }
+
+    public override IEnumerable<(IndexFailOperation Operation, string Name)> GetFailedIndices()
+    {
+        return _failedIndices;
+    }
+
+    public override async Task<long> GetSizeAsync()
+    {
+        return await Execute(nameof(GetSizeAsync), () => Task.FromResult(_mongoDbService.GetSize(ProtectedCollectionName)), false);
     }
 
     private async Task<IMongoCollection<TEntity>> FetchCollectionAsync()
@@ -932,6 +948,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                 {
                     Debugger.Break();
                     _logger?.LogError(e, "Failed to drop index {indexName} in collection {collection}. {message}", indexName, ProtectedCollectionName, e.Message);
+                    _failedIndices.Add((IndexFailOperation.Drop, indexName));
                 }
             }
         }
@@ -950,6 +967,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                 {
                     Debugger.Break();
                     _logger?.LogError(e, "Failed to create index {indexName} in collection {collection}. {message}", index.Options.Name, ProtectedCollectionName, e.Message);
+                    _failedIndices.Add((IndexFailOperation.Create, index.Options.Name));
                 }
             }
         }

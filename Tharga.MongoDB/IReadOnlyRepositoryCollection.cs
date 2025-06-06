@@ -30,4 +30,6 @@ public interface IReadOnlyRepositoryCollection<TEntity, TKey> : IReadOnlyReposit
     Task<T> GetOneProjectionAsync<T>(Expression<Func<T, bool>> predicate = null, OneOption<T> options = null, CancellationToken cancellationToken = default);
     Task<long> CountAsync(Expression<Func<TEntity, bool>> predicate, CancellationToken cancellationToken = default);
     Task<long> CountAsync(FilterDefinition<TEntity> filter, CancellationToken cancellationToken = default);
+    IAsyncEnumerable<TEntity> GetDirtyAsync();
+    IEnumerable<(IndexFailOperation Operation, string Name)> GetFailedIndices();
 }

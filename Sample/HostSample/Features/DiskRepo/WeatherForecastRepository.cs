@@ -1,3 +1,5 @@
+using Tharga.MongoDB;
+
 namespace HostSample.Features.DiskRepo;
 
 internal class WeatherForecastRepository : IWeatherForecastRepository
@@ -20,5 +22,15 @@ internal class WeatherForecastRepository : IWeatherForecastRepository
         {
             await _collection.AddAsync(weatherForecast);
         }
+    }
+
+    public IAsyncEnumerable<WeatherForecast> GetDirtyAsync()
+    {
+        return _collection.GetDirtyAsync();
+    }
+
+    public IEnumerable<(IndexFailOperation Operation, string Name)> GetFailedIndices()
+    {
+        return _collection.GetFailedIndices();
     }
 }

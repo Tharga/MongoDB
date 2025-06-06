@@ -8,12 +8,10 @@ namespace HostSample.Controllers;
 public class CollectionController : ControllerBase
 {
     private readonly IMongoDbServiceFactory _mongoDbServiceFactory;
-    private readonly IMetadataService _metadataService;
 
-    public CollectionController(IMongoDbServiceFactory mongoDbServiceFactory, IMetadataService metadataService)
+    public CollectionController(IMongoDbServiceFactory mongoDbServiceFactory)
     {
         _mongoDbServiceFactory = mongoDbServiceFactory;
-        _metadataService = metadataService;
     }
 
     [HttpGet]

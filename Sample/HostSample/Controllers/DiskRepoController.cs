@@ -42,7 +42,20 @@ public class DiskRepoController : ControllerBase
     public async Task<IActionResult> GetFromDatabase()
     {
         var result = await _weatherForecastRepository.GetAsync().ToArrayAsync();
+        return Ok(result);
+    }
 
+    [HttpGet("Dirty")]
+    public async Task<IActionResult> GetDirty()
+    {
+        var result = await _weatherForecastRepository.GetDirtyAsync().ToArrayAsync();
+        return Ok(result);
+    }
+
+    [HttpGet("FailedIndices")]
+    public async Task<IActionResult> GetFailedIndices()
+    {
+        var result = _weatherForecastRepository.GetFailedIndices();
         return Ok(result);
     }
 }
