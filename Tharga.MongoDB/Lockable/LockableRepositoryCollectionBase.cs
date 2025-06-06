@@ -80,6 +80,11 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
         return Disk.GetPagesAsync(predicate, options, cancellationToken);
     }
 
+    public override IAsyncEnumerable<ResultPage<TEntity, TKey>> GetPagesAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default)
+    {
+        return Disk.GetPagesAsync(filter, options, cancellationToken);
+    }
+
     public override Task<TEntity> GetOneAsync(TKey id, CancellationToken cancellationToken = default)
     {
         return Disk.GetOneAsync(id, cancellationToken);

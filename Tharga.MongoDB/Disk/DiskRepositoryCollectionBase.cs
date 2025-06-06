@@ -323,7 +323,14 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         };
     }
 
-    public override async IAsyncEnumerable<ResultPage<TEntity, TKey>> GetPagesAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    public override IAsyncEnumerable<ResultPage<TEntity, TKey>> GetPagesAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        var builder = Builders<TEntity>.Filter;
+        var filter = predicate != null ? builder.Where(predicate) : builder.Empty;
+        return GetPagesAsync(filter, options, cancellationToken);
+    }
+
+    public override async IAsyncEnumerable<ResultPage<TEntity, TKey>> GetPagesAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default)
     {
         if (ResultLimit == null) throw new InvalidOperationException("Cannot use GetPagesAsync when no result limit has been configured.");
         if (ResultLimit <= 0) throw new InvalidOperationException("GetPagesAsync has to be a number greater than 0.");
@@ -332,7 +339,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         var sw = new Stopwatch();
         sw.Start();
 
-        var totalCount = (int)await Collection.CountDocumentsAsync(predicate, new CountOptions(), cancellationToken);
+        var totalCount = (int)await Collection.CountDocumentsAsync(filter, new CountOptions(), cancellationToken);
         var pages = (int)Math.Ceiling(totalCount / (decimal)ResultLimit.Value);
         if (options?.Limit != null && options.Limit < pages)
         {
@@ -346,7 +353,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             var o = options == null
                 ? new FindOptions<TEntity, TEntity> { Limit = ResultLimit, Skip = skip }
                 : new FindOptions<TEntity, TEntity> { Projection = options.Projection, Sort = options.Sort, Limit = ResultLimit, Skip = skip };
-            var cursor = await FindAsync(Collection, predicate, cancellationToken, o);
+            var cursor = await FindAsync(Collection, filter, cancellationToken, o);
 
             yield return new ResultPage<TEntity, TKey>
             {
