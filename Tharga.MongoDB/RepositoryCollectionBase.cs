@@ -25,7 +25,7 @@ public abstract class RepositoryCollectionBase<TEntity, TKey> : RepositoryCollec
     protected readonly ILogger<RepositoryCollectionBase<TEntity, TKey>> _logger;
     protected readonly DatabaseContext _databaseContext;
     protected readonly IMongoDbService _mongoDbService;
-    protected readonly LogLevel _executeInfoLogLevel = LogLevel.Debug;
+    protected readonly LogLevel _executeInfoLogLevel;
 
     private readonly Lazy<ActionEventArgs.ContextData> _contextData;
 
@@ -92,6 +92,9 @@ public abstract class RepositoryCollectionBase<TEntity, TKey> : RepositoryCollec
     public abstract Task<long> CountAsync(FilterDefinition<TEntity> filter, CancellationToken cancellationToken = default);
 
     public abstract Task<long> GetSizeAsync();
+
+    public abstract IAsyncEnumerable<TEntity> GetDirtyAsync();
+    //public abstract IAsyncEnumerable<CreateIndexModel<TEntity>> GetMissingIndices();
 
     internal void InvokeAction(ActionEventArgs.ActionData actionData)
     {

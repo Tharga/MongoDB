@@ -355,6 +355,11 @@ public abstract class BufferRepositoryCollectionBase<TEntity, TKey> : Repository
         return Disk.GetSizeAsync();
     }
 
+    public override IAsyncEnumerable<TEntity> GetDirtyAsync()
+    {
+        return Disk.GetDirtyAsync();
+    }
+
     /// <summary>
     /// Reloads the database content into memory.
     /// </summary>

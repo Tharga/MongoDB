@@ -822,6 +822,17 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         return await Execute(nameof(GetSizeAsync), () => Task.FromResult(_mongoDbService.GetSize(ProtectedCollectionName)), false);
     }
 
+    public override async IAsyncEnumerable<TEntity> GetDirtyAsync()
+    {
+        await foreach (var page in GetPagesAsync())
+        {
+            await foreach (var item in page.Items)
+            {
+                if (item.NeedsCleaning()) yield return item;
+            }
+        }
+    }
+
     private async Task<IMongoCollection<TEntity>> FetchCollectionAsync()
     {
         var collection = await GetCollectionAsync<TEntity>();

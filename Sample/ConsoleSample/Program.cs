@@ -20,11 +20,11 @@ internal static class Program
             {
                 services.AddMongoDB(o =>
                 {
-                    o.ConnectionStringLoader = (_, _) => Task.FromResult<ConnectionString>("mongodb://localhost:27017/Tharga_MongoDB_ConsoleSample{part}");
+                    o.ConnectionStringLoader = (ConfigurationName _, IServiceProvider _) => Task.FromResult<ConnectionString>("mongodb://localhost:27017/Tharga_MongoDB_ConsoleSample{part}");
 
                     o.ActionEvent = data => { Console.WriteLine($"---> {data.Action.Message}"); };
 
-                    o.ConfigurationLoader = _ => Task.FromResult(new MongoDbConfigurationTree
+                    o.ConfigurationLoader = (IServiceProvider _) => Task.FromResult(new MongoDbConfigurationTree
                     {
                         Configurations = new Dictionary<ConfigurationName, MongoDbConfiguration>
                         {

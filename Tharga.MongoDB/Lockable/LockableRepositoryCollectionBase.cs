@@ -125,6 +125,11 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
         return Disk.GetSizeAsync();
     }
 
+    public override IAsyncEnumerable<TEntity> GetDirtyAsync()
+    {
+        return Disk.GetDirtyAsync();
+    }
+
     public Expression<Func<TEntity, bool>> UnlockedOrExpiredFilter
     {
         get
