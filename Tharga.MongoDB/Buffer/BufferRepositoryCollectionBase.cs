@@ -116,6 +116,11 @@ public abstract class BufferRepositoryCollectionBase<TEntity, TKey> : Repository
         throw new NotSupportedException($"{nameof(GetPagesAsync)} is not supported for {nameof(BufferRepositoryCollectionBase<TEntity, TKey>)}");
     }
 
+    public override IAsyncEnumerable<ResultPage<TEntity, TKey>> GetPagesAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default)
+    {
+        throw new NotSupportedException($"{nameof(GetPagesAsync)} is not supported for {nameof(BufferRepositoryCollectionBase<TEntity, TKey>)}");
+    }
+
     public override async Task<TEntity> GetOneAsync(TKey id, CancellationToken cancellationToken = default)
     {
         var buffer = await GetBufferAsync(cancellationToken);
@@ -344,6 +349,16 @@ public abstract class BufferRepositoryCollectionBase<TEntity, TKey> : Repository
     //{
     //    throw new NotSupportedException($"{nameof(AggregateAsync)} is not supported for {nameof(BufferRepositoryCollectionBase<TEntity, TKey>)}");
     //}
+
+    public override IAsyncEnumerable<TEntity> GetDirtyAsync()
+    {
+        return Disk.GetDirtyAsync();
+    }
+
+    public override IEnumerable<(IndexFailOperation Operation, string Name)> GetFailedIndices()
+    {
+        return Disk.GetFailedIndices();
+    }
 
     public override Task<long> GetSizeAsync()
     {

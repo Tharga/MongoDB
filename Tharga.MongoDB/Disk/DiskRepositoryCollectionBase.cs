@@ -19,6 +19,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 {
     private readonly SemaphoreSlim _lock = new(1, 1);
     private IMongoCollection<TEntity> _collection;
+    private readonly List<(IndexFailOperation Operation, string Name)> _failedIndices = new();
 
     /// <summary>
     /// Override this constructor for static collections.
@@ -323,7 +324,14 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         };
     }
 
-    public override async IAsyncEnumerable<ResultPage<TEntity, TKey>> GetPagesAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    public override IAsyncEnumerable<ResultPage<TEntity, TKey>> GetPagesAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        var builder = Builders<TEntity>.Filter;
+        var filter = predicate != null ? builder.Where(predicate) : builder.Empty;
+        return GetPagesAsync(filter, options, cancellationToken);
+    }
+
+    public override async IAsyncEnumerable<ResultPage<TEntity, TKey>> GetPagesAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default)
     {
         if (ResultLimit == null) throw new InvalidOperationException("Cannot use GetPagesAsync when no result limit has been configured.");
         if (ResultLimit <= 0) throw new InvalidOperationException("GetPagesAsync has to be a number greater than 0.");
@@ -332,7 +340,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         var sw = new Stopwatch();
         sw.Start();
 
-        var totalCount = (int)await Collection.CountDocumentsAsync(predicate, new CountOptions(), cancellationToken);
+        var totalCount = (int)await Collection.CountDocumentsAsync(filter, new CountOptions(), cancellationToken);
         var pages = (int)Math.Ceiling(totalCount / (decimal)ResultLimit.Value);
         if (options?.Limit != null && options.Limit < pages)
         {
@@ -346,7 +354,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             var o = options == null
                 ? new FindOptions<TEntity, TEntity> { Limit = ResultLimit, Skip = skip }
                 : new FindOptions<TEntity, TEntity> { Projection = options.Projection, Sort = options.Sort, Limit = ResultLimit, Skip = skip };
-            var cursor = await FindAsync(Collection, predicate, cancellationToken, o);
+            var cursor = await FindAsync(Collection, filter, cancellationToken, o);
 
             yield return new ResultPage<TEntity, TKey>
             {
@@ -810,6 +818,32 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         }, false);
     }
 
+    public override async IAsyncEnumerable<TEntity> GetDirtyAsync()
+    {
+        if (ResultLimit == null)
+        {
+            await foreach (var item in GetAsync())
+            {
+                if (item.NeedsCleaning()) yield return item;
+            }
+        }
+        else
+        {
+            await foreach (var page in GetPagesAsync())
+            {
+                await foreach (var item in page.Items)
+                {
+                    if (item.NeedsCleaning()) yield return item;
+                }
+            }
+        }
+    }
+
+    public override IEnumerable<(IndexFailOperation Operation, string Name)> GetFailedIndices()
+    {
+        return _failedIndices;
+    }
+
     public override async Task<long> GetSizeAsync()
     {
         return await Execute(nameof(GetSizeAsync), () => Task.FromResult(_mongoDbService.GetSize(ProtectedCollectionName)), false);
@@ -914,6 +948,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                 {
                     Debugger.Break();
                     _logger?.LogError(e, "Failed to drop index {indexName} in collection {collection}. {message}", indexName, ProtectedCollectionName, e.Message);
+                    _failedIndices.Add((IndexFailOperation.Drop, indexName));
                 }
             }
         }
@@ -932,6 +967,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                 {
                     Debugger.Break();
                     _logger?.LogError(e, "Failed to create index {indexName} in collection {collection}. {message}", index.Options.Name, ProtectedCollectionName, e.Message);
+                    _failedIndices.Add((IndexFailOperation.Create, index.Options.Name));
                 }
             }
         }

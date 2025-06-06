@@ -1,10 +1,11 @@
+using HostSample.Features.DiskRepo;
 using Microsoft.AspNetCore.Mvc;
 
 namespace HostSample.Controllers;
 
 [ApiController]
 [Route("[controller]")]
-public class WeatherForecastController : ControllerBase
+public class DiskRepoController : ControllerBase
 {
     private static readonly string[] _summaries =
     [
@@ -12,9 +13,9 @@ public class WeatherForecastController : ControllerBase
     ];
 
     private readonly IWeatherForecastRepository _weatherForecastRepository;
-    private readonly ILogger<WeatherForecastController> _logger;
+    private readonly ILogger<DiskRepoController> _logger;
 
-    public WeatherForecastController(IWeatherForecastRepository weatherForecastRepository, ILogger<WeatherForecastController> logger)
+    public DiskRepoController(IWeatherForecastRepository weatherForecastRepository, ILogger<DiskRepoController> logger)
     {
         _weatherForecastRepository = weatherForecastRepository;
         _logger = logger;
@@ -41,7 +42,20 @@ public class WeatherForecastController : ControllerBase
     public async Task<IActionResult> GetFromDatabase()
     {
         var result = await _weatherForecastRepository.GetAsync().ToArrayAsync();
+        return Ok(result);
+    }
 
+    [HttpGet("Dirty")]
+    public async Task<IActionResult> GetDirty()
+    {
+        var result = await _weatherForecastRepository.GetDirtyAsync().ToArrayAsync();
+        return Ok(result);
+    }
+
+    [HttpGet("FailedIndices")]
+    public async Task<IActionResult> GetFailedIndices()
+    {
+        var result = _weatherForecastRepository.GetFailedIndices();
         return Ok(result);
     }
 }

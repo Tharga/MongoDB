@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using MongoDB.Driver;
+using Tharga.MongoDB.Disk;
 using Tharga.MongoDB.Internals;
 
 namespace Tharga.MongoDB;
@@ -25,7 +26,7 @@ public abstract class RepositoryCollectionBase<TEntity, TKey> : RepositoryCollec
     protected readonly ILogger<RepositoryCollectionBase<TEntity, TKey>> _logger;
     protected readonly DatabaseContext _databaseContext;
     protected readonly IMongoDbService _mongoDbService;
-    protected readonly LogLevel _executeInfoLogLevel = LogLevel.Debug;
+    protected readonly LogLevel _executeInfoLogLevel;
 
     private readonly Lazy<ActionEventArgs.ContextData> _contextData;
 
@@ -64,6 +65,7 @@ public abstract class RepositoryCollectionBase<TEntity, TKey> : RepositoryCollec
     public abstract Task<Result<TEntity, TKey>> QueryAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default);
     public abstract Task<Result<TEntity, TKey>> QueryAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default);
     public abstract IAsyncEnumerable<ResultPage<TEntity, TKey>> GetPagesAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default);
+    public abstract IAsyncEnumerable<ResultPage<TEntity, TKey>> GetPagesAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default);
     public abstract Task<TEntity> GetOneAsync(TKey id, CancellationToken cancellationToken = default);
     public abstract Task<TEntity> GetOneAsync(Expression<Func<TEntity, bool>> predicate = null, OneOption<TEntity> options = null, CancellationToken cancellationToken = default);
     public abstract Task<TEntity> GetOneAsync(FilterDefinition<TEntity> filter, OneOption<TEntity> options = null, CancellationToken cancellationToken = default);
@@ -91,6 +93,9 @@ public abstract class RepositoryCollectionBase<TEntity, TKey> : RepositoryCollec
     public abstract Task<long> CountAsync(FilterDefinition<TEntity> filter, CancellationToken cancellationToken = default);
 
     public abstract Task<long> GetSizeAsync();
+
+    public abstract IAsyncEnumerable<TEntity> GetDirtyAsync();
+    public abstract IEnumerable<(IndexFailOperation Operation, string Name)> GetFailedIndices();
 
     internal void InvokeAction(ActionEventArgs.ActionData actionData)
     {

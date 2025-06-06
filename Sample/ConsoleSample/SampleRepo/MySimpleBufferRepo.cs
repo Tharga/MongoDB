@@ -10,8 +10,8 @@ namespace ConsoleSample.SampleRepo;
 
 public class MySimpleBufferRepo : BufferRepositoryCollectionBase<MyBaseEntity, ObjectId>, IMyRepo
 {
-    public MySimpleBufferRepo(IMongoDbServiceFactory mongoDbServiceFactory, ILogger<MySimpleBufferRepo> logger, string collectionName)
-        : base(mongoDbServiceFactory, logger, new DatabaseContext { CollectionName = collectionName })
+    public MySimpleBufferRepo(IMongoDbServiceFactory mongoDbServiceFactory, ILogger<MySimpleBufferRepo> logger, DatabaseContext databaseContext)
+        : base(mongoDbServiceFactory, logger, databaseContext)
     {
     }
 

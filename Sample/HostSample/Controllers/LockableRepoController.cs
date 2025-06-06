@@ -3,15 +3,15 @@ using Microsoft.AspNetCore.Mvc;
 using MongoDB.Bson;
 using Tharga.MongoDB.Lockable;
 
-namespace HostSample.Features.BasicDiskRepo;
+namespace HostSample.Controllers;
 
 [ApiController]
 [Route("[controller]")]
-public class LockableDiskRepoController : ControllerBase
+public class LockableRepoController : ControllerBase
 {
     private readonly IMyLockableRepo _repository;
 
-    public LockableDiskRepoController(IMyLockableRepo repository)
+    public LockableRepoController(IMyLockableRepo repository)
     {
         _repository = repository;
     }

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Linq.Expressions;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
@@ -79,6 +80,11 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
         return Disk.GetPagesAsync(predicate, options, cancellationToken);
     }
 
+    public override IAsyncEnumerable<ResultPage<TEntity, TKey>> GetPagesAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default)
+    {
+        return Disk.GetPagesAsync(filter, options, cancellationToken);
+    }
+
     public override Task<TEntity> GetOneAsync(TKey id, CancellationToken cancellationToken = default)
     {
         return Disk.GetOneAsync(id, cancellationToken);
@@ -112,6 +118,16 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
     public override Task<long> CountAsync(FilterDefinition<TEntity> filter, CancellationToken cancellationToken = default)
     {
         return Disk.CountAsync(filter, cancellationToken);
+    }
+
+    public override IAsyncEnumerable<TEntity> GetDirtyAsync()
+    {
+        return Disk.GetDirtyAsync();
+    }
+
+    public override IEnumerable<(IndexFailOperation Operation, string Name)> GetFailedIndices()
+    {
+        return Disk.GetFailedIndices();
     }
 
     public override Task<long> GetSizeAsync()
@@ -170,7 +186,7 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
         }
     }
 
-    public async IAsyncEnumerable<TEntity> GetUnlockedAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default)
+    public async IAsyncEnumerable<TEntity> GetUnlockedAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         await foreach (var page in Disk.GetPagesAsync(UnlockedOrExpiredFilter.AndAlso(predicate ?? (x => true)), options, cancellationToken))
         {
