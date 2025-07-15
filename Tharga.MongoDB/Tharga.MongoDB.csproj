@@ -46,7 +46,7 @@
     </PackageReference>
     <PackageReference Include="MongoDB.Driver" Version="3.4.0" />
     <PackageReference Include="System.Linq.Async" Version="6.0.3" />
-    <PackageReference Include="Tharga.Toolkit" Version="1.12.22" />
+    <PackageReference Include="Tharga.Toolkit" Version="1.12.24" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Tharga.MongoDB.Tests" />
