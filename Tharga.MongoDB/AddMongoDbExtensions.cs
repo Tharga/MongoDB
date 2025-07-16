@@ -250,7 +250,7 @@ public static class AddMongoDbExtensions
         }
 
         string message = null;
-        var constructorInfos = implementationType.GetConstructors().ToArray();
+        var constructorInfos = implementationType.GetConstructors();
         if (constructorInfos.Any(x => x.GetParameters().All(y => y.ParameterType != typeof(DatabaseContext))))
         {
             services.AddTransient(serviceType, implementationType);

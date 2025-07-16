@@ -324,14 +324,14 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         };
     }
 
-    public override IAsyncEnumerable<ResultPage<TEntity, TKey>> GetPagesAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    public override IAsyncEnumerable<ResultPage<TEntity, TKey>> GetPagesAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default)
     {
         var builder = Builders<TEntity>.Filter;
         var filter = predicate != null ? builder.Where(predicate) : builder.Empty;
         return GetPagesAsync(filter, options, cancellationToken);
     }
 
-    public override async IAsyncEnumerable<ResultPage<TEntity, TKey>> GetPagesAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default)
+    public override async IAsyncEnumerable<ResultPage<TEntity, TKey>> GetPagesAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         if (ResultLimit == null) throw new InvalidOperationException("Cannot use GetPagesAsync when no result limit has been configured.");
         if (ResultLimit <= 0) throw new InvalidOperationException("GetPagesAsync has to be a number greater than 0.");
@@ -523,7 +523,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
     private static ProjectionDefinition<T> BuildProjection<T>()
     {
         var builder = new ProjectionDefinitionBuilder<T>();
-        var props = typeof(T).GetProperties().ToArray();
+        var props = typeof(T).GetProperties();
         var projections = props.Select(x => Builders<T>.Projection.Include(x.Name));
         var projectionDefinition = builder.Combine(projections);
         return projectionDefinition;
