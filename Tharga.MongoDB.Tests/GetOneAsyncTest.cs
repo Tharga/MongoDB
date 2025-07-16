@@ -10,20 +10,19 @@ namespace Tharga.MongoDB.Tests;
 
 [Collection("Sequential")]
 [CollectionDefinition("Sequential", DisableParallelization = true)]
-public class GetOneAsyncTest : GenericBufferRepositoryCollectionBaseTestBase
+public class GetOneAsyncTest : GenericRepositoryCollectionBaseTestBase
 {
     public GetOneAsyncTest()
     {
         Prepare([TestEntityFactory.CreateTestEntity, TestEntityFactory.CreateTestSubEntity, TestEntityFactory.CreateTestEntity]);
     }
 
-    [Theory]
+    [Fact]
     [Trait("Category", "Database")]
-    [MemberData(nameof(Data))]
-    public async Task Basic(CollectionType collectionType)
+    public async Task Basic()
     {
         //Arrange
-        var sut = await GetCollection(collectionType);
+        var sut = await GetCollection();
 
         //Act
         var result = await sut.GetOneAsync(x => true, OneOption<TestEntity>.First);
@@ -33,13 +32,12 @@ public class GetOneAsyncTest : GenericBufferRepositoryCollectionBaseTestBase
         await VerifyContentAsync(sut);
     }
 
-    [Theory]
+    [Fact]
     [Trait("Category", "Database")]
-    [MemberData(nameof(Data))]
-    public async Task Default(CollectionType collectionType)
+    public async Task Default()
     {
         //Arrange
-        var sut = await GetCollection(collectionType);
+        var sut = await GetCollection();
 
         //Act
         var result = await sut.GetOneAsync(options: OneOption<TestEntity>.First);
@@ -49,13 +47,12 @@ public class GetOneAsyncTest : GenericBufferRepositoryCollectionBaseTestBase
         await VerifyContentAsync(sut);
     }
 
-    [Theory]
+    [Fact]
     [Trait("Category", "Database")]
-    [MemberData(nameof(Data))]
-    public async Task ByType(CollectionType collectionType)
+    public async Task ByType()
     {
         //Arrange
-        var sut = await GetCollection(collectionType);
+        var sut = await GetCollection();
 
         //Act
         var result = await sut.GetOneAsync<TestEntity>(options: OneOption<TestEntity>.First);
@@ -66,13 +63,12 @@ public class GetOneAsyncTest : GenericBufferRepositoryCollectionBaseTestBase
         await VerifyContentAsync(sut);
     }
 
-    [Theory]
+    [Fact]
     [Trait("Category", "Database")]
-    [MemberData(nameof(Data))]
-    public async Task SubType(CollectionType collectionType)
+    public async Task SubType()
     {
         //Arrange
-        var sut = await GetCollection(collectionType);
+        var sut = await GetCollection();
 
         //Act
         var result = await sut.GetOneAsync<TestSubEntity>();
@@ -88,7 +84,7 @@ public class GetOneAsyncTest : GenericBufferRepositoryCollectionBaseTestBase
     public async Task DiskOrderAsending()
     {
         //Arrange
-        var sut = await GetCollection(CollectionType.Disk);
+        var sut = await GetCollection();
 
         //Act
         var result = await sut.GetOneAsync(null, new OneOption<TestEntity> { Sort = new SortDefinitionBuilder<TestEntity>().Ascending(x => x.Id), Mode = EMode.First });
@@ -104,7 +100,7 @@ public class GetOneAsyncTest : GenericBufferRepositoryCollectionBaseTestBase
     public async Task DiskOrderDescending()
     {
         //Arrange
-        var sut = await GetCollection(CollectionType.Disk);
+        var sut = await GetCollection();
 
         //Act
         var result = await sut.GetOneAsync(null, new OneOption<TestEntity> { Sort = new SortDefinitionBuilder<TestEntity>().Descending(x => x.Id), Mode = EMode.First });
@@ -115,13 +111,12 @@ public class GetOneAsyncTest : GenericBufferRepositoryCollectionBaseTestBase
         await VerifyContentAsync(sut);
     }
 
-    [Theory]
+    [Fact]
     [Trait("Category", "Database")]
-    [MemberData(nameof(Data))]
-    public async Task GetSingleWithMultipeResult(CollectionType collectionType)
+    public async Task GetSingleWithMultipeResult()
     {
         //Arrange
-        var sut = await GetCollection(collectionType);
+        var sut = await GetCollection();
 
         //Act
         var act = () => sut.GetOneAsync();

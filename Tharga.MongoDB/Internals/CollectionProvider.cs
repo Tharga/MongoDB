@@ -2,7 +2,6 @@
 using System.Linq;
 using Microsoft.Extensions.Logging;
 using MongoDB.Bson;
-using Tharga.MongoDB.Buffer;
 using Tharga.MongoDB.Configuration;
 using Tharga.MongoDB.Disk;
 
@@ -32,19 +31,6 @@ internal class CollectionProvider : ICollectionProvider
         {
             var logger = _serviceLoader(typeof(ILogger<RepositoryCollectionBase<TEntity, TKey>>)) as ILogger<RepositoryCollectionBase<TEntity, TKey>>;
             var collection = new GenericDiskRepositoryCollection<TEntity, TKey>(_mongoDbServiceFactory, dc, logger, null);
-            return collection;
-        });
-    }
-
-    public IRepositoryCollection<TEntity, TKey> GetGenericBufferCollection<TEntity, TKey>(DatabaseContext databaseContext) where TEntity : EntityBase<TKey>
-    {
-        if (typeof(TEntity).IsInterface) throw new NotSupportedException($"{nameof(GetGenericDiskCollection)} is not supported for interface '{typeof(TEntity).Name}'. Create a custom collection that implements '{nameof(IRepositoryCollection<TEntity, TKey>)}<{typeof(TEntity).Name},{typeof(TKey).Name}>' and call '{nameof(GetCollection)}' instead.");
-        if (typeof(TEntity).IsAbstract) throw new NotSupportedException($"{nameof(GetGenericDiskCollection)} is not supported for abstract type '{typeof(TEntity).Name}'. Create a custom collection that implements '{nameof(IRepositoryCollection<TEntity, TKey>)}<{typeof(TEntity).Name},{typeof(TKey).Name}>' and call '{nameof(GetCollection)}' instead.");
-
-        return _collectionProviderCache.GetCollection(databaseContext, dc =>
-        {
-            var logger = _serviceLoader(typeof(ILogger<BufferRepositoryCollectionBase<TEntity, TKey>>)) as ILogger<BufferRepositoryCollectionBase<TEntity, TKey>>;
-            var collection = new GenericBufferRepositoryCollection<TEntity, TKey>(_mongoDbServiceFactory, logger, dc);
             return collection;
         });
     }

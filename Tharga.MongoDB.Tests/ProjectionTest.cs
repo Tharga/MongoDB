@@ -8,7 +8,7 @@ namespace Tharga.MongoDB.Tests;
 
 [Collection("Sequential")]
 [CollectionDefinition("Sequential", DisableParallelization = true)]
-public class ProjectionTest : GenericBufferRepositoryCollectionBaseTestBase
+public class ProjectionTest : GenericRepositoryCollectionBaseTestBase
 {
     public ProjectionTest()
     {
@@ -20,7 +20,7 @@ public class ProjectionTest : GenericBufferRepositoryCollectionBaseTestBase
     public async Task GetOneProjectionAsyncTest()
     {
         //Arrange
-        var sut = await GetCollection(CollectionType.Disk);
+        var sut = await GetCollection();
 
         //Act
         var result = await sut.GetOneProjectionAsync(x => true, OneOption<TestProjectionEntity>.FirstOrDefault);
@@ -35,7 +35,7 @@ public class ProjectionTest : GenericBufferRepositoryCollectionBaseTestBase
     public async Task GetProjectionAsyncTest()
     {
         //Arrange
-        var sut = await GetCollection(CollectionType.Disk);
+        var sut = await GetCollection();
 
         //Act
         var result = await sut.GetProjectionAsync<TestProjectionEntity>(x => true).ToArrayAsync();

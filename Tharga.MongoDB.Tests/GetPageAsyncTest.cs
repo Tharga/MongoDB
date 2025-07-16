@@ -1,5 +1,4 @@
-﻿using System;
-using System.Linq;
+﻿using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Tharga.MongoDB.Tests.Support;
@@ -9,7 +8,7 @@ namespace Tharga.MongoDB.Tests;
 
 [Collection("Sequential")]
 [CollectionDefinition("Sequential", DisableParallelization = true)]
-public class GetPageAsyncTest : GenericBufferRepositoryCollectionBaseTestBase
+public class GetPageAsyncTest : GenericRepositoryCollectionBaseTestBase
 {
     public GetPageAsyncTest()
     {
@@ -22,7 +21,7 @@ public class GetPageAsyncTest : GenericBufferRepositoryCollectionBaseTestBase
     public async Task BasicFromDisk()
     {
         //Arrange
-        var sut = await GetCollection(CollectionType.Disk);
+        var sut = await GetCollection();
         sut.ResultLimit.Should().BeLessThan(InitialDataLoader.Length);
         InitialDataLoader.Length.Should().Be((int)await sut.CountAsync(x => true));
         sut.ResultLimit.Should().Be(5);
@@ -44,7 +43,7 @@ public class GetPageAsyncTest : GenericBufferRepositoryCollectionBaseTestBase
     public async Task BasicFromDiskShouldReturnAllITems()
     {
         //Arrange
-        var sut = await GetCollection(CollectionType.Disk);
+        var sut = await GetCollection();
         sut.ResultLimit.Should().BeLessThan(InitialDataLoader.Length);
         InitialDataLoader.Length.Should().Be((int)await sut.CountAsync(x => true));
 
@@ -61,7 +60,7 @@ public class GetPageAsyncTest : GenericBufferRepositoryCollectionBaseTestBase
     public async Task GetTooManyRecordsShouldThrow()
     {
         //Arrange
-        var sut = await GetCollection(CollectionType.Disk);
+        var sut = await GetCollection();
         sut.ResultLimit.Should().BeLessThan(InitialDataLoader.Length);
         InitialDataLoader.Length.Should().Be((int)await sut.CountAsync(x => true));
 
@@ -70,19 +69,5 @@ public class GetPageAsyncTest : GenericBufferRepositoryCollectionBaseTestBase
 
         //Assert
         await act.Should().ThrowAsync<ResultLimitException>();
-    }
-
-    [Fact]
-    [Trait("Category", "Database")]
-    public async Task BasicFromBufferShouldThrow()
-    {
-        //Arrange
-        var sut = await GetCollection(CollectionType.Buffer);
-
-        //Act
-        var act = async () => await sut.GetPagesAsync(x => true).ToArrayAsync();
-
-        //Assert
-        await act.Should().ThrowAsync<NotSupportedException>();
     }
 }

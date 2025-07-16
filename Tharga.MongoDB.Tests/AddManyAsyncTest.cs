@@ -9,17 +9,16 @@ using Xunit;
 
 namespace Tharga.MongoDB.Tests;
 
-public class AddManyAsyncTest : GenericBufferRepositoryCollectionBaseTestBase
+public class AddManyAsyncTest : GenericRepositoryCollectionBaseTestBase
 {
-    [Theory]
+    [Fact]
     [Trait("Category", "Database")]
-    [MemberData(nameof(Data))]
-    public async Task Basic(CollectionType collectionType)
+    public async Task Basic()
     {
         //Arrange
         var id = ObjectId.GenerateNewId();
         var newEntity = new Faker<TestEntity>().RuleFor(x => x.Id, id).Generate();
-        var sut = await GetCollection(collectionType);
+        var sut = await GetCollection();
 
         //Act
         await sut.AddManyAsync([newEntity]);
@@ -29,15 +28,14 @@ public class AddManyAsyncTest : GenericBufferRepositoryCollectionBaseTestBase
         await VerifyContentAsync(sut);
     }
 
-    [Theory]
+    [Fact]
     [Trait("Category", "Database")]
-    [MemberData(nameof(Data))]
-    public async Task FailAddingDuplicates(CollectionType collectionType)
+    public async Task FailAddingDuplicates()
     {
         //Arrange
         var id = ObjectId.GenerateNewId();
         var newEntity = new Faker<TestEntity>().RuleFor(x => x.Id, id).Generate();
-        var sut = await GetCollection(collectionType);
+        var sut = await GetCollection();
 
         //Act
         var act = () => sut.AddManyAsync([newEntity, newEntity]);

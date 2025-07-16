@@ -15,16 +15,6 @@ public interface ICollectionProvider
         where TEntity : EntityBase<TKey>;
 
     /// <summary>
-    /// This method will return a generic collection with the requested types. If you want to apply indexes, use GetCollection and provide a specific implementation instead.
-    /// </summary>
-    /// <typeparam name="TEntity"></typeparam>
-    /// <typeparam name="TKey"></typeparam>
-    /// <param name="databaseContext"></param>
-    /// <returns></returns>
-    IRepositoryCollection<TEntity, TKey> GetGenericBufferCollection<TEntity, TKey>(DatabaseContext databaseContext = null)
-        where TEntity : EntityBase<TKey>;
-
-    /// <summary>
     /// Returns a defined collection.
     /// </summary>
     /// <typeparam name="TCollection"></typeparam>

@@ -10,7 +10,7 @@ using Xunit;
 
 namespace Tharga.MongoDB.Tests;
 
-public class UpdateAsyncTest : GenericBufferRepositoryCollectionBaseTestBase
+public class UpdateAsyncTest : GenericRepositoryCollectionBaseTestBase
 {
     public UpdateAsyncTest()
     {
@@ -25,7 +25,7 @@ public class UpdateAsyncTest : GenericBufferRepositoryCollectionBaseTestBase
         var filter = new FilterDefinitionBuilder<TestEntity>().Empty;
         var updatedValue = new Faker<string>().Generate();
         var update = new UpdateDefinitionBuilder<TestEntity>().Set(x => x.ExtraValue, updatedValue);
-        var sut = await GetCollection(CollectionType.Disk) as DiskRepositoryCollectionBase<TestEntity, ObjectId>;
+        var sut = await GetCollection() as DiskRepositoryCollectionBase<TestEntity, ObjectId>;
 
         //Act
         var result = await sut.UpdateOneAsync(filter, update);

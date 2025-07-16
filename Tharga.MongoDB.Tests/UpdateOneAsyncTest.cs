@@ -11,20 +11,19 @@ namespace Tharga.MongoDB.Tests;
 
 [Collection("Sequential")]
 [CollectionDefinition("Sequential", DisableParallelization = true)]
-public class UpdateOneAsyncTest : GenericBufferRepositoryCollectionBaseTestBase
+public class UpdateOneAsyncTest : GenericRepositoryCollectionBaseTestBase
 {
     public UpdateOneAsyncTest()
     {
         Prepare([TestEntityFactory.CreateTestEntity, TestEntityFactory.CreateTestEntity]);
     }
 
-    [Theory]
+    [Fact]
     [Trait("Category", "Database")]
-    [MemberData(nameof(Data))]
-    public async Task BasicWithFilter(CollectionType collectionType)
+    public async Task BasicWithFilter()
     {
         //Arrange
-        var sut = await GetCollection(collectionType);
+        var sut = await GetCollection();
         var filter = new FilterDefinitionBuilder<TestEntity>().Eq(x => x.Id, InitialData.First().Id);
         var updatedValue = new Faker().Random.String2(20);
         var update = new UpdateDefinitionBuilder<TestEntity>().Set(x => x.Value, updatedValue);
@@ -38,16 +37,15 @@ public class UpdateOneAsyncTest : GenericBufferRepositoryCollectionBaseTestBase
         await VerifyContentAsync(sut);
     }
 
-    [Theory]
+    [Fact]
     [Trait("Category", "Database")]
-    [MemberData(nameof(Data))]
-    public async Task MissingWithFilter(CollectionType collectionType)
+    public async Task MissingWithFilter()
     {
         //Arrange
         var filter = new FilterDefinitionBuilder<TestEntity>().Eq(x => x.Id, ObjectId.GenerateNewId());
         var updatedValue = new Faker().Random.String2(20);
         var update = new UpdateDefinitionBuilder<TestEntity>().Set(x => x.Value, updatedValue);
-        var sut = await GetCollection(collectionType);
+        var sut = await GetCollection();
 
         //Act
         var result = await sut.UpdateOneAsync(filter, update);
@@ -57,13 +55,12 @@ public class UpdateOneAsyncTest : GenericBufferRepositoryCollectionBaseTestBase
         await VerifyContentAsync(sut);
     }
 
-    [Theory]
+    [Fact]
     [Trait("Category", "Database")]
-    [MemberData(nameof(Data))]
-    public async Task FailedWithFilter(CollectionType collectionType)
+    public async Task FailedWithFilter()
     {
         //Arrange
-        var sut = await GetCollection(collectionType);
+        var sut = await GetCollection();
         var filter = new FilterDefinitionBuilder<TestEntity>().Eq(x => x.Id, InitialData.First().Id);
         var update = new UpdateDefinitionBuilder<TestEntity>().Set(x => x.Value, InitialData.Last().Value);
 
@@ -75,15 +72,14 @@ public class UpdateOneAsyncTest : GenericBufferRepositoryCollectionBaseTestBase
         await VerifyContentAsync(sut);
     }
 
-    [Theory]
+    [Fact]
     [Trait("Category", "Database")]
-    [MemberData(nameof(Data))]
-    public async Task BasicWithId(CollectionType collectionType)
+    public async Task BasicWithId()
     {
         //Arrange
         var updatedValue = new Faker().Random.String2(20);
         var update = new UpdateDefinitionBuilder<TestEntity>().Set(x => x.Value, updatedValue);
-        var sut = await GetCollection(collectionType);
+        var sut = await GetCollection();
 
         //Act
         var result = await sut.UpdateOneAsync(InitialData.First().Id, update);
@@ -94,15 +90,14 @@ public class UpdateOneAsyncTest : GenericBufferRepositoryCollectionBaseTestBase
         await VerifyContentAsync(sut);
     }
 
-    [Theory]
+    [Fact]
     [Trait("Category", "Database")]
-    [MemberData(nameof(Data))]
-    public async Task MissingWithId(CollectionType collectionType)
+    public async Task MissingWithId()
     {
         //Arrange
         var updatedValue = new Faker().Random.String2(20);
         var update = new UpdateDefinitionBuilder<TestEntity>().Set(x => x.Value, updatedValue);
-        var sut = await GetCollection(collectionType);
+        var sut = await GetCollection();
 
         //Act
         var result = await sut.UpdateOneAsync(ObjectId.GenerateNewId(), update);
@@ -112,13 +107,12 @@ public class UpdateOneAsyncTest : GenericBufferRepositoryCollectionBaseTestBase
         await VerifyContentAsync(sut);
     }
 
-    [Theory]
+    [Fact]
     [Trait("Category", "Database")]
-    [MemberData(nameof(Data))]
-    public async Task FailedWithId(CollectionType collectionType)
+    public async Task FailedWithId()
     {
         //Arrange
-        var sut = await GetCollection(collectionType);
+        var sut = await GetCollection();
         var update = new UpdateDefinitionBuilder<TestEntity>().Set(x => x.Value, InitialData.Last().Value);
 
         //Act
