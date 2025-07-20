@@ -86,14 +86,6 @@ stages:
         versioningScheme: 'byBuildNumber'
         arguments: '--configuration Release /p:IncludeSymbols=true /p:IncludeSource=true /p:SymbolPackageFormat=snupkg /p:ContinuousIntegrationBuild=true'
 
-    # - task: DotNetCoreCLI@2
-    #   displayName: 'Push nuget packages locally'
-    #   inputs:
-    #     command: 'push'
-    #     packagesToPush: '$(Build.ArtifactStagingDirectory)/*.nupkg'
-    #     nuGetFeedType: 'internal'
-    #     publishVstsFeed: 'df4b267e-c55c-4a36-8fe3-8e98d5d8dbbb/5cea672d-cb79-44f6-beb8-2eaba59e670d'
-
     - task: PublishBuildArtifacts@1
       displayName: 'Publish artifacts'
       inputs:
