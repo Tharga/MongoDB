@@ -117,29 +117,21 @@ stages:
     - script: dir $(Build.ArtifactStagingDirectory)
       displayName: 'List artifact staging contents'
 
-    - task: DotNetCoreCLI@2
-      displayName: 'Push main nugets'
+    - task: NuGetCommand@2
+      displayName: 'Push .nupkg to NuGet.org'
       inputs:
         command: 'push'
-        packagesToPush: '$(Build.ArtifactStagingDirectory)/*.nupkg'
-        nuGetFeedType: 'internal'
-        publishVstsFeed: '/1e7423eb-2859-4a5e-862e-9a80a3cf889d'
+        packagesToPush: '$(Pipeline.Workspace)/**/*.nupkg'
+        nuGetFeedType: 'external'
+        publishFeedCredentials: 'Nuget.org'
 
-    - task: DotNetCoreCLI@2
-      displayName: 'Push symbols'
+    - task: NuGetCommand@2
+      displayName: 'Push .snupkg to NuGet.org'
       inputs:
         command: 'push'
-        packagesToPush: '$(Build.ArtifactStagingDirectory)/*.snupkg'
-        nuGetFeedType: 'internal'
-        publishVstsFeed: '/1e7423eb-2859-4a5e-862e-9a80a3cf889d'
-
-    # - task: NuGetCommand@2
-    #   displayName: 'Push .nupkg to NuGet.org (with symbols)'
-    #   inputs:
-    #     command: 'push'
-    #     packagesToPush: '$(Pipeline.Workspace)/**/*.symbols.nupkg'
-    #     nuGetFeedType: 'external'
-    #     publishFeedCredentials: 'Nuget.org'
+        packagesToPush: '$(Pipeline.Workspace)/**/*.snupkg'
+        nuGetFeedType: 'external'
+        publishFeedCredentials: 'Nuget.org'
 
     - script: |
          git tag $(Build.BuildNumber)
