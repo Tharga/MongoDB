@@ -1,5 +1,4 @@
-﻿using System;
-using System.Linq;
+﻿using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
 using MongoDB.Driver;
@@ -10,20 +9,19 @@ namespace Tharga.MongoDB.Tests;
 
 [Collection("Sequential")]
 [CollectionDefinition("Sequential", DisableParallelization = true)]
-public class GetAsyncTest : GenericBufferRepositoryCollectionBaseTestBase
+public class GetAsyncTest : GenericRepositoryCollectionBaseTestBase
 {
     public GetAsyncTest()
     {
         Prepare([TestEntityFactory.CreateTestEntity, TestEntityFactory.CreateTestSubEntity, TestEntityFactory.CreateTestEntity]);
     }
 
-    [Theory]
+    [Fact]
     [Trait("Category", "Database")]
-    [MemberData(nameof(Data))]
-    public async Task Basic(CollectionType collectionType)
+    public async Task Basic()
     {
         //Arrange
-        var sut = await GetCollection(collectionType);
+        var sut = await GetCollection();
 
         //Act
         var result = await sut.GetAsync(x => true).ToArrayAsync();
@@ -34,13 +32,12 @@ public class GetAsyncTest : GenericBufferRepositoryCollectionBaseTestBase
         await VerifyContentAsync(sut);
     }
 
-    [Theory]
+    [Fact]
     [Trait("Category", "Database")]
-    [MemberData(nameof(Data))]
-    public async Task Default(CollectionType collectionType)
+    public async Task Default()
     {
         //Arrange
-        var sut = await GetCollection(collectionType);
+        var sut = await GetCollection();
 
         //Act
         var result = await sut.GetAsync().ToArrayAsync();
@@ -56,7 +53,7 @@ public class GetAsyncTest : GenericBufferRepositoryCollectionBaseTestBase
     public async Task BasicWithFilterFromDisk()
     {
         //Arrange
-        var sut = await GetCollection(CollectionType.Disk);
+        var sut = await GetCollection();
 
         //Act
         var filter = Builders<TestEntity>.Filter.Empty;
@@ -66,22 +63,5 @@ public class GetAsyncTest : GenericBufferRepositoryCollectionBaseTestBase
         result.Should().NotBeNull();
         result.Length.Should().Be(3);
         await VerifyContentAsync(sut);
-    }
-
-    [Fact(Skip = "Implement")]
-    [Trait("Category", "Database")]
-    public async Task BasicWithFilterFromBuffer()
-    {
-        //Arrange
-        var sut = await GetCollection(CollectionType.Buffer);
-
-        //Act
-        var filter = Builders<TestEntity>.Filter.Empty;
-        var act = () => sut.GetAsync(filter);
-
-        //Assert
-        throw new NotImplementedException();
-        //await act.Should().ThrowAsync<MongoBulkWriteException>();
-        //await VerifyContentAsync(sut);
     }
 }

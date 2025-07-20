@@ -11,16 +11,14 @@
     <GenerateDocumentationFile>True</GenerateDocumentationFile>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageProjectUrl>https://github.com/Tharga/MongoDB</PackageProjectUrl>
-    <DebugType>portable</DebugType>
-	<EmbedUntrackedSources>true</EmbedUntrackedSources>
-  </PropertyGroup>
-  <PropertyGroup>
+    <IncludeSymbols>true</IncludeSymbols>
+    <IncludeSource>true</IncludeSource>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
     <EmbedUntrackedSources>true</EmbedUntrackedSources>
-    <!-- Optional: embeds source into PDB -->
-    <IncludeSource>true</IncludeSource>
-    <!-- needed for symbols.nupkg -->
-    <IncludeSymbols>true</IncludeSymbols>
+    <DebugType>portable</DebugType>
+    <DebugSymbols>true</DebugSymbols>
+    <EnableSourceLink>true</EnableSourceLink>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
     <NoWarn>1701;1702;CS1591;CS0809</NoWarn>
@@ -44,7 +42,7 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="MongoDB.Driver" Version="3.4.0" />
+    <PackageReference Include="MongoDB.Driver" Version="3.4.1" />
     <PackageReference Include="System.Linq.Async" Version="6.0.3" />
     <PackageReference Include="Tharga.Toolkit" Version="1.12.24" />
   </ItemGroup>

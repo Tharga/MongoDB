@@ -15,10 +15,10 @@ public class CollectionController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<IActionResult> GetCollections()
+    public Task<IActionResult> GetCollections()
     {
         var factory = _mongoDbServiceFactory.GetMongoDbService(() => new DatabaseContext());
-        return Ok(factory.GetCollections());
+        return Task.FromResult<IActionResult>(Ok(factory.GetCollections()));
     }
 
     [HttpGet("metadata")]

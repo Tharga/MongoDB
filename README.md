@@ -86,13 +86,10 @@ The *collection* can be of different types that acts in different ways, it can a
 ![Collections](Resources/Repository.png)
 
 ### More about collections
-There are three implemented types of collections, *IDiskRepositoryCollection*, *IBufferCollection* and *ILockableRepositoryCollection* that can be used in different types of scenarios.
+There are three implemented types of collections, *IDiskRepositoryCollection* and *ILockableRepositoryCollection* that can be used in different types of scenarios.
 
 #### IDiskRepositoryCollection
 This is the main type of collection. It does what you expect, saving and loading data directly from the database.
-
-#### IBufferCollection
-This type of collection stores the entire dataset in memory but keeps the disk in sync behind the scenes.
 
 #### ILockableRepositoryCollection
 This is a write-protected collection that you can only update by requesting an exclusive lock.
@@ -338,11 +335,6 @@ Register your own version of IMongoUrlBuilder in IOC.
 ```
 services.AddTransient<IMongoUrlBuilder, MyMongoUrlBuilder>();
 ```
-
-<!--### CollectionProvider
-### Multiple databases
-### Buffer vs Disk
-### Cleaning of entities-->
 
 ---
 

@@ -15,22 +15,6 @@ public class MultiRepository : IMultiRepository
 
     public async IAsyncEnumerable<MyEntity> GetAll()
     {
-        //var collectionA = _provider.GetGenericDiskCollection<MyBaseEntity, ObjectId>("A", "a");
-        //await collectionA.AddAsync(new MyEntity());
-        //var allA = collectionA.GetAsync(x => true);
-        //await foreach (var a in allA)
-        //{
-        //    yield return a as MyEntity;
-        //}
-
-        //var collectionB = _provider.GetGenericBufferCollection<MyBaseEntity, ObjectId>("B", "b");
-        //await collectionB.AddAsync(new MyEntity());
-        //var allB = collectionB.GetAsync(x => true);
-        //await foreach (var b in allB)
-        //{
-        //    yield return b as MyEntity;
-        //}
-
         var collectionC = _provider.GetCollection<IMyRepo, MyBaseEntity, ObjectId>(new DatabaseContext { CollectionName = "C", DatabasePart = "c" });
         await collectionC.AddAsync(new MyEntity());
         var allC = collectionC.GetAsync(x => true);

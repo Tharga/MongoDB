@@ -11,20 +11,19 @@ namespace Tharga.MongoDB.Tests;
 
 [Collection("Sequential")]
 [CollectionDefinition("Sequential", DisableParallelization = true)]
-public class AddOrReplaceAsync : GenericBufferRepositoryCollectionBaseTestBase
+public class AddOrReplaceAsync : GenericRepositoryCollectionBaseTestBase
 {
     public AddOrReplaceAsync()
     {
         Prepare([TestEntityFactory.CreateTestEntity]);
     }
 
-    [Theory]
+    [Fact]
     [Trait("Category", "Database")]
-    [MemberData(nameof(Data))]
-    public async Task BasicUpdate(CollectionType collectionType)
+    public async Task BasicUpdate()
     {
         //Arrange
-        var sut = await GetCollection(collectionType);
+        var sut = await GetCollection();
         var newEntity = TestEntityFactory.CreateTestEntity(InitialData.First().Id);
 
         //Act
@@ -36,15 +35,14 @@ public class AddOrReplaceAsync : GenericBufferRepositoryCollectionBaseTestBase
         await VerifyContentAsync(sut);
     }
 
-    [Theory]
+    [Fact]
     [Trait("Category", "Database")]
-    [MemberData(nameof(Data))]
-    public async Task BasicAdd(CollectionType collectionType)
+    public async Task BasicAdd()
     {
         //Arrange
         var id = ObjectId.GenerateNewId();
         var newEntity = new Faker<TestEntity>().RuleFor(x => x.Id, id).Generate();
-        var sut = await GetCollection(collectionType);
+        var sut = await GetCollection();
 
         //Act
         var result = await sut.AddOrReplaceAsync(newEntity);
@@ -55,13 +53,12 @@ public class AddOrReplaceAsync : GenericBufferRepositoryCollectionBaseTestBase
         await VerifyContentAsync(sut);
     }
 
-    [Theory]
+    [Fact]
     [Trait("Category", "Database")]
-    [MemberData(nameof(Data))]
-    public async Task FailedToAdd(CollectionType collectionType)
+    public async Task FailedToAdd()
     {
         //Arrange
-        var sut = await GetCollection(collectionType);
+        var sut = await GetCollection();
         var id = ObjectId.GenerateNewId();
         var newEntity = new Faker<TestEntity>()
             .RuleFor(x => x.Id, id)

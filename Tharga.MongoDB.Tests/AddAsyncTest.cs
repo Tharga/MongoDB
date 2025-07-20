@@ -11,22 +11,21 @@ namespace Tharga.MongoDB.Tests;
 
 [Collection("Sequential")]
 [CollectionDefinition("Sequential", DisableParallelization = true)]
-public class AddAsyncTest : GenericBufferRepositoryCollectionBaseTestBase
+public class AddAsyncTest : GenericRepositoryCollectionBaseTestBase
 {
     public AddAsyncTest()
     {
         Prepare([TestEntityFactory.CreateTestEntity]);
     }
 
-    [Theory]
+    [Fact]
     [Trait("Category", "Database")]
-    [MemberData(nameof(Data))]
-    public async Task Basic(CollectionType collectionType)
+    public async Task Basic()
     {
         //Arrange
         var id = ObjectId.GenerateNewId();
         var newEntity = new Faker<TestEntity>().RuleFor(x => x.Id, id).Generate();
-        var sut = await GetCollection(collectionType);
+        var sut = await GetCollection();
 
         //Act
         await sut.AddAsync(newEntity);
@@ -43,7 +42,7 @@ public class AddAsyncTest : GenericBufferRepositoryCollectionBaseTestBase
         //Arrange
         var id = ObjectId.GenerateNewId();
         var newEntity = new Faker<TestEntity>().RuleFor(x => x.Id, id).Generate();
-        var sut = await GetCollection(CollectionType.Disk);
+        var sut = await GetCollection();
 
         //Act
         await sut.AddAsync(newEntity);
@@ -53,13 +52,12 @@ public class AddAsyncTest : GenericBufferRepositoryCollectionBaseTestBase
         await VerifyContentAsync(sut);
     }
 
-    [Theory]
+    [Fact]
     [Trait("Category", "Database")]
-    [MemberData(nameof(Data))]
-    public async Task AddFailed(CollectionType collectionType)
+    public async Task AddFailed()
     {
         //Arrange
-        var sut = await GetCollection(collectionType);
+        var sut = await GetCollection();
 
         //Act
         var act = () => sut.AddAsync(InitialData.First());
