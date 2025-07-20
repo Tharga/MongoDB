@@ -44,13 +44,11 @@
     </PackageReference>
     <PackageReference Include="MongoDB.Driver" Version="3.4.1" />
     <PackageReference Include="System.Linq.Async" Version="6.0.3" />
+    <PackageReference Include="Tharga.Toolkit" Version="1.12.24" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Tharga.MongoDB.Tests" />
     <InternalsVisibleTo Include="DynamicProxyGenAssembly2" />
     <InternalsVisibleTo Include="MongoDB.Driver" />
-  </ItemGroup>
-  <ItemGroup>
-    <ProjectReference Include="..\..\Toolkit\Tharga.Toolkit\Tharga.Toolkit.csproj" />
   </ItemGroup>
 </Project>
