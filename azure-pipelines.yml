@@ -115,7 +115,7 @@ stages:
       displayName: 'Push main NuGet package'
       inputs:
         command: 'push'
-        packagesToPush: '$(Pipeline.Workspace)/drop/*.*'
+        packagesToPush: '$(Pipeline.Workspace)/**/*.snupkg'
         nuGetFeedType: 'external'
         publishFeedCredentials: 'Nuget.org'
 
