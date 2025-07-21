@@ -110,20 +110,15 @@ stages:
       displayName: 'List artifact staging contents'
 
     - task: NuGetCommand@2
-      displayName: 'Push .nupkg to NuGet.org'
+      displayName: 'Push all NuGet packages'
       inputs:
         command: 'push'
-        packagesToPush: '$(Pipeline.Workspace)/**/*.nupkg'
+        packagesToPush: |
+          $(Pipeline.Workspace)/**/*.nupkg
+          $(Pipeline.Workspace)/**/*.snupkg
         nuGetFeedType: 'external'
         publishFeedCredentials: 'Nuget.org'
-
-    - task: NuGetCommand@2
-      displayName: 'Push .snupkg to NuGet.org'
-      inputs:
-        command: 'push'
-        packagesToPush: '$(Pipeline.Workspace)/**/*.snupkg'
-        nuGetFeedType: 'external'
-        publishFeedCredentials: 'Nuget.org'
+        arguments: '-SkipDuplicate'
 
     - script: |
          git tag $(Build.BuildNumber)
