@@ -95,7 +95,7 @@ stages:
 - stage: Release
   displayName: Release
   dependsOn: Build
-  condition: and(succeeded(), eq(variables['Build.SourceBranchName'], 'master'))
+  #condition: and(succeeded(), eq(variables['Build.SourceBranchName'], 'master'))
   jobs:
 
   - job: Release
@@ -106,16 +106,16 @@ stages:
     - checkout: self
       persistCredentials: true
 
-    - script: dir $(Build.ArtifactStagingDirectory)
-      displayName: 'List artifact staging contents'
+    - script: |
+        echo "Files in workspace:"
+        dir "$(Pipeline.Workspace)" /s /b
+      displayName: 'List pipeline workspace files'
 
     - task: NuGetCommand@2
       displayName: 'Push all NuGet packages'
       inputs:
         command: 'push'
-        packagesToPush: |
-          $(Pipeline.Workspace)/**/*.nupkg
-          $(Pipeline.Workspace)/**/*.snupkg
+        packagesToPush: '$(Pipeline.Workspace)/**/*.nupkg;$(Pipeline.Workspace)/**/*.snupkg'
         nuGetFeedType: 'external'
         publishFeedCredentials: 'Nuget.org'
         arguments: '-SkipDuplicate'
