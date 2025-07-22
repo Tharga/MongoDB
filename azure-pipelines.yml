@@ -112,7 +112,7 @@ stages:
       displayName: 'List pipeline workspace drop files'
 
     - task: NuGetCommand@2
-      displayName: 'Push main NuGet package'
+      displayName: 'Push nuget packages to nuget.org'
       inputs:
         command: 'push'
         packagesToPush: '$(Pipeline.Workspace)/**/*.symbols.nupkg'
