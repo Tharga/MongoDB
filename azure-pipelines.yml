@@ -47,7 +47,7 @@ stages:
       inputs:
         command: 'build'
         projects: '**/Tharga.MongoDB*.csproj'
-        arguments: '-c Release --no-restore /p:Version=$(Build.BuildNumber) /p:NoWarn=0618'
+        arguments: '-c Release --no-restore /p:Version=$(Build.BuildNumber)'
         versioningScheme: 'byEnvVar'
         versionEnvVar: 'messagesPackageVersion'
 
@@ -100,6 +100,7 @@ stages:
 
   - job: Release
     displayName: Release
+
     steps:
     - download: current
       artifact: drop
@@ -118,41 +119,6 @@ stages:
         packagesToPush: '$(Pipeline.Workspace)/**/*.symbols.nupkg'
         nuGetFeedType: 'external'
         publishFeedCredentials: 'Nuget.org'
-
-    # - powershell: |
-    #     $ErrorActionPreference = "Stop"
-
-    #     $packageId = "Tharga.MongoDB"
-    #     $version = "$(Build.BuildNumber)"
-
-    #     $nugetUrl = "https://www.nuget.org/packages/$packageId/$version/"
-
-    #     Write-Host "Checking NuGet validation for $packageId v$version..."
-    #     while ($true) {
-    #         try {
-    #             $response = Invoke-WebRequest -Uri $nugetUrl -UseBasicParsing
-
-    #             if ($response.Content -match "badge-verified" -or $response.Content -match "Install-Package") {
-    #                 Write-Host "Package has been validated and is now public."
-    #                 break
-    #             } else {
-    #                 Write-Host "Validation pending. Retrying in 60 seconds..."
-    #             }
-    #         } catch {
-    #             Write-Host "Package not yet available. Retrying in 60 seconds..."
-    #         }
-
-    #         Start-Sleep -Seconds 60
-    #     }
-    #   displayName: 'Wait for NuGet .nupkg validation'
-
-    # - task: NuGetCommand@2
-    #   displayName: 'Push symbols package'
-    #   inputs:
-    #     command: 'push'
-    #     packagesToPush: '$(Pipeline.Workspace)/**/*.snupkg'
-    #     nuGetFeedType: 'external'
-    #     publishFeedCredentials: 'Nuget.org'
 
     - script: |
          git tag $(Build.BuildNumber)
