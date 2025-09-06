@@ -17,7 +17,7 @@ public static class MongoDbRegistrationExtensions
 {
     private static Action<ActionEventArgs> _actionEvent;
 
-    public static IServiceCollection RegisterMongoDB(this IServiceCollection services, Action<DatabaseOptions> options = null)
+    public static IServiceCollection AddMongoDB(this IServiceCollection services, Action<DatabaseOptions> options = null)
     {
         var mongoDbInstance = new MongoDbInstance();
 
@@ -34,7 +34,7 @@ public static class MongoDbRegistrationExtensions
         BsonSerializer.TryRegisterSerializer(new GuidSerializer(databaseOptions.GuidRepresentation ?? GuidRepresentation.CSharpLegacy));
 
         _actionEvent = databaseOptions.ActionEvent;
-        _actionEvent?.Invoke(new ActionEventArgs(new ActionEventArgs.ActionData { Message = $"Entering {nameof(RegisterMongoDB)}.", Level = LogLevel.Debug }, new ActionEventArgs.ContextData()));
+        _actionEvent?.Invoke(new ActionEventArgs(new ActionEventArgs.ActionData { Message = $"Entering {nameof(AddMongoDB)}.", Level = LogLevel.Debug }, new ActionEventArgs.ContextData()));
 
         RepositoryCollectionBase.ActionEvent += (_, e) => { _actionEvent?.Invoke(e); };
 
@@ -164,8 +164,8 @@ public static class MongoDbRegistrationExtensions
     {
         _actionEvent?.Invoke(new ActionEventArgs(new ActionEventArgs.ActionData { Message = $"Entering {nameof(UseMongoDB)}.", Level = LogLevel.Debug }, new ActionEventArgs.ContextData()));
 
-        var mongoDbInstance = services.GetService<IMongoDbInstance>() ?? AddMongoDbExtensions._mongoDbInstance;
-        if (mongoDbInstance == null) throw new InvalidOperationException($"Tharga MongoDB has not been registered. Call {nameof(RegisterMongoDB)} first.");
+        var mongoDbInstance = services.GetService<IMongoDbInstance>();
+        if (mongoDbInstance == null) throw new InvalidOperationException($"Tharga MongoDB has not been registered. Call {nameof(AddMongoDB)} first.");
 
         var repositoryConfiguration = services.GetService<IRepositoryConfiguration>();
 
