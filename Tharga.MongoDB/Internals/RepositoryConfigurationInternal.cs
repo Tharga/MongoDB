@@ -54,4 +54,6 @@ internal class RepositoryConfigurationInternal : IRepositoryConfigurationInterna
         var logLevel = _databaseOptions.ExecuteInfoLogLevel ?? LogLevel.Debug;
         return logLevel;
     }
+
+    public bool ShouldAssureIndex() => _databaseOptions?.AssureIndex ?? true;
 }

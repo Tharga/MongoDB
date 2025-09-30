@@ -26,4 +26,5 @@ public interface IMongoDbService
     bool DropEmptyCollections();
     ValueTask<string> AssureFirewallAccessAsync(bool force = false);
     LogLevel GetExecuteInfoLogLevel();
+    bool ShouldAssureIndex();
 }

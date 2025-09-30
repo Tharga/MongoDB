@@ -86,4 +86,11 @@ public record DatabaseOptions
     /// CSharpLegacy is default.
     /// </summary>
     public GuidRepresentation? GuidRepresentation { get; set; }
+
+
+    /// <summary>
+    /// Enable or disable the assurance of incexes.
+    /// By default, indexes are assured.
+    /// </summary>
+    public bool AssureIndex { get; set; } = true;
 }

@@ -882,11 +882,13 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 
     private async Task AssureIndex(IMongoCollection<TEntity> collection)
     {
-        if (InitiationLibrary.ShouldInitiateIndex(ServerName, DatabaseName, ProtectedCollectionName))
+        if (_assureIndex && InitiationLibrary.ShouldInitiateIndex(ServerName, DatabaseName, ProtectedCollectionName))
         {
             _logger?.LogTrace($"Assure index for collection {{collection}} in {{repositoryType}}. [action: Database, operation: {nameof(CleanAsync)}]", ProtectedCollectionName, "DiskRepository");
 
-            await collection.Indexes.CreateOneAsync(new CreateIndexModel<TEntity>(Builders<TEntity>.IndexKeys.Ascending(x => x.Id).Ascending("_t"), new CreateIndexOptions()));
+            //Not sure why this index should be created like this. Trying to disable.
+            //await collection.Indexes.CreateOneAsync(new CreateIndexModel<TEntity>(Builders<TEntity>.IndexKeys.Ascending(x => x.Id).Ascending("_t"), new CreateIndexOptions()));
+
             await UpdateIndicesAsync(collection);
         }
     }
@@ -916,11 +918,9 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         if (!indices.Any()) return;
 
         var firstInvalid = indices.GroupBy(x => x.Options.Name).FirstOrDefault(x => x.Count() > 1);
-        if (firstInvalid != null)
-            throw new InvalidOperationException($"Indices can only be defined once with the same name. Index {firstInvalid.First().Options.Name} has been defined {firstInvalid.Count()} times for collection {ProtectedCollectionName}.");
+        if (firstInvalid != null) throw new InvalidOperationException($"Indices can only be defined once with the same name. Index {firstInvalid.First().Options.Name} has been defined {firstInvalid.Count()} times for collection {ProtectedCollectionName}.");
 
-        if (indices.Any(x => string.IsNullOrEmpty(x.Options.Name)))
-            throw new InvalidOperationException("Indices needs to have a name.");
+        if (indices.Any(x => string.IsNullOrEmpty(x.Options.Name))) throw new InvalidOperationException("Indices needs to have a name.");
 
         var allExistingIndexNames = (await collection.Indexes.ListAsync()).ToList()
             .Select(x => x.GetValue("name").AsString)

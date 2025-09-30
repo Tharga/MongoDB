@@ -21,6 +21,7 @@ public abstract class MongoDbTestBase : IDisposable
         _configurationMock.Setup(x => x.GetDatabaseUrl()).Returns(() => new MongoUrl($"mongodb://localhost:27017/Tharga_MongoDb_Test_{_databaseContext.DatabasePart}"));
         _configurationMock.Setup(x => x.GetConfiguration()).Returns(Mock.Of<MongoDbConfig>(x => x.ResultLimit == 100));
         _configurationMock.Setup(x => x.GetExecuteInfoLogLevel()).Returns(LogLevel.Debug);
+        _configurationMock.Setup(x => x.ShouldAssureIndex()).Returns(true);
 
         var configurationLoaderMock = new Mock<IRepositoryConfigurationLoader>(MockBehavior.Strict);
         configurationLoaderMock.Setup(x => x.GetConfiguration(It.IsAny<Func<DatabaseContext>>())).Returns(_configurationMock.Object);

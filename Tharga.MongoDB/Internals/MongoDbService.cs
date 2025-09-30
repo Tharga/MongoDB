@@ -79,6 +79,11 @@ internal class MongoDbService : IMongoDbService
         return _configuration?.GetExecuteInfoLogLevel() ?? LogLevel.Debug;
     }
 
+    public bool ShouldAssureIndex()
+    {
+        return _configuration?.ShouldAssureIndex() ?? true;
+    }
+
     public string GetDatabaseName()
     {
         return _mongoDatabase.DatabaseNamespace.DatabaseName;
