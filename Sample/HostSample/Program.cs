@@ -8,7 +8,8 @@ builder.Services.AddSwaggerGen();
 
 builder.Services.AddMongoDB(o =>
 {
-    o.AssureIndex = false;
+    //o.UseMonitor = true;
+    //o.AssureIndex = false;
 });
 
 var app = builder.Build();

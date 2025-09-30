@@ -28,7 +28,9 @@ public abstract class LockableTestBase : IDisposable
 
         var mongoDbFirewallStateService = new Mock<IMongoDbFirewallStateService>(MockBehavior.Strict);
 
-        _mongoDbServiceFactory = new MongoDbServiceFactory(configurationLoaderMock.Object, mongoDbFirewallStateService.Object, loggerMock.Object);
+        var databaseMonitor = new Mock<IDatabaseMonitor>(MockBehavior.Strict);
+
+        _mongoDbServiceFactory = new MongoDbServiceFactory(configurationLoaderMock.Object, mongoDbFirewallStateService.Object, databaseMonitor.Object, loggerMock.Object);
     }
 
     public void Dispose()

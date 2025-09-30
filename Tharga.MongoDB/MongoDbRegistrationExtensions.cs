@@ -1,17 +1,84 @@
-﻿using System;
-using System.Linq;
-using System.Threading.Tasks;
-using Microsoft.Extensions.DependencyInjection;
+﻿using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization;
 using MongoDB.Bson.Serialization.Serializers;
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
 using Tharga.MongoDB.Atlas;
 using Tharga.MongoDB.Configuration;
 using Tharga.MongoDB.Internals;
 using Tharga.Toolkit.TypeService;
 
 namespace Tharga.MongoDB;
+
+public interface IDatabaseMonitor
+{
+    Task RegisterInstanceAsync(string name);
+    IAsyncEnumerable<string> GetInstancesAsync();
+}
+
+internal class DatabaseMonitor : IDatabaseMonitor
+{
+    private readonly ConcurrentDictionary<string, string> _list = new();
+
+    public async Task RegisterInstanceAsync(string name)
+    {
+        _list.TryAdd(name, name);
+    }
+
+    public IAsyncEnumerable<string> GetInstancesAsync()
+    {
+        return _list.Values.ToAsyncEnumerable();
+    }
+}
+
+public interface ICollectionTypeService
+{
+    IEnumerable<CollectionType> GetCollectionTypes();
+}
+
+internal class CollectionTypeService : ICollectionTypeService
+{
+    private readonly IServiceProvider _serviceProvider;
+
+    public CollectionTypeService(IServiceProvider serviceProvider)
+    {
+        _serviceProvider = serviceProvider;
+    }
+
+    public IEnumerable<CollectionType> GetCollectionTypes()
+    {
+        var mongoDbInstance = _serviceProvider.GetService<IMongoDbInstance>();
+        if (mongoDbInstance == null) throw new InvalidOperationException($"Tharga MongoDB has not been registered.");
+
+        ConcurrentDictionary<Type, Type> cols = ((MongoDbInstance)mongoDbInstance).RegisteredCollections;
+        return cols.Select(x =>
+        {
+            var isDynamic = x.Value
+                .GetConstructors()
+                .Any(ctor => ctor.GetParameters()
+                    .Any(param => param.ParameterType == typeof(DatabaseContext)));
+
+            return new CollectionType
+            {
+                ServiceType = x.Key,
+                ImplementationType = x.Value,
+                IsDynamic = isDynamic
+            };
+        });
+    }
+}
+
+public record CollectionType
+{
+    public required Type ServiceType { get; init; }
+    public required Type ImplementationType { get; init; }
+    public required bool IsDynamic { get; init; }
+}
 
 public static class MongoDbRegistrationExtensions
 {
@@ -49,8 +116,9 @@ public static class MongoDbRegistrationExtensions
         {
             var repositoryConfigurationLoader = serviceProvider.GetService<IRepositoryConfigurationLoader>();
             var mongoDbFirewallStateService = serviceProvider.GetService<IMongoDbFirewallStateService>();
+            var databaseMonitor = serviceProvider.GetService<IDatabaseMonitor>();
             var logger = serviceProvider.GetService<ILogger<MongoDbServiceFactory>>();
-            return new MongoDbServiceFactory(repositoryConfigurationLoader, mongoDbFirewallStateService, logger);
+            return new MongoDbServiceFactory(repositoryConfigurationLoader, mongoDbFirewallStateService, databaseMonitor, logger);
         });
         services.AddTransient<IRepositoryConfigurationLoader>(serviceProvider =>
         {
@@ -155,7 +223,9 @@ public static class MongoDbRegistrationExtensions
             }
         }
 
-        services.AddSingleton<IMongoDbInstance, MongoDbInstance>();
+        services.AddTransient<ICollectionTypeService, CollectionTypeService>();
+        services.AddSingleton<IDatabaseMonitor, DatabaseMonitor>();
+        services.AddSingleton<IMongoDbInstance>(mongoDbInstance);
 
         return services;
     }

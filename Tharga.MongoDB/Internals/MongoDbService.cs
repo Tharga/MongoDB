@@ -15,14 +15,16 @@ internal class MongoDbService : IMongoDbService
 {
     private readonly IRepositoryConfigurationInternal _configuration;
     private readonly IMongoDbFirewallStateService _mongoDbFirewallStateService;
+    private readonly IDatabaseMonitor _databaseMonitor;
     private readonly ILogger _logger;
     private readonly MongoClient _mongoClient;
     private readonly IMongoDatabase _mongoDatabase;
 
-    public MongoDbService(IRepositoryConfigurationInternal configuration, IMongoDbFirewallStateService mongoDbFirewallStateService, ILogger logger)
+    public MongoDbService(IRepositoryConfigurationInternal configuration, IMongoDbFirewallStateService mongoDbFirewallStateService, IDatabaseMonitor databaseMonitor, ILogger logger)
     {
         _configuration = configuration;
         _mongoDbFirewallStateService = mongoDbFirewallStateService;
+        _databaseMonitor = databaseMonitor;
         _logger = logger;
         var mongoUrl = configuration.GetDatabaseUrl() ?? throw new NullReferenceException("MongoUrl not found in configuration.");
         //_mongoClient = new MongoClient(mongoUrl);
@@ -63,7 +65,11 @@ internal class MongoDbService : IMongoDbService
             }
         }
 
-        return _mongoDatabase.GetCollection<T>(collectionName);
+        var collection = _mongoDatabase.GetCollection<T>(collectionName);
+
+        await _databaseMonitor.RegisterInstanceAsync(collectionName);
+
+        return collection;
     }
 
     public async ValueTask<string> AssureFirewallAccessAsync(bool force = false)
@@ -83,6 +89,8 @@ internal class MongoDbService : IMongoDbService
     {
         return _configuration?.ShouldAssureIndex() ?? true;
     }
+
+    public IDatabaseMonitor GetDatabaseMonitor() => _databaseMonitor;
 
     public string GetDatabaseName()
     {
@@ -114,18 +122,71 @@ internal class MongoDbService : IMongoDbService
         return _mongoDatabase.ListCollections().ToEnumerable().Select(x => x.AsBsonValue["name"].ToString());
     }
 
-    public async IAsyncEnumerable<(string Name, long DocumentCount, long Size)> GetCollectionsWithMetaAsync(string databaseName = null)
+    //public IEnumerable<string> GetCollectionTypes()
+    //{
+    //    _mongoDatabase
+    //    var mongoDbInstance = services.GetService<IMongoDbInstance>();
+
+    //    //_mongoDatabase.collect
+    //}
+
+    //public async IAsyncEnumerable<(string Name, long DocumentCount, long Size)> GetCollectionsWithMetaAsync(string databaseName = null)
+    //{
+    //    var mongoDatabase = string.IsNullOrEmpty(databaseName) ? _mongoDatabase : _mongoClient.GetDatabase(databaseName);
+
+    //    var collections = (await mongoDatabase.ListCollectionsAsync()).ToEnumerable();
+
+    //    foreach (var collection in collections)
+    //    {
+    //        var name = collection.AsBsonValue["name"].ToString();
+    //        var documents = await mongoDatabase.GetCollection<object>(name).CountDocumentsAsync(y => true);
+    //        var size = GetSize(name, mongoDatabase);
+    //        yield return (name, documents, size);
+    //    }
+    //}
+
+    public async IAsyncEnumerable<CollectionMeta> GetCollectionsWithMetaAsync(string databaseName = null)
     {
         var mongoDatabase = string.IsNullOrEmpty(databaseName) ? _mongoDatabase : _mongoClient.GetDatabase(databaseName);
-
         var collections = (await mongoDatabase.ListCollectionsAsync()).ToEnumerable();
 
         foreach (var collection in collections)
         {
-            var name = collection.AsBsonValue["name"].ToString();
-            var documents = await mongoDatabase.GetCollection<object>(name).CountDocumentsAsync(y => true);
+            var name = collection["name"].AsString;
+            var mongoCollection = mongoDatabase.GetCollection<BsonDocument>(name);
+
+            var documents = await mongoCollection.CountDocumentsAsync(FilterDefinition<BsonDocument>.Empty);
             var size = GetSize(name, mongoDatabase);
-            yield return (name, documents, size);
+
+            var indexModels = new List<IndexMeta>();
+            using var cursor = await mongoCollection.Indexes.ListAsync();
+            var indexDocs = await cursor.ToListAsync();
+
+            foreach (var indexDoc in indexDocs)
+            {
+                var indexName = indexDoc.GetValue("name", BsonNull.Value).AsString;
+                var isUnique = indexDoc.TryGetValue("unique", out var uniqueVal) && uniqueVal.AsBoolean;
+                var keyDoc = indexDoc["key"].AsBsonDocument;
+
+                var fields = keyDoc.Names.ToArray();
+
+                indexModels.Add(new IndexMeta
+                {
+                    Name = indexName,
+                    Fields = fields,
+                    IsUnique = isUnique
+                });
+            }
+
+            yield return new CollectionMeta
+            {
+                Name = name,
+                DocumentCount = documents,
+                Size = size,
+                Indexes = indexModels
+                    .Where(x => !x.Name.StartsWith("_id_"))
+                    .ToArray()
+            };
         }
     }
 
@@ -213,4 +274,19 @@ internal class MongoDbService : IMongoDbService
         [BsonElement("size")]
         public long Size { get; init; }
     }
+}
+
+public class CollectionMeta
+{
+    public string Name { get; set; }
+    public long DocumentCount { get; set; }
+    public long Size { get; set; }
+    public IndexMeta[] Indexes { get; set; } = [];
+}
+
+public class IndexMeta
+{
+    public string Name { get; set; }
+    public string[] Fields { get; set; } = [];
+    public bool IsUnique { get; set; }
 }

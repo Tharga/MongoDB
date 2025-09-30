@@ -29,7 +29,9 @@ public abstract class MongoDbTestBase : IDisposable
 
         var mongoDbFirewallStateService = new Mock<IMongoDbFirewallStateService>(MockBehavior.Strict);
 
-        _mongoDbServiceFactory = new MongoDbServiceFactory(configurationLoaderMock.Object, mongoDbFirewallStateService.Object, loggerMock.Object);
+        var databaseMonitor = new Mock<IDatabaseMonitor>(MockBehavior.Strict);
+
+        _mongoDbServiceFactory = new MongoDbServiceFactory(configurationLoaderMock.Object, mongoDbFirewallStateService.Object, databaseMonitor.Object, loggerMock.Object);
     }
 
     protected IMongoDbServiceFactory MongoDbServiceFactory => _mongoDbServiceFactory;

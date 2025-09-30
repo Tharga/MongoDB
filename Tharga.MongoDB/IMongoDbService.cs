@@ -2,6 +2,7 @@
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using MongoDB.Driver;
+using Tharga.MongoDB.Internals;
 
 namespace Tharga.MongoDB;
 
@@ -14,7 +15,7 @@ public interface IMongoDbService
     int GetMaxConnectionPoolSize();
     Task DropCollectionAsync(string name);
     IEnumerable<string> GetCollections();
-    IAsyncEnumerable<(string Name, long DocumentCount, long Size)> GetCollectionsWithMetaAsync(string databaseName = null);
+    IAsyncEnumerable<CollectionMeta> GetCollectionsWithMetaAsync(string databaseName = null);
     Task<bool> DoesCollectionExist(string name);
     void DropDatabase(string name);
     IEnumerable<string> GetDatabases();
@@ -27,4 +28,5 @@ public interface IMongoDbService
     ValueTask<string> AssureFirewallAccessAsync(bool force = false);
     LogLevel GetExecuteInfoLogLevel();
     bool ShouldAssureIndex();
+    IDatabaseMonitor GetDatabaseMonitor();
 }

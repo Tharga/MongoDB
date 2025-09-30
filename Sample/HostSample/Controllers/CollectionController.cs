@@ -8,10 +8,14 @@ namespace HostSample.Controllers;
 public class CollectionController : ControllerBase
 {
     private readonly IMongoDbServiceFactory _mongoDbServiceFactory;
+    private readonly ICollectionTypeService _collectionTypeService;
+    private readonly IDatabaseMonitor _databaseMonitor;
 
-    public CollectionController(IMongoDbServiceFactory mongoDbServiceFactory)
+    public CollectionController(IMongoDbServiceFactory mongoDbServiceFactory, ICollectionTypeService collectionTypeService, IDatabaseMonitor databaseMonitor)
     {
         _mongoDbServiceFactory = mongoDbServiceFactory;
+        _collectionTypeService = collectionTypeService;
+        _databaseMonitor = databaseMonitor;
     }
 
     [HttpGet]
@@ -26,7 +30,26 @@ public class CollectionController : ControllerBase
     {
         var factory = _mongoDbServiceFactory.GetMongoDbService(() => new DatabaseContext());
         var collections = await factory.GetCollectionsWithMetaAsync().ToArrayAsync();
-        return Ok(collections.Select(x => new { x.Name, x.Size, x.DocumentCount }));
+        return Ok(collections);
+    }
+
+    [HttpGet("collectionTypes")]
+    public async Task<IActionResult> GetCollectionTypes()
+    {
+        var colTypes = _collectionTypeService.GetCollectionTypes();
+        return Ok(colTypes.Select(x => new
+        {
+            ServiceType = x.ServiceType.Name,
+            ImplementationType = x.ImplementationType.Name,
+            x.IsDynamic
+        }));
+    }
+
+    [HttpGet("monitor")]
+    public async Task<IActionResult> GetMonitor()
+    {
+        var instances = await _databaseMonitor.GetInstancesAsync().ToArrayAsync();
+        return Ok(instances);
     }
 
     //[HttpGet("index")]
