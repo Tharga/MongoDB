@@ -25,13 +25,25 @@ internal class DatabaseMonitor : IDatabaseMonitor
 {
     private readonly ConcurrentDictionary<string, string> _list = new();
 
+    //TODO: Make the usage of monitor configurable
     public async Task RegisterInstanceAsync(string name)
     {
+        //TODO: Register the following
+        //- time when first accessed
+        //- time when last accessed
+        //- access counter
         _list.TryAdd(name, name);
     }
 
     public IAsyncEnumerable<string> GetInstancesAsync()
     {
+        //TODO: Do this to return a list
+        //1. List all collection types
+        //2. List all collections in the database
+        //3. Look at instances to see what have been touched, so we can match them.
+        //4. Try to match non-dynamic collections even when not touched.
+        //5. Try to match dynamic collections even when not touched.
+        //Create a merged view of this.
         return _list.Values.ToAsyncEnumerable();
     }
 }
