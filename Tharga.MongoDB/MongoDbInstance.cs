@@ -5,6 +5,6 @@ namespace Tharga.MongoDB;
 
 internal class MongoDbInstance : IMongoDbInstance
 {
-    public readonly ConcurrentDictionary<Type, Type> RegisteredRepositories = new();
-    public readonly ConcurrentDictionary<Type, Type> RegisteredCollections = new();
+    public ConcurrentDictionary<Type, Type> RegisteredRepositories { get; } = new();
+    public ConcurrentDictionary<Type, Type> RegisteredCollections { get; } = new();
 }

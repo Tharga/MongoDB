@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using MongoDB.Driver;
@@ -8,7 +9,9 @@ namespace Tharga.MongoDB;
 
 public interface IMongoDbService
 {
-    Task<IMongoCollection<T>> GetCollectionAsync<T>(string collectionName, TimeSeriesOptions timeSeriesOptions = null);
+    event EventHandler<CollectionAccessEventArgs> CollectionAccessEvent;
+
+    Task<IMongoCollection<T>> GetCollectionAsync<T>(string collectionName/*, TimeSeriesOptions timeSeriesOptions = null*/);
     string GetDatabaseName();
     string GetDatabaseAddress();
     string GetDatabaseHostName();
@@ -28,5 +31,5 @@ public interface IMongoDbService
     ValueTask<string> AssureFirewallAccessAsync(bool force = false);
     LogLevel GetExecuteInfoLogLevel();
     bool ShouldAssureIndex();
-    IDatabaseMonitor GetDatabaseMonitor();
+    //IDatabaseMonitor GetDatabaseMonitor();
 }

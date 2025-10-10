@@ -26,6 +26,6 @@ app.UseAuthorization();
 
 app.MapControllers();
 
-//app.Services.UseMongoDB();
+app.UseMongoDB();
 
 app.Run();

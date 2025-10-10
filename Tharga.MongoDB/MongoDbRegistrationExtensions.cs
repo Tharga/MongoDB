@@ -1,4 +1,5 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization;
@@ -6,6 +7,7 @@ using MongoDB.Bson.Serialization.Serializers;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
 using Tharga.MongoDB.Atlas;
@@ -17,34 +19,142 @@ namespace Tharga.MongoDB;
 
 public interface IDatabaseMonitor
 {
-    Task RegisterInstanceAsync(string name);
+    //Task RegisterInstanceAsync(string name);
     IAsyncEnumerable<string> GetInstancesAsync();
+}
+
+internal record CollectionAccessData
+{
+    public required Type EntityType { get; init; }
+    public required Type CollectionType { get; init; }
+    public DateTime FirstAccessed { get; internal set; }
+    public DateTime LastAccessed { get; internal set; }
+    public int AccessCount { get; internal set; }
 }
 
 internal class DatabaseMonitor : IDatabaseMonitor
 {
-    private readonly ConcurrentDictionary<string, string> _list = new();
+    private readonly IMongoDbServiceFactory _mongoDbServiceFactory;
+    private readonly IMongoDbInstance _mongoDbInstance;
+    private readonly IServiceProvider _serviceProvider;
+    private readonly ConcurrentDictionary<string, CollectionAccessData> _accessedCollections = new();
 
-    //TODO: Make the usage of monitor configurable
-    public async Task RegisterInstanceAsync(string name)
+    public DatabaseMonitor(IMongoDbServiceFactory mongoDbServiceFactory, IMongoDbInstance mongoDbInstance, IServiceProvider serviceProvider)
     {
-        //TODO: Register the following
-        //- time when first accessed
-        //- time when last accessed
-        //- access counter
-        _list.TryAdd(name, name);
+        _mongoDbServiceFactory = mongoDbServiceFactory;
+        _mongoDbInstance = mongoDbInstance;
+        _serviceProvider = serviceProvider;
+
+        _mongoDbServiceFactory.CollectionAccessEvent += (_, e) =>
+        {
+            var now = DateTime.UtcNow;
+            _accessedCollections.AddOrUpdate(e.CollectionName, new CollectionAccessData { EntityType = e.EntityType, CollectionType = e.CollectionType, FirstAccessed = now, LastAccessed = now, AccessCount = 1 }, (_, item) =>
+            {
+                item.LastAccessed = now;
+                item.AccessCount++;
+                return item;
+            });
+        };
     }
 
-    public IAsyncEnumerable<string> GetInstancesAsync()
+    public async IAsyncEnumerable<string> GetInstancesAsync()
     {
-        //TODO: Do this to return a list
-        //1. List all collection types
-        //2. List all collections in the database
+        var collectionsInDatabase = new Dictionary<string, Dbi>(); //Collection
+        var dynamicRegistration = new Dictionary<string, Dbi>(); //Dynamic registration
+        var staticRegistrations = new Dictionary<string, Dbi>(); //Static registration
+        var touched = new Dictionary<string, Dbi>(); //Touched
+
+        //1. List all collections in the database
+        var factory = _mongoDbServiceFactory.GetMongoDbService(() => new DatabaseContext());
+        var collections = await factory.GetCollectionsWithMetaAsync().ToArrayAsync();
+        foreach (var collection in collections)
+        {
+            //TODO: Append index information from the actual collections
+            var value = new Dbi { CollectionName = collection.Name, Types = collection.Types };
+            collectionsInDatabase.Add(value.CollectionName, value);
+        }
+
+        //2. List all collection types from assembly (static and dynamic)
+        var registeredCollections = _mongoDbInstance.RegisteredCollections;
+        foreach (var registeredCollection in registeredCollections)
+        {
+            var isDynamic = registeredCollection.Value
+                .GetConstructors()
+                .Any(ctor => ctor.GetParameters()
+                    .Any(param => param.ParameterType == typeof(DatabaseContext)));
+
+            if (isDynamic)
+            {
+                var genericParam = registeredCollection.Key
+                    .GetInterfaces()
+                    .Where(i => i.IsGenericType)
+                    .Select(i => i.GetGenericArguments().FirstOrDefault())
+                    .FirstOrDefault();
+
+                if (genericParam?.Name != null)
+                {
+                    dynamicRegistration.Add(genericParam?.Name, new Dbi { Types = [genericParam?.Name], CollectionTypeName = registeredCollection.Key.Name });
+                }
+                else
+                {
+                    Debugger.Break();
+                }
+            }
+            else
+            {
+                var genericParam = registeredCollection.Key
+                    .GetInterfaces() // get all implemented interfaces
+                    .Where(i => i.IsGenericType)
+                    .Select(i => i.GetGenericArguments().FirstOrDefault())
+                    .FirstOrDefault();
+                //TODO: Get registered indexes (so we can compare with actual indexes)
+
+                //NOTE: Create an instance and find the collection name.
+                var tt = _serviceProvider.GetService(registeredCollection.Key) as RepositoryCollectionBase;
+                if (tt == null) throw new InvalidOperationException($"Cannot create instance of '{registeredCollection.Key}'.");
+                staticRegistrations.Add(tt?.CollectionName, new Dbi { CollectionName = tt?.CollectionName, Types = [genericParam?.Name], CollectionTypeName = registeredCollection.Key.Name });
+            }
+        }
+
         //3. Look at instances to see what have been touched, so we can match them.
-        //4. Try to match non-dynamic collections even when not touched.
-        //5. Try to match dynamic collections even when not touched.
-        //Create a merged view of this.
-        return _list.Values.ToAsyncEnumerable();
+        var accessedCollections = _accessedCollections.ToArray();
+        foreach (var accessedCollection in accessedCollections)
+        {
+            //TODO: Should be able to contain more than one type
+            touched.Add(accessedCollection.Key, new Dbi { CollectionName = accessedCollection.Key, Types = [accessedCollection.Value.EntityType.Name], AccessCount = accessedCollection.Value.AccessCount });
+        }
+
+        foreach (var item in collectionsInDatabase)
+        {
+            //Static registrations
+            if (staticRegistrations.TryGetValue(item.Key, out var reg))
+            {
+                item.Value.Registration = Registration.Static;
+                item.Value.Types = (reg.Types ?? []).Union(item.Value.Types ?? []).ToArray();
+                item.Value.CollectionTypeName = reg.CollectionTypeName;
+                //TODO: Append information about registered indexes (so that we can compare with actual indexes)
+            }
+
+            //Touched values
+            if (touched.TryGetValue(item.Key, out var t))
+            {
+                item.Value.AccessCount = t.AccessCount;
+                item.Value.Types = (t.Types ?? []).Union(item.Value.Types ?? []).ToArray();
+            }
+
+            //Find dynamic registrations by type
+            if (dynamicRegistration.TryGetValue(item.Value.Types.Single(), out var dyn))
+            {
+                item.Value.Registration = Registration.Dynamic;
+                item.Value.CollectionTypeName = dyn.CollectionTypeName;
+                //TODO: Append information about registered indexes (so that we can compare with actual indexes)
+            }
+
+            //TODO: Verify index difference between registration and actual types.
+            //TODO: Show information about when the collections was cleaned.
+
+            yield return $"{item.Key}: {item.Value}";
+        }
     }
 }
 
@@ -128,9 +238,9 @@ public static class MongoDbRegistrationExtensions
         {
             var repositoryConfigurationLoader = serviceProvider.GetService<IRepositoryConfigurationLoader>();
             var mongoDbFirewallStateService = serviceProvider.GetService<IMongoDbFirewallStateService>();
-            var databaseMonitor = serviceProvider.GetService<IDatabaseMonitor>();
+            //var databaseMonitor = serviceProvider.GetService<IDatabaseMonitor>();
             var logger = serviceProvider.GetService<ILogger<MongoDbServiceFactory>>();
-            return new MongoDbServiceFactory(repositoryConfigurationLoader, mongoDbFirewallStateService, databaseMonitor, logger);
+            return new MongoDbServiceFactory(repositoryConfigurationLoader, mongoDbFirewallStateService, /*databaseMonitor,*/ logger);
         });
         services.AddTransient<IRepositoryConfigurationLoader>(serviceProvider =>
         {
@@ -242,14 +352,18 @@ public static class MongoDbRegistrationExtensions
         return services;
     }
 
-    public static void UseMongoDB(this IServiceProvider services, Action<UseMongoOptions> options = null)
+    //public static void UseMongoDB(this IServiceProvider services, Action<UseMongoOptions> options = null)
+    //public static void UseMongoDB(this IApplicationBuilder app, Action<UseMongoOptions> options = null)
+    public static void UseMongoDB(this IHost app, Action<UseMongoOptions> options = null)
     {
+        app.Services.GetService<IDatabaseMonitor>();
+
         _actionEvent?.Invoke(new ActionEventArgs(new ActionEventArgs.ActionData { Message = $"Entering {nameof(UseMongoDB)}.", Level = LogLevel.Debug }, new ActionEventArgs.ContextData()));
 
-        var mongoDbInstance = services.GetService<IMongoDbInstance>();
+        var mongoDbInstance = app.Services.GetService<IMongoDbInstance>();
         if (mongoDbInstance == null) throw new InvalidOperationException($"Tharga MongoDB has not been registered. Call {nameof(AddMongoDB)} first.");
 
-        var repositoryConfiguration = services.GetService<IRepositoryConfiguration>();
+        var repositoryConfiguration = app.Services.GetService<IRepositoryConfiguration>();
 
         var useMongoOptions = new UseMongoOptions
         {
@@ -263,8 +377,8 @@ public static class MongoDbRegistrationExtensions
 
         _actionEvent?.Invoke(new ActionEventArgs(new ActionEventArgs.ActionData { Message = $"Found {useMongoOptions.DatabaseUsage.FirewallConfigurationNames.Length} database configurations. ({string.Join(", ", useMongoOptions.DatabaseUsage.FirewallConfigurationNames)})", Level = LogLevel.Debug }, new ActionEventArgs.ContextData()));
 
-        var mongoDbFirewallStateService = services.GetService<IMongoDbFirewallStateService>();
-        var mongoDbServiceFactory = services.GetService<IMongoDbServiceFactory>();
+        var mongoDbFirewallStateService = app.Services.GetService<IMongoDbFirewallStateService>();
+        var mongoDbServiceFactory = app.Services.GetService<IMongoDbServiceFactory>();
 
         var task = Task.Run(async () =>
         {
@@ -346,4 +460,20 @@ public static class MongoDbRegistrationExtensions
             Level = LogLevel.Debug
         }, new ActionEventArgs.ContextData()));
     }
+}
+
+public record Dbi
+{
+    public string CollectionName { get; set; }
+    public string[] Types { get; set; }
+    public int AccessCount { get; set; }
+    public Registration Registration { get; set; }
+    public string CollectionTypeName { get; set; }
+}
+
+public enum Registration
+{
+    Missing,
+    Static,
+    Dynamic
 }

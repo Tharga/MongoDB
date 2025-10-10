@@ -15,16 +15,16 @@ internal class MongoDbService : IMongoDbService
 {
     private readonly IRepositoryConfigurationInternal _configuration;
     private readonly IMongoDbFirewallStateService _mongoDbFirewallStateService;
-    private readonly IDatabaseMonitor _databaseMonitor;
+    //private readonly IDatabaseMonitor _databaseMonitor;
     private readonly ILogger _logger;
     private readonly MongoClient _mongoClient;
     private readonly IMongoDatabase _mongoDatabase;
 
-    public MongoDbService(IRepositoryConfigurationInternal configuration, IMongoDbFirewallStateService mongoDbFirewallStateService, IDatabaseMonitor databaseMonitor, ILogger logger)
+    public MongoDbService(IRepositoryConfigurationInternal configuration, IMongoDbFirewallStateService mongoDbFirewallStateService, /*IDatabaseMonitor databaseMonitor,*/ ILogger logger)
     {
         _configuration = configuration;
         _mongoDbFirewallStateService = mongoDbFirewallStateService;
-        _databaseMonitor = databaseMonitor;
+        //_databaseMonitor = databaseMonitor;
         _logger = logger;
         var mongoUrl = configuration.GetDatabaseUrl() ?? throw new NullReferenceException("MongoUrl not found in configuration.");
         //_mongoClient = new MongoClient(mongoUrl);
@@ -50,24 +50,26 @@ internal class MongoDbService : IMongoDbService
         _mongoDatabase = _mongoClient.GetDatabase(mongoUrl.DatabaseName, settings);
     }
 
-    public async Task<IMongoCollection<T>> GetCollectionAsync<T>(string collectionName, TimeSeriesOptions timeSeriesOptions)
+    public event EventHandler<CollectionAccessEventArgs> CollectionAccessEvent;
+
+    public async Task<IMongoCollection<T>> GetCollectionAsync<T>(string collectionName/*, TimeSeriesOptions timeSeriesOptions*/)
     {
         await AssureFirewallAccessAsync();
 
-        if (timeSeriesOptions != null)
-        {
-            var filter = new BsonDocument("name", collectionName);
-            var collectionCursor = await _mongoDatabase.ListCollectionNamesAsync(new ListCollectionNamesOptions { Filter = filter });
-            if (!await collectionCursor.AnyAsync())
-            {
-                var options = new CreateCollectionOptions<T> { TimeSeriesOptions = timeSeriesOptions };
-                await _mongoDatabase.CreateCollectionAsync(collectionName, options);
-            }
-        }
+        //if (timeSeriesOptions != null)
+        //{
+        //    var filter = new BsonDocument("name", collectionName);
+        //    var collectionCursor = await _mongoDatabase.ListCollectionNamesAsync(new ListCollectionNamesOptions { Filter = filter });
+        //    if (!await collectionCursor.AnyAsync())
+        //    {
+        //        var options = new CreateCollectionOptions<T> { TimeSeriesOptions = timeSeriesOptions };
+        //        await _mongoDatabase.CreateCollectionAsync(collectionName, options);
+        //    }
+        //}
 
         var collection = _mongoDatabase.GetCollection<T>(collectionName);
 
-        await _databaseMonitor.RegisterInstanceAsync(collectionName);
+        CollectionAccessEvent?.Invoke(this, new CollectionAccessEventArgs(collectionName, typeof(T), collection.GetType()));
 
         return collection;
     }
@@ -90,7 +92,7 @@ internal class MongoDbService : IMongoDbService
         return _configuration?.ShouldAssureIndex() ?? true;
     }
 
-    public IDatabaseMonitor GetDatabaseMonitor() => _databaseMonitor;
+    //public IDatabaseMonitor GetDatabaseMonitor() => _databaseMonitor;
 
     public string GetDatabaseName()
     {
@@ -155,6 +157,10 @@ internal class MongoDbService : IMongoDbService
             var name = collection["name"].AsString;
             var mongoCollection = mongoDatabase.GetCollection<BsonDocument>(name);
 
+            var types = await mongoCollection
+                .Distinct<string>("_t", FilterDefinition<BsonDocument>.Empty)
+                .ToListAsync();
+
             var documents = await mongoCollection.CountDocumentsAsync(FilterDefinition<BsonDocument>.Empty);
             var size = GetSize(name, mongoDatabase);
 
@@ -183,6 +189,7 @@ internal class MongoDbService : IMongoDbService
                 Name = name,
                 DocumentCount = documents,
                 Size = size,
+                Types = types.ToArray(),
                 Indexes = indexModels
                     .Where(x => !x.Name.StartsWith("_id_"))
                     .ToArray()
@@ -281,6 +288,7 @@ public class CollectionMeta
     public string Name { get; set; }
     public long DocumentCount { get; set; }
     public long Size { get; set; }
+    public string[] Types { get; set; }
     public IndexMeta[] Indexes { get; set; } = [];
 }
 
@@ -289,4 +297,18 @@ public class IndexMeta
     public string Name { get; set; }
     public string[] Fields { get; set; } = [];
     public bool IsUnique { get; set; }
+}
+
+public class CollectionAccessEventArgs : EventArgs
+{
+    public CollectionAccessEventArgs(string collectionName, Type entityType, Type collectionType)
+    {
+        CollectionName = collectionName;
+        EntityType = entityType;
+        CollectionType = collectionType;
+    }
+
+    public string CollectionName { get; }
+    public Type EntityType { get; }
+    public Type CollectionType { get; }
 }

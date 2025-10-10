@@ -10,4 +10,6 @@ internal class WeatherForecastRepositoryCollection : DiskRepositoryCollectionBas
         : base(mongoDbServiceFactory, logger)
     {
     }
+
+    //public override string CollectionName => "SomeCustomName";
 }

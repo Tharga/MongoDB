@@ -13,18 +13,18 @@ internal class MongoDbServiceFactory : IMongoDbServiceFactory
 {
     private readonly IRepositoryConfigurationLoader _repositoryConfigurationLoader;
     private readonly IMongoDbFirewallStateService _mongoDbFirewallStateService;
-    private readonly IDatabaseMonitor _databaseMonitor;
     private readonly ILogger _logger;
     private readonly ConcurrentDictionary<string, MongoDbService> _databaseDbServices = new();
     private readonly SemaphoreSlim _lock = new(1, 1);
 
-    public MongoDbServiceFactory(IRepositoryConfigurationLoader repositoryConfigurationLoader, IMongoDbFirewallStateService mongoDbFirewallStateService, IDatabaseMonitor databaseMonitor, ILogger<MongoDbServiceFactory> logger)
+    public MongoDbServiceFactory(IRepositoryConfigurationLoader repositoryConfigurationLoader, IMongoDbFirewallStateService mongoDbFirewallStateService, ILogger<MongoDbServiceFactory> logger)
     {
         _repositoryConfigurationLoader = repositoryConfigurationLoader;
         _mongoDbFirewallStateService = mongoDbFirewallStateService;
-        _databaseMonitor = databaseMonitor;
         _logger = logger;
     }
+
+    public event EventHandler<CollectionAccessEventArgs> CollectionAccessEvent;
 
     public IMongoDbService GetMongoDbService(Func<DatabaseContext> databaseContextLoader)
     {
@@ -45,7 +45,8 @@ internal class MongoDbServiceFactory : IMongoDbServiceFactory
             _lock.Wait();
             if (_databaseDbServices.TryGetValue(cacheKey, out dbService)) return dbService;
 
-            dbService = new MongoDbService(_repositoryConfigurationLoader.GetConfiguration(databaseContextLoader), _mongoDbFirewallStateService, _databaseMonitor, _logger);
+            dbService = new MongoDbService(_repositoryConfigurationLoader.GetConfiguration(databaseContextLoader), _mongoDbFirewallStateService, /*_databaseMonitor,*/ _logger);
+            dbService.CollectionAccessEvent += (s, e) => { CollectionAccessEvent?.Invoke(s, e); };
             _databaseDbServices.TryAdd(cacheKey, dbService);
             return dbService;
         }

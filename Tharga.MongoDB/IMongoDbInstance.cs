@@ -1,3 +1,10 @@
-﻿namespace Tharga.MongoDB;
+﻿using System;
+using System.Collections.Concurrent;
 
-internal interface IMongoDbInstance;
+namespace Tharga.MongoDB;
+
+internal interface IMongoDbInstance
+{
+    ConcurrentDictionary<Type, Type> RegisteredRepositories { get; }
+    ConcurrentDictionary<Type, Type> RegisteredCollections { get; }
+}
