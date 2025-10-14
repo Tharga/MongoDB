@@ -48,7 +48,7 @@ public class CollectionController : ControllerBase
     [HttpGet("monitor")]
     public async Task<IActionResult> GetMonitor()
     {
-        //TODO: What if there are several database configurations (servers). I want to monitor all of them, not just the default one.
+        //TODO: Loop all database configurations, much like the health check does.
         //TODO: I also want to check for all databases, not just all collections in a single database.
         var instances = await _databaseMonitor.GetInstancesAsync().ToArrayAsync();
         return Ok(instances);

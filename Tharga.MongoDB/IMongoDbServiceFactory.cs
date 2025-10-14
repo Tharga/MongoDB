@@ -1,5 +1,4 @@
 ﻿using System;
-using Tharga.MongoDB.Internals;
 
 namespace Tharga.MongoDB;
 
