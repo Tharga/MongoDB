@@ -41,7 +41,6 @@ internal class CollectionProvider : ICollectionProvider
     {
         return _collectionProviderCache.GetCollection(databaseContext, dc =>
         {
-
             var collectionType = typeof(TCollection);
             if (collectionType.IsInterface)
             {

@@ -1,5 +1,6 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
+
+	<PropertyGroup>
     <TargetFrameworks>net8.0;net9.0</TargetFrameworks>
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
     <Version>1.0.0</Version>
@@ -19,32 +20,37 @@
     <DebugSymbols>true</DebugSymbols>
     <EnableSourceLink>true</EnableSourceLink>
   </PropertyGroup>
+
   <PropertyGroup>
     <NoWarn>1701;1702;CS1591;CS0809</NoWarn>
   </PropertyGroup>
+
   <ItemGroup>
     <None Include="README.md">
       <Pack>True</Pack>
       <PackagePath>\</PackagePath>
     </None>
   </ItemGroup>
+
   <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="9.0.8" />
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.8" />
-    <PackageReference Include="Microsoft.Extensions.Features" Version="9.0.8" />
-    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="9.0.8" />
-    <PackageReference Include="Microsoft.Extensions.Http" Version="9.0.8" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="9.0.9" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.9" />
+    <PackageReference Include="Microsoft.Extensions.Features" Version="9.0.9" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="9.0.9" />
+    <PackageReference Include="Microsoft.Extensions.Http" Version="9.0.9" />
     <PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="MongoDB.Driver" Version="3.4.3" />
+    <PackageReference Include="MongoDB.Driver" Version="3.5.0" />
     <PackageReference Include="System.Linq.Async" Version="6.0.3" />
-    <PackageReference Include="Tharga.Toolkit" Version="1.13.16" />
+    <PackageReference Include="Tharga.Toolkit" Version="1.13.20" />
   </ItemGroup>
+
   <ItemGroup>
     <InternalsVisibleTo Include="Tharga.MongoDB.Tests" />
     <InternalsVisibleTo Include="DynamicProxyGenAssembly2" />
     <InternalsVisibleTo Include="MongoDB.Driver" />
   </ItemGroup>
+
 </Project>

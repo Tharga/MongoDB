@@ -6,7 +6,10 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-builder.Services.AddMongoDB();
+builder.Services.AddMongoDB(o =>
+{
+    o.AssureIndex = false;
+});
 
 var app = builder.Build();
 
@@ -22,6 +25,6 @@ app.UseAuthorization();
 
 app.MapControllers();
 
-//app.Services.UseMongoDB();
+app.UseMongoDB();
 
 app.Run();

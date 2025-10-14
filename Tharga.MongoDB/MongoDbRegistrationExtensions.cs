@@ -1,11 +1,12 @@
-﻿using System;
-using System.Linq;
-using System.Threading.Tasks;
-using Microsoft.Extensions.DependencyInjection;
+﻿using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization;
 using MongoDB.Bson.Serialization.Serializers;
+using System;
+using System.Linq;
+using System.Threading.Tasks;
 using Tharga.MongoDB.Atlas;
 using Tharga.MongoDB.Configuration;
 using Tharga.MongoDB.Internals;
@@ -155,19 +156,23 @@ public static class MongoDbRegistrationExtensions
             }
         }
 
-        services.AddSingleton<IMongoDbInstance, MongoDbInstance>();
+        services.AddTransient<ICollectionTypeService, CollectionTypeService>();
+        services.AddSingleton<IDatabaseMonitor, DatabaseMonitor>();
+        services.AddSingleton<IMongoDbInstance>(mongoDbInstance);
 
         return services;
     }
 
-    public static void UseMongoDB(this IServiceProvider services, Action<UseMongoOptions> options = null)
+    public static void UseMongoDB(this IHost app, Action<UseMongoOptions> options = null)
     {
+        app.Services.GetService<IDatabaseMonitor>();
+
         _actionEvent?.Invoke(new ActionEventArgs(new ActionEventArgs.ActionData { Message = $"Entering {nameof(UseMongoDB)}.", Level = LogLevel.Debug }, new ActionEventArgs.ContextData()));
 
-        var mongoDbInstance = services.GetService<IMongoDbInstance>();
+        var mongoDbInstance = app.Services.GetService<IMongoDbInstance>();
         if (mongoDbInstance == null) throw new InvalidOperationException($"Tharga MongoDB has not been registered. Call {nameof(AddMongoDB)} first.");
 
-        var repositoryConfiguration = services.GetService<IRepositoryConfiguration>();
+        var repositoryConfiguration = app.Services.GetService<IRepositoryConfiguration>();
 
         var useMongoOptions = new UseMongoOptions
         {
@@ -181,8 +186,8 @@ public static class MongoDbRegistrationExtensions
 
         _actionEvent?.Invoke(new ActionEventArgs(new ActionEventArgs.ActionData { Message = $"Found {useMongoOptions.DatabaseUsage.FirewallConfigurationNames.Length} database configurations. ({string.Join(", ", useMongoOptions.DatabaseUsage.FirewallConfigurationNames)})", Level = LogLevel.Debug }, new ActionEventArgs.ContextData()));
 
-        var mongoDbFirewallStateService = services.GetService<IMongoDbFirewallStateService>();
-        var mongoDbServiceFactory = services.GetService<IMongoDbServiceFactory>();
+        var mongoDbFirewallStateService = app.Services.GetService<IMongoDbFirewallStateService>();
+        var mongoDbServiceFactory = app.Services.GetService<IMongoDbServiceFactory>();
 
         var task = Task.Run(async () =>
         {
@@ -265,3 +270,12 @@ public static class MongoDbRegistrationExtensions
         }, new ActionEventArgs.ContextData()));
     }
 }
+
+//internal record Dbi
+//{
+//    public string CollectionName { get; set; }
+//    public string[] Types { get; set; }
+//    public int AccessCount { get; set; }
+//    public Registration Registration { get; set; }
+//    public string CollectionTypeName { get; set; }
+//}

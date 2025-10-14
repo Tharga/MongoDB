@@ -31,13 +31,13 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
     {
     }
 
-	/// <summary>
-	/// Use this constructor for dynamic collections together with ICollectionProvider.
-	/// </summary>
-	/// <param name="mongoDbServiceFactory"></param>
-	/// <param name="logger"></param>
-	/// <param name="databaseContext"></param>
-	protected DiskRepositoryCollectionBase(IMongoDbServiceFactory mongoDbServiceFactory, ILogger<RepositoryCollectionBase<TEntity, TKey>> logger, DatabaseContext databaseContext)
+    /// <summary>
+    /// Use this constructor for dynamic collections together with ICollectionProvider.
+    /// </summary>
+    /// <param name="mongoDbServiceFactory"></param>
+    /// <param name="logger"></param>
+    /// <param name="databaseContext"></param>
+    protected DiskRepositoryCollectionBase(IMongoDbServiceFactory mongoDbServiceFactory, ILogger<RepositoryCollectionBase<TEntity, TKey>> logger, DatabaseContext databaseContext)
         : base(mongoDbServiceFactory, logger, databaseContext)
     {
     }
@@ -882,11 +882,20 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 
     private async Task AssureIndex(IMongoCollection<TEntity> collection)
     {
+        var shouldAssureIndex = _mongoDbService.ShouldAssureIndex();
+        if (!shouldAssureIndex)
+        {
+            _logger?.LogTrace("Assure index is disabled");
+            return;
+        }
+
         if (InitiationLibrary.ShouldInitiateIndex(ServerName, DatabaseName, ProtectedCollectionName))
         {
             _logger?.LogTrace($"Assure index for collection {{collection}} in {{repositoryType}}. [action: Database, operation: {nameof(CleanAsync)}]", ProtectedCollectionName, "DiskRepository");
 
-            await collection.Indexes.CreateOneAsync(new CreateIndexModel<TEntity>(Builders<TEntity>.IndexKeys.Ascending(x => x.Id).Ascending("_t"), new CreateIndexOptions()));
+            //Not sure why this index should be created like this. Trying to disable.
+            //await collection.Indexes.CreateOneAsync(new CreateIndexModel<TEntity>(Builders<TEntity>.IndexKeys.Ascending(x => x.Id).Ascending("_t"), new CreateIndexOptions()));
+
             await UpdateIndicesAsync(collection);
         }
     }
@@ -916,11 +925,9 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         if (!indices.Any()) return;
 
         var firstInvalid = indices.GroupBy(x => x.Options.Name).FirstOrDefault(x => x.Count() > 1);
-        if (firstInvalid != null)
-            throw new InvalidOperationException($"Indices can only be defined once with the same name. Index {firstInvalid.First().Options.Name} has been defined {firstInvalid.Count()} times for collection {ProtectedCollectionName}.");
+        if (firstInvalid != null) throw new InvalidOperationException($"Indices can only be defined once with the same name. Index {firstInvalid.First().Options.Name} has been defined {firstInvalid.Count()} times for collection {ProtectedCollectionName}.");
 
-        if (indices.Any(x => string.IsNullOrEmpty(x.Options.Name)))
-            throw new InvalidOperationException("Indices needs to have a name.");
+        if (indices.Any(x => string.IsNullOrEmpty(x.Options.Name))) throw new InvalidOperationException("Indices needs to have a name.");
 
         var allExistingIndexNames = (await collection.Indexes.ListAsync()).ToList()
             .Select(x => x.GetValue("name").AsString)
@@ -931,7 +938,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 
         _logger?.Log(_executeInfoLogLevel, "Assure index for collection {collection} with {count} documents.", ProtectedCollectionName, await collection.CountDocumentsAsync(x => true));
         _logger?.LogTrace("All existing indices in collection {collection}: {indices}.", ProtectedCollectionName, string.Join(", ", allExistingIndexNames));
-        _logger?.LogDebug("Considered existing indices in collection {collection}: {indices}.", ProtectedCollectionName, string.Join(", ", existingIndexNames));
+        _logger?.LogDebug("Existing, non system, indices in collection {collection}: {indices}.", ProtectedCollectionName, string.Join(", ", existingIndexNames));
         _logger?.LogDebug("Defined indices for collection {collection}: {indices}.", ProtectedCollectionName, string.Join(", ", indices.Select(x => x.Options.Name)));
 
         //NOTE: Drop indexes not in list
@@ -941,6 +948,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             {
                 try
                 {
+                    _logger?.LogDebug("Index {indexName} will be dropped in collection {collection}.", indexName, ProtectedCollectionName);
                     await collection.Indexes.DropOneAsync(indexName);
                     _logger?.LogInformation("Index {indexName} was dropped in collection {collection}.", indexName, ProtectedCollectionName);
                 }
@@ -960,6 +968,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             {
                 try
                 {
+                    _logger?.LogDebug("Index {indexName} will be created in collection {collection}.", index.Options.Name, ProtectedCollectionName);
                     var message = await collection.Indexes.CreateOneAsync(index);
                     _logger?.LogInformation("Index {indexName} was created in collection {collection}. {message}", index.Options.Name, ProtectedCollectionName, message);
                 }

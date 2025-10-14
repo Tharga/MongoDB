@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using MongoDB.Bson;
@@ -25,45 +26,24 @@ internal class MongoDbService : IMongoDbService
         _mongoDbFirewallStateService = mongoDbFirewallStateService;
         _logger = logger;
         var mongoUrl = configuration.GetDatabaseUrl() ?? throw new NullReferenceException("MongoUrl not found in configuration.");
-        //_mongoClient = new MongoClient(mongoUrl);
         var cfg = MongoClientSettings.FromUrl(mongoUrl);
         cfg.ConnectTimeout = Debugger.IsAttached ? TimeSpan.FromSeconds(5) : TimeSpan.FromSeconds(10);
-        //cfg.SdamLogFilename = @"C:\temp\Logs\sdam.log"; //TODO: Use logger instead
-        //cfg.MaxConnectionPoolSize = 1000; //TODO: Try this
-        //cfg.WaitQueueTimeout = TimeSpan.FromSeconds(10);
         _mongoClient = new MongoClient(cfg);
         var settings = new MongoDatabaseSettings { WriteConcern = WriteConcern.WMajority };
-
-        //foreach (var server in _mongoClient.Cluster.Description.Servers)
-        //{
-        //    var isAlive = (server != null && server.HeartbeatException == null && server.State == ServerState.Connected);
-        //    if (isAlive)
-        //    {
-        //    }
-        //    else
-        //    {
-        //    }
-        //}
-
         _mongoDatabase = _mongoClient.GetDatabase(mongoUrl.DatabaseName, settings);
     }
 
-    public async Task<IMongoCollection<T>> GetCollectionAsync<T>(string collectionName, TimeSeriesOptions timeSeriesOptions)
+    public event EventHandler<CollectionAccessEventArgs> CollectionAccessEvent;
+
+    public async Task<IMongoCollection<T>> GetCollectionAsync<T>(string collectionName/*, TimeSeriesOptions timeSeriesOptions*/)
     {
         await AssureFirewallAccessAsync();
 
-        if (timeSeriesOptions != null)
-        {
-            var filter = new BsonDocument("name", collectionName);
-            var collectionCursor = await _mongoDatabase.ListCollectionNamesAsync(new ListCollectionNamesOptions { Filter = filter });
-            if (!await collectionCursor.AnyAsync())
-            {
-                var options = new CreateCollectionOptions<T> { TimeSeriesOptions = timeSeriesOptions };
-                await _mongoDatabase.CreateCollectionAsync(collectionName, options);
-            }
-        }
+        var collection = _mongoDatabase.GetCollection<T>(collectionName);
 
-        return _mongoDatabase.GetCollection<T>(collectionName);
+        CollectionAccessEvent?.Invoke(this, new CollectionAccessEventArgs(collectionName, typeof(T), collection.GetType()));
+
+        return collection;
     }
 
     public async ValueTask<string> AssureFirewallAccessAsync(bool force = false)
@@ -77,6 +57,11 @@ internal class MongoDbService : IMongoDbService
     public LogLevel GetExecuteInfoLogLevel()
     {
         return _configuration?.GetExecuteInfoLogLevel() ?? LogLevel.Debug;
+    }
+
+    public bool ShouldAssureIndex()
+    {
+        return _configuration?.ShouldAssureIndex() ?? true;
     }
 
     public string GetDatabaseName()
@@ -109,18 +94,53 @@ internal class MongoDbService : IMongoDbService
         return _mongoDatabase.ListCollections().ToEnumerable().Select(x => x.AsBsonValue["name"].ToString());
     }
 
-    public async IAsyncEnumerable<(string Name, long DocumentCount, long Size)> GetCollectionsWithMetaAsync(string databaseName = null)
+    public async IAsyncEnumerable<CollectionMeta> GetCollectionsWithMetaAsync(string databaseName = null)
     {
         var mongoDatabase = string.IsNullOrEmpty(databaseName) ? _mongoDatabase : _mongoClient.GetDatabase(databaseName);
-
         var collections = (await mongoDatabase.ListCollectionsAsync()).ToEnumerable();
 
         foreach (var collection in collections)
         {
-            var name = collection.AsBsonValue["name"].ToString();
-            var documents = await mongoDatabase.GetCollection<object>(name).CountDocumentsAsync(y => true);
+            var name = collection["name"].AsString;
+            var mongoCollection = mongoDatabase.GetCollection<BsonDocument>(name);
+
+            var types = await mongoCollection
+                .Distinct<string>("_t", FilterDefinition<BsonDocument>.Empty)
+                .ToListAsync();
+
+            var documents = await mongoCollection.CountDocumentsAsync(FilterDefinition<BsonDocument>.Empty);
             var size = GetSize(name, mongoDatabase);
-            yield return (name, documents, size);
+
+            var indexModels = new List<IndexMeta>();
+            using var cursor = await mongoCollection.Indexes.ListAsync();
+            var indexDocs = await cursor.ToListAsync();
+
+            foreach (var indexDoc in indexDocs)
+            {
+                var indexName = indexDoc.GetValue("name", BsonNull.Value).AsString;
+                var isUnique = indexDoc.TryGetValue("unique", out var uniqueVal) && uniqueVal.AsBoolean;
+                var keyDoc = indexDoc["key"].AsBsonDocument;
+
+                var fields = keyDoc.Names.ToArray();
+
+                indexModels.Add(new IndexMeta
+                {
+                    Name = indexName,
+                    Fields = fields,
+                    IsUnique = isUnique
+                });
+            }
+
+            yield return new CollectionMeta
+            {
+                Name = name,
+                DocumentCount = documents,
+                Size = size,
+                Types = types.ToArray(),
+                Indexes = indexModels
+                    .Where(x => !x.Name.StartsWith("_id_"))
+                    .ToArray()
+            };
         }
     }
 
@@ -198,7 +218,7 @@ internal class MongoDbService : IMongoDbService
 
     public IEnumerable<string> GetDatabases()
     {
-        var dbs = _mongoClient.ListDatabases().ToList();
+        var dbs = _mongoClient.ListDatabases(CancellationToken.None).ToList();
         return dbs.Select(x => x.AsBsonValue["name"].ToString());
     }
 

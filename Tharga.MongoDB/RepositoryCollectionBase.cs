@@ -13,6 +13,8 @@ public abstract class RepositoryCollectionBase
 {
     public static event EventHandler<ActionEventArgs> ActionEvent;
 
+    public abstract string CollectionName { get; }
+
     internal void InvokeAction(ActionEventArgs.ActionData actionData, ActionEventArgs.ContextData contextData)
     {
         ActionEvent?.Invoke(this, new ActionEventArgs(actionData, contextData));
@@ -29,7 +31,7 @@ public abstract class RepositoryCollectionBase<TEntity, TKey> : RepositoryCollec
 
     private readonly Lazy<ActionEventArgs.ContextData> _contextData;
 
-	protected RepositoryCollectionBase(IMongoDbServiceFactory mongoDbServiceFactory, ILogger<RepositoryCollectionBase<TEntity, TKey>> logger, DatabaseContext databaseContext = null)
+    protected RepositoryCollectionBase(IMongoDbServiceFactory mongoDbServiceFactory, ILogger<RepositoryCollectionBase<TEntity, TKey>> logger, DatabaseContext databaseContext = null)
     {
         _logger = logger;
         _databaseContext = databaseContext;
@@ -46,7 +48,7 @@ public abstract class RepositoryCollectionBase<TEntity, TKey> : RepositoryCollec
 
     internal virtual string ServerName => _mongoDbService.GetDatabaseHostName();
     internal virtual string DatabaseName => _mongoDbService.GetDatabaseName();
-    public virtual string CollectionName => _databaseContext?.CollectionName ?? DefaultCollectionName;
+    public override string CollectionName => _databaseContext?.CollectionName ?? DefaultCollectionName;
     public virtual string DatabasePart => _databaseContext?.CollectionName;
     public virtual string ConfigurationName => _databaseContext?.ConfigurationName.Value;
     public virtual bool AutoClean => _mongoDbService.GetAutoClean();
