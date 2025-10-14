@@ -20,7 +20,7 @@ namespace Tharga.MongoDB;
 public interface IDatabaseMonitor
 {
     //Task RegisterInstanceAsync(string name);
-    IAsyncEnumerable<string> GetInstancesAsync();
+    IAsyncEnumerable<string> GetInstancesAsync(DatabaseContext databaseContext = null);
 }
 
 internal record CollectionAccessData
@@ -57,15 +57,17 @@ internal class DatabaseMonitor : IDatabaseMonitor
         };
     }
 
-    public async IAsyncEnumerable<string> GetInstancesAsync()
+    public async IAsyncEnumerable<string> GetInstancesAsync(DatabaseContext databaseContext)
     {
+        databaseContext ??= new DatabaseContext();
+
         var collectionsInDatabase = new Dictionary<string, Dbi>(); //Collection
         var dynamicRegistration = new Dictionary<string, Dbi>(); //Dynamic registration
         var staticRegistrations = new Dictionary<string, Dbi>(); //Static registration
         var touched = new Dictionary<string, Dbi>(); //Touched
 
         //1. List all collections in the database
-        var factory = _mongoDbServiceFactory.GetMongoDbService(() => new DatabaseContext());
+        var factory = _mongoDbServiceFactory.GetMongoDbService(() => databaseContext);
         var collections = await factory.GetCollectionsWithMetaAsync().ToArrayAsync();
         foreach (var collection in collections)
         {

@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using MongoDB.Bson;
@@ -271,7 +272,7 @@ internal class MongoDbService : IMongoDbService
 
     public IEnumerable<string> GetDatabases()
     {
-        var dbs = _mongoClient.ListDatabases().ToList();
+        var dbs = _mongoClient.ListDatabases(CancellationToken.None).ToList();
         return dbs.Select(x => x.AsBsonValue["name"].ToString());
     }
 
