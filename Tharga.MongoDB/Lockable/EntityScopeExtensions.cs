@@ -6,7 +6,7 @@ namespace Tharga.MongoDB.Lockable;
 public static class EntityScopeExtensions
 {
     /// <summary>
-    /// The provided function should return an antity for commit and default for abandon.
+    /// The provided function should return an entity for commit and default for abandon.
     /// If this is a delete operation, return the entity to be deleted from 'func'.
     /// </summary>
     /// <typeparam name="T">Type of the entity.</typeparam>
@@ -18,17 +18,17 @@ public static class EntityScopeExtensions
     public static async Task<T> ExecuteAsync<T, TKey>(this EntityScope<T, TKey> item, Func<T, Task<T>> func)
         where T : LockableEntityBase<TKey>
     {
-        if (item == default) return default;
+        if (item == null) return null;
         if (func == null) throw new ArgumentNullException(nameof(func), $"{nameof(func)} needs to be provided.");
 
         T entity;
         try
         {
             entity = await func.Invoke(item.Entity);
-            if (entity == default)
+            if (entity == null)
             {
                 await item.AbandonAsync();
-                return default;
+                return null;
             }
         }
         catch (Exception e)

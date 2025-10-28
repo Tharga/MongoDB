@@ -63,11 +63,18 @@ public record EntityScope<T, TKey> : IAsyncDisposable, IDisposable
     /// </summary>
     /// <param name="updatedEntity"></param>
     /// <returns></returns>
-    public async Task<T> CommitAsync(T updatedEntity = default)
+    public async Task<T> CommitAsync(T updatedEntity = null)
     {
-        var entity = updatedEntity ?? _entity;
-        await Release(entity, true, null);
-        return entity;
+        try
+        {
+            var entity = updatedEntity ?? _entity;
+            await Release(entity, true, null);
+            return entity;
+        }
+        catch (Exception e)
+        {
+            throw new CommitException(e);
+        }
     }
 
     private async Task Release(T updatedEntity, bool commit, Exception exception)
