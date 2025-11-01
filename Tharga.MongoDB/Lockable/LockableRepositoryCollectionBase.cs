@@ -11,7 +11,6 @@ using MongoDB.Bson;
 using MongoDB.Driver;
 using Tharga.MongoDB.Disk;
 using Tharga.MongoDB.Internals;
-using Tharga.Toolkit;
 
 namespace Tharga.MongoDB.Lockable;
 
@@ -503,7 +502,7 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
 
         var now = DateTime.UtcNow;
         var lockKey = Guid.NewGuid();
-        actor = StringExtensions.NullIfEmpty(actor);
+        actor = actor.NullIfEmpty();
 
         var unlockedFilter = Builders<TEntity>.Filter.And(
             filter,
