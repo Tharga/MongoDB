@@ -71,6 +71,18 @@ public record EntityScope<T, TKey> : IAsyncDisposable, IDisposable
             await Release(entity, true, null);
             return entity;
         }
+        catch (UnlockDifferentEntityException)
+        {
+            throw;
+        }
+        catch (LockAlreadyReleasedException)
+        {
+            throw;
+        }
+        catch (LockExpiredException)
+        {
+            throw;
+        }
         catch (Exception e)
         {
             throw new CommitException(e);

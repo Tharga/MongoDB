@@ -7,4 +7,9 @@ internal static class StringExtensions
         if (string.IsNullOrEmpty(item)) return null;
         return item;
     }
+
+    public static bool IsNullOrEmpty(this string item)
+    {
+        return string.IsNullOrEmpty(item);
+    }
 }
