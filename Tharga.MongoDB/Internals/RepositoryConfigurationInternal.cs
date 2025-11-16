@@ -28,8 +28,13 @@ internal class RepositoryConfigurationInternal : IRepositoryConfigurationInterna
 
     public ConfigurationName GetConfigurationName()
     {
-        var configurationName = _databaseContext.Value?.ConfigurationName ?? _databaseOptions.DefaultConfigurationName ?? throw new NullReferenceException("No default configuration name provided.");
+        var configurationName = _databaseContext.Value?.ConfigurationName?.Value ?? _databaseOptions.DefaultConfigurationName ?? throw new NullReferenceException("No default configuration name provided.");
         return configurationName;
+    }
+
+    public DatabaseContext GetDatabaseContext()
+    {
+        return _databaseContext.Value;
     }
 
     public MongoUrl GetDatabaseUrl()

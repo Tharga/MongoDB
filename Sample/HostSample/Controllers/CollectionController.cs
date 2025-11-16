@@ -1,3 +1,5 @@
+using HostSample.Features.DynamicRepo;
+using HostSample.Features.SecondaryRepo;
 using Microsoft.AspNetCore.Mvc;
 using Tharga.MongoDB;
 
@@ -10,12 +12,16 @@ public class CollectionController : ControllerBase
     private readonly IMongoDbServiceFactory _mongoDbServiceFactory;
     private readonly ICollectionTypeService _collectionTypeService;
     private readonly IDatabaseMonitor _databaseMonitor;
+    private readonly IDynRepo _dynRepo;
+    private readonly ISecondaryRepo _secondaryRepo;
 
-    public CollectionController(IMongoDbServiceFactory mongoDbServiceFactory, ICollectionTypeService collectionTypeService, IDatabaseMonitor databaseMonitor)
+    public CollectionController(IMongoDbServiceFactory mongoDbServiceFactory, ICollectionTypeService collectionTypeService, IDatabaseMonitor databaseMonitor, IDynRepo dynRepo, ISecondaryRepo secondaryRepo)
     {
         _mongoDbServiceFactory = mongoDbServiceFactory;
         _collectionTypeService = collectionTypeService;
         _databaseMonitor = databaseMonitor;
+        _dynRepo = dynRepo;
+        _secondaryRepo = secondaryRepo;
     }
 
     [HttpGet]
@@ -48,10 +54,28 @@ public class CollectionController : ControllerBase
     [HttpGet("monitor")]
     public async Task<IActionResult> GetMonitor()
     {
-        //TODO: Loop all database configurations, much like the health check does.
-        //TODO: I also want to check for all databases, not just all collections in a single database.
-        var instances = await _databaseMonitor.GetInstancesAsync().ToArrayAsync();
-        return Ok(instances);
+        //var t1d = await _dynRepo.GetAsync("NoDefault", null, "A").ToArrayAsync();
+        var t1 = await _dynRepo.GetAsync("NoDefault", "part", "A").ToArrayAsync();
+        var t11 = await _dynRepo.GetAsync("NoDefault", "part2", "A").ToArrayAsync();
+        var t2 = await _dynRepo.GetAsync("Secondary", "part", "A").ToArrayAsync();
+        //var t21 = await _dynRepo.GetAsync("Secondary", "part2", "A").ToArrayAsync();
+        var t3d = await _secondaryRepo.GetAsync().ToArrayAsync();
+
+        var items = await _databaseMonitor.GetInstancesAsync().ToArrayAsync();
+        //return Ok(items);
+        return Ok(items.Select(x => new
+        {
+            Source = $"{x.Source}",
+            x.ConfigurationName,
+            x.Server,
+            x.DatabaseName,
+            x.CollectionName,
+            x.CollectionTypeName,
+            Registration = $"{x.Registration}",
+            x.DocumentCount,
+            x.Size,
+            x.Types
+        }));
     }
 
     [HttpGet("configuration")]

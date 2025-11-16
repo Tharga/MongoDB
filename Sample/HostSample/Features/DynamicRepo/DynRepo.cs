@@ -11,24 +11,25 @@ internal class DynRepo : IDynRepo
         _collectionProvider = collectionProvider;
     }
 
-    public IAsyncEnumerable<DynRepoItem> GetAsync(string instance)
+    public IAsyncEnumerable<DynRepoItem> GetAsync(string configurationName, string databasePart, string instance)
     {
-        var collection = GetCollection(instance);
+        var collection = GetCollection(configurationName, databasePart, instance);
         return collection.GetAsync();
     }
 
-    public Task AddAsync(string instance, DynRepoItem item)
+    public Task AddAsync(string configurationName, string databasePart, string instance, DynRepoItem item)
     {
-        var collection = GetCollection(instance);
+        var collection = GetCollection(configurationName, databasePart, instance);
         return collection.AddAsync(item);
     }
 
-    private IDynRepoCollection GetCollection(string instance)
+    private IDynRepoCollection GetCollection(string configurationName, string databasePart, string instance)
     {
         return _collectionProvider.GetCollection<IDynRepoCollection, DynRepoItem>(new DatabaseContext
         {
-            //DatabasePart = instance,
-            CollectionName = $"Dyn_{instance}"
+            ConfigurationName = configurationName,
+            DatabasePart = databasePart,
+            CollectionName = $"Dyn_{instance}",
         });
     }
 }

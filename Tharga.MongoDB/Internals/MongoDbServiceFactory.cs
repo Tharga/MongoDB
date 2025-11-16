@@ -38,11 +38,11 @@ internal class MongoDbServiceFactory : IMongoDbServiceFactory
         }
 
         var configuration = _repositoryConfigurationLoader.GetConfiguration(databaseContextLoader);
+        var configurationName = configuration.GetConfigurationName();
         var mongoUrl = configuration.GetDatabaseUrl();
         var cacheKey = mongoUrl.Url;
+        ConfigurationAccessEvent?.Invoke(this, new ConfigurationAccessEventArgs(configurationName, mongoUrl));
         if (_databaseDbServices.TryGetValue(cacheKey, out var dbService)) return dbService;
-
-        ConfigurationAccessEvent?.Invoke(this, new ConfigurationAccessEventArgs(configuration.GetConfigurationName(), mongoUrl));
 
         try
         {
@@ -50,7 +50,10 @@ internal class MongoDbServiceFactory : IMongoDbServiceFactory
             if (_databaseDbServices.TryGetValue(cacheKey, out dbService)) return dbService;
 
             dbService = new MongoDbService(configuration, _mongoDbFirewallStateService, _logger);
-            dbService.CollectionAccessEvent += (s, e) => { CollectionAccessEvent?.Invoke(s, e); };
+            dbService.CollectionAccessEvent += (s, e) =>
+            {
+                CollectionAccessEvent?.Invoke(s, e);
+            };
             _databaseDbServices.TryAdd(cacheKey, dbService);
             return dbService;
         }

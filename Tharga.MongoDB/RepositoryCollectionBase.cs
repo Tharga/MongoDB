@@ -13,7 +13,10 @@ public abstract class RepositoryCollectionBase
 {
     public static event EventHandler<ActionEventArgs> ActionEvent;
 
+    internal abstract string ServerName { get; }
+    internal abstract string DatabaseName { get; }
     public abstract string CollectionName { get; }
+    public abstract string ConfigurationName { get; }
 
     internal void InvokeAction(ActionEventArgs.ActionData actionData, ActionEventArgs.ContextData contextData)
     {
@@ -46,11 +49,11 @@ public abstract class RepositoryCollectionBase<TEntity, TKey> : RepositoryCollec
     private string DefaultCollectionName => typeof(TEntity).Name;
     protected string ProtectedCollectionName => CollectionName.ProtectCollectionName();
 
-    internal virtual string ServerName => _mongoDbService.GetDatabaseHostName();
-    internal virtual string DatabaseName => _mongoDbService.GetDatabaseName();
+    internal override string ServerName => _mongoDbService.GetDatabaseHostName();
+    internal override string DatabaseName => _mongoDbService.GetDatabaseName();
     public override string CollectionName => _databaseContext?.CollectionName ?? DefaultCollectionName;
     public virtual string DatabasePart => _databaseContext?.CollectionName;
-    public virtual string ConfigurationName => _databaseContext?.ConfigurationName.Value;
+    public override string ConfigurationName => _databaseContext?.ConfigurationName.Value;
     public virtual bool AutoClean => _mongoDbService.GetAutoClean();
     public virtual bool CleanOnStartup => _mongoDbService.GetCleanOnStartup();
     public virtual bool DropEmptyCollections => _mongoDbService.DropEmptyCollections();

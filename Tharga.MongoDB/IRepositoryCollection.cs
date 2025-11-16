@@ -32,7 +32,7 @@ public interface IRepositoryCollection<TEntity, TKey> : IReadOnlyRepositoryColle
     [Obsolete("Use DeleteOneAsync with 'OneOption' instead.")]
     Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate, FindOneAndDeleteOptions<TEntity, TEntity> options);
 
-    Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate = default, OneOption<TEntity> options = default);
+    Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate = null, OneOption<TEntity> options = default);
     Task<long> DeleteManyAsync(Expression<Func<TEntity, bool>> predicate);
 
     IMongoCollection<TEntity> GetCollection();

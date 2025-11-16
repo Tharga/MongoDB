@@ -1,15 +1,14 @@
-﻿using System;
+﻿using Microsoft.Extensions.Logging;
+using MongoDB.Bson;
+using MongoDB.Bson.Serialization.Attributes;
+using MongoDB.Driver;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.Extensions.Logging;
-using MongoDB.Bson;
-using MongoDB.Bson.Serialization.Attributes;
-using MongoDB.Driver;
 using Tharga.MongoDB.Atlas;
-using Tharga.MongoDB.Configuration;
 
 namespace Tharga.MongoDB.Internals;
 
@@ -20,20 +19,19 @@ internal class MongoDbService : IMongoDbService
     private readonly ILogger _logger;
     private readonly MongoClient _mongoClient;
     private readonly IMongoDatabase _mongoDatabase;
-    private readonly ConfigurationName _configurationName;
+    private readonly MongoUrl _mongoUrl;
 
     public MongoDbService(IRepositoryConfigurationInternal configuration, IMongoDbFirewallStateService mongoDbFirewallStateService, ILogger logger)
     {
         _configuration = configuration;
         _mongoDbFirewallStateService = mongoDbFirewallStateService;
         _logger = logger;
-        var mongoUrl = configuration.GetDatabaseUrl() ?? throw new NullReferenceException("MongoUrl not found in configuration.");
-        _configurationName = configuration.GetConfigurationName();
-        var cfg = MongoClientSettings.FromUrl(mongoUrl);
+        _mongoUrl = configuration.GetDatabaseUrl() ?? throw new NullReferenceException("MongoUrl not found in configuration.");
+        var cfg = MongoClientSettings.FromUrl(_mongoUrl);
         cfg.ConnectTimeout = Debugger.IsAttached ? TimeSpan.FromSeconds(5) : TimeSpan.FromSeconds(10);
         _mongoClient = new MongoClient(cfg);
         var settings = new MongoDatabaseSettings { WriteConcern = WriteConcern.WMajority };
-        _mongoDatabase = _mongoClient.GetDatabase(mongoUrl.DatabaseName, settings);
+        _mongoDatabase = _mongoClient.GetDatabase(_mongoUrl.DatabaseName, settings);
     }
 
     public event EventHandler<CollectionAccessEventArgs> CollectionAccessEvent;
@@ -43,8 +41,10 @@ internal class MongoDbService : IMongoDbService
         await AssureFirewallAccessAsync();
 
         var collection = _mongoDatabase.GetCollection<T>(collectionName);
+        //var server = _mongoDatabase.Client.Settings.Server.Host;
+        var databaseContext = _configuration.GetDatabaseContext();
 
-        CollectionAccessEvent?.Invoke(this, new CollectionAccessEventArgs(_configurationName, collectionName, typeof(T), collection.GetType()));
+        CollectionAccessEvent?.Invoke(this, new CollectionAccessEventArgs(databaseContext, _mongoUrl.Url, typeof(T), collection.GetType()));
 
         return collection;
     }
@@ -136,13 +136,17 @@ internal class MongoDbService : IMongoDbService
 
             yield return new CollectionMeta
             {
-                Name = name,
+                //DatabaseContext = _configuration.GetDatabaseContext(),
+                ConfigurationName = _configuration.GetConfigurationName(),
+                Server = _mongoUrl.Url,
+                DatabaseName = mongoDatabase.DatabaseNamespace.DatabaseName,
+                CollectionName = name,
                 DocumentCount = documents,
                 Size = size,
                 Types = types.ToArray(),
                 Indexes = indexModels
                     .Where(x => !x.Name.StartsWith("_id_"))
-                    .ToArray()
+                    .ToArray(),
             };
         }
     }

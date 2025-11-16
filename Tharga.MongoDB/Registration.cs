@@ -2,7 +2,7 @@
 
 public enum Registration
 {
-    Missing,
+    NotInCode,
     Static,
     Dynamic
 }

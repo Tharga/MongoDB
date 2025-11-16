@@ -6,5 +6,5 @@ namespace Tharga.MongoDB;
 public interface IDatabaseMonitor
 {
     IEnumerable<ConfigurationName> GetConfigurations();
-    IAsyncEnumerable<CollectionInfo> GetInstancesAsync(ConfigurationName configurationName = null);
+    IAsyncEnumerable<CollectionInfo> GetInstancesAsync();
 }
