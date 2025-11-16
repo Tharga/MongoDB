@@ -2,7 +2,6 @@
 
 public record CollectionMeta
 {
-    //public required DatabaseContext DatabaseContext { get; init; } //TODO: replace with configuration name?
     public required string ConfigurationName { get; init; }
     public required string Server { get; init; }
     public required string DatabaseName { get; init; }

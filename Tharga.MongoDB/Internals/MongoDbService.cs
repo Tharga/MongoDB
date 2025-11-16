@@ -41,10 +41,9 @@ internal class MongoDbService : IMongoDbService
         await AssureFirewallAccessAsync();
 
         var collection = _mongoDatabase.GetCollection<T>(collectionName);
-        //var server = _mongoDatabase.Client.Settings.Server.Host;
         var databaseContext = _configuration.GetDatabaseContext();
 
-        CollectionAccessEvent?.Invoke(this, new CollectionAccessEventArgs(databaseContext, _mongoUrl.Url, typeof(T), collection.GetType()));
+        CollectionAccessEvent?.Invoke(this, new CollectionAccessEventArgs(databaseContext, _mongoUrl.Url, typeof(T)));
 
         return collection;
     }

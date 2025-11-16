@@ -54,12 +54,11 @@ public class CollectionController : ControllerBase
     [HttpGet("monitor")]
     public async Task<IActionResult> GetMonitor()
     {
-        //var t1d = await _dynRepo.GetAsync("NoDefault", null, "A").ToArrayAsync();
-        var t1 = await _dynRepo.GetAsync("NoDefault", "part", "A").ToArrayAsync();
-        var t11 = await _dynRepo.GetAsync("NoDefault", "part2", "A").ToArrayAsync();
-        var t2 = await _dynRepo.GetAsync("Secondary", "part", "A").ToArrayAsync();
-        //var t21 = await _dynRepo.GetAsync("Secondary", "part2", "A").ToArrayAsync();
-        var t3d = await _secondaryRepo.GetAsync().ToArrayAsync();
+        //TODO: Use to touch all databases, so information can be loaded.
+        //var t1 = await _dynRepo.GetAsync("NoDefault", "part", "A").ToArrayAsync();
+        //var t11 = await _dynRepo.GetAsync("NoDefault", "part2", "A").ToArrayAsync();
+        //var t2 = await _dynRepo.GetAsync("Secondary", "part", "A").ToArrayAsync();
+        //var t3d = await _secondaryRepo.GetAsync().ToArrayAsync();
 
         var items = await _databaseMonitor.GetInstancesAsync().ToArrayAsync();
         //return Ok(items);
@@ -72,9 +71,10 @@ public class CollectionController : ControllerBase
             x.CollectionName,
             x.CollectionTypeName,
             Registration = $"{x.Registration}",
+            x.AccessCount,
             x.DocumentCount,
             x.Size,
-            x.Types
+            x.Types,
         }));
     }
 
