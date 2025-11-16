@@ -9,6 +9,7 @@ using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
 using MongoDB.Driver;
 using Tharga.MongoDB.Atlas;
+using Tharga.MongoDB.Configuration;
 
 namespace Tharga.MongoDB.Internals;
 
@@ -19,6 +20,7 @@ internal class MongoDbService : IMongoDbService
     private readonly ILogger _logger;
     private readonly MongoClient _mongoClient;
     private readonly IMongoDatabase _mongoDatabase;
+    private readonly ConfigurationName _configurationName;
 
     public MongoDbService(IRepositoryConfigurationInternal configuration, IMongoDbFirewallStateService mongoDbFirewallStateService, ILogger logger)
     {
@@ -26,6 +28,7 @@ internal class MongoDbService : IMongoDbService
         _mongoDbFirewallStateService = mongoDbFirewallStateService;
         _logger = logger;
         var mongoUrl = configuration.GetDatabaseUrl() ?? throw new NullReferenceException("MongoUrl not found in configuration.");
+        _configurationName = configuration.GetConfigurationName();
         var cfg = MongoClientSettings.FromUrl(mongoUrl);
         cfg.ConnectTimeout = Debugger.IsAttached ? TimeSpan.FromSeconds(5) : TimeSpan.FromSeconds(10);
         _mongoClient = new MongoClient(cfg);
@@ -35,20 +38,20 @@ internal class MongoDbService : IMongoDbService
 
     public event EventHandler<CollectionAccessEventArgs> CollectionAccessEvent;
 
-    public async Task<IMongoCollection<T>> GetCollectionAsync<T>(string collectionName/*, TimeSeriesOptions timeSeriesOptions*/)
+    public async Task<IMongoCollection<T>> GetCollectionAsync<T>(string collectionName)
     {
         await AssureFirewallAccessAsync();
 
         var collection = _mongoDatabase.GetCollection<T>(collectionName);
 
-        CollectionAccessEvent?.Invoke(this, new CollectionAccessEventArgs(collectionName, typeof(T), collection.GetType()));
+        CollectionAccessEvent?.Invoke(this, new CollectionAccessEventArgs(_configurationName, collectionName, typeof(T), collection.GetType()));
 
         return collection;
     }
 
     public async ValueTask<string> AssureFirewallAccessAsync(bool force = false)
     {
-        if (_configuration.GetDatabaseUrl().Server.Host.Contains("localhost", StringComparison.InvariantCultureIgnoreCase)) return default;
+        if (_configuration.GetDatabaseUrl().Server.Host.Contains("localhost", StringComparison.InvariantCultureIgnoreCase)) return null;
         var message = await _mongoDbFirewallStateService.AssureFirewallAccessAsync(_configuration.GetConfiguration().AccessInfo, force);
         _logger.LogDebug(message);
         return message;

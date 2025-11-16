@@ -54,6 +54,13 @@ public class CollectionController : ControllerBase
         return Ok(instances);
     }
 
+    [HttpGet("configuration")]
+    public Task<IActionResult> GetConfigurations()
+    {
+        var configurations = _databaseMonitor.GetConfigurations();
+        return Task.FromResult<IActionResult>(Ok(configurations.Select(x => x.Value)));
+    }
+
     //[HttpGet("index")]
     //public async Task<IActionResult> GetIndexes()
     //{

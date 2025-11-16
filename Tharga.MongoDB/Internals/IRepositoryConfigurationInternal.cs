@@ -6,6 +6,7 @@ namespace Tharga.MongoDB.Internals;
 
 internal interface IRepositoryConfigurationInternal
 {
+    ConfigurationName GetConfigurationName();
     MongoUrl GetDatabaseUrl();
     MongoDbConfig GetConfiguration();
     LogLevel GetExecuteInfoLogLevel();

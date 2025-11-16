@@ -29,7 +29,9 @@ internal class MongoUrlBuilderLoader : IMongoUrlBuilderLoader
 
     private string GetConnectionString(DatabaseContext databaseContext, DatabaseOptions databaseOptions, IServiceProvider provider)
     {
-        var configurationName = databaseContext?.ConfigurationName?.Value.NullIfEmpty() ?? databaseOptions.ConfigurationName.Value;
+        var configurationName = databaseContext?.ConfigurationName?.Value.NullIfEmpty() ?? databaseOptions.DefaultConfigurationName?.Value;
+
+        if (configurationName == null) throw new InvalidOperationException("Cannot find configuration name.");
 
         var providedConnectionString = databaseOptions.ConnectionStringLoader?.Invoke(configurationName, _serviceProvider)?.GetAwaiter().GetResult();
         if (!string.IsNullOrEmpty(providedConnectionString?.Value))

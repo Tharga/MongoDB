@@ -26,9 +26,15 @@ internal class RepositoryConfigurationInternal : IRepositoryConfigurationInterna
         _databaseContext = new Lazy<DatabaseContext>(() => databaseContextLoader?.Invoke());
     }
 
+    public ConfigurationName GetConfigurationName()
+    {
+        var configurationName = _databaseContext.Value?.ConfigurationName ?? _databaseOptions.DefaultConfigurationName ?? throw new NullReferenceException("No default configuration name provided.");
+        return configurationName;
+    }
+
     public MongoUrl GetDatabaseUrl()
     {
-        var configurationName = _databaseContext.Value?.ConfigurationName ?? _databaseOptions.ConfigurationName ?? "Default";
+        var configurationName = GetConfigurationName();
         var key = $"{_environmentName}.{configurationName}.{_databaseContext.Value?.CollectionName}.{_databaseContext.Value?.DatabasePart}";
         if (_databaseUrlCache.TryGetValue(key, out var mongoUrl)) return mongoUrl;
 
@@ -40,7 +46,7 @@ internal class RepositoryConfigurationInternal : IRepositoryConfigurationInterna
 
     public MongoDbConfig GetConfiguration()
     {
-        var configurationName = _databaseContext.Value?.ConfigurationName ?? _databaseOptions.ConfigurationName ?? "Default";
+        var configurationName = GetConfigurationName();
         var key = $"{configurationName}.{_databaseContext.Value?.CollectionName}";
         if (_configurationCache.TryGetValue(key, out var configuration)) return configuration;
 

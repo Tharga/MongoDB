@@ -21,7 +21,7 @@ public record DatabaseOptions
     /// The name of the connection string that will be used to read from appsettings.json or from ConnectionStringLoader.
     /// If not provided 'Default' will be used.
     /// </summary>
-    public ConfigurationName ConfigurationName { get; set; }
+    public ConfigurationName DefaultConfigurationName { get; set; }
 
     /// <summary>
     /// This function can be provided to dynamically provide a connection string for a specific configuration.

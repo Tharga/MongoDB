@@ -24,6 +24,7 @@ internal class MongoDbServiceFactory : IMongoDbServiceFactory
         _logger = logger;
     }
 
+    public event EventHandler<ConfigurationAccessEventArgs> ConfigurationAccessEvent;
     public event EventHandler<CollectionAccessEventArgs> CollectionAccessEvent;
 
     public IMongoDbService GetMongoDbService(Func<DatabaseContext> databaseContextLoader)
@@ -40,6 +41,8 @@ internal class MongoDbServiceFactory : IMongoDbServiceFactory
         var mongoUrl = configuration.GetDatabaseUrl();
         var cacheKey = mongoUrl.Url;
         if (_databaseDbServices.TryGetValue(cacheKey, out var dbService)) return dbService;
+
+        ConfigurationAccessEvent?.Invoke(this, new ConfigurationAccessEventArgs(configuration.GetConfigurationName(), mongoUrl));
 
         try
         {

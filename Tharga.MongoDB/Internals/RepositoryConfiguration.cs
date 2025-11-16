@@ -22,13 +22,13 @@ internal class RepositoryConfiguration : IRepositoryConfiguration
 
     public string GetRawDatabaseUrl(string configurationName = null)
     {
-        var name = configurationName ?? _databaseOptions.ConfigurationName ?? "Default";
+        var name = configurationName ?? _databaseOptions.DefaultConfigurationName ?? throw new NullReferenceException("No default configuration name provided.");
         return _databaseOptions.ConnectionStringLoader?.Invoke(name, _serviceProvider).GetAwaiter().GetResult() ?? _configuration.GetConnectionString(name);
     }
 
     public MongoDbConfig GetConfiguration(string configurationName = null)
     {
-        var name = configurationName ?? _databaseOptions.ConfigurationName ?? "Default";
+        var name = configurationName ?? _databaseOptions.DefaultConfigurationName ?? throw new NullReferenceException("No default configuration name provided.");
 
         //Provided as named parameter
         MongoDbConfiguration c1 = null;
@@ -74,9 +74,9 @@ internal class RepositoryConfiguration : IRepositoryConfiguration
             yield return connectionString.Key;
         }
 
-        if (!any || !string.IsNullOrEmpty(_databaseOptions.ConfigurationName))
+        if (!any || !string.IsNullOrEmpty(_databaseOptions.DefaultConfigurationName))
         {
-            yield return _databaseOptions.ConfigurationName ?? "Default";
+            yield return _databaseOptions.DefaultConfigurationName ?? throw new NullReferenceException("No default configuration name provided.");
         }
     }
 

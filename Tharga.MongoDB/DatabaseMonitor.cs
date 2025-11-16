@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using Tharga.MongoDB.Configuration;
 using Tharga.MongoDB.Internals;
 
 namespace Tharga.MongoDB;
@@ -12,14 +13,20 @@ internal class DatabaseMonitor : IDatabaseMonitor
     private readonly IMongoDbServiceFactory _mongoDbServiceFactory;
     private readonly IMongoDbInstance _mongoDbInstance;
     private readonly IServiceProvider _serviceProvider;
+    private readonly IRepositoryConfiguration _repositoryConfiguration;
     private readonly ConcurrentDictionary<string, CollectionAccessData> _accessedCollections = new();
 
-    public DatabaseMonitor(IMongoDbServiceFactory mongoDbServiceFactory, IMongoDbInstance mongoDbInstance, IServiceProvider serviceProvider)
+    public DatabaseMonitor(IMongoDbServiceFactory mongoDbServiceFactory, IMongoDbInstance mongoDbInstance, IServiceProvider serviceProvider, IRepositoryConfiguration repositoryConfiguration)
     {
         _mongoDbServiceFactory = mongoDbServiceFactory;
         _mongoDbInstance = mongoDbInstance;
         _serviceProvider = serviceProvider;
+        _repositoryConfiguration = repositoryConfiguration;
 
+        _mongoDbServiceFactory.ConfigurationAccessEvent += (_, e) =>
+        {
+
+        };
         _mongoDbServiceFactory.CollectionAccessEvent += (_, e) =>
         {
             var now = DateTime.UtcNow;
@@ -32,13 +39,22 @@ internal class DatabaseMonitor : IDatabaseMonitor
         };
     }
 
+    public IEnumerable<ConfigurationName> GetConfigurations()
+    {
+        foreach (var item in _repositoryConfiguration.GetDatabaseConfigurationNames())
+        {
+            yield return item;
+        }
+    }
+
     //TODO: Should return registered indexes and actual indexes, so that we can find differences.
     //TODO: Should return information about database clean.
-    public async IAsyncEnumerable<CollectionInfo> GetInstancesAsync(DatabaseContext databaseContext)
+    public async IAsyncEnumerable<CollectionInfo> GetInstancesAsync(ConfigurationName configurationName = null)
     {
-        databaseContext ??= new DatabaseContext();
+        var databaseContext = new DatabaseContext { ConfigurationName = configurationName };
 
-        var staticRegistrations = GetStaticRegistrations().ToDictionary(x => x.Name, x => x);
+        var collectionInfos = GetStaticRegistrations().ToArray();
+        var staticRegistrations = collectionInfos.ToDictionary(x => x.Name, x => x);
         var dynamicRegistrations = GetDynamicRegistrations().ToDictionary(x => x.Name, x => x);
         var accessedCollections = GetAccessed().ToDictionary(x => x.Name, x => x);
 

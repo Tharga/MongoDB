@@ -1,8 +1,10 @@
 ﻿using System.Collections.Generic;
+using Tharga.MongoDB.Configuration;
 
 namespace Tharga.MongoDB;
 
 public interface IDatabaseMonitor
 {
-    IAsyncEnumerable<CollectionInfo> GetInstancesAsync(DatabaseContext databaseContext = null);
+    IEnumerable<ConfigurationName> GetConfigurations();
+    IAsyncEnumerable<CollectionInfo> GetInstancesAsync(ConfigurationName configurationName = null);
 }
