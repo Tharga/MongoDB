@@ -31,15 +31,21 @@ internal class DatabaseMonitor : IDatabaseMonitor
         _collectionProvider = collectionProvider;
         _options = options.Value;
 
-        _mongoDbServiceFactory.ConfigurationAccessEvent += (_, e) =>
+        _mongoDbServiceFactory.ConfigurationAccessEvent += (_, _) =>
         {
         };
         _mongoDbServiceFactory.CollectionAccessEvent += (_, e) =>
         {
-            var now = DateTime.UtcNow;
-            _accessedCollections.AddOrUpdate((e.DatabaseContext.ConfigurationName.Value, e.DatabaseContext.CollectionName), new CollectionAccessData
+            var databaseContext = e.DatabaseContext with
             {
-                DatabaseContext = e.DatabaseContext,
+                ConfigurationName = e.DatabaseContext.ConfigurationName?.Value ?? _options.DefaultConfigurationName.Value,
+                CollectionName = e.DatabaseContext.CollectionName ?? e.CollectionName
+            };
+
+            var now = DateTime.UtcNow;
+            _accessedCollections.AddOrUpdate((databaseContext.ConfigurationName?.Value, e.CollectionName), new CollectionAccessData
+            {
+                DatabaseContext = databaseContext,
                 EntityType = e.EntityType,
                 FirstAccessed = now,
                 LastAccessed = now,
@@ -62,34 +68,32 @@ internal class DatabaseMonitor : IDatabaseMonitor
         }
     }
 
-    //TODO: Should return registered indexes and actual indexes, so that we can find differences.
     //TODO: Should return information about database clean.
-    //TODO: Have the option for a wide scan for all databases/collections on the server/configuration
-    public async IAsyncEnumerable<CollectionInfo> GetInstancesAsync()
+    public async IAsyncEnumerable<CollectionInfo> GetInstancesAsync(bool fullDatabaseScan)
     {
-        var configurations = GetConfigurations().Select(x => new DatabaseContext { ConfigurationName = x.Value });
+        var configurations = GetConfigurations().Select(x => new DatabaseContext { ConfigurationName = x.Value ?? _options.DefaultConfigurationName.Value }).ToArray();
         var contexts = configurations.Union(_accessedCollections.Select(x => new DatabaseContext
             {
-                ConfigurationName = x.Value.DatabaseContext.ConfigurationName,
+                ConfigurationName = x.Value.DatabaseContext.ConfigurationName?.Value ?? _options.DefaultConfigurationName.Value,
                 DatabasePart = x.Value.DatabaseContext.DatabasePart
             }))
             .Distinct()
             .ToArray();
 
-        var collectionsFromCode = GetStaticCollectionsFromCode().ToDictionary(x => (x.ConfigurationName ?? _options.DefaultConfigurationName, x.CollectionName), x => x);
+        var collectionsFromCode = GetStaticCollectionsFromCode().ToDictionary(x => (x.ConfigurationName ?? _options.DefaultConfigurationName.Value, x.CollectionName), x => x);
         var accessedCollections = _accessedCollections;
         var dynamicCollectionsFromCode = GetDynamicRegistrations().ToDictionary(x => (x.Type), x => x);
 
         foreach (var context in contexts)
         {
-            await foreach (var inDatabase in GetCollectionsInDatabase(context))
+            await foreach (var inDatabase in GetCollectionsInDatabase(context, fullDatabaseScan))
             {
                 var item = inDatabase;
 
                 //Map Static registrations
                 if (collectionsFromCode.TryGetValue((item.ConfigurationName, item.CollectionName), out var reg))
                 {
-                    //AssureSame(item.CollectionTypeName, reg.CollectionTypeName);
+                    //TODO: Add static DatabaseContext-part here.
 
                     item = item with
                     {
@@ -100,7 +104,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
                         Index = item.Index with
                         {
                             Current = item.Index.Current,
-                            Defined = reg.DefinedIndices
+                            Defined = reg.DefinedIndices.ToArray()
                         }
                     };
                     //TODO: Append information about registered indexes (so that we can compare with actual indexes)
@@ -115,6 +119,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
                 {
                     item = item with
                     {
+                        Context = item.Context ?? t.DatabaseContext,
                         Source = item.Source | Source.Monitor,
                         AccessCount = t.AccessCount,
                         Types = item.Types.Union([t.EntityType.Name]).ToArray(),
@@ -127,17 +132,36 @@ internal class DatabaseMonitor : IDatabaseMonitor
                 }
 
                 //Map Dynamic registrations
-                if (dynamicCollectionsFromCode.TryGetValue(inDatabase.Types.Single(), out var dyn))
+                if (inDatabase.Types.Length == 1)
                 {
-                    //AssureSame(item.CollectionTypeName, dyn.CollectionTypeName);
-
-                    item = item with
+                    if (dynamicCollectionsFromCode.TryGetValue(inDatabase.Types.Single(), out var dyn))
                     {
-                        Source = item.Source | dyn.Source,
-                        Registration = Registration.Dynamic,
-                        CollectionTypeName = item.CollectionTypeName ?? dyn.CollectionTypeName
-                    };
-                    //TODO: Append information about registered indexes (so that we can compare with actual indexes)
+                        //TODO: Check if this is from the same configuration (server)
+                        //TODO: Can a dynamic DatabaseContext-part be found here?
+
+                        //AssureSame(item.CollectionTypeName, dyn.CollectionTypeName);
+
+                        item = item with
+                        {
+                            Source = item.Source | dyn.Source,
+                            Registration = Registration.Dynamic,
+                            CollectionTypeName = item.CollectionTypeName ?? dyn.CollectionTypeName,
+                            Index = item.Index with
+                            {
+                                Current = item.Index.Current,
+                                Defined = dyn.DefinedIndices.ToArray()
+                            }
+                        };
+                        //TODO: Append information about registered indexes (so that we can compare with actual indexes)
+                    }
+                    else
+                    {
+                        //TODO:?
+                    }
+                }
+                else
+                {
+                    //TODO: ?
                 }
 
                 yield return item;
@@ -153,7 +177,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
 
     public async Task RestoreIndexAsync(DatabaseContext databaseContext)
     {
-        var collections = await GetInstancesAsync()
+        var collections = await GetInstancesAsync(false)
             .Where(x => x.ConfigurationName == databaseContext.ConfigurationName.Value)
             .Where(x => x.CollectionName == databaseContext.CollectionName)
             .ToArrayAsync();
@@ -228,13 +252,18 @@ internal class DatabaseMonitor : IDatabaseMonitor
                     .Select(i => i.GetGenericArguments().FirstOrDefault())
                     .FirstOrDefault();
 
+                //NOTE: Create an instance and find the collection name.
+                var colType = _mongoDbInstance.RegisteredCollections.FirstOrDefault(x => x.Key.Name == registeredCollection.Key.Name).Key;
+                var collection = _collectionProvider.GetCollection(colType, new DatabaseContext()) as RepositoryCollectionBase;
+
                 if (genericParam?.Name != null)
                 {
                     var item = new DynColInfo
                     {
                         Source = Source.Registration,
                         Type = genericParam.Name,
-                        CollectionTypeName = registeredCollection.Key.Name
+                        CollectionTypeName = registeredCollection.Key.Name,
+                        DefinedIndices = collection.BuildIndexMetas().ToArray()
                     };
 
                     yield return item;
@@ -247,29 +276,53 @@ internal class DatabaseMonitor : IDatabaseMonitor
         }
     }
 
-    private async IAsyncEnumerable<CollectionInfo> GetCollectionsInDatabase(DatabaseContext databaseContext)
+    private async IAsyncEnumerable<CollectionInfo> GetCollectionsInDatabase(DatabaseContext databaseContext, bool fullDatabaseScan)
     {
-        var factory = _mongoDbServiceFactory.GetMongoDbService(() => databaseContext);
-        var collections = await factory.GetCollectionsWithMetaAsync().ToArrayAsync();
-        foreach (var collection in collections)
+        var mongoDbService = _mongoDbServiceFactory.GetMongoDbService(() => databaseContext);
+
+        if (fullDatabaseScan)
         {
-            yield return new CollectionInfo
+            var databases = mongoDbService.GetDatabases().ToArray();
+            foreach (var database in databases)
             {
-                Source = Source.Database,
-                ConfigurationName = collection.ConfigurationName,
-                Server = collection.Server,
-                DatabaseName = collection.DatabaseName,
-                CollectionName = collection.CollectionName,
-                DocumentCount = collection.DocumentCount,
-                Size = collection.Size,
-                Types = collection.Types,
-                Index = new IndexInfo
+                var collections = await mongoDbService.GetCollectionsWithMetaAsync(database).ToArrayAsync();
+                foreach (var collection in collections)
                 {
-                    Current = collection.Indexes,
-                    Defined = null
+                    yield return BuildCollectionInfo(collection);
                 }
-            };
+            }
         }
+        else
+        {
+            var collections = await mongoDbService.GetCollectionsWithMetaAsync().ToArrayAsync();
+            foreach (var collection in collections)
+            {
+                yield return BuildCollectionInfo(collection);
+            }
+        }
+    }
+
+    private static CollectionInfo BuildCollectionInfo(CollectionMeta collection)
+    {
+        return new CollectionInfo
+        {
+            ConfigurationName = collection.ConfigurationName,
+            Server = collection.Server,
+            DatabaseName = collection.DatabaseName,
+            CollectionName = collection.CollectionName,
+            Source = Source.Database,
+
+            //--> Revisit
+
+            DocumentCount = collection.DocumentCount,
+            Size = collection.Size,
+            Types = collection.Types,
+            Index = new IndexInfo
+            {
+                Current = [..collection.Indexes],
+                Defined = null
+            }
+        };
     }
 
     //private void AssureSame(string first, string second)
@@ -283,6 +336,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
     {
         public required Source Source { get; init; }
         public required string CollectionTypeName { get; init; }
+        public required IndexMeta[] DefinedIndices { get; init; }
     }
 
     internal record StatColInfo : ColInfo
@@ -291,7 +345,6 @@ internal class DatabaseMonitor : IDatabaseMonitor
         public required string CollectionName { get; init; }
         public required Registration Registration { get; init; }
         public required string[] Types { get; init; }
-        public required IndexMeta[] DefinedIndices { get; init; }
     }
 
     internal record DynColInfo : ColInfo

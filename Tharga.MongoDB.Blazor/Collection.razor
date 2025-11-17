@@ -1,5 +1,7 @@
-﻿@using Tharga.MongoDB
+﻿@using Tharga.Blazor.Framework.Buttons
+@using Tharga.MongoDB
 @inject IDatabaseMonitor DatabaseMonitor;
+@inject DialogService DialogService
 
 <RadzenDataGrid Data="_model" TItem="CollectionInfo"
                 AllowFiltering="false" FilterMode="FilterMode.Simple" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
@@ -7,20 +9,40 @@
                 AllowPaging="true" PageSize="8" PageSizeOptions="[8, 16, 32, 64]"
                 ShowPagingSummary="true" PagingSummaryFormat="@("{2:N0} collections, page {0} of {1}")">
     <Columns>
-        <RadzenDataGridColumn Title="Name" Property="@nameof(CollectionInfo.CollectionName)" />
+        <RadzenDataGridColumn Title="Configuration" Property="@nameof(CollectionInfo.ConfigurationName)" />
+        @* <RadzenDataGridColumn Title="Server" Property="@nameof(CollectionInfo.Server)" /> *@
+        <RadzenDataGridColumn Title="Database" Property="@nameof(CollectionInfo.DatabaseName)" />
+        <RadzenDataGridColumn Title="Collection" Property="@nameof(CollectionInfo.CollectionName)" />
+        <RadzenDataGridColumn Title="Context" Sortable="false">
+            <Template>
+                @if (context.Context != null)
+                {
+                    @($"{context.Context.ConfigurationName.Value}/{context.Context.DatabasePart}/{context.Context.CollectionName}")
+                }
+            </Template>
+        </RadzenDataGridColumn>
+        @* <RadzenDataGridColumn Title="Uri" Property="@nameof(CollectionInfo.Uri)" /> *@
         <RadzenDataGridColumn Title="Source" Property="@nameof(CollectionInfo.Source)" />
+        <RadzenDataGridColumn Title="Registration" Property="@nameof(CollectionInfo.Registration)" />
+
+@*
         <RadzenDataGridColumn Title="Collection Type" Property="@nameof(CollectionInfo.CollectionTypeName)" />
         <RadzenDataGridColumn Title="Types" Sortable="false">
             <Template>
                 @string.Join(", ", context.Types)
             </Template>
         </RadzenDataGridColumn>
-        <RadzenDataGridColumn Title="Server" Property="@nameof(CollectionInfo.Server)" />
-        <RadzenDataGridColumn Title="Database" Property="@nameof(CollectionInfo.DatabaseName)" />
-        <RadzenDataGridColumn Title="Registration" Property="@nameof(CollectionInfo.Registration)" />
         <RadzenDataGridColumn Title="AccessCount" Property="@nameof(CollectionInfo.AccessCount)" />
         <RadzenDataGridColumn Title="DocumentCount" Property="@nameof(CollectionInfo.DocumentCount)" />
-        <RadzenDataGridColumn Title="Size" Property="@nameof(CollectionInfo.Size)" />
+        <RadzenDataGridColumn Title="Size" Property="@nameof(CollectionInfo.Size)" /> *@
+        <RadzenDataGridColumn Title="Index" Sortable="false" Width="60px;">
+            <Template>
+                @if (context.Index.Defined != null)
+                {
+                    <StandardButton Icon="format_list_numbered" ButtonStyle="@(context.Index.Defined.SequenceEqual(context.Index.Current) ? ButtonStyle.Base : ButtonStyle.Warning)" Click="@(() => ShowIndexDialog(context))" />
+                }
+            </Template>
+        </RadzenDataGridColumn>
     </Columns>
 </RadzenDataGrid>
 
@@ -35,6 +57,17 @@
         _model = await DatabaseMonitor.GetInstancesAsync(FullDatabaseScan).ToArrayAsync();
 
         await base.OnParametersSetAsync();
+    }
+
+    private async Task ShowIndexDialog(CollectionInfo context)
+    {
+        var result = await DialogService.OpenAsync<IndexDialog>("Index", new Dictionary<string, object>
+        {
+            { "CollectionInfo", context }
+        }, new DialogOptions());
+
+        _model = await DatabaseMonitor.GetInstancesAsync(FullDatabaseScan).ToArrayAsync();
+        StateHasChanged();
     }
 
 }

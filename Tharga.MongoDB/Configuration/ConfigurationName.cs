@@ -18,4 +18,9 @@ public record ConfigurationName
     {
         return new ConfigurationName(item);
     }
+
+    public override string ToString()
+    {
+        return Value;
+    }
 }

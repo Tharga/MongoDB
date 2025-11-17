@@ -43,7 +43,7 @@ internal class MongoDbService : IMongoDbService
         var collection = _mongoDatabase.GetCollection<T>(collectionName);
         var databaseContext = _configuration.GetDatabaseContext();
 
-        CollectionAccessEvent?.Invoke(this, new CollectionAccessEventArgs(databaseContext, _mongoUrl.Url, typeof(T)));
+        CollectionAccessEvent?.Invoke(this, new CollectionAccessEventArgs(databaseContext, _mongoUrl.Url, typeof(T), collectionName));
 
         return collection;
     }
@@ -65,18 +65,6 @@ internal class MongoDbService : IMongoDbService
     {
         return _configuration?.ShouldAssureIndex() ?? true;
     }
-
-    //public void DropIndex(string collectionName)
-    //{
-    //    var collection = _mongoDatabase.GetCollection<object>(collectionName);
-    //    collection.Indexes.DropAll();
-    //}
-
-    //public void RestoreIndex(string collectionName)
-    //{
-    //    var collection = _mongoDatabase.GetCollection<object>(collectionName);
-    //    //collection.AggregateToCollection();
-    //}
 
     public string GetDatabaseName()
     {
@@ -115,15 +103,15 @@ internal class MongoDbService : IMongoDbService
 
         foreach (var collection in collections)
         {
-            var name = collection["name"].AsString;
-            var mongoCollection = mongoDatabase.GetCollection<BsonDocument>(name);
+            var collectionName = collection["name"].AsString;
+            var mongoCollection = mongoDatabase.GetCollection<BsonDocument>(collectionName);
 
             var types = await mongoCollection
                 .Distinct<string>("_t", FilterDefinition<BsonDocument>.Empty)
                 .ToListAsync();
 
             var documents = await mongoCollection.CountDocumentsAsync(FilterDefinition<BsonDocument>.Empty);
-            var size = GetSize(name, mongoDatabase);
+            var size = GetSize(collectionName, mongoDatabase);
 
             var indexModels = new List<IndexMeta>();
             using var cursor = await mongoCollection.Indexes.ListAsync();
@@ -145,13 +133,19 @@ internal class MongoDbService : IMongoDbService
                 });
             }
 
+            var dbName = mongoDatabase.DatabaseNamespace.DatabaseName;
+            var server = _mongoUrl.Url.TrimEnd(dbName);
+
             yield return new CollectionMeta
             {
-                //DatabaseContext = _configuration.GetDatabaseContext(),
+                Server = server,
+                DatabaseName = dbName,
+                CollectionName = collectionName,
+                //Context = new DatabaseContext(),
+
+                //--> Revisit
+
                 ConfigurationName = _configuration.GetConfigurationName(),
-                Server = _mongoUrl.Url,
-                DatabaseName = mongoDatabase.DatabaseNamespace.DatabaseName,
-                CollectionName = name,
                 DocumentCount = documents,
                 Size = size,
                 Types = types.ToArray(),

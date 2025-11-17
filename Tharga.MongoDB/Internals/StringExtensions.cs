@@ -1,4 +1,6 @@
-﻿namespace Tharga.MongoDB.Internals;
+﻿using System;
+
+namespace Tharga.MongoDB.Internals;
 
 internal static class StringExtensions
 {
@@ -11,5 +13,15 @@ internal static class StringExtensions
     public static bool IsNullOrEmpty(this string item)
     {
         return string.IsNullOrEmpty(item);
+    }
+
+    public static string TrimEnd(this string item, string data)
+    {
+        var endPosA = item.LastIndexOf(data, StringComparison.Ordinal);
+        var endPosB = item.Length - data.Length;
+        if (endPosA != endPosB) return item;
+
+        var result = item.Substring(0, endPosA);
+        return result;
     }
 }
