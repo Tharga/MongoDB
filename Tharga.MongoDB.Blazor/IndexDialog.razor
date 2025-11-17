@@ -4,14 +4,17 @@
 @inject NotificationService NotificationService
 <pre>@_json</pre>
 
-<ActionButton Text="Drop index" Click="DropIndex"/>
-<ActionButton Text="Restore Index" Click="RestoreIndex" />
+<ActionButton Text="Drop index" Click="DropIndex" Enabled="@CanUpdate" />
+<ActionButton Text="Restore Index" Click="RestoreIndex" Enabled="@CanUpdate" />
 
 @code {
     private string _json;
 
     [Parameter]
     public CollectionInfo CollectionInfo { get; set; }
+
+    private bool CanUpdate => (CollectionInfo.Registration == Registration.Dynamic && CollectionInfo.Context != null) 
+                              || (CollectionInfo.Registration == Registration.Static);
 
     protected override Task OnParametersSetAsync()
     {
@@ -24,13 +27,10 @@
     {
         try
         {
-            //TODO: Handle part somehow. (Provide part in CollectionInfo)
-            //TODO: Create an extension to CollectionInfo that can build DatabaseContext, if it is not provided as part directly.
-            //TODO: Perhaps a context can also be created by a full mongodb-url?
-            var context = new DatabaseContext { CollectionName = CollectionInfo.CollectionName, ConfigurationName = CollectionInfo.ConfigurationName };
+            var context = BuildDatabaseContext();
             await DatabaseMonitor.DropIndexAsync(context);
 
-            //TODO: Reload data and refresh dialog.
+            await ReloadData();
             NotificationService.Notify(new NotificationMessage { Summary = "Indices has been dropped." });
         }
         catch (Exception e)
@@ -39,19 +39,47 @@
         }
     }
 
+    private DatabaseContext BuildDatabaseContext()
+    {
+        DatabaseContext context;
+        switch (CollectionInfo.Registration)
+        {
+            case Registration.NotInCode:
+                throw new NotSupportedException();
+            case Registration.Static:
+                context = new DatabaseContext { CollectionName = CollectionInfo.CollectionName, ConfigurationName = CollectionInfo.ConfigurationName };
+                break;
+            case Registration.Dynamic:
+                context = CollectionInfo.Context;
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(CollectionInfo.Registration), $"Unknown {nameof(CollectionInfo.Registration)} {CollectionInfo.Registration}.");
+        }
+
+        return context;
+    }
+
     private async Task RestoreIndex()
     {
         try
         {
-            var context = new DatabaseContext { CollectionName = CollectionInfo.CollectionName, ConfigurationName = CollectionInfo.ConfigurationName };
+            var context = BuildDatabaseContext();
             await DatabaseMonitor.RestoreIndexAsync(context);
 
-            //TODO: Reload data and refresh dialog.
+            await ReloadData();
             NotificationService.Notify(new NotificationMessage { Summary = "Indices has been restored." });
         }
         catch (Exception e)
         {
             NotificationService.Notify(new NotificationMessage { Summary = e.Message, Detail = $"{e.StackTrace}", Severity = NotificationSeverity.Error });
         }
+    }
+
+    private async Task ReloadData()
+    {
+        var response = await DatabaseMonitor.GetInstancesAsync().SingleAsync(x => x.CollectionName == CollectionInfo.CollectionName);
+        CollectionInfo = response;
+        _json = JsonSerializer.Serialize(CollectionInfo, new JsonSerializerOptions { WriteIndented = true });
+        StateHasChanged();
     }
 }

@@ -181,10 +181,22 @@ internal class DatabaseMonitor : IDatabaseMonitor
             .Where(x => x.ConfigurationName == databaseContext.ConfigurationName.Value)
             .Where(x => x.CollectionName == databaseContext.CollectionName)
             .ToArrayAsync();
-        var col = collections.Single();
 
-        var colType = _mongoDbInstance.RegisteredCollections.FirstOrDefault(x => x.Key.Name == col.CollectionTypeName).Key;
-        var collection = _collectionProvider.GetCollection(colType);
+        IRepositoryCollection collection;
+        if (string.IsNullOrEmpty(databaseContext.DatabasePart))
+        {
+            var col = collections.Single();
+            var colType = _mongoDbInstance.RegisteredCollections.FirstOrDefault(x => x.Key.Name == col.CollectionTypeName).Key;
+
+            collection = _collectionProvider.GetCollection(colType);
+        }
+        else
+        {
+            var col = collections.First();
+            var colType = _mongoDbInstance.RegisteredCollections.FirstOrDefault(x => x.Key.Name == col.CollectionTypeName).Key;
+
+            collection = _collectionProvider.GetCollection(colType, databaseContext);
+        }
 
         var collectionType = collection.GetType();
         var collectionMethod = collectionType.GetMethod("GetCollection");
