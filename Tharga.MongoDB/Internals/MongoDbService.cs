@@ -66,6 +66,18 @@ internal class MongoDbService : IMongoDbService
         return _configuration?.ShouldAssureIndex() ?? true;
     }
 
+    //public void DropIndex(string collectionName)
+    //{
+    //    var collection = _mongoDatabase.GetCollection<object>(collectionName);
+    //    collection.Indexes.DropAll();
+    //}
+
+    //public void RestoreIndex(string collectionName)
+    //{
+    //    var collection = _mongoDatabase.GetCollection<object>(collectionName);
+    //    //collection.AggregateToCollection();
+    //}
+
     public string GetDatabaseName()
     {
         return _mongoDatabase.DatabaseNamespace.DatabaseName;

@@ -1,7 +1,9 @@
 using HostSample.Features.DynamicRepo;
 using HostSample.Features.SecondaryRepo;
 using Microsoft.AspNetCore.Mvc;
+using System.Collections;
 using Tharga.MongoDB;
+using Tharga.MongoDB.Configuration;
 
 namespace HostSample.Controllers;
 
@@ -29,6 +31,13 @@ public class CollectionController : ControllerBase
     {
         var factory = _mongoDbServiceFactory.GetMongoDbService(() => new DatabaseContext());
         return Task.FromResult<IActionResult>(Ok(factory.GetCollections()));
+    }
+
+    [HttpGet("configuration")]
+    public Task<IActionResult> GetConfigurations()
+    {
+        var configurations = _databaseMonitor.GetConfigurations();
+        return Task.FromResult<IActionResult>(Ok(configurations.Select(x => x.Value)));
     }
 
     [HttpGet("metadata")]
@@ -75,14 +84,34 @@ public class CollectionController : ControllerBase
             x.DocumentCount,
             x.Size,
             x.Types,
+            x.Index
         }));
     }
 
-    [HttpGet("configuration")]
-    public Task<IActionResult> GetConfigurations()
+    [HttpDelete("index")]
+    public async Task<IActionResult> DeleteIndex(string configurationName, string databasePart, string collectionName)
     {
-        var configurations = _databaseMonitor.GetConfigurations();
-        return Task.FromResult<IActionResult>(Ok(configurations.Select(x => x.Value)));
+        var databaseContext = new DatabaseContext
+        {
+            ConfigurationName = configurationName,
+            CollectionName = collectionName,
+            DatabasePart = databasePart
+        };
+        await _databaseMonitor.DropIndexAsync(databaseContext);
+        return Ok();
+    }
+
+    [HttpPost("index")]
+    public async Task<IActionResult> RestoreIndex(string configurationName, string databasePart, string collectionName)
+    {
+        var databaseContext = new DatabaseContext
+        {
+            ConfigurationName = configurationName,
+            CollectionName = collectionName,
+            DatabasePart = databasePart
+        };
+        await _databaseMonitor.RestoreIndexAsync(databaseContext);
+        return Ok();
     }
 
     //[HttpGet("index")]

@@ -1,10 +1,13 @@
-﻿using System;
+﻿using Microsoft.Extensions.Options;
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
-using Microsoft.Extensions.Options;
+using System.Reflection;
+using System.Threading.Tasks;
 using Tharga.MongoDB.Configuration;
+using Tharga.MongoDB.Disk;
 using Tharga.MongoDB.Internals;
 
 namespace Tharga.MongoDB;
@@ -15,20 +18,21 @@ internal class DatabaseMonitor : IDatabaseMonitor
     private readonly IMongoDbInstance _mongoDbInstance;
     private readonly IServiceProvider _serviceProvider;
     private readonly IRepositoryConfiguration _repositoryConfiguration;
+    private readonly ICollectionProvider _collectionProvider;
     private readonly DatabaseOptions _options;
     private readonly ConcurrentDictionary<(string ConfigurationName, string CollectionName), CollectionAccessData> _accessedCollections = new();
 
-    public DatabaseMonitor(IMongoDbServiceFactory mongoDbServiceFactory, IMongoDbInstance mongoDbInstance, IServiceProvider serviceProvider, IRepositoryConfiguration repositoryConfiguration, IOptions<DatabaseOptions> options)
+    public DatabaseMonitor(IMongoDbServiceFactory mongoDbServiceFactory, IMongoDbInstance mongoDbInstance, IServiceProvider serviceProvider, IRepositoryConfiguration repositoryConfiguration, ICollectionProvider collectionProvider, IOptions<DatabaseOptions> options)
     {
         _mongoDbServiceFactory = mongoDbServiceFactory;
         _mongoDbInstance = mongoDbInstance;
         _serviceProvider = serviceProvider;
         _repositoryConfiguration = repositoryConfiguration;
+        _collectionProvider = collectionProvider;
         _options = options.Value;
 
         _mongoDbServiceFactory.ConfigurationAccessEvent += (_, e) =>
         {
-
         };
         _mongoDbServiceFactory.CollectionAccessEvent += (_, e) =>
         {
@@ -92,7 +96,12 @@ internal class DatabaseMonitor : IDatabaseMonitor
                         Source = item.Source | reg.Source,
                         Registration = reg.Registration,
                         Types = item.Types.Union(reg.Types).ToArray(),
-                        CollectionTypeName = item.CollectionTypeName ?? reg.CollectionTypeName
+                        CollectionTypeName = item.CollectionTypeName ?? reg.CollectionTypeName,
+                        Index = item.Index with
+                        {
+                            Current = item.Index.Current,
+                            Defined = reg.DefinedIndices
+                        }
                     };
                     //TODO: Append information about registered indexes (so that we can compare with actual indexes)
                 }
@@ -136,6 +145,35 @@ internal class DatabaseMonitor : IDatabaseMonitor
         }
     }
 
+    public async Task DropIndexAsync(DatabaseContext databaseContext)
+    {
+        var collection = _collectionProvider.GetCollection<DRC, DRCE>(databaseContext);
+        await collection.DropIndex(collection.GetCollection());
+    }
+
+    public async Task RestoreIndexAsync(DatabaseContext databaseContext)
+    {
+        var collections = await GetInstancesAsync()
+            .Where(x => x.ConfigurationName == databaseContext.ConfigurationName.Value)
+            .Where(x => x.CollectionName == databaseContext.CollectionName)
+            .ToArrayAsync();
+        var col = collections.Single();
+
+        var colType = _mongoDbInstance.RegisteredCollections.FirstOrDefault(x => x.Key.Name == col.CollectionTypeName).Key;
+        var collection = _collectionProvider.GetCollection(colType);
+
+        var collectionType = collection.GetType();
+        var collectionMethod = collectionType.GetMethod("GetCollection");
+        if (collectionMethod == null) throw new NullReferenceException("Cannot find 'GetCollection' method.");
+        var collectionInstance = collectionMethod?.Invoke(collection, []);
+
+        var indexMethod = collectionType.GetMethod("AssureIndex", BindingFlags.NonPublic | BindingFlags.Instance);
+        if (indexMethod == null) throw new NullReferenceException("Cannot find 'AssureIndex' method.");
+
+        var task = (Task)indexMethod.Invoke(collection, [collectionInstance, true, true])!;
+        await task;
+    }
+
     private IEnumerable<StatColInfo> GetStaticCollectionsFromCode()
     {
         foreach (var registeredCollection in _mongoDbInstance.RegisteredCollections)
@@ -152,7 +190,6 @@ internal class DatabaseMonitor : IDatabaseMonitor
                     .Where(i => i.IsGenericType)
                     .Select(i => i.GetGenericArguments().FirstOrDefault())
                     .FirstOrDefault();
-                //TODO: Get registered indexes (so we can compare with actual indexes)
 
                 //NOTE: Create an instance and find the collection name.
                 var instance = _serviceProvider.GetService(registeredCollection.Key) as RepositoryCollectionBase;
@@ -165,7 +202,8 @@ internal class DatabaseMonitor : IDatabaseMonitor
                     CollectionName = instance.CollectionName,
                     Types = [genericParam?.Name],
                     CollectionTypeName = registeredCollection.Key.Name,
-                    Registration = Registration.Static
+                    Registration = Registration.Static,
+                    DefinedIndices = instance.BuildIndexMetas().ToArray()
                 };
 
                 yield return item;
@@ -225,7 +263,11 @@ internal class DatabaseMonitor : IDatabaseMonitor
                 DocumentCount = collection.DocumentCount,
                 Size = collection.Size,
                 Types = collection.Types,
-                //Indexes = collection.Indexes,
+                Index = new IndexInfo
+                {
+                    Current = collection.Indexes,
+                    Defined = null
+                }
             };
         }
     }
@@ -249,6 +291,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
         public required string CollectionName { get; init; }
         public required Registration Registration { get; init; }
         public required string[] Types { get; init; }
+        public required IndexMeta[] DefinedIndices { get; init; }
     }
 
     internal record DynColInfo : ColInfo

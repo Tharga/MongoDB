@@ -30,4 +30,7 @@ public interface IMongoDbService
     ValueTask<string> AssureFirewallAccessAsync(bool force = false);
     LogLevel GetExecuteInfoLogLevel();
     bool ShouldAssureIndex();
+
+    //void DropIndex(string collectionName);
+    //void RestoreIndex(string collectionName);
 }

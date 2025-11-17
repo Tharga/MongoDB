@@ -13,5 +13,11 @@ public record CollectionInfo
     public required long DocumentCount { get; init; }
     public required long Size { get; init; }
     public required string[] Types { get; init; }
-    //public required IndexMeta[] Indexes { get; init; }
+    public required IndexInfo Index { get; init; }
+}
+
+public record IndexInfo
+{
+    public required IndexMeta[] Current { get; init; }
+    public required IndexMeta[] Defined { get; init; }
 }

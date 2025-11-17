@@ -880,23 +880,28 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         return collection;
     }
 
-    private async Task AssureIndex(IMongoCollection<TEntity> collection)
+    internal async Task DropIndex(IMongoCollection<TEntity> collection)
+    {
+        await collection.Indexes.DropAllAsync();
+    }
+
+    internal async Task AssureIndex(IMongoCollection<TEntity> collection, bool forceAssure = false, bool throwOnException = false)
     {
         var shouldAssureIndex = _mongoDbService.ShouldAssureIndex();
-        if (!shouldAssureIndex)
+        if (!shouldAssureIndex && !forceAssure)
         {
             _logger?.LogTrace("Assure index is disabled");
             return;
         }
 
-        if (InitiationLibrary.ShouldInitiateIndex(ServerName, DatabaseName, ProtectedCollectionName))
+        if (InitiationLibrary.ShouldInitiateIndex(ServerName, DatabaseName, ProtectedCollectionName) || forceAssure)
         {
             _logger?.LogTrace($"Assure index for collection {{collection}} in {{repositoryType}}. [action: Database, operation: {nameof(CleanAsync)}]", ProtectedCollectionName, "DiskRepository");
 
             //Not sure why this index should be created like this. Trying to disable.
             //await collection.Indexes.CreateOneAsync(new CreateIndexModel<TEntity>(Builders<TEntity>.IndexKeys.Ascending(x => x.Id).Ascending("_t"), new CreateIndexOptions()));
 
-            await UpdateIndicesAsync(collection);
+            await UpdateIndicesAsync(collection, throwOnException);
         }
     }
 
@@ -919,7 +924,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         }
     }
 
-    private async Task UpdateIndicesAsync(IMongoCollection<TEntity> collection)
+    private async Task UpdateIndicesAsync(IMongoCollection<TEntity> collection, bool throwOnException)
     {
         var indices = (CoreIndices?.ToArray() ?? []).Union(Indices?.ToArray() ?? []).ToArray();
         if (!indices.Any()) return;
@@ -957,6 +962,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                     Debugger.Break();
                     _logger?.LogError(e, "Failed to drop index {indexName} in collection {collection}. {message}", indexName, ProtectedCollectionName, e.Message);
                     _failedIndices.Add((IndexFailOperation.Drop, indexName));
+                    if (throwOnException) throw;
                 }
             }
         }
@@ -977,6 +983,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                     Debugger.Break();
                     _logger?.LogError(e, "Failed to create index {indexName} in collection {collection}. {message}", index.Options.Name, ProtectedCollectionName, e.Message);
                     _failedIndices.Add((IndexFailOperation.Create, index.Options.Name));
+                    if (throwOnException) throw;
                 }
             }
         }
@@ -1077,4 +1084,16 @@ public abstract class DiskRepositoryCollectionBase<TEntity> : DiskRepositoryColl
         : base(mongoDbServiceFactory, logger, databaseContext)
     {
     }
+}
+
+internal class DRC : DiskRepositoryCollectionBase<DRCE>
+{
+    public DRC(IMongoDbServiceFactory mongoDbServiceFactory, ILogger<RepositoryCollectionBase<DRCE, ObjectId>> logger, DatabaseContext databaseContext)
+        : base(mongoDbServiceFactory, logger, databaseContext)
+    {
+    }
+}
+
+internal record DRCE : EntityBase
+{
 }

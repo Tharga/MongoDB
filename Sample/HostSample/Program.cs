@@ -1,5 +1,4 @@
 using Tharga.MongoDB;
-using Tharga.MongoDB.Configuration;
 
 var builder = WebApplication.CreateBuilder(args);
 
