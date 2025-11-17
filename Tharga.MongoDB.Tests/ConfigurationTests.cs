@@ -32,7 +32,7 @@ public class ConfigurationTests
             .Returns((DatabaseContext _) => (connectionStringBuilder, () => "mongodb://localhost:27017/Tharga{environment}{part}"));
         var repositoryConfiguration = new Mock<IRepositoryConfiguration>(MockBehavior.Strict);
         var databaseContext = Mock.Of<DatabaseContext>(x => x.DatabasePart == part);
-        var databaseOptions = Mock.Of<DatabaseOptions> ();
+        var databaseOptions = Mock.Of<DatabaseOptions>(x => x.DefaultConfigurationName == "Default");
         var sut = new RepositoryConfigurationInternal(mongoUrlBuilderLoaderMock.Object, repositoryConfiguration.Object, databaseOptions, () => databaseContext, environment);
 
         //Act

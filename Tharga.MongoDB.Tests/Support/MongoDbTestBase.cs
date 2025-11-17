@@ -16,12 +16,14 @@ public abstract class MongoDbTestBase : IDisposable
 
     protected MongoDbTestBase()
     {
-        _databaseContext = Mock.Of<DatabaseContext>(x => x.DatabasePart == Guid.NewGuid().ToString());
+        _databaseContext = Mock.Of<DatabaseContext>(x => x.DatabasePart == Guid.NewGuid().ToString() && x.ConfigurationName == "Default");
         _configurationMock = new Mock<IRepositoryConfigurationInternal>(MockBehavior.Strict);
         _configurationMock.Setup(x => x.GetDatabaseUrl()).Returns(() => new MongoUrl($"mongodb://localhost:27017/Tharga_MongoDb_Test_{_databaseContext.DatabasePart}"));
         _configurationMock.Setup(x => x.GetConfiguration()).Returns(Mock.Of<MongoDbConfig>(x => x.ResultLimit == 100));
         _configurationMock.Setup(x => x.GetExecuteInfoLogLevel()).Returns(LogLevel.Debug);
         _configurationMock.Setup(x => x.ShouldAssureIndex()).Returns(true);
+        _configurationMock.Setup(x => x.GetConfigurationName()).Returns("Default");
+        _configurationMock.Setup(x => x.GetDatabaseContext()).Returns(Mock.Of<DatabaseContext>());
 
         var configurationLoaderMock = new Mock<IRepositoryConfigurationLoader>(MockBehavior.Strict);
         configurationLoaderMock.Setup(x => x.GetConfiguration(It.IsAny<Func<DatabaseContext>>())).Returns(_configurationMock.Object);
@@ -29,9 +31,7 @@ public abstract class MongoDbTestBase : IDisposable
 
         var mongoDbFirewallStateService = new Mock<IMongoDbFirewallStateService>(MockBehavior.Strict);
 
-        //var databaseMonitor = new Mock<IDatabaseMonitor>(MockBehavior.Strict);
-
-        _mongoDbServiceFactory = new MongoDbServiceFactory(configurationLoaderMock.Object, mongoDbFirewallStateService.Object, /*databaseMonitor.Object,*/ loggerMock.Object);
+        _mongoDbServiceFactory = new MongoDbServiceFactory(configurationLoaderMock.Object, mongoDbFirewallStateService.Object, loggerMock.Object);
     }
 
     protected IMongoDbServiceFactory MongoDbServiceFactory => _mongoDbServiceFactory;
