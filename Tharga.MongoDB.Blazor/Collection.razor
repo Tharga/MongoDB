@@ -1,0 +1,40 @@
+﻿@using Tharga.MongoDB
+@inject IDatabaseMonitor DatabaseMonitor;
+
+<RadzenDataGrid Data="_model" TItem="CollectionInfo"
+                AllowFiltering="false" FilterMode="FilterMode.Simple" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                AllowSorting="true"
+                AllowPaging="true" PageSize="8" PageSizeOptions="[8, 16, 32, 64]"
+                ShowPagingSummary="true" PagingSummaryFormat="@("{2:N0} collections, page {0} of {1}")">
+    <Columns>
+        <RadzenDataGridColumn Title="Name" Property="@nameof(CollectionInfo.CollectionName)" />
+        <RadzenDataGridColumn Title="Source" Property="@nameof(CollectionInfo.Source)" />
+        <RadzenDataGridColumn Title="Collection Type" Property="@nameof(CollectionInfo.CollectionTypeName)" />
+        <RadzenDataGridColumn Title="Types" Sortable="false">
+            <Template>
+                @string.Join(", ", context.Types)
+            </Template>
+        </RadzenDataGridColumn>
+        <RadzenDataGridColumn Title="Server" Property="@nameof(CollectionInfo.Server)" />
+        <RadzenDataGridColumn Title="Database" Property="@nameof(CollectionInfo.DatabaseName)" />
+        <RadzenDataGridColumn Title="Registration" Property="@nameof(CollectionInfo.Registration)" />
+        <RadzenDataGridColumn Title="AccessCount" Property="@nameof(CollectionInfo.AccessCount)" />
+        <RadzenDataGridColumn Title="DocumentCount" Property="@nameof(CollectionInfo.DocumentCount)" />
+        <RadzenDataGridColumn Title="Size" Property="@nameof(CollectionInfo.Size)" />
+    </Columns>
+</RadzenDataGrid>
+
+@code {
+    private CollectionInfo[] _model;
+
+    [Parameter]
+    public bool FullDatabaseScan { get; set; }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _model = await DatabaseMonitor.GetInstancesAsync(FullDatabaseScan).ToArrayAsync();
+
+        await base.OnParametersSetAsync();
+    }
+
+}

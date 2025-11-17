@@ -7,7 +7,7 @@ namespace Tharga.MongoDB;
 public interface IDatabaseMonitor
 {
     IEnumerable<ConfigurationName> GetConfigurations();
-    IAsyncEnumerable<CollectionInfo> GetInstancesAsync();
+    IAsyncEnumerable<CollectionInfo> GetInstancesAsync(bool fullDatabaseScan = false);
     Task DropIndexAsync(DatabaseContext databaseContext);
     Task RestoreIndexAsync(DatabaseContext databaseContext);
 }
