@@ -38,11 +38,16 @@
                 @string.Join(", ", context.Types)
             </Template>
         </RadzenDataGridColumn> *@
-        <RadzenDataGridColumn Title="Index" Sortable="false" Width="60px;">
+        <RadzenDataGridColumn Title="Index" Sortable="false" Width="120px;">
             <Template>
+                @if (context.Registration != Registration.NotInCode)
+                {
+                    <StandardButton Icon="touch_app" Click="@(() => TouchCollection(context))" Style="margin-right: 3px;" />
+                    @* <StandardButton Icon="cleaning_services" /> *@
+                }
                 @if (context.Index.Defined != null)
                 {
-                    <StandardButton Icon="format_list_numbered" ButtonStyle="@(context.Index.Defined.SequenceEqual(context.Index.Current) ? ButtonStyle.Base : ButtonStyle.Warning)" Click="@(() => ShowIndexDialog(context))" />
+                    <StandardButton Icon="format_list_numbered" ButtonStyle="@(context.Index.Defined.SequenceEqual(context.Index.Current) ? ButtonStyle.Base : ButtonStyle.Warning)" Click="@(() => ShowIndexDialog(context))"/>
                 }
             </Template>
         </RadzenDataGridColumn>
@@ -58,10 +63,16 @@
 
     protected override async Task OnParametersSetAsync()
     {
-        _model = await DatabaseMonitor.GetInstancesAsync(FullDatabaseScan).ToArrayAsync();
+        await ReloadData();
         _showConfiguration = _model.GroupBy(x => x.ConfigurationName).Count() > 1;
 
         await base.OnParametersSetAsync();
+    }
+
+    private async Task TouchCollection(CollectionInfo context)
+    {
+        await DatabaseMonitor.TouchAsync(context);
+        await ReloadData();
     }
 
     private async Task ShowIndexDialog(CollectionInfo context)
@@ -71,8 +82,14 @@
             { "CollectionInfo", context }
         }, new DialogOptions());
 
+        if (result != true) return;
+
+        await ReloadData();
+    }
+
+    private async Task ReloadData()
+    {
         _model = await DatabaseMonitor.GetInstancesAsync(FullDatabaseScan).ToArrayAsync();
         StateHasChanged();
     }
-
 }

@@ -210,6 +210,53 @@ internal class DatabaseMonitor : IDatabaseMonitor
         await task;
     }
 
+    public async Task TouchAsync(CollectionInfo collectionInfo)
+    {
+        var collections = await GetInstancesAsync(false)
+            .Where(x => x.ConfigurationName == collectionInfo.ConfigurationName)
+            .Where(x => x.CollectionName == collectionInfo.CollectionName)
+            .ToArrayAsync();
+
+        IRepositoryCollection collection;
+        if (collectionInfo.Registration == Registration.Static)
+        {
+            var col = collections.Single();
+            var colType = _mongoDbInstance.RegisteredCollections.FirstOrDefault(x => x.Key.Name == col.CollectionTypeName).Key;
+
+            collection = _collectionProvider.GetCollection(colType);
+        }
+        else if (collectionInfo.Registration == Registration.Dynamic)
+        {
+            var col = collections.First();
+            var colType = _mongoDbInstance.RegisteredCollections.FirstOrDefault(x => x.Key.Name == col.CollectionTypeName).Key;
+
+            var databaseContext = new DatabaseContextFull
+            {
+                ConfigurationName = collectionInfo.ConfigurationName,
+                CollectionName = collectionInfo.CollectionName,
+                DatabaseName = collectionInfo.DatabaseName,
+            };
+
+            collection = _collectionProvider.GetCollection(colType, databaseContext);
+        }
+        else
+        {
+            throw new ArgumentOutOfRangeException(nameof(collectionInfo.Registration), $"Unknown {nameof(collectionInfo.Registration)} {collectionInfo.Registration}.");
+        }
+
+        var collectionType = collection.GetType();
+        var collectionMethod = collectionType.GetMethod("GetCollection");
+
+        if (collectionMethod == null) throw new NullReferenceException("Cannot find 'GetCollection' method.");
+        var collectionInstance = collectionMethod?.Invoke(collection, []);
+
+        //var indexMethod = collectionType.GetMethod("AssureIndex", BindingFlags.NonPublic | BindingFlags.Instance);
+        //if (indexMethod == null) throw new NullReferenceException("Cannot find 'AssureIndex' method.");
+
+        //var task = (Task)indexMethod.Invoke(collection, [collectionInstance, true, true])!;
+        //await task;
+    }
+
     private IEnumerable<StatColInfo> GetStaticCollectionsFromCode()
     {
         foreach (var registeredCollection in _mongoDbInstance.RegisteredCollections)
@@ -336,13 +383,6 @@ internal class DatabaseMonitor : IDatabaseMonitor
             }
         };
     }
-
-    //private void AssureSame(string first, string second)
-    //{
-    //    if (first == null) return;
-    //    if (second == null) return;
-    //    if (first != second) throw new InvalidOperationException($"Invalid difference between {first} and {second}.");
-    //}
 
     internal abstract record ColInfo
     {

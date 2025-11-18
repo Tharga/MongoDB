@@ -10,4 +10,5 @@ public interface IDatabaseMonitor
     IAsyncEnumerable<CollectionInfo> GetInstancesAsync(bool fullDatabaseScan = false);
     Task DropIndexAsync(DatabaseContext databaseContext);
     Task RestoreIndexAsync(DatabaseContext databaseContext);
+    Task TouchAsync(CollectionInfo collectionInfo);
 }

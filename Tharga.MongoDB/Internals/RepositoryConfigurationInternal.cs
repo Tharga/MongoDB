@@ -39,14 +39,30 @@ internal class RepositoryConfigurationInternal : IRepositoryConfigurationInterna
 
     public MongoUrl GetDatabaseUrl()
     {
-        var configurationName = GetConfigurationName();
-        var key = $"{_environmentName}.{configurationName}.{_databaseContext.Value?.CollectionName}.{_databaseContext.Value?.DatabasePart}";
-        if (_databaseUrlCache.TryGetValue(key, out var mongoUrl)) return mongoUrl;
+        var databaseName = (_databaseContext.Value as DatabaseContextFull)?.DatabaseName;
+        if (databaseName != null)
+        {
+            var result = _mongoUrlBuilderLoader.GetConnectionStringBuilder(_databaseContext.Value);
 
-        var result = _mongoUrlBuilderLoader.GetConnectionStringBuilder(_databaseContext.Value);
-        mongoUrl = result.Builder.Build(result.ConnectionStringLoader(), _databaseContext.Value?.DatabasePart);
-        _databaseUrlCache.TryAdd(key, mongoUrl);
-        return mongoUrl;
+            var mongoUrl = result.Builder.Build(result.ConnectionStringLoader(), null);
+
+            var server = mongoUrl.ToString().TrimEnd(mongoUrl.DatabaseName);
+            mongoUrl = new MongoUrl($"{server}{databaseName}");
+            return mongoUrl;
+        }
+        else
+        {
+            var configurationName = GetConfigurationName();
+            var key = $"{_environmentName}.{configurationName}.{_databaseContext.Value?.CollectionName}.{_databaseContext.Value?.DatabasePart}";
+            if (_databaseUrlCache.TryGetValue(key, out var mongoUrl)) return mongoUrl;
+
+            var result = _mongoUrlBuilderLoader.GetConnectionStringBuilder(_databaseContext.Value);
+
+            mongoUrl = result.Builder.Build(result.ConnectionStringLoader(), _databaseContext.Value?.DatabasePart);
+
+            _databaseUrlCache.TryAdd(key, mongoUrl);
+            return mongoUrl;
+        }
     }
 
     public MongoDbConfig GetConfiguration()
