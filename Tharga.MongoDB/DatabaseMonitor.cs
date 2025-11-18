@@ -201,7 +201,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
         var collectionType = collection.GetType();
         var collectionMethod = collectionType.GetMethod("GetCollection");
         if (collectionMethod == null) throw new NullReferenceException("Cannot find 'GetCollection' method.");
-        var collectionInstance = collectionMethod?.Invoke(collection, []);
+        var collectionInstance = collectionMethod.Invoke(collection, []);
 
         var indexMethod = collectionType.GetMethod("AssureIndex", BindingFlags.NonPublic | BindingFlags.Instance);
         if (indexMethod == null) throw new NullReferenceException("Cannot find 'AssureIndex' method.");

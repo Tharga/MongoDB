@@ -13,7 +13,7 @@
     [Parameter]
     public CollectionInfo CollectionInfo { get; set; }
 
-    private bool CanUpdate => (CollectionInfo.Registration == Registration.Dynamic && CollectionInfo.Context != null) 
+    private bool CanUpdate => (CollectionInfo.Registration == Registration.Dynamic && CollectionInfo.Context != null)
                               || (CollectionInfo.Registration == Registration.Static);
 
     protected override Task OnParametersSetAsync()
@@ -39,26 +39,6 @@
         }
     }
 
-    private DatabaseContext BuildDatabaseContext()
-    {
-        DatabaseContext context;
-        switch (CollectionInfo.Registration)
-        {
-            case Registration.NotInCode:
-                throw new NotSupportedException();
-            case Registration.Static:
-                context = new DatabaseContext { CollectionName = CollectionInfo.CollectionName, ConfigurationName = CollectionInfo.ConfigurationName };
-                break;
-            case Registration.Dynamic:
-                context = CollectionInfo.Context;
-                break;
-            default:
-                throw new ArgumentOutOfRangeException(nameof(CollectionInfo.Registration), $"Unknown {nameof(CollectionInfo.Registration)} {CollectionInfo.Registration}.");
-        }
-
-        return context;
-    }
-
     private async Task RestoreIndex()
     {
         try
@@ -81,5 +61,26 @@
         CollectionInfo = response;
         _json = JsonSerializer.Serialize(CollectionInfo, new JsonSerializerOptions { WriteIndented = true });
         StateHasChanged();
+    }
+
+
+    private DatabaseContext BuildDatabaseContext()
+    {
+        DatabaseContext context;
+        switch (CollectionInfo.Registration)
+        {
+            case Registration.NotInCode:
+                throw new NotSupportedException();
+            case Registration.Static:
+                context = new DatabaseContext { CollectionName = CollectionInfo.CollectionName, ConfigurationName = CollectionInfo.ConfigurationName };
+                break;
+            case Registration.Dynamic:
+                context = CollectionInfo.Context;
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(CollectionInfo.Registration), $"Unknown {nameof(CollectionInfo.Registration)} {CollectionInfo.Registration}.");
+        }
+
+        return context;
     }
 }
