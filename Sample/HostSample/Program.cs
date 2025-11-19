@@ -9,6 +9,7 @@ builder.Services.AddSwaggerGen();
 builder.Services.AddMongoDB(o =>
 {
     o.AssureIndex = false;
+    o.DefaultConfigurationName = "NoDefault";
 });
 
 var app = builder.Build();

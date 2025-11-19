@@ -1,4 +1,5 @@
 ﻿using MongoDB.Bson;
+using System;
 
 namespace Tharga.MongoDB;
 
@@ -36,4 +37,6 @@ public interface ICollectionProvider
     TCollection GetCollection<TCollection, TEntity>(DatabaseContext databaseContext = null)
         where TCollection : IReadOnlyRepositoryCollection<TEntity, ObjectId>
         where TEntity : EntityBase;
+
+    IRepositoryCollection GetCollection(Type collectionType, DatabaseContext databaseContext = null);
 }

@@ -7,6 +7,7 @@ using MongoDB.Bson.Serialization.Serializers;
 using System;
 using System.Linq;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Options;
 using Tharga.MongoDB.Atlas;
 using Tharga.MongoDB.Configuration;
 using Tharga.MongoDB.Internals;
@@ -18,23 +19,25 @@ public static class MongoDbRegistrationExtensions
 {
     private static Action<ActionEventArgs> _actionEvent;
 
+    //TODO: Make sure the Tharga.Cache cannot call this method explicitly (or implicitly) more than once. Multi thread tests should still work.
     public static IServiceCollection AddMongoDB(this IServiceCollection services, Action<DatabaseOptions> options = null)
     {
         var mongoDbInstance = new MongoDbInstance();
 
-        var databaseOptions = new DatabaseOptions
+        //NOTE: Set up default.
+        var o = new DatabaseOptions
         {
-            ConfigurationName = "Default",
+            DefaultConfigurationName = Constants.DefaultConfigurationName,
             AutoRegisterRepositories = Constants.AutoRegisterRepositoriesDefault,
             AutoRegisterCollections = Constants.AutoRegisterCollectionsDefault,
             ExecuteInfoLogLevel = LogLevel.Debug
         };
+        options?.Invoke(o);
+        services.AddSingleton(Options.Create(o));
 
-        options?.Invoke(databaseOptions);
+        BsonSerializer.TryRegisterSerializer(new GuidSerializer(o.GuidRepresentation ?? GuidRepresentation.CSharpLegacy));
 
-        BsonSerializer.TryRegisterSerializer(new GuidSerializer(databaseOptions.GuidRepresentation ?? GuidRepresentation.CSharpLegacy));
-
-        _actionEvent = databaseOptions.ActionEvent;
+        _actionEvent = o.ActionEvent;
         _actionEvent?.Invoke(new ActionEventArgs(new ActionEventArgs.ActionData { Message = $"Entering {nameof(AddMongoDB)}.", Level = LogLevel.Debug }, new ActionEventArgs.ContextData()));
 
         RepositoryCollectionBase.ActionEvent += (_, e) => { _actionEvent?.Invoke(e); };
@@ -57,14 +60,14 @@ public static class MongoDbRegistrationExtensions
         {
             var mongoUrlBuilderLoader = serviceProvider.GetService<IMongoUrlBuilderLoader>();
             var repositoryConfiguration = serviceProvider.GetService<IRepositoryConfiguration>();
-            return new RepositoryConfigurationLoader(mongoUrlBuilderLoader, repositoryConfiguration, databaseOptions);
+            return new RepositoryConfigurationLoader(mongoUrlBuilderLoader, repositoryConfiguration, o);
         });
-        services.AddTransient<IMongoUrlBuilderLoader>(serviceProvider => new MongoUrlBuilderLoader(serviceProvider, databaseOptions));
-        services.AddTransient<IRepositoryConfiguration>(serviceProvider => new RepositoryConfiguration(serviceProvider, databaseOptions));
+        services.AddTransient<IMongoUrlBuilderLoader>(serviceProvider => new MongoUrlBuilderLoader(serviceProvider, o));
+        services.AddTransient<IRepositoryConfiguration>(serviceProvider => new RepositoryConfiguration(serviceProvider, o));
 
         services.AddSingleton<ICollectionProviderCache>(_ =>
         {
-            if (databaseOptions.UseCollectionProviderCache)
+            if (o.UseCollectionProviderCache)
                 return new CollectionProviderCache();
             return new CollectionProviderNoCache();
         });
@@ -84,18 +87,18 @@ public static class MongoDbRegistrationExtensions
             });
         });
 
-        if (databaseOptions.AutoRegisterRepositories || databaseOptions.AutoRegisterCollections)
+        if (o.AutoRegisterRepositories || o.AutoRegisterCollections)
         {
             _actionEvent?.Invoke(new ActionEventArgs(new ActionEventArgs.ActionData
             {
-                Message = $"Looking for assemblies in {string.Join(", ", (databaseOptions.AutoRegistrationAssemblies ?? AssemblyService.GetAssemblies()).Select(x => x.GetName().Name).ToArray())}.",
+                Message = $"Looking for assemblies in {string.Join(", ", (o.AutoRegistrationAssemblies ?? AssemblyService.GetAssemblies()).Select(x => x.GetName().Name).ToArray())}.",
                 Level = LogLevel.Debug
             }, new ActionEventArgs.ContextData()));
         }
 
-        if (databaseOptions.AutoRegisterRepositories)
+        if (o.AutoRegisterRepositories)
         {
-            var currentDomainDefinedTypes = AssemblyService.GetTypes<IRepository>(x => !x.IsGenericType && !x.IsInterface, databaseOptions.AutoRegistrationAssemblies).ToArray();
+            var currentDomainDefinedTypes = AssemblyService.GetTypes<IRepository>(x => !x.IsGenericType && !x.IsInterface, o.AutoRegistrationAssemblies).ToArray();
             foreach (var repositoryType in currentDomainDefinedTypes)
             {
                 var serviceTypes = repositoryType.ImplementedInterfaces.Where(x => x.IsInterface && !x.IsGenericType && x != typeof(IRepository)).ToArray();
@@ -130,17 +133,17 @@ public static class MongoDbRegistrationExtensions
             }
         }
 
-        if (databaseOptions.RegisterCollections?.Any() ?? false)
+        if (o.RegisterCollections?.Any() ?? false)
         {
-            foreach (var registerCollection in databaseOptions.RegisterCollections)
+            foreach (var registerCollection in o.RegisterCollections)
             {
                 RegisterCollection(services, mongoDbInstance, registerCollection.Interface, registerCollection.Implementation, "Manual");
             }
         }
 
-        if (databaseOptions.AutoRegisterCollections)
+        if (o.AutoRegisterCollections)
         {
-            var currentDomainDefinedTypes = AssemblyService.GetTypes<IReadOnlyRepositoryCollection>(x => !x.IsGenericType && !x.IsInterface, databaseOptions.AutoRegistrationAssemblies).ToArray();
+            var currentDomainDefinedTypes = AssemblyService.GetTypes<IReadOnlyRepositoryCollection>(x => !x.IsGenericType && !x.IsInterface, o.AutoRegistrationAssemblies).ToArray();
             foreach (var collectionType in currentDomainDefinedTypes)
             {
                 var serviceTypes = collectionType.ImplementedInterfaces
@@ -165,71 +168,75 @@ public static class MongoDbRegistrationExtensions
 
     public static void UseMongoDB(this IHost app, Action<UseMongoOptions> options = null)
     {
-        app.Services.GetService<IDatabaseMonitor>();
-
         _actionEvent?.Invoke(new ActionEventArgs(new ActionEventArgs.ActionData { Message = $"Entering {nameof(UseMongoDB)}.", Level = LogLevel.Debug }, new ActionEventArgs.ContextData()));
 
         var mongoDbInstance = app.Services.GetService<IMongoDbInstance>();
         if (mongoDbInstance == null) throw new InvalidOperationException($"Tharga MongoDB has not been registered. Call {nameof(AddMongoDB)} first.");
 
+        //NOTE: Set up default configuration
         var repositoryConfiguration = app.Services.GetService<IRepositoryConfiguration>();
-
-        var useMongoOptions = new UseMongoOptions
+        var o = new UseMongoOptions
         {
             DatabaseUsage = new DatabaseUsage
             {
                 FirewallConfigurationNames = repositoryConfiguration.GetDatabaseConfigurationNames().ToArray()
-            }
+            },
+            UseMonitor = true,
+            OpenFirewall = true,
         };
+        options?.Invoke(o);
 
-        options?.Invoke(useMongoOptions);
+        if (o.UseMonitor) app.Services.GetService<IDatabaseMonitor>();
 
-        _actionEvent?.Invoke(new ActionEventArgs(new ActionEventArgs.ActionData { Message = $"Found {useMongoOptions.DatabaseUsage.FirewallConfigurationNames.Length} database configurations. ({string.Join(", ", useMongoOptions.DatabaseUsage.FirewallConfigurationNames)})", Level = LogLevel.Debug }, new ActionEventArgs.ContextData()));
-
-        var mongoDbFirewallStateService = app.Services.GetService<IMongoDbFirewallStateService>();
-        var mongoDbServiceFactory = app.Services.GetService<IMongoDbServiceFactory>();
-
-        var task = Task.Run(async () =>
+        if (o.OpenFirewall)
         {
-            try
+            _actionEvent?.Invoke(new ActionEventArgs(new ActionEventArgs.ActionData { Message = $"Found {o.DatabaseUsage.FirewallConfigurationNames.Length} database configurations. ({string.Join(", ", o.DatabaseUsage.FirewallConfigurationNames)})", Level = LogLevel.Debug }, new ActionEventArgs.ContextData()));
+
+            var mongoDbFirewallStateService = app.Services.GetService<IMongoDbFirewallStateService>();
+            var mongoDbServiceFactory = app.Services.GetService<IMongoDbServiceFactory>();
+
+            var task = Task.Run(async () =>
             {
-                foreach (var configurationName in useMongoOptions.DatabaseUsage.FirewallConfigurationNames)
+                try
                 {
-                    var configuration = repositoryConfiguration.GetConfiguration(configurationName);
-                    if (configuration.AccessInfo.HasMongoDbApiAccess())
+                    foreach (var configurationName in o.DatabaseUsage.FirewallConfigurationNames)
                     {
-                        var mongoDbService = mongoDbServiceFactory.GetMongoDbService(() => new DatabaseContext { ConfigurationName = configurationName });
-                        var databaseHostName = mongoDbService.GetDatabaseHostName();
-                        if (!databaseHostName.Contains("localhost", StringComparison.InvariantCultureIgnoreCase))
+                        var configuration = repositoryConfiguration.GetConfiguration(configurationName);
+                        if (configuration.AccessInfo.HasMongoDbApiAccess())
                         {
-                            var message = await mongoDbFirewallStateService.AssureFirewallAccessAsync(configuration.AccessInfo);
-                            _actionEvent?.Invoke(new ActionEventArgs(new ActionEventArgs.ActionData { Message = message, Level = LogLevel.Information }, new ActionEventArgs.ContextData()));
-                            useMongoOptions.Logger?.LogInformation(message);
+                            var mongoDbService = mongoDbServiceFactory.GetMongoDbService(() => new DatabaseContext { ConfigurationName = configurationName });
+                            var databaseHostName = mongoDbService.GetDatabaseHostName();
+                            if (!databaseHostName.Contains("localhost", StringComparison.InvariantCultureIgnoreCase))
+                            {
+                                var message = await mongoDbFirewallStateService.AssureFirewallAccessAsync(configuration.AccessInfo);
+                                _actionEvent?.Invoke(new ActionEventArgs(new ActionEventArgs.ActionData { Message = message, Level = LogLevel.Information }, new ActionEventArgs.ContextData()));
+                                o.Logger?.LogInformation(message);
+                            }
+                            else
+                            {
+                                _actionEvent?.Invoke(new ActionEventArgs(new ActionEventArgs.ActionData { Message = $"Ignore firewall for {databaseHostName}.", Level = LogLevel.Information }, new ActionEventArgs.ContextData()));
+                                o.Logger?.LogInformation("Ignore firewall for {hostname}.", databaseHostName);
+                            }
                         }
                         else
                         {
-                            _actionEvent?.Invoke(new ActionEventArgs(new ActionEventArgs.ActionData { Message = $"Ignore firewall for {databaseHostName}.", Level = LogLevel.Information }, new ActionEventArgs.ContextData()));
-                            useMongoOptions.Logger?.LogInformation("Ignore firewall for {hostname}.", databaseHostName);
+                            _actionEvent?.Invoke(new ActionEventArgs(new ActionEventArgs.ActionData { Message = $"No firewall information for database configuration '{configurationName}'.", Level = LogLevel.Information }, new ActionEventArgs.ContextData()));
+                            o.Logger?.LogInformation("No firewall information for database configuration '{configurationName}'.", configurationName);
                         }
                     }
-                    else
-                    {
-                        _actionEvent?.Invoke(new ActionEventArgs(new ActionEventArgs.ActionData { Message = $"No firewall information for database configuration '{configurationName}'.", Level = LogLevel.Information }, new ActionEventArgs.ContextData()));
-                        useMongoOptions.Logger?.LogInformation("No firewall information for database configuration '{configurationName}'.", configurationName);
-                    }
                 }
-            }
-            catch (Exception e)
-            {
-                _actionEvent?.Invoke(new ActionEventArgs(new ActionEventArgs.ActionData { Message = e.Message, Level = LogLevel.Critical, Exception = e }, new ActionEventArgs.ContextData()));
-                useMongoOptions.Logger?.LogError(e, e.Message);
-            }
+                catch (Exception e)
+                {
+                    _actionEvent?.Invoke(new ActionEventArgs(new ActionEventArgs.ActionData { Message = e.Message, Level = LogLevel.Critical, Exception = e }, new ActionEventArgs.ContextData()));
+                    o.Logger?.LogError(e, e.Message);
+                }
 
-            _actionEvent?.Invoke(new ActionEventArgs(new ActionEventArgs.ActionData { Message = "Firewall open process complete.", Level = LogLevel.Debug }, new ActionEventArgs.ContextData()));
-            useMongoOptions.Logger?.LogDebug("Firewall open process complete.");
-        });
+                _actionEvent?.Invoke(new ActionEventArgs(new ActionEventArgs.ActionData { Message = "Firewall open process complete.", Level = LogLevel.Debug }, new ActionEventArgs.ContextData()));
+                o.Logger?.LogDebug("Firewall open process complete.");
+            });
 
-        if (useMongoOptions.WaitToComplete) Task.WaitAll(task);
+            if (o.WaitToComplete) Task.WaitAll(task);
+        }
     }
 
     internal static void RegisterCollection(IServiceCollection services, MongoDbInstance mongoDbInstance, Type serviceType, Type implementationType, string regTypeName)
@@ -270,12 +277,3 @@ public static class MongoDbRegistrationExtensions
         }, new ActionEventArgs.ContextData()));
     }
 }
-
-//internal record Dbi
-//{
-//    public string CollectionName { get; set; }
-//    public string[] Types { get; set; }
-//    public int AccessCount { get; set; }
-//    public Registration Registration { get; set; }
-//    public string CollectionTypeName { get; set; }
-//}

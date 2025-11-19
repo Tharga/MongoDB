@@ -1,0 +1,21 @@
+﻿@using Tharga.MongoDB
+@using Tharga.MongoDB.Configuration
+@inject IDatabaseMonitor DatabaseMonitor;
+
+<ul>
+    @foreach (var item in _model)
+    {
+        <li>@item.Value</li>
+    }
+</ul>
+
+@code {
+    private IEnumerable<ConfigurationName> _model;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _model = DatabaseMonitor.GetConfigurations();
+
+        await base.OnInitializedAsync();
+    }
+}

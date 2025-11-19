@@ -26,21 +26,48 @@ internal class RepositoryConfigurationInternal : IRepositoryConfigurationInterna
         _databaseContext = new Lazy<DatabaseContext>(() => databaseContextLoader?.Invoke());
     }
 
+    public ConfigurationName GetConfigurationName()
+    {
+        var configurationName = _databaseContext.Value?.ConfigurationName?.Value ?? _databaseOptions.DefaultConfigurationName ?? throw new NullReferenceException("No default configuration name provided.");
+        return configurationName;
+    }
+
+    public DatabaseContext GetDatabaseContext()
+    {
+        return _databaseContext.Value;
+    }
+
     public MongoUrl GetDatabaseUrl()
     {
-        var configurationName = _databaseContext.Value?.ConfigurationName ?? _databaseOptions.ConfigurationName ?? "Default";
-        var key = $"{_environmentName}.{configurationName}.{_databaseContext.Value?.CollectionName}.{_databaseContext.Value?.DatabasePart}";
-        if (_databaseUrlCache.TryGetValue(key, out var mongoUrl)) return mongoUrl;
+        var databaseName = (_databaseContext.Value as DatabaseContextFull)?.DatabaseName;
+        if (databaseName != null)
+        {
+            var result = _mongoUrlBuilderLoader.GetConnectionStringBuilder(_databaseContext.Value);
 
-        var result = _mongoUrlBuilderLoader.GetConnectionStringBuilder(_databaseContext.Value);
-        mongoUrl = result.Builder.Build(result.ConnectionStringLoader(), _databaseContext.Value?.DatabasePart);
-        _databaseUrlCache.TryAdd(key, mongoUrl);
-        return mongoUrl;
+            var mongoUrl = result.Builder.Build(result.ConnectionStringLoader(), null);
+
+            var server = mongoUrl.ToString().TrimEnd(mongoUrl.DatabaseName);
+            mongoUrl = new MongoUrl($"{server}{databaseName}");
+            return mongoUrl;
+        }
+        else
+        {
+            var configurationName = GetConfigurationName();
+            var key = $"{_environmentName}.{configurationName}.{_databaseContext.Value?.CollectionName}.{_databaseContext.Value?.DatabasePart}";
+            if (_databaseUrlCache.TryGetValue(key, out var mongoUrl)) return mongoUrl;
+
+            var result = _mongoUrlBuilderLoader.GetConnectionStringBuilder(_databaseContext.Value);
+
+            mongoUrl = result.Builder.Build(result.ConnectionStringLoader(), _databaseContext.Value?.DatabasePart);
+
+            _databaseUrlCache.TryAdd(key, mongoUrl);
+            return mongoUrl;
+        }
     }
 
     public MongoDbConfig GetConfiguration()
     {
-        var configurationName = _databaseContext.Value?.ConfigurationName ?? _databaseOptions.ConfigurationName ?? "Default";
+        var configurationName = GetConfigurationName();
         var key = $"{configurationName}.{_databaseContext.Value?.CollectionName}";
         if (_configurationCache.TryGetValue(key, out var configuration)) return configuration;
 

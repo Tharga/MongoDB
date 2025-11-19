@@ -78,4 +78,35 @@ internal class CollectionProvider : ICollectionProvider
     {
         return GetCollection<TCollection, TEntity, ObjectId>(databaseContext);
     }
+
+    public IRepositoryCollection GetCollection(Type collectionType, DatabaseContext databaseContext = null)
+    {
+        if (collectionType.IsInterface)
+        {
+            var implementationType = _typeLoader(collectionType);
+            collectionType = implementationType ?? throw new InvalidOperationException($"Cannot find a registered implementation for collection '{collectionType.Name}'. Turn on {nameof(DatabaseOptions.AutoRegisterCollections)} or provide collection manually with {nameof(DatabaseOptions.RegisterCollections)}.");
+        }
+
+        var ctor = collectionType.GetConstructors();
+        if (ctor.Length != 1) throw new NotSupportedException($"There needs to be one single constructor for '{collectionType.Name}'.");
+
+        var databaseContextProvided = false;
+        var parameters = ctor.Single().GetParameters().Select(parameterInfo =>
+        {
+            switch (parameterInfo.ParameterType.Name)
+            {
+                case nameof(DatabaseContext):
+                    databaseContextProvided = true;
+                    return databaseContext;
+                default:
+                    var item = _serviceLoader(parameterInfo.ParameterType);
+                    return item;
+            }
+        }).ToArray();
+
+        if (!databaseContextProvided && databaseContext != null) throw new InvalidOperationException($"DatabaseContext was provided but the constructor for '{collectionType.Name}' does not recieve it. Add DatabaseContext to the constructor of '{collectionType.Name}' to get this to work.");
+
+        var collection = Activator.CreateInstance(collectionType, parameters);
+        return collection as IRepositoryCollection;
+    }
 }

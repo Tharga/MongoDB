@@ -1,0 +1,95 @@
+﻿@using Tharga.Blazor.Framework.Buttons
+@using Tharga.MongoDB
+@using Tharga.Toolkit
+@inject IDatabaseMonitor DatabaseMonitor;
+@inject DialogService DialogService
+
+<RadzenDataGrid Data="_model" TItem="CollectionInfo"
+                AllowFiltering="false" FilterMode="FilterMode.Simple" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                AllowSorting="true"
+                AllowPaging="true" PageSize="8" PageSizeOptions="[8, 16, 32, 64]"
+                ShowPagingSummary="true" PagingSummaryFormat="@("{2:N0} collections, page {0} of {1}")">
+    <Columns>
+        <RadzenDataGridColumn Title="Configuration" Property="@nameof(CollectionInfo.ConfigurationName)" Visible="@_showConfiguration" />
+        @* <RadzenDataGridColumn Title="Server" Property="@nameof(CollectionInfo.Server)" /> *@
+        <RadzenDataGridColumn Title="Database" Property="@nameof(CollectionInfo.DatabaseName)" />
+        <RadzenDataGridColumn Title="Collection" Property="@nameof(CollectionInfo.CollectionName)" />
+        @* <RadzenDataGridColumn Title="Context" Sortable="false">
+            <Template>
+                @if (context.Context != null)
+                {
+                    @($"{context.Context.ConfigurationName.Value}/{context.Context.DatabasePart}/{context.Context.CollectionName}")
+                }
+            </Template>
+        </RadzenDataGridColumn> *@
+        @* <RadzenDataGridColumn Title="Uri" Property="@nameof(CollectionInfo.Uri)" /> *@
+        <RadzenDataGridColumn Title="Source" Property="@nameof(CollectionInfo.Source)" />
+        <RadzenDataGridColumn Title="Registration" Property="@nameof(CollectionInfo.Registration)" />
+        @* <RadzenDataGridColumn Title="Collection Type" Property="@nameof(CollectionInfo.CollectionTypeName)" /> *@
+        <RadzenDataGridColumn Title="AccessCount" Property="@nameof(CollectionInfo.AccessCount)" TextAlign="TextAlign.Right" FormatString="{0:N0}" />
+        <RadzenDataGridColumn Title="DocumentCount" Property="@nameof(CollectionInfo.DocumentCount)" TextAlign="TextAlign.Right" FormatString="{0:N0}" />
+        <RadzenDataGridColumn Title="Size" Property="@nameof(CollectionInfo.Size)" TextAlign="TextAlign.Right">
+            <Template>
+                @context.Size.ToReadableByteSize()
+            </Template>
+        </RadzenDataGridColumn>
+        @* <RadzenDataGridColumn Title="Types" Sortable="false">
+            <Template>
+                @string.Join(", ", context.Types)
+            </Template>
+        </RadzenDataGridColumn> *@
+        <RadzenDataGridColumn Title="Index" Sortable="false" Width="120px;">
+            <Template>
+                @if (context.Registration != Registration.NotInCode)
+                {
+                    <StandardButton Icon="touch_app" Click="@(() => TouchCollection(context))" Style="margin-right: 3px;" />
+                    @* <StandardButton Icon="cleaning_services" /> *@
+                }
+                @if (context.Index.Defined != null)
+                {
+                    <StandardButton Icon="format_list_numbered" ButtonStyle="@(context.Index.Defined.SequenceEqual(context.Index.Current) ? ButtonStyle.Base : ButtonStyle.Warning)" Click="@(() => ShowIndexDialog(context))"/>
+                }
+            </Template>
+        </RadzenDataGridColumn>
+    </Columns>
+</RadzenDataGrid>
+
+@code {
+    private CollectionInfo[] _model;
+    private bool _showConfiguration;
+
+    [Parameter]
+    public bool FullDatabaseScan { get; set; }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await ReloadData();
+        _showConfiguration = _model.GroupBy(x => x.ConfigurationName).Count() > 1;
+
+        await base.OnParametersSetAsync();
+    }
+
+    private async Task TouchCollection(CollectionInfo context)
+    {
+        await DatabaseMonitor.TouchAsync(context);
+        await ReloadData();
+    }
+
+    private async Task ShowIndexDialog(CollectionInfo context)
+    {
+        var result = await DialogService.OpenAsync<IndexDialog>("Index", new Dictionary<string, object>
+        {
+            { "CollectionInfo", context }
+        }, new DialogOptions());
+
+        if (result != true) return;
+
+        await ReloadData();
+    }
+
+    private async Task ReloadData()
+    {
+        _model = await DatabaseMonitor.GetInstancesAsync(FullDatabaseScan).ToArrayAsync();
+        StateHasChanged();
+    }
+}

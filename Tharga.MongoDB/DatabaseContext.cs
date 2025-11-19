@@ -2,6 +2,11 @@
 
 namespace Tharga.MongoDB;
 
+internal record DatabaseContextFull : DatabaseContext
+{
+    public required string DatabaseName { get; init; }
+}
+
 public record DatabaseContext
 {
     /// <summary>

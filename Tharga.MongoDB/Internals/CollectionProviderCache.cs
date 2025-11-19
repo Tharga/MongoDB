@@ -12,7 +12,7 @@ internal class CollectionProviderCache : ICollectionProviderCache
     public TCollection GetCollection<TCollection>(DatabaseContext databaseContext, Func<DatabaseContext, TCollection> loader)
         where TCollection : IReadOnlyRepositoryCollection
     {
-        var key = $"{typeof(TCollection).FullName}.{databaseContext.CollectionName}.{databaseContext.DatabasePart}.{databaseContext.ConfigurationName?.Value}";
+        var key = $"{typeof(TCollection).FullName}.{databaseContext?.CollectionName}.{databaseContext?.DatabasePart}.{databaseContext?.ConfigurationName?.Value}";
 
         if (_cache.TryGetValue(key, out var collection))
         {

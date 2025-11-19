@@ -21,14 +21,14 @@ public abstract class LockableTestBase : IDisposable
         _configurationMock.Setup(x => x.GetConfiguration()).Returns(Mock.Of<MongoDbConfig>(x => x.ResultLimit == 100));
         _configurationMock.Setup(x => x.GetExecuteInfoLogLevel()).Returns(LogLevel.Debug);
         _configurationMock.Setup(x => x.ShouldAssureIndex()).Returns(true);
+        _configurationMock.Setup(x => x.GetConfigurationName()).Returns("Default");
+        _configurationMock.Setup(x => x.GetDatabaseContext()).Returns(Mock.Of<DatabaseContext>());
 
         var configurationLoaderMock = new Mock<IRepositoryConfigurationLoader>(MockBehavior.Strict);
         configurationLoaderMock.Setup(x => x.GetConfiguration(It.IsAny<Func<DatabaseContext>>())).Returns(_configurationMock.Object);
         var loggerMock = new Mock<ILogger<MongoDbServiceFactory>>();
 
         var mongoDbFirewallStateService = new Mock<IMongoDbFirewallStateService>(MockBehavior.Strict);
-
-        //var databaseMonitor = new Mock<IDatabaseMonitor>(MockBehavior.Strict);
 
         _mongoDbServiceFactory = new MongoDbServiceFactory(configurationLoaderMock.Object, mongoDbFirewallStateService.Object, /*databaseMonitor.Object,*/ loggerMock.Object);
     }

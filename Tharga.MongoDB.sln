@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Version 17
-VisualStudioVersion = 17.6.33815.320
+# Visual Studio Version 18
+VisualStudioVersion = 18.0.11205.157 d18.0
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Tharga.MongoDB", "Tharga.MongoDB\Tharga.MongoDB.csproj", "{EDB2D8C5-C76F-4C72-B62B-F91C8DC32810}"
 EndProject
@@ -20,6 +20,8 @@ EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ConsoleSample", "Sample\ConsoleSample\ConsoleSample.csproj", "{A51E4D23-7908-4E55-BF12-543FEE826761}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HostSample", "Sample\HostSample\HostSample.csproj", "{2E0C1969-0FF2-4538-A68C-F3E0C208F195}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Tharga.MongoDB.Blazor", "Tharga.MongoDB.Blazor\Tharga.MongoDB.Blazor.csproj", "{373267F8-221D-09A8-6195-3D44D11D218A}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -47,6 +49,10 @@ Global
 		{2E0C1969-0FF2-4538-A68C-F3E0C208F195}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{2E0C1969-0FF2-4538-A68C-F3E0C208F195}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{2E0C1969-0FF2-4538-A68C-F3E0C208F195}.Release|Any CPU.Build.0 = Release|Any CPU
+		{373267F8-221D-09A8-6195-3D44D11D218A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{373267F8-221D-09A8-6195-3D44D11D218A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{373267F8-221D-09A8-6195-3D44D11D218A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{373267F8-221D-09A8-6195-3D44D11D218A}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

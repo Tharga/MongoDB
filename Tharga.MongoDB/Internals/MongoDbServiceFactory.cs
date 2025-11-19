@@ -24,6 +24,7 @@ internal class MongoDbServiceFactory : IMongoDbServiceFactory
         _logger = logger;
     }
 
+    public event EventHandler<ConfigurationAccessEventArgs> ConfigurationAccessEvent;
     public event EventHandler<CollectionAccessEventArgs> CollectionAccessEvent;
 
     public IMongoDbService GetMongoDbService(Func<DatabaseContext> databaseContextLoader)
@@ -37,14 +38,22 @@ internal class MongoDbServiceFactory : IMongoDbServiceFactory
         }
 
         var configuration = _repositoryConfigurationLoader.GetConfiguration(databaseContextLoader);
+
+        var configurationName = configuration.GetConfigurationName();
         var mongoUrl = configuration.GetDatabaseUrl();
         var cacheKey = mongoUrl.Url;
-        if (_databaseDbServices.TryGetValue(cacheKey, out var dbService)) return dbService;
+        ConfigurationAccessEvent?.Invoke(this, new ConfigurationAccessEventArgs(configurationName, mongoUrl));
+
+        //TODO: Can this be done differently
+        var ctx = configuration.GetDatabaseContext();
+        var useCache = string.IsNullOrEmpty((ctx as DatabaseContextFull)?.DatabaseName);
+
+        if (useCache && _databaseDbServices.TryGetValue(cacheKey, out var dbService)) return dbService;
 
         try
         {
             _lock.Wait();
-            if (_databaseDbServices.TryGetValue(cacheKey, out dbService)) return dbService;
+            if (useCache && _databaseDbServices.TryGetValue(cacheKey, out dbService)) return dbService;
 
             dbService = new MongoDbService(configuration, _mongoDbFirewallStateService, _logger);
             dbService.CollectionAccessEvent += (s, e) => { CollectionAccessEvent?.Invoke(s, e); };

@@ -1,36 +1,9 @@
-﻿using HostSample.Features.DynamicRepo;
-using HostSample.Features.LockableRepo;
+﻿using HostSample.Features.LockableRepo;
 using Microsoft.AspNetCore.Mvc;
 using MongoDB.Bson;
 using Tharga.MongoDB.Lockable;
 
 namespace HostSample.Controllers;
-
-[ApiController]
-[Route("[controller]")]
-public class DynamicRepoController : ControllerBase
-{
-    private readonly IDynRepo _dynRepo;
-
-    public DynamicRepoController(IDynRepo dynRepo)
-    {
-        _dynRepo = dynRepo;
-    }
-
-    [HttpGet]
-    public async Task<IActionResult> Get(string instance)
-    {
-        var items = await _dynRepo.GetAsync(instance).ToArrayAsync();
-        return Ok(items.Select(x => new { Id = x.Id.ToString() }));
-    }
-
-    [HttpPost]
-    public async Task<IActionResult> Add(string instance)
-    {
-        await _dynRepo.AddAsync(instance, new DynRepoItem { Id = ObjectId.GenerateNewId() });
-        return Ok();
-    }
-}
 
 [ApiController]
 [Route("[controller]")]

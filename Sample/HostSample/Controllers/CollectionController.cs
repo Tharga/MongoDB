@@ -1,5 +1,9 @@
+using HostSample.Features.DynamicRepo;
+using HostSample.Features.SecondaryRepo;
 using Microsoft.AspNetCore.Mvc;
+using System.Collections;
 using Tharga.MongoDB;
+using Tharga.MongoDB.Configuration;
 
 namespace HostSample.Controllers;
 
@@ -10,12 +14,16 @@ public class CollectionController : ControllerBase
     private readonly IMongoDbServiceFactory _mongoDbServiceFactory;
     private readonly ICollectionTypeService _collectionTypeService;
     private readonly IDatabaseMonitor _databaseMonitor;
+    private readonly IDynRepo _dynRepo;
+    private readonly ISecondaryRepo _secondaryRepo;
 
-    public CollectionController(IMongoDbServiceFactory mongoDbServiceFactory, ICollectionTypeService collectionTypeService, IDatabaseMonitor databaseMonitor)
+    public CollectionController(IMongoDbServiceFactory mongoDbServiceFactory, ICollectionTypeService collectionTypeService, IDatabaseMonitor databaseMonitor, IDynRepo dynRepo, ISecondaryRepo secondaryRepo)
     {
         _mongoDbServiceFactory = mongoDbServiceFactory;
         _collectionTypeService = collectionTypeService;
         _databaseMonitor = databaseMonitor;
+        _dynRepo = dynRepo;
+        _secondaryRepo = secondaryRepo;
     }
 
     [HttpGet]
@@ -23,6 +31,13 @@ public class CollectionController : ControllerBase
     {
         var factory = _mongoDbServiceFactory.GetMongoDbService(() => new DatabaseContext());
         return Task.FromResult<IActionResult>(Ok(factory.GetCollections()));
+    }
+
+    [HttpGet("configuration")]
+    public Task<IActionResult> GetConfigurations()
+    {
+        var configurations = _databaseMonitor.GetConfigurations();
+        return Task.FromResult<IActionResult>(Ok(configurations.Select(x => x.Value)));
     }
 
     [HttpGet("metadata")]
@@ -48,10 +63,55 @@ public class CollectionController : ControllerBase
     [HttpGet("monitor")]
     public async Task<IActionResult> GetMonitor()
     {
-        //TODO: Loop all database configurations, much like the health check does.
-        //TODO: I also want to check for all databases, not just all collections in a single database.
-        var instances = await _databaseMonitor.GetInstancesAsync().ToArrayAsync();
-        return Ok(instances);
+        //TODO: Use to touch all databases, so information can be loaded.
+        //var t1 = await _dynRepo.GetAsync("NoDefault", "part", "A").ToArrayAsync();
+        //var t11 = await _dynRepo.GetAsync("NoDefault", "part2", "A").ToArrayAsync();
+        //var t2 = await _dynRepo.GetAsync("Secondary", "part", "A").ToArrayAsync();
+        //var t3d = await _secondaryRepo.GetAsync().ToArrayAsync();
+
+        var items = await _databaseMonitor.GetInstancesAsync().ToArrayAsync();
+        //return Ok(items);
+        return Ok(items.Select(x => new
+        {
+            Source = $"{x.Source}",
+            x.ConfigurationName,
+            x.Server,
+            x.DatabaseName,
+            x.CollectionName,
+            x.CollectionTypeName,
+            Registration = $"{x.Registration}",
+            x.AccessCount,
+            x.DocumentCount,
+            x.Size,
+            x.Types,
+            x.Index
+        }));
+    }
+
+    [HttpDelete("index")]
+    public async Task<IActionResult> DeleteIndex(string configurationName, string databasePart, string collectionName)
+    {
+        var databaseContext = new DatabaseContext
+        {
+            ConfigurationName = configurationName,
+            CollectionName = collectionName,
+            DatabasePart = databasePart
+        };
+        await _databaseMonitor.DropIndexAsync(databaseContext);
+        return Ok();
+    }
+
+    [HttpPost("index")]
+    public async Task<IActionResult> RestoreIndex(string configurationName, string databasePart, string collectionName)
+    {
+        var databaseContext = new DatabaseContext
+        {
+            ConfigurationName = configurationName,
+            CollectionName = collectionName,
+            DatabasePart = databasePart
+        };
+        await _databaseMonitor.RestoreIndexAsync(databaseContext);
+        return Ok();
     }
 
     //[HttpGet("index")]
