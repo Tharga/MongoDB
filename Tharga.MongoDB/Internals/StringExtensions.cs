@@ -18,6 +18,8 @@ internal static class StringExtensions
     public static string TrimEnd(this string item, string data)
     {
         var endPosA = item.LastIndexOf(data, StringComparison.Ordinal);
+        if (endPosA == -1) return item;
+
         var endPosB = item.Length - data.Length;
         if (endPosA != endPosB) return item;
 

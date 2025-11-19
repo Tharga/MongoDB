@@ -36,10 +36,12 @@ internal class DatabaseMonitor : IDatabaseMonitor
         };
         _mongoDbServiceFactory.CollectionAccessEvent += (_, e) =>
         {
-            var databaseContext = e.DatabaseContext with
+            var databaseContext = (e.DatabaseContext as DatabaseContextFull) ?? new DatabaseContextFull
             {
-                ConfigurationName = e.DatabaseContext.ConfigurationName?.Value ?? _options.DefaultConfigurationName.Value,
-                CollectionName = e.DatabaseContext.CollectionName ?? e.CollectionName
+                DatabaseName = null,
+                CollectionName = e.DatabaseContext.CollectionName,
+                DatabasePart = e.DatabaseContext.DatabasePart ?? e.CollectionName,
+                ConfigurationName = e.DatabaseContext.ConfigurationName?.Value ?? _options.DefaultConfigurationName.Value
             };
 
             var now = DateTime.UtcNow;
@@ -177,23 +179,29 @@ internal class DatabaseMonitor : IDatabaseMonitor
 
     public async Task RestoreIndexAsync(DatabaseContext databaseContext)
     {
+        var databaseName = (databaseContext as DatabaseContextFull)?.DatabaseName;
+
         var collections = await GetInstancesAsync(false)
             .Where(x => x.ConfigurationName == databaseContext.ConfigurationName.Value)
             .Where(x => x.CollectionName == databaseContext.CollectionName)
+            .Where(x => x.DatabaseName == databaseName)
             .ToArrayAsync();
 
         IRepositoryCollection collection;
-        if (string.IsNullOrEmpty(databaseContext.DatabasePart))
+        if (string.IsNullOrEmpty(databaseContext.DatabasePart) && string.IsNullOrEmpty(databaseName))
         {
             var col = collections.Single();
-            var colType = _mongoDbInstance.RegisteredCollections.FirstOrDefault(x => x.Key.Name == col.CollectionTypeName).Key;
+            var colTypes = _mongoDbInstance.RegisteredCollections.Where(x => x.Key.Name == col.CollectionTypeName).ToArray();
+            var colType = colTypes.Single().Key;
 
             collection = _collectionProvider.GetCollection(colType);
         }
         else
         {
-            var col = collections.First();
-            var colType = _mongoDbInstance.RegisteredCollections.FirstOrDefault(x => x.Key.Name == col.CollectionTypeName).Key;
+            var col = collections.Single();
+            //var colType = _mongoDbInstance.RegisteredCollections.FirstOrDefault(x => x.Key.Name == col.CollectionTypeName).Key;
+            var colTypes = _mongoDbInstance.RegisteredCollections.Where(x => x.Key.Name == col.CollectionTypeName).ToArray();
+            var colType = colTypes.Single().Key;
 
             collection = _collectionProvider.GetCollection(colType, databaseContext);
         }
@@ -206,8 +214,52 @@ internal class DatabaseMonitor : IDatabaseMonitor
         var indexMethod = collectionType.GetMethod("AssureIndex", BindingFlags.NonPublic | BindingFlags.Instance);
         if (indexMethod == null) throw new NullReferenceException("Cannot find 'AssureIndex' method.");
 
-        var task = (Task)indexMethod.Invoke(collection, [collectionInstance, true, true])!;
-        await task;
+        //var task = (Task)indexMethod.Invoke(collection, [collectionInstance, true, true])!;
+        //await task;
+
+        //try
+        //{
+        //    var result = indexMethod.Invoke(collection, new object[] { collectionInstance, true, true });
+
+        //    if (result is Task task)
+        //    {
+        //        await task;   // <-- correctly awaited
+        //    }
+        //    else
+        //    {
+        //        throw new InvalidOperationException(
+        //            $"AssureIndex returned {result?.GetType().Name ?? "null"} instead of Task");
+        //    }
+        //}
+        //catch (TargetInvocationException ex)
+        //{
+        //    // Surface the real exception from inside AssureIndex
+        //    throw ex.InnerException ?? ex;
+        //}
+
+        try
+        {
+            var result = indexMethod.Invoke(collection, new object[] { collectionInstance, true, true });
+            await (Task)result!;
+        }
+        catch (Exception ex)
+        {
+            Debugger.Break();
+            Console.WriteLine(ex);
+            Console.WriteLine(ex.InnerException);
+            throw;
+        }
+
+        //try
+        //{
+        //    var task = (Task)indexMethod.Invoke(collection, new object[] { collectionInstance, true, true })!;
+        //    await task;
+        //}
+        //catch (TargetInvocationException ex)
+        //{
+        //    // THIS is the real error
+        //    throw ex.InnerException ?? ex;
+        //}
     }
 
     public async Task TouchAsync(CollectionInfo collectionInfo)
