@@ -86,6 +86,14 @@ stages:
         versioningScheme: 'byBuildNumber'
         arguments: '--configuration Release /p:IncludeSymbols=true /p:IncludeSource=true /p:SymbolPackageFormat=snupkg /p:ContinuousIntegrationBuild=true'
 
+    - task: DotNetCoreCLI@2
+      displayName: 'Pack Tharga.MongoDB.Blazor'
+      inputs:
+        command: 'pack'
+        packagesToPack: '**/Tharga.MongoDB.Blazor.csproj'
+        versioningScheme: 'byBuildNumber'
+        arguments: '--configuration Release /p:IncludeSymbols=true /p:IncludeSource=true /p:SymbolPackageFormat=snupkg /p:ContinuousIntegrationBuild=true'
+
     - task: PublishBuildArtifacts@1
       displayName: 'Publish artifacts'
       inputs:
