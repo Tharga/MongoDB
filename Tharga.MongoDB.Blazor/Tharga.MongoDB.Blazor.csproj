@@ -31,7 +31,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\Blazor\Tharga.Blazor\Tharga.Blazor.csproj" />
     <ProjectReference Include="..\Tharga.MongoDB\Tharga.MongoDB.csproj" />
   </ItemGroup>
 
@@ -41,6 +40,10 @@
 
   <ItemGroup>
     <Folder Include="wwwroot\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Tharga.Blazor" Version="1.0.6" />
   </ItemGroup>
 
 </Project>
