@@ -34,10 +34,6 @@
     <ProjectReference Include="..\Tharga.MongoDB\Tharga.MongoDB.csproj" />
   </ItemGroup>
 
-  <ItemGroup Condition="'$(TargetFramework)' == 'net9.0'">
-    <PackageReference Include="System.Linq.Async" Version="6.0.3" />
-  </ItemGroup>
-
   <ItemGroup>
     <Folder Include="wwwroot\" />
   </ItemGroup>
