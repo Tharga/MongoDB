@@ -8,16 +8,28 @@ public class CallStartEventArgs : EventArgs
 {
     public CallStartEventArgs(Guid callKey, string collectionName, string functionName)
     {
-        throw new NotImplementedException();
+        CallKey = callKey;
+        CollectionName = collectionName;
+        FunctionName = functionName;
     }
+
+    public Guid CallKey { get; }
+    public string CollectionName { get; }
+    public string FunctionName { get; }
 }
 
 public class CallEndEventArgs : EventArgs
 {
     public CallEndEventArgs(Guid callKey, TimeSpan elapsed, Exception exception)
     {
-        throw new NotImplementedException();
+        CallKey = callKey;
+        Elapsed = elapsed;
+        Exception = exception;
     }
+
+    public Guid CallKey { get; }
+    public TimeSpan Elapsed { get; }
+    public Exception Exception { get; }
 }
 
 public class ConfigurationAccessEventArgs : EventArgs

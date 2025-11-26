@@ -27,6 +27,7 @@ public abstract class RepositoryCollectionBase
 public abstract class RepositoryCollectionBase<TEntity, TKey> : RepositoryCollectionBase, IRepositoryCollection<TEntity, TKey>
     where TEntity : EntityBase<TKey>
 {
+    protected readonly IMongoDbServiceFactory _mongoDbServiceFactory;
     protected readonly ILogger<RepositoryCollectionBase<TEntity, TKey>> _logger;
     protected readonly DatabaseContext _databaseContext;
     protected readonly IMongoDbService _mongoDbService;
@@ -36,6 +37,7 @@ public abstract class RepositoryCollectionBase<TEntity, TKey> : RepositoryCollec
 
     protected RepositoryCollectionBase(IMongoDbServiceFactory mongoDbServiceFactory, ILogger<RepositoryCollectionBase<TEntity, TKey>> logger, DatabaseContext databaseContext = null)
     {
+        _mongoDbServiceFactory = mongoDbServiceFactory;
         _logger = logger;
         _databaseContext = databaseContext;
 

@@ -7,7 +7,31 @@
 }
 else
 {
-    <p>AAA</p>
+    <RadzenDataGrid Data="_model" TItem="CallInfo"
+                    AllowFiltering="false" FilterMode="FilterMode.Simple" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                    AllowSorting="true"
+                    AllowPaging="true" PageSize="8" PageSizeOptions="[8, 16, 32, 64]"
+                    ShowPagingSummary="true" PagingSummaryFormat="@("{2:N0} calls, page {0} of {1}")">
+        <Columns>
+            <RadzenDataGridColumn Title="Start" Property="@nameof(CallInfo.StartTime)">
+                <Template>
+                    <DateTimeView Date="@context.StartTime" />
+                </Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn Title="Collection" Property="@nameof(CallInfo.CollectionName)" />
+            <RadzenDataGridColumn Title="Function" Property="@nameof(CallInfo.FunctionName)" />
+            <RadzenDataGridColumn Title="Elapsed" Property="@nameof(CallInfo.Elapsed)">
+                <Template>
+                    <TimeSpanView TimeSpan="@context.Elapsed" />
+                </Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn Title="Exception" Sortable="false" Filterable="false">
+                <Template>
+                    @context.Exception?.Message
+                </Template>
+            </RadzenDataGridColumn>
+        </Columns>
+    </RadzenDataGrid>
 }
 
 @code {

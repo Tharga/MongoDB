@@ -21,6 +21,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
     private readonly ICollectionProvider _collectionProvider;
     private readonly DatabaseOptions _options;
     private readonly ConcurrentDictionary<(string ConfigurationName, string CollectionName), CollectionAccessData> _accessedCollections = new();
+    private readonly ConcurrentDictionary<Guid, CallInfo> _calls = new();
 
     public DatabaseMonitor(IMongoDbServiceFactory mongoDbServiceFactory, IMongoDbInstance mongoDbInstance, IServiceProvider serviceProvider, IRepositoryConfiguration repositoryConfiguration, ICollectionProvider collectionProvider, IOptions<DatabaseOptions> options)
     {
@@ -59,6 +60,23 @@ internal class DatabaseMonitor : IDatabaseMonitor
                 item.AccessCount++;
                 return item;
             });
+        };
+        _mongoDbServiceFactory.CallStartEvent += (_, e) =>
+        {
+            _calls.TryAdd(e.CallKey, new CallInfo
+            {
+                StartTime = DateTime.UtcNow,
+                CollectionName = e.CollectionName,
+                FunctionName = e.FunctionName
+            });
+        };
+        _mongoDbServiceFactory.CallEndEvent += (_, e) =>
+        {
+            if (_calls.TryGetValue(e.CallKey, out var item))
+            {
+                item.Elapsed = e.Elapsed;
+                item.Exception = e.Exception;
+            }
         };
     }
 
@@ -173,7 +191,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
 
     public async Task DropIndexAsync(DatabaseContext databaseContext)
     {
-        var collection = _collectionProvider.GetCollection<DRC, DRCE>(databaseContext);
+        var collection = _collectionProvider.GetCollection<EntityBaseCollection, EntityBase>(databaseContext);
         await collection.DropIndex(collection.GetCollection());
     }
 
@@ -307,6 +325,11 @@ internal class DatabaseMonitor : IDatabaseMonitor
 
         //var task = (Task)indexMethod.Invoke(collection, [collectionInstance, true, true])!;
         //await task;
+    }
+
+    public IEnumerable<CallInfo> GetCalls()
+    {
+        return _calls.Values;
     }
 
     private IEnumerable<StatColInfo> GetStaticCollectionsFromCode()

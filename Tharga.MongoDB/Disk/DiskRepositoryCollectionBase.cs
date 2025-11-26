@@ -81,8 +81,13 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         var sw = new Stopwatch();
         sw.Start();
 
+        var callKey = Guid.NewGuid();
+        Exception exception = null;
+
         try
         {
+            ((MongoDbServiceFactory)_mongoDbServiceFactory).OnCallStart(this, new CallStartEventArgs(callKey, CollectionName, functionName));
+
             if (assureIndex)
             {
                 await AssureIndex(Collection);
@@ -99,15 +104,21 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         }
         catch (Exception e) when (e is MongoConnectionException || e is TimeoutException || e is MongoConnectionPoolPausedException)
         {
+            exception = e;
             _logger?.LogWarning(e, $"{e.GetType().Name} {{repositoryType}}. [action: Database, operation: {functionName}]", "DiskRepository");
             InvokeAction(new ActionEventArgs.ActionData { Operation = functionName, Exception = e });
             throw;
         }
         catch (Exception e)
         {
+            exception = e;
             _logger?.LogError(e, $"{e.GetType().Name} {{repositoryType}}. [action: Database, operation: {functionName}]", "DiskRepository");
             InvokeAction(new ActionEventArgs.ActionData { Operation = functionName, Exception = e });
             throw;
+        }
+        finally
+        {
+            ((MongoDbServiceFactory)_mongoDbServiceFactory).OnCallEnd(this, new CallEndEventArgs(callKey, sw.Elapsed, exception));
         }
     }
 
@@ -1086,14 +1097,10 @@ public abstract class DiskRepositoryCollectionBase<TEntity> : DiskRepositoryColl
     }
 }
 
-internal class DRC : DiskRepositoryCollectionBase<DRCE>
+internal class EntityBaseCollection : DiskRepositoryCollectionBase<EntityBase>
 {
-    public DRC(IMongoDbServiceFactory mongoDbServiceFactory, ILogger<RepositoryCollectionBase<DRCE, ObjectId>> logger, DatabaseContext databaseContext)
+    public EntityBaseCollection(IMongoDbServiceFactory mongoDbServiceFactory, ILogger<RepositoryCollectionBase<EntityBase, ObjectId>> logger, DatabaseContext databaseContext)
         : base(mongoDbServiceFactory, logger, databaseContext)
     {
     }
-}
-
-internal record DRCE : EntityBase
-{
 }
