@@ -1,0 +1,188 @@
+﻿@using Tharga.Blazor.Framework.Buttons
+@using Tharga.Toolkit
+@inject IDatabaseMonitor DatabaseMonitor
+@inject NotificationService NotificationService
+
+<RadzenStack Orientation="Orientation.Vertical" Gap="1rem">
+    <RadzenRow>
+        <RadzenColumn>
+            <RadzenText TextStyle="TextStyle.Caption" Text="Configuration" />
+            <RadzenText Text="@CollectionInfo.ConfigurationName" />
+        </RadzenColumn>
+        <RadzenColumn>
+            <RadzenText TextStyle="TextStyle.Caption" Text="Database" />
+            <RadzenText Text="@CollectionInfo.DatabaseName" />
+        </RadzenColumn>
+        <RadzenColumn>
+            <RadzenText TextStyle="TextStyle.Caption" Text="Collection" />
+            <RadzenText Text="@CollectionInfo.CollectionName" />
+        </RadzenColumn>
+    </RadzenRow>
+    <RadzenRow>
+        <RadzenColumn>
+            <RadzenText TextStyle="TextStyle.Caption" Text="Source" />
+            <RadzenText Text="@($"{CollectionInfo.Source}")" />
+        </RadzenColumn>
+        <RadzenColumn>
+            <RadzenText TextStyle="TextStyle.Caption" Text="Registration" />
+            <RadzenText Text="@($"{CollectionInfo.Registration}")" />
+        </RadzenColumn>
+    </RadzenRow>
+    <RadzenRow>
+        <RadzenColumn>
+            <RadzenText TextStyle="TextStyle.Caption" Text="Access Count" />
+            <RadzenText Text="@($"{CollectionInfo.AccessCount:N0}")" />
+        </RadzenColumn>
+        <RadzenColumn>
+            <RadzenText TextStyle="TextStyle.Caption" Text="Document Count" />
+            <RadzenText Text="@($"{CollectionInfo.DocumentCount:N0}")" />
+        </RadzenColumn>
+        <RadzenColumn>
+            <RadzenText TextStyle="TextStyle.Caption" Text="Size" />
+            <RadzenText Text="@CollectionInfo.Size.ToReadableByteSize()" />
+        </RadzenColumn>
+    </RadzenRow>
+
+    <RadzenDataGrid Data="_model" TItem="IndexModel">
+        <Columns>
+            <RadzenDataGridColumn Title="Name" Property="@nameof(IndexModel.Name)" />
+            <RadzenDataGridColumn Title="IsUnique">
+                <Template>
+                    @if (context.Current?.IsUnique == context.Defined?.IsUnique)
+                    {
+                        @context.Current?.IsUnique
+                    }
+                    else
+                    {
+                        <RadzenText Text="@($"Current: {context?.Current?.IsUnique}")" />
+                        <RadzenText Text="@($"Defined: {context?.Defined?.IsUnique}")" />
+                    }
+                </Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn Title="Fields">
+                <Template>
+                    @if (context.EqualFields)
+                    {
+                        @string.Join(", ", context.Current?.Fields ?? [])
+                    }
+                    else
+                    {
+                        <RadzenText Text="@($"Current: {string.Join(", ", context.Current?.Fields ?? [])}")" />
+                        <RadzenText Text="@($"Defined: {string.Join(", ", context.Defined?.Fields ?? [])}")" />
+                    }
+                </Template>
+            </RadzenDataGridColumn>
+            @* <RadzenDataGridColumn>
+                <Template>
+                    TODO: Find records that violates the unique index, so that it cannot be created.
+                </Template>
+            </RadzenDataGridColumn> *@
+        </Columns>
+    </RadzenDataGrid>
+
+    <RadzenStack Orientation="Orientation.Horizontal" Gap="1rem">
+        <ActionButton Text="Drop index" Click="DropIndex" Enabled="@CanUpdate" />
+        <ActionButton Text="Restore Index" Click="RestoreIndex" Enabled="@CanUpdate" />
+    </RadzenStack>
+
+</RadzenStack>
+
+@code {
+    private IndexModel[] _model;
+
+    [Parameter]
+    public CollectionInfo CollectionInfo { get; set; }
+
+    private bool CanUpdate => (CollectionInfo.Registration == Registration.Dynamic && CollectionInfo.Context != null)
+                              || (CollectionInfo.Registration == Registration.Static);
+
+    protected override Task OnParametersSetAsync()
+    {
+        BuildModel();
+
+        return base.OnParametersSetAsync();
+    }
+
+    private async Task DropIndex()
+    {
+        try
+        {
+            var context = BuildDatabaseContext();
+            await DatabaseMonitor.DropIndexAsync(context);
+
+            NotificationService.Notify(new NotificationMessage { Summary = "Indices has been dropped." });
+        }
+        catch (Exception e)
+        {
+            NotificationService.Notify(new NotificationMessage { Summary = e.Message, Detail = $"{e.StackTrace}", Severity = NotificationSeverity.Error });
+        }
+
+        await ReloadData();
+    }
+
+    private async Task RestoreIndex()
+    {
+        try
+        {
+            var context = BuildDatabaseContext();
+            await DatabaseMonitor.RestoreIndexAsync(context);
+
+            NotificationService.Notify(new NotificationMessage { Summary = "Indices has been restored." });
+        }
+        catch (Exception e)
+        {
+            NotificationService.Notify(new NotificationMessage { Summary = e.Message, Detail = $"{e.StackTrace}", Severity = NotificationSeverity.Error });
+        }
+
+        await ReloadData();
+    }
+
+    private async Task ReloadData()
+    {
+        var response = await DatabaseMonitor.GetInstancesAsync().SingleAsync(x => x.CollectionName == CollectionInfo.CollectionName);
+        CollectionInfo = response;
+        BuildModel();
+        StateHasChanged();
+    }
+
+    private void BuildModel()
+    {
+        var names = CollectionInfo.Index.Current.Select(x => x.Name)
+            .Union(CollectionInfo.Index.Defined.Select(x => x.Name));
+        _model = names.Select(x =>
+        {
+            var current = CollectionInfo.Index.Current.SingleOrDefault(y => y.Name == x);
+            var defined = CollectionInfo.Index.Defined.SingleOrDefault(y => y.Name == x);
+
+            var equalFields = (current?.Fields.Order().ToArray() ?? []).SequenceEqual(defined?.Fields.Order().ToArray() ?? []);
+
+            return new IndexModel
+            {
+                Name = x,
+                Current = current,
+                Defined = defined,
+                EqualFields = equalFields
+            };
+        }).ToArray();
+    }
+
+    private DatabaseContext BuildDatabaseContext()
+    {
+        DatabaseContext context;
+        switch (CollectionInfo.Registration)
+        {
+            case Registration.NotInCode:
+                throw new NotSupportedException();
+            case Registration.Static:
+                context = new DatabaseContext { CollectionName = CollectionInfo.CollectionName, ConfigurationName = CollectionInfo.ConfigurationName };
+                break;
+            case Registration.Dynamic:
+                context = CollectionInfo.Context;
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(CollectionInfo.Registration), $"Unknown {nameof(CollectionInfo.Registration)} {CollectionInfo.Registration}.");
+        }
+
+        return context;
+    }
+}

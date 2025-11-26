@@ -83,10 +83,10 @@ else
 
     private async Task ShowIndexDialog(CollectionInfo context)
     {
-        var result = await DialogService.OpenAsync<IndexDialog>("Index", new Dictionary<string, object>
+        var result = await DialogService.OpenAsync<CollectionDialog>(context.CollectionName, new Dictionary<string, object>
         {
             { "CollectionInfo", context }
-        }, new DialogOptions());
+        }, new DialogOptions { Resizable = true, Draggable = true });
 
         if (result != true) return;
 
