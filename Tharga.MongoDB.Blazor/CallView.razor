@@ -1,0 +1,23 @@
+﻿@using Tharga.Blazor
+@inject IDatabaseMonitor DatabaseMonitor;
+
+@if (_model == null)
+{
+    <Loading />
+}
+else
+{
+    <p>AAA</p>
+}
+
+@code {
+    private CallInfo[] _model;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _model = DatabaseMonitor.GetCalls().ToArray();
+
+        await base.OnParametersSetAsync();
+    }
+
+}

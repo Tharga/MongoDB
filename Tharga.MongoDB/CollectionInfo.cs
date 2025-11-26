@@ -2,6 +2,10 @@
 
 namespace Tharga.MongoDB;
 
+public record CallInfo
+{
+}
+
 public record CollectionInfo
 {
     public required string ConfigurationName { get; init; }

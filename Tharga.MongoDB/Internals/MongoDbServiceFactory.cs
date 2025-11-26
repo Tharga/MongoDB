@@ -26,6 +26,8 @@ internal class MongoDbServiceFactory : IMongoDbServiceFactory
 
     public event EventHandler<ConfigurationAccessEventArgs> ConfigurationAccessEvent;
     public event EventHandler<CollectionAccessEventArgs> CollectionAccessEvent;
+    public event EventHandler<CallStartEventArgs> CallStartEvent;
+    public event EventHandler<CallEndEventArgs> CallEndEvent;
 
     public IMongoDbService GetMongoDbService(Func<DatabaseContext> databaseContextLoader)
     {
@@ -64,5 +66,15 @@ internal class MongoDbServiceFactory : IMongoDbServiceFactory
         {
             _lock.Release();
         }
+    }
+
+    public void OnCallStart(object sender, CallStartEventArgs e)
+    {
+        CallStartEvent?.Invoke(sender, e);
+    }
+
+    public void OnCallEnd(object sender, CallEndEventArgs e)
+    {
+        CallEndEvent?.Invoke(sender, e);
     }
 }

@@ -11,4 +11,5 @@ public interface IDatabaseMonitor
     Task DropIndexAsync(DatabaseContext databaseContext);
     Task RestoreIndexAsync(DatabaseContext databaseContext);
     Task TouchAsync(CollectionInfo collectionInfo);
+    IEnumerable<CallInfo> GetCalls();
 }
