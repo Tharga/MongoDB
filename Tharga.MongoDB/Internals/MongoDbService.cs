@@ -135,10 +135,7 @@ internal class MongoDbService : IMongoDbService
             }
 
             var dbName = mongoDatabase.DatabaseNamespace.DatabaseName;
-            var server = _mongoUrl.Url.TrimEnd(dbName);
-            server = server.Trim('/');
-            var p = server.LastIndexOf("//");
-            server = server.Substring(p + 2);
+            var server = ToServerName(dbName);
 
             yield return new CollectionMeta
             {
@@ -157,6 +154,15 @@ internal class MongoDbService : IMongoDbService
                     .ToArray(),
             };
         }
+    }
+
+    private string ToServerName(string dbName)
+    {
+        var server = _mongoUrl.Url.TrimEnd(dbName);
+        server = server.Trim('/');
+        var p = server.LastIndexOf("//");
+        server = server.Substring(p + 2);
+        return server;
     }
 
     public async Task<bool> DoesCollectionExist(string name)

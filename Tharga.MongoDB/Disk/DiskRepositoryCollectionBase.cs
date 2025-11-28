@@ -862,9 +862,12 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             InvokeAction(new ActionEventArgs.ActionData { Operation = nameof(FetchCollectionAsync), Message = "Starting to initiate.", Level = LogLevel.Trace });
             RegisterTypes();
 
-            var virtualExists = await GetVirtualCount(collection) != 0;
-            var exists = await _mongoDbService.DoesCollectionExist(ProtectedCollectionName);
-            if (virtualExists != exists) Debugger.Break();
+            var exists = await GetVirtualCount(collection) != 0;
+            if (Debugger.IsAttached)
+            {
+                var dbExists = await _mongoDbService.DoesCollectionExist(ProtectedCollectionName);
+                if (exists != dbExists) Debugger.Break();
+            }
 
             if (exists)
             {
@@ -1050,9 +1053,12 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         if (!DropEmptyCollections) return;
         if (CreateCollectionStrategy != CreateStrategy.DropEmpty) return;
 
-        var virtualAny = await GetVirtualCount(collection) != 0;
-        var any = (await collection.CountDocumentsAsync(x => true, new CountOptions { Limit = 1 })) != 0;
-        if (any != virtualAny) Debugger.Break();
+        var any = await GetVirtualCount(collection) != 0;
+        if (Debugger.IsAttached)
+        {
+            var dbAny = (await collection.CountDocumentsAsync(x => true, new CountOptions { Limit = 1 })) != 0;
+            if (dbAny != any) Debugger.Break();
+        }
 
         if (any) return;
 
