@@ -53,7 +53,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
                 FirstAccessed = now,
                 LastAccessed = now,
                 AccessCount = 1,
-                Server = e.Server,
+                Server = e.Server
             }, (_, item) =>
             {
                 item.LastAccessed = now;
@@ -69,6 +69,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
                 CollectionName = e.CollectionName,
                 FunctionName = e.FunctionName
             });
+            //TODO: Remove old calls, just keep a maximum number of 1000 calls or so.
         };
         _mongoDbServiceFactory.CallEndEvent += (_, e) =>
         {
@@ -100,7 +101,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
             .Distinct()
             .ToArray();
 
-        var collectionsFromCode = GetStaticCollectionsFromCode().ToDictionary(x => (x.ConfigurationName ?? _options.DefaultConfigurationName.Value, x.CollectionName), x => x);
+        var collectionsFromCode = await GetStaticCollectionsFromCode().ToDictionaryAsync(x => (x.ConfigurationName ?? _options.DefaultConfigurationName.Value, x.CollectionName), x => x);
         var accessedCollections = _accessedCollections;
         var dynamicCollectionsFromCode = GetDynamicRegistrations().ToDictionary(x => (x.Type), x => x);
 
@@ -125,7 +126,8 @@ internal class DatabaseMonitor : IDatabaseMonitor
                         {
                             Current = item.Index.Current,
                             Defined = reg.DefinedIndices.ToArray()
-                        }
+                        },
+                        DocumentCount = new DocumentCount { Count = item.DocumentCount, Virtual = reg.VirtualCount }
                     };
                     //TODO: Append information about registered indexes (so that we can compare with actual indexes)
                 }
@@ -137,13 +139,16 @@ internal class DatabaseMonitor : IDatabaseMonitor
                 //Map Accessed collections
                 if (accessedCollections.TryGetValue((inDatabase.ConfigurationName, inDatabase.CollectionName), out var t))
                 {
+                    var cnt = InitiationLibrary.GetVirtualCount(inDatabase.Server, inDatabase.DatabaseName, inDatabase.CollectionName);
+
                     item = item with
                     {
                         Context = item.Context ?? t.DatabaseContext,
                         Source = item.Source | Source.Monitor,
                         AccessCount = t.AccessCount,
                         Types = item.Types.Union([t.EntityType.Name]).ToArray(),
-                        CollectionTypeName = item.CollectionTypeName, // ?? t.CollectionType.Name
+                        CollectionTypeName = item.CollectionTypeName,
+                        DocumentCount = new DocumentCount { Count = item.DocumentCount, Virtual = cnt }
                     };
                 }
                 else
@@ -170,7 +175,8 @@ internal class DatabaseMonitor : IDatabaseMonitor
                             {
                                 Current = item.Index.Current,
                                 Defined = dyn.DefinedIndices.ToArray()
-                            }
+                            },
+                            //DocumentCount = new DocumentCount { Count = item.DocumentCount, Virtual = dyn.VirtualCount }
                         };
                         //TODO: Append information about registered indexes (so that we can compare with actual indexes)
                     }
@@ -217,7 +223,6 @@ internal class DatabaseMonitor : IDatabaseMonitor
         else
         {
             var col = collections.Single();
-            //var colType = _mongoDbInstance.RegisteredCollections.FirstOrDefault(x => x.Key.Name == col.CollectionTypeName).Key;
             var colTypes = _mongoDbInstance.RegisteredCollections.Where(x => x.Key.Name == col.CollectionTypeName).ToArray();
             var colType = colTypes.Single().Key;
 
@@ -232,32 +237,9 @@ internal class DatabaseMonitor : IDatabaseMonitor
         var indexMethod = collectionType.GetMethod("AssureIndex", BindingFlags.NonPublic | BindingFlags.Instance);
         if (indexMethod == null) throw new NullReferenceException("Cannot find 'AssureIndex' method.");
 
-        //var task = (Task)indexMethod.Invoke(collection, [collectionInstance, true, true])!;
-        //await task;
-
-        //try
-        //{
-        //    var result = indexMethod.Invoke(collection, new object[] { collectionInstance, true, true });
-
-        //    if (result is Task task)
-        //    {
-        //        await task;   // <-- correctly awaited
-        //    }
-        //    else
-        //    {
-        //        throw new InvalidOperationException(
-        //            $"AssureIndex returned {result?.GetType().Name ?? "null"} instead of Task");
-        //    }
-        //}
-        //catch (TargetInvocationException ex)
-        //{
-        //    // Surface the real exception from inside AssureIndex
-        //    throw ex.InnerException ?? ex;
-        //}
-
         try
         {
-            var result = indexMethod.Invoke(collection, new object[] { collectionInstance, true, true });
+            var result = indexMethod.Invoke(collection, [collectionInstance, true, true]);
             await (Task)result!;
         }
         catch (Exception ex)
@@ -267,17 +249,6 @@ internal class DatabaseMonitor : IDatabaseMonitor
             Console.WriteLine(ex.InnerException);
             throw;
         }
-
-        //try
-        //{
-        //    var task = (Task)indexMethod.Invoke(collection, new object[] { collectionInstance, true, true })!;
-        //    await task;
-        //}
-        //catch (TargetInvocationException ex)
-        //{
-        //    // THIS is the real error
-        //    throw ex.InnerException ?? ex;
-        //}
     }
 
     public async Task TouchAsync(CollectionInfo collectionInfo)
@@ -319,12 +290,6 @@ internal class DatabaseMonitor : IDatabaseMonitor
 
         if (collectionMethod == null) throw new NullReferenceException("Cannot find 'GetCollection' method.");
         var collectionInstance = collectionMethod?.Invoke(collection, []);
-
-        //var indexMethod = collectionType.GetMethod("AssureIndex", BindingFlags.NonPublic | BindingFlags.Instance);
-        //if (indexMethod == null) throw new NullReferenceException("Cannot find 'AssureIndex' method.");
-
-        //var task = (Task)indexMethod.Invoke(collection, [collectionInstance, true, true])!;
-        //await task;
     }
 
     public IEnumerable<CallInfo> GetCalls()
@@ -332,7 +297,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
         return _calls.Values;
     }
 
-    private IEnumerable<StatColInfo> GetStaticCollectionsFromCode()
+    private async IAsyncEnumerable<StatColInfo> GetStaticCollectionsFromCode()
     {
         foreach (var registeredCollection in _mongoDbInstance.RegisteredCollections)
         {
@@ -361,7 +326,8 @@ internal class DatabaseMonitor : IDatabaseMonitor
                     Types = [genericParam?.Name],
                     CollectionTypeName = registeredCollection.Key.Name,
                     Registration = Registration.Static,
-                    DefinedIndices = instance.BuildIndexMetas().ToArray()
+                    DefinedIndices = instance.BuildIndexMetas().ToArray(),
+                    VirtualCount = instance.VirtualCount
                 };
 
                 yield return item;
@@ -397,7 +363,8 @@ internal class DatabaseMonitor : IDatabaseMonitor
                         Source = Source.Registration,
                         Type = genericParam.Name,
                         CollectionTypeName = registeredCollection.Key.Name,
-                        DefinedIndices = collection.BuildIndexMetas().ToArray()
+                        DefinedIndices = collection.BuildIndexMetas().ToArray(),
+                        VirtualCount = collection?.VirtualCount
                     };
 
                     yield return item;
@@ -445,10 +412,10 @@ internal class DatabaseMonitor : IDatabaseMonitor
             DatabaseName = collection.DatabaseName,
             CollectionName = collection.CollectionName,
             Source = Source.Database,
+            DocumentCount = new DocumentCount { Count = collection.DocumentCount },
 
             //--> Revisit
 
-            DocumentCount = collection.DocumentCount,
             Size = collection.Size,
             Types = collection.Types,
             Index = new IndexInfo
@@ -464,6 +431,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
         public required Source Source { get; init; }
         public required string CollectionTypeName { get; init; }
         public required IndexMeta[] DefinedIndices { get; init; }
+        public required long? VirtualCount { get; init; }
     }
 
     internal record StatColInfo : ColInfo

@@ -1,4 +1,5 @@
-﻿@using Tharga.Blazor.Framework.Buttons
+﻿@using Tharga.Blazor
+@using Tharga.Blazor.Framework.Buttons
 @using Tharga.MongoDB
 @using Tharga.Toolkit
 @inject IDatabaseMonitor DatabaseMonitor;
@@ -6,7 +7,7 @@
 
 @if (_model == null)
 {
-    <RadzenProgressBarCircular Size="ProgressBarCircularSize.Small" />
+    <Loading />
 }
 else
 {
@@ -14,36 +15,32 @@ else
                     AllowFiltering="false" FilterMode="FilterMode.Simple" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
                     AllowSorting="true"
                     AllowPaging="true" PageSize="8" PageSizeOptions="[8, 16, 32, 64]"
-                    ShowPagingSummary="true" PagingSummaryFormat="@("{2:N0} collections, page {0} of {1}")">
+                    ShowPagingSummary="true" PagingSummaryFormat="@("{2:N0} collections, page {0} of {1}")"
+                    CellRender="@OnCellRender">
         <Columns>
             <RadzenDataGridColumn Title="Configuration" Property="@nameof(CollectionInfo.ConfigurationName)" Visible="@_showConfiguration"/>
-            @* <RadzenDataGridColumn Title="Server" Property="@nameof(CollectionInfo.Server)" /> *@
-            <RadzenDataGridColumn Title="Database" Property="@nameof(CollectionInfo.DatabaseName)"/>
+            <RadzenDataGridColumn Title="Database" Property="@nameof(CollectionInfo.DatabaseName)" />
             <RadzenDataGridColumn Title="Collection" Property="@nameof(CollectionInfo.CollectionName)"/>
-            @* <RadzenDataGridColumn Title="Context" Sortable="false">
-            <Template>
-                @if (context.Context != null)
-                {
-                    @($"{context.Context.ConfigurationName.Value}/{context.Context.DatabasePart}/{context.Context.CollectionName}")
-                }
-            </Template>
-        </RadzenDataGridColumn> *@
-            @* <RadzenDataGridColumn Title="Uri" Property="@nameof(CollectionInfo.Uri)" /> *@
             <RadzenDataGridColumn Title="Source" Property="@nameof(CollectionInfo.Source)"/>
             <RadzenDataGridColumn Title="Registration" Property="@nameof(CollectionInfo.Registration)"/>
-            @* <RadzenDataGridColumn Title="Collection Type" Property="@nameof(CollectionInfo.CollectionTypeName)" /> *@
             <RadzenDataGridColumn Title="AccessCount" Property="@nameof(CollectionInfo.AccessCount)" TextAlign="TextAlign.Right" FormatString="{0:N0}"/>
-            <RadzenDataGridColumn Title="DocumentCount" Property="@nameof(CollectionInfo.DocumentCount)" TextAlign="TextAlign.Right" FormatString="{0:N0}"/>
+            <RadzenDataGridColumn Title="DocumentCount" Property="@nameof(CollectionInfo.DocumentCount)" TextAlign="TextAlign.Right" CssClass="count">
+                <Template>
+                    @if (context.DocumentCount.IsValid)
+                    {
+                        <RadzenText Text="@($"{context.DocumentCount.Count:N0}")"/>
+                    }
+                    else
+                    {
+                        <RadzenText Text="@($"{context.DocumentCount.Count:N0} (Virtual count is {context.DocumentCount.Virtual:N0})")"/>
+                    }
+                </Template>
+            </RadzenDataGridColumn>
             <RadzenDataGridColumn Title="Size" Property="@nameof(CollectionInfo.Size)" TextAlign="TextAlign.Right">
                 <Template>
                     @context.Size.ToReadableByteSize()
                 </Template>
             </RadzenDataGridColumn>
-            @* <RadzenDataGridColumn Title="Types" Sortable="false">
-                <Template>
-                    @string.Join(", ", context.Types)
-                </Template>
-            </RadzenDataGridColumn> *@
             <RadzenDataGridColumn Title="Index" Sortable="false" Width="120px;">
                 <Template>
                     @if (context.Index.Defined != null)
@@ -97,5 +94,32 @@ else
     {
         _model = await DatabaseMonitor.GetInstancesAsync(FullDatabaseScan).ToArrayAsync();
         StateHasChanged();
+    }
+
+    void OnCellRender(DataGridCellRenderEventArgs<CollectionInfo> args)
+    {
+        var cssClass = args.Column.CssClass;
+        if (string.IsNullOrEmpty(cssClass) || !cssClass.StartsWith("count")) return;
+
+        string color = null;
+        if (!args.Data.DocumentCount.IsValid)
+        {
+            color = "pink";
+        }
+        else if (args.Data.DocumentCount.Virtual == null)
+        {
+            color = "lightyellow";
+        }
+
+        if (color is null) return;
+
+        if (args.Attributes.TryGetValue("style", out var existing))
+        {
+            args.Attributes["style"] = existing + $"background-color: {color};";
+        }
+        else
+        {
+            args.Attributes.Add("style", $"background-color: {color};");
+        }
     }
 }

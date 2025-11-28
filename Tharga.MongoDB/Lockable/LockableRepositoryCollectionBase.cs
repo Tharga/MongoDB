@@ -17,14 +17,12 @@ namespace Tharga.MongoDB.Lockable;
 public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollectionBase<TEntity, TKey>, ILockableRepositoryCollection<TEntity, TKey>
     where TEntity : LockableEntityBase<TKey>
 {
-    private readonly IMongoDbServiceFactory _mongoDbServiceFactory;
     private DiskRepositoryCollectionBase<TEntity, TKey> _disk;
     private static readonly AutoResetEvent _releaseEvent = new(false);
 
     protected LockableRepositoryCollectionBase(IMongoDbServiceFactory mongoDbServiceFactory, ILogger<LockableRepositoryCollectionBase<TEntity, TKey>> logger = null, DatabaseContext databaseContext = null)
         : base(mongoDbServiceFactory, logger, databaseContext)
     {
-        _mongoDbServiceFactory = mongoDbServiceFactory;
     }
 
     internal override IRepositoryCollection<TEntity, TKey> BaseCollection => Disk;
@@ -43,6 +41,7 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
 
     protected virtual TimeSpan DefaultTimeout { get; init; } = TimeSpan.FromSeconds(30);
     protected virtual bool RequireActor => true;
+    public override long? VirtualCount => Disk.VirtualCount;
 
     public override IAsyncEnumerable<TEntity> GetAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default)
     {

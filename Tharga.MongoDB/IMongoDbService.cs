@@ -1,8 +1,9 @@
-﻿using System;
+﻿using Microsoft.Extensions.Logging;
+using MongoDB.Driver;
+using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using Microsoft.Extensions.Logging;
-using MongoDB.Driver;
+using Tharga.MongoDB.Configuration;
 
 namespace Tharga.MongoDB;
 
@@ -26,7 +27,9 @@ public interface IMongoDbService
     int? GetResultLimit();
     bool GetAutoClean();
     bool GetCleanOnStartup();
+    [Obsolete($"Use {nameof(CreateCollectionStrategy)} instead.")]
     bool DropEmptyCollections();
+    CreateStrategy CreateCollectionStrategy();
     ValueTask<string> AssureFirewallAccessAsync(bool force = false);
     LogLevel GetExecuteInfoLogLevel();
     bool ShouldAssureIndex();

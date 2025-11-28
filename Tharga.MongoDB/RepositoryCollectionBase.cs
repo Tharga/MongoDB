@@ -1,10 +1,11 @@
-﻿using System;
+﻿using Microsoft.Extensions.Logging;
+using MongoDB.Driver;
+using System;
 using System.Collections.Generic;
 using System.Linq.Expressions;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.Extensions.Logging;
-using MongoDB.Driver;
+using Tharga.MongoDB.Configuration;
 using Tharga.MongoDB.Internals;
 
 namespace Tharga.MongoDB;
@@ -17,6 +18,7 @@ public abstract class RepositoryCollectionBase
     internal abstract string DatabaseName { get; }
     public abstract string CollectionName { get; }
     public abstract string ConfigurationName { get; }
+    public abstract long? VirtualCount { get; }
 
     internal void InvokeAction(ActionEventArgs.ActionData actionData, ActionEventArgs.ContextData contextData)
     {
@@ -50,7 +52,6 @@ public abstract class RepositoryCollectionBase<TEntity, TKey> : RepositoryCollec
     internal virtual IRepositoryCollection<TEntity, TKey> BaseCollection => this;
     private string DefaultCollectionName => typeof(TEntity).Name;
     protected string ProtectedCollectionName => CollectionName.ProtectCollectionName();
-
     internal override string ServerName => _mongoDbService.GetDatabaseHostName();
     internal override string DatabaseName => _mongoDbService.GetDatabaseName();
     public override string CollectionName => _databaseContext?.CollectionName ?? DefaultCollectionName;
@@ -58,7 +59,9 @@ public abstract class RepositoryCollectionBase<TEntity, TKey> : RepositoryCollec
     public override string ConfigurationName => _databaseContext?.ConfigurationName.Value;
     public virtual bool AutoClean => _mongoDbService.GetAutoClean();
     public virtual bool CleanOnStartup => _mongoDbService.GetCleanOnStartup();
+    [Obsolete($"Use {nameof(CreateCollectionStrategy)} instead.")]
     public virtual bool DropEmptyCollections => _mongoDbService.DropEmptyCollections();
+    public virtual CreateStrategy CreateCollectionStrategy => _mongoDbService.CreateCollectionStrategy();
     public virtual int? ResultLimit => _mongoDbService.GetResultLimit();
     public virtual IEnumerable<CreateIndexModel<TEntity>> Indices => null;
     internal virtual IEnumerable<CreateIndexModel<TEntity>> CoreIndices => null;

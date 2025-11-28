@@ -35,7 +35,14 @@
         </RadzenColumn>
         <RadzenColumn>
             <RadzenText TextStyle="TextStyle.Caption" Text="Document Count" />
-            <RadzenText Text="@($"{CollectionInfo.DocumentCount:N0}")" />
+            @if (CollectionInfo.DocumentCount.IsValid)
+            {
+                <RadzenText Text="@($"{CollectionInfo.DocumentCount.Count:N0}")" />
+            }
+            else
+            {
+                <RadzenText Text="@($"{CollectionInfo.DocumentCount.Count:N0} (Virtual count is {CollectionInfo.DocumentCount.Virtual:N0})")" />
+            }
         </RadzenColumn>
         <RadzenColumn>
             <RadzenText TextStyle="TextStyle.Caption" Text="Size" />

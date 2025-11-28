@@ -1,4 +1,8 @@
-﻿using System;
+﻿using Microsoft.Extensions.Logging;
+using MongoDB.Bson;
+using MongoDB.Bson.Serialization;
+using MongoDB.Driver;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -6,10 +10,7 @@ using System.Linq.Expressions;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.Extensions.Logging;
-using MongoDB.Bson;
-using MongoDB.Bson.Serialization;
-using MongoDB.Driver;
+using Tharga.MongoDB.Configuration;
 using Tharga.MongoDB.Internals;
 
 namespace Tharga.MongoDB.Disk;
@@ -19,7 +20,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 {
     private readonly SemaphoreSlim _lock = new(1, 1);
     private IMongoCollection<TEntity> _collection;
-    private readonly List<(IndexFailOperation Operation, string Name)> _failedIndices = new();
+    //private readonly List<(IndexFailOperation Operation, string Name)> _failedIndices = new();
 
     /// <summary>
     /// Override this constructor for static collections.
@@ -41,6 +42,8 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         : base(mongoDbServiceFactory, logger, databaseContext)
     {
     }
+
+    public override long? VirtualCount => InitiationLibrary.GetVirtualCount(ServerName, DatabaseName, ProtectedCollectionName);
 
     private IMongoCollection<TEntity> Collection => _collection ??= Task.Run(async () =>
     {
@@ -76,7 +79,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         }
     }).Result;
 
-    protected virtual async Task<T> Execute<T>(string functionName, Func<Task<T>> action, bool assureIndex)
+    protected virtual async Task<T> Execute<T>(string functionName, Func<Task<T>> action, Operation operation)
     {
         var sw = new Stopwatch();
         sw.Start();
@@ -88,9 +91,23 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         {
             ((MongoDbServiceFactory)_mongoDbServiceFactory).OnCallStart(this, new CallStartEventArgs(callKey, CollectionName, functionName));
 
-            if (assureIndex)
+            switch (operation)
             {
-                await AssureIndex(Collection);
+                case Operation.Get:
+                    break;
+                case Operation.Add:
+                    await AssureIndex(Collection);
+                    break;
+                case Operation.Update:
+                case Operation.AddOrUpdate:
+                    await AssureIndex(Collection);
+                    ArmRecheckInvalidIndex();
+                    break;
+                case Operation.Remove:
+                    ArmRecheckInvalidIndex();
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(operation), operation, null);
             }
 
             var result = await action.Invoke();
@@ -120,6 +137,11 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         {
             ((MongoDbServiceFactory)_mongoDbServiceFactory).OnCallEnd(this, new CallEndEventArgs(callKey, sw.Elapsed, exception));
         }
+    }
+
+    private void ArmRecheckInvalidIndex()
+    {
+        InitiationLibrary.RecheckInitiateIndex(ServerName, DatabaseName, ProtectedCollectionName);
     }
 
     public override async IAsyncEnumerable<TEntity> GetAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
@@ -162,7 +184,6 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         var sw = new Stopwatch();
         sw.Start();
 
-        //var o = options == null ? null : new FindOptions<TEntity, TEntity> { Projection = options.Projection, Sort = options.Sort, Limit = options.Limit, Skip = options.Skip };
         var o = BuildOptions(options);
         var cursor = await FindAsync(Collection, filter, cancellationToken, o);
 
@@ -253,40 +274,6 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         sw.Stop();
         _logger?.Log(_executeInfoLogLevel, $"Executed {{repositoryType}} for {{CollectionName}} took {{elapsed}} ms and returned {{itemCount}} items. [action: Database, operation: {nameof(GetAsync)}]", "DiskRepository", CollectionName, sw.Elapsed.TotalMilliseconds, count);
         InvokeAction(new ActionEventArgs.ActionData { Operation = $"{nameof(GetProjectionAsync)}<{typeof(T).Name}>", Elapsed = sw.Elapsed, ItemCount = count });
-
-        //return await Execute($"{nameof(GetProjectionAsync)}<{typeof(T).Name}>", async () =>
-        //{
-        //    var filter = Builders<T>.Filter.And(new ExpressionFilterDefinition<T>(predicate ?? (_ => true)));
-
-        //    var projection = BuildProjection<T>();
-
-        //    var collection = await GetCollectionAsync<T>();
-        //    //var result = collection.Find(filter).Sort(options?.Sort).Project(projection).Limit(2);
-        //    //var findFluent = result.ToEnumerable().Select(x => BsonSerializer.Deserialize<T>(x)).ToAsyncEnumerable();
-
-        //    //T item;
-        //    //switch (options?.Mode)
-        //    //{
-        //    //    case null:
-        //    //    case EMode.SingleOrDefault:
-        //    //        item = await findFluent.SingleOrDefaultAsync(cancellationToken: cancellationToken);
-        //    //        break;
-        //    //    case EMode.Single:
-        //    //        item = await findFluent.SingleAsync(cancellationToken: cancellationToken);
-        //    //        break;
-        //    //    case EMode.FirstOrDefault:
-        //    //        item = await findFluent.FirstOrDefaultAsync(cancellationToken: cancellationToken);
-        //    //        break;
-        //    //    case EMode.First:
-        //    //        item = await findFluent.FirstAsync(cancellationToken: cancellationToken);
-        //    //        break;
-        //    //    default:
-        //    //        throw new ArgumentOutOfRangeException();
-        //    //}
-
-        //    //return item;
-        //}, false);
-
     }
 
     public override async Task<Result<TEntity, TKey>> QueryAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default)
@@ -423,7 +410,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             var filter = Builders<TEntity>.Filter.Eq(x => x.Id, id);
             var item = await Collection.Find(filter).Limit(1).SingleOrDefaultAsync(cancellationToken);
             return await CleanEntityAsync(item);
-        }, false);
+        }, Operation.Get);
     }
 
     public override Task<TEntity> GetOneAsync(Expression<Func<TEntity, bool>> predicate = null, OneOption<TEntity> options = null, CancellationToken cancellationToken = default)
@@ -458,7 +445,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                     throw new ArgumentOutOfRangeException();
             }
             return await CleanEntityAsync(item);
-        }, false);
+        }, Operation.Get);
     }
 
     public override async Task<T> GetOneAsync<T>(Expression<Func<T, bool>> predicate = null, OneOption<T> options = null, CancellationToken cancellationToken = default)
@@ -492,7 +479,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                     throw new ArgumentOutOfRangeException();
             }
             return await CleanEntityAsync(collection, item);
-        }, false);
+        }, Operation.Get);
     }
 
     public override async Task<T> GetOneProjectionAsync<T>(Expression<Func<T, bool>> predicate = null, OneOption<T> options = null, CancellationToken cancellationToken = default)
@@ -528,7 +515,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             }
 
             return item;
-        }, false);
+        }, Operation.Get);
     }
 
     private static ProjectionDefinition<T> BuildProjection<T>()
@@ -550,8 +537,9 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         await Execute(nameof(AddAsync), async () =>
         {
             await Collection.InsertOneAsync(entity);
+            InitiationLibrary.IncreaseCount(ServerName, DatabaseName, ProtectedCollectionName);
             return true;
-        }, true);
+        }, Operation.Add);
     }
 
     public override async Task<bool> TryAddAsync(TEntity entity)
@@ -561,13 +549,14 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             try
             {
                 await Collection.InsertOneAsync(entity);
+                InitiationLibrary.IncreaseCount(ServerName, DatabaseName, ProtectedCollectionName);
                 return true;
             }
             catch (MongoWriteException)
             {
                 return false;
             }
-        }, true);
+        }, Operation.Add);
     }
 
     public override async Task AddManyAsync(IEnumerable<TEntity> entities)
@@ -575,8 +564,9 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         await Execute(nameof(AddManyAsync), async () =>
         {
             await Collection.InsertManyAsync(entities);
+            InitiationLibrary.IncreaseCount(ServerName, DatabaseName, ProtectedCollectionName);
             return true;
-        }, true);
+        }, Operation.Add);
     }
 
     public override async Task<EntityChangeResult<TEntity>> AddOrReplaceAsync(TEntity entity)
@@ -585,10 +575,11 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         {
             var filter = Builders<TEntity>.Filter.Eq(x => x.Id, entity.Id);
             var current = await Collection.FindOneAndReplaceAsync(filter, entity);
-            TEntity before = default;
-            if (current == default)
+            TEntity before = null;
+            if (current == null)
             {
                 await Collection.InsertOneAsync(entity);
+                InitiationLibrary.IncreaseCount(ServerName, DatabaseName, ProtectedCollectionName);
             }
             else
             {
@@ -596,7 +587,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             }
 
             return new EntityChangeResult<TEntity>(before, entity);
-        }, true);
+        }, Operation.AddOrUpdate);
     }
 
     public override Task<EntityChangeResult<TEntity>> ReplaceOneAsync(TEntity entity, OneOption<TEntity> options = null)
@@ -638,13 +629,13 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                     throw new ArgumentOutOfRangeException();
             }
 
-            if (item == null) return new EntityChangeResult<TEntity>(default, (TEntity)default);
+            if (item == null) return new EntityChangeResult<TEntity>(null, (TEntity)null);
 
             filter = Builders<TEntity>.Filter.Eq(x => x.Id, item.Id);
             var before = await Collection.FindOneAndReplaceAsync(filter, entity);
             return new EntityChangeResult<TEntity>(before, entity);
 
-        }, true);
+        }, Operation.Update);
     }
 
     public override async Task<long> UpdateAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update)
@@ -653,7 +644,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         {
             var result = await Collection.UpdateManyAsync(filter, update);
             return result.ModifiedCount;
-        }, true);
+        }, Operation.Update);
     }
 
     public override async Task<EntityChangeResult<TEntity>> UpdateOneAsync(TKey id, UpdateDefinition<TEntity> update)
@@ -663,12 +654,12 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             var filter = Builders<TEntity>.Filter.Eq(x => x.Id, id);
             var options = new FindOneAndUpdateOptions<TEntity> { ReturnDocument = ReturnDocument.Before };
             var before = await Collection.FindOneAndUpdateAsync(filter, update, options);
-            if (before == null) return new EntityChangeResult<TEntity>(default, default(TEntity));
+            if (before == null) return new EntityChangeResult<TEntity>(null, default(TEntity));
             return new EntityChangeResult<TEntity>(before, async () =>
             {
                 return await Collection.Find(x => x.Id.Equals(id)).SingleAsync();
             });
-        }, true);
+        }, Operation.Update);
     }
 
     [Obsolete("Use UpdateOneAsync with 'OneOption' instead.")]
@@ -679,12 +670,12 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             options ??= new FindOneAndUpdateOptions<TEntity> { ReturnDocument = ReturnDocument.Before };
             if (options.ReturnDocument != ReturnDocument.Before) throw new InvalidOperationException($"The ReturnDocument option has to be set to {ReturnDocument.Before}. To get the '{ReturnDocument.After}', call method '{nameof(EntityChangeResult<TEntity>.GetAfterAsync)}()' on the result.");
             var before = await Collection.FindOneAndUpdateAsync(filter, update, options);
-            if (before == null) return new EntityChangeResult<TEntity>(default, default(TEntity));
+            if (before == null) return new EntityChangeResult<TEntity>(null, default(TEntity));
             return new EntityChangeResult<TEntity>(before, async () =>
             {
                 return await Collection.Find(x => x.Id.Equals(before.Id)).SingleAsync();
             });
-        }, true);
+        }, Operation.Update);
     }
 
     public override async Task<EntityChangeResult<TEntity>> UpdateOneAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update, OneOption<TEntity> options = null)
@@ -716,7 +707,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                     throw new ArgumentOutOfRangeException();
             }
 
-            if (item == null) return new EntityChangeResult<TEntity>(default, default(TEntity));
+            if (item == null) return new EntityChangeResult<TEntity>(null, default(TEntity));
 
             var itemFilter = new FilterDefinitionBuilder<TEntity>().Eq(x => x.Id, item.Id);
             item = await Collection.FindOneAndUpdateAsync(itemFilter, update);
@@ -725,7 +716,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             {
                 return await Collection.Find(x => x.Id.Equals(item.Id)).SingleAsync();
             });
-        }, true);
+        }, Operation.Update);
     }
 
     public override async Task<TEntity> DeleteOneAsync(TKey id)
@@ -736,7 +727,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             var item = await Collection.FindOneAndDeleteAsync(filter);
             await DropEmpty(Collection);
             return item;
-        }, false);
+        }, Operation.Remove);
     }
 
     [Obsolete("Use DeleteOneAsync with 'OneOption' instead.")]
@@ -747,11 +738,12 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             var item = await Collection.FindOneAndDeleteAsync(predicate, options);
             await DropEmpty(Collection);
             return item;
-        }, false);
+        }, Operation.Remove);
     }
 
-    public override async Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate = default, OneOption<TEntity> options = default)
+    public override async Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate = null, OneOption<TEntity> options = null)
     {
+        if (predicate == null) throw new ArgumentNullException(nameof(predicate));
         if (predicate == null) throw new ArgumentException(nameof(predicate));
 
         return await Execute(nameof(UpdateOneAsync), async () =>
@@ -778,13 +770,13 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                     throw new ArgumentOutOfRangeException();
             }
 
-            if (item == null) return default;
+            if (item == null) return null;
 
             var itemFilter = new FilterDefinitionBuilder<TEntity>().Eq(x => x.Id, item.Id);
             await Collection.FindOneAndDeleteAsync(itemFilter);
             await DropEmpty(Collection);
             return item;
-        }, true);
+        }, Operation.Remove);
     }
 
     public override async Task<long> DeleteManyAsync(Expression<Func<TEntity, bool>> predicate)
@@ -794,7 +786,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             var item = await Collection.DeleteManyAsync(predicate);
             await DropEmpty(Collection);
             return item.DeletedCount;
-        }, false);
+        }, Operation.Remove);
     }
 
     public override IMongoCollection<TEntity> GetCollection()
@@ -808,7 +800,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         {
             await _mongoDbService.DropCollectionAsync(ProtectedCollectionName);
             return true;
-        }, false);
+        }, Operation.Remove);
     }
 
     public override async Task<long> CountAsync(Expression<Func<TEntity, bool>> predicate, CancellationToken cancellationToken = default)
@@ -817,7 +809,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         {
             var count = await Collection.CountDocumentsAsync(predicate, cancellationToken: cancellationToken);
             return count;
-        }, false);
+        }, Operation.Get);
     }
 
     public override async Task<long> CountAsync(FilterDefinition<TEntity> filter, CancellationToken cancellationToken = default)
@@ -826,7 +818,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         {
             var count = await Collection.CountDocumentsAsync(filter, cancellationToken: cancellationToken);
             return count;
-        }, false);
+        }, Operation.Get);
     }
 
     public override async IAsyncEnumerable<TEntity> GetDirtyAsync()
@@ -852,12 +844,12 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 
     public override IEnumerable<(IndexFailOperation Operation, string Name)> GetFailedIndices()
     {
-        return _failedIndices;
+        return InitiationLibrary.GetFailedIndices(ServerName, DatabaseName, ProtectedCollectionName);
     }
 
     public override async Task<long> GetSizeAsync()
     {
-        return await Execute(nameof(GetSizeAsync), () => Task.FromResult(_mongoDbService.GetSize(ProtectedCollectionName)), false);
+        return await Execute(nameof(GetSizeAsync), () => Task.FromResult(_mongoDbService.GetSize(ProtectedCollectionName)), Operation.Get);
     }
 
     private async Task<IMongoCollection<TEntity>> FetchCollectionAsync()
@@ -870,7 +862,10 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             InvokeAction(new ActionEventArgs.ActionData { Operation = nameof(FetchCollectionAsync), Message = "Starting to initiate.", Level = LogLevel.Trace });
             RegisterTypes();
 
+            var virtualExists = await GetVirtualCount(collection) != 0;
             var exists = await _mongoDbService.DoesCollectionExist(ProtectedCollectionName);
+            if (virtualExists != exists) Debugger.Break();
+
             if (exists)
             {
                 await AssureIndex(collection);
@@ -938,7 +933,6 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
     private async Task UpdateIndicesAsync(IMongoCollection<TEntity> collection, bool throwOnException)
     {
         var indices = (CoreIndices?.ToArray() ?? []).Union(Indices?.ToArray() ?? []).ToArray();
-        if (!indices.Any()) return;
 
         var firstInvalid = indices.GroupBy(x => x.Options.Name).FirstOrDefault(x => x.Count() > 1);
         if (firstInvalid != null) throw new InvalidOperationException($"Indices can only be defined once with the same name. Index {firstInvalid.First().Options.Name} has been defined {firstInvalid.Count()} times for collection {ProtectedCollectionName}.");
@@ -972,7 +966,8 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                 {
                     Debugger.Break();
                     _logger?.LogError(e, "Failed to drop index {indexName} in collection {collection}. {message}", indexName, ProtectedCollectionName, e.Message);
-                    _failedIndices.Add((IndexFailOperation.Drop, indexName));
+                    //_failedIndices.Add((IndexFailOperation.Drop, indexName));
+                    InitiationLibrary.AddFailedInitiateIndex(ServerName, DatabaseName, ProtectedCollectionName, (IndexFailOperation.Drop, indexName));
                     if (throwOnException) throw;
                 }
             }
@@ -993,7 +988,8 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                 {
                     Debugger.Break();
                     _logger?.LogError(e, "Failed to create index {indexName} in collection {collection}. {message}", index.Options.Name, ProtectedCollectionName, e.Message);
-                    _failedIndices.Add((IndexFailOperation.Create, index.Options.Name));
+                    //_failedIndices.Add((IndexFailOperation.Create, index.Options.Name));
+                    InitiationLibrary.AddFailedInitiateIndex(ServerName, DatabaseName, ProtectedCollectionName, (IndexFailOperation.Create, index.Options.Name));
                     if (throwOnException) throw;
                 }
             }
@@ -1052,10 +1048,15 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
     protected virtual async Task DropEmpty(IMongoCollection<TEntity> collection)
     {
         if (!DropEmptyCollections) return;
+        if (CreateCollectionStrategy != CreateStrategy.DropEmpty) return;
 
-        var any = await collection.CountDocumentsAsync(x => true, new CountOptions { Limit = 1 });
-        if (any != 0) return;
+        var virtualAny = await GetVirtualCount(collection) != 0;
+        var any = (await collection.CountDocumentsAsync(x => true, new CountOptions { Limit = 1 })) != 0;
+        if (any != virtualAny) Debugger.Break();
 
+        if (any) return;
+
+        Debugger.Break();
         await DropCollectionAsync();
     }
 
@@ -1085,6 +1086,16 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         }
 
         return item;
+    }
+
+    private async ValueTask<long> GetVirtualCount(IMongoCollection<TEntity> collection)
+    {
+        var count = InitiationLibrary.GetVirtualCount(ServerName, DatabaseName, ProtectedCollectionName);
+        if (count.HasValue) return count.Value;
+
+        var virtualCount = await collection.CountDocumentsAsync(x => true);
+        InitiationLibrary.SetVirtualCount(ServerName, DatabaseName, ProtectedCollectionName, virtualCount);
+        return virtualCount;
     }
 }
 
