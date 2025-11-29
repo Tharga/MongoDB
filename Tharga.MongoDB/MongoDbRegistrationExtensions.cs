@@ -48,13 +48,15 @@ public static class MongoDbRegistrationExtensions
 
         services.AddTransient<IExternalIpAddressService, ExternalIpAddressService>();
         services.AddTransient<IMongoDbFirewallService, MongoDbFirewallService>();
+        services.AddSingleton<IMongoDbClientProvider, MongoDbClientProvider>();
         services.AddSingleton<IMongoDbFirewallStateService, MongoDbFirewallStateService>();
         services.AddSingleton<IMongoDbServiceFactory>(serviceProvider =>
         {
+            var mongoDbClientProvider = serviceProvider.GetService<IMongoDbClientProvider>();
             var repositoryConfigurationLoader = serviceProvider.GetService<IRepositoryConfigurationLoader>();
             var mongoDbFirewallStateService = serviceProvider.GetService<IMongoDbFirewallStateService>();
             var logger = serviceProvider.GetService<ILogger<MongoDbServiceFactory>>();
-            return new MongoDbServiceFactory(repositoryConfigurationLoader, mongoDbFirewallStateService, logger);
+            return new MongoDbServiceFactory(mongoDbClientProvider, repositoryConfigurationLoader, mongoDbFirewallStateService, logger);
         });
         services.AddTransient<IRepositoryConfigurationLoader>(serviceProvider =>
         {
@@ -68,7 +70,7 @@ public static class MongoDbRegistrationExtensions
         services.AddSingleton<ICollectionProviderCache>(_ =>
         {
             if (o.UseCollectionProviderCache)
-                return new CollectionProviderCache();
+                return new CollectionProviderCache(); //NOTE: Makes dynamic collections singleton.
             return new CollectionProviderNoCache();
         });
 

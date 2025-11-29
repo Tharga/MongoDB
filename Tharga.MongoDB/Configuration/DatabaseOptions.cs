@@ -72,9 +72,9 @@ public record DatabaseOptions
     /// <summary>
     /// Collections provided by CollectionProvider are Cache.
     /// The cache is keepts for the duration of the application lifetime.
-    /// This cache enabled by default.
+    /// This cache disabled by default.
     /// </summary>
-    public bool UseCollectionProviderCache { get; set; } = true;
+    public bool UseCollectionProviderCache { get; set; } = false;
 
     /// <summary>
     /// Log level for execution information.

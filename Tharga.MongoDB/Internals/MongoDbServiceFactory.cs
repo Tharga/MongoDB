@@ -11,14 +11,16 @@ namespace Tharga.MongoDB.Internals;
 
 internal class MongoDbServiceFactory : IMongoDbServiceFactory
 {
+    private readonly IMongoDbClientProvider _mongoDbClientProvider;
     private readonly IRepositoryConfigurationLoader _repositoryConfigurationLoader;
     private readonly IMongoDbFirewallStateService _mongoDbFirewallStateService;
     private readonly ILogger _logger;
     private readonly ConcurrentDictionary<string, MongoDbService> _databaseDbServices = new();
     private readonly SemaphoreSlim _lock = new(1, 1);
 
-    public MongoDbServiceFactory(IRepositoryConfigurationLoader repositoryConfigurationLoader, IMongoDbFirewallStateService mongoDbFirewallStateService, ILogger<MongoDbServiceFactory> logger)
+    public MongoDbServiceFactory(IMongoDbClientProvider mongoDbClientProvider, IRepositoryConfigurationLoader repositoryConfigurationLoader, IMongoDbFirewallStateService mongoDbFirewallStateService, ILogger<MongoDbServiceFactory> logger)
     {
+        _mongoDbClientProvider = mongoDbClientProvider;
         _repositoryConfigurationLoader = repositoryConfigurationLoader;
         _mongoDbFirewallStateService = mongoDbFirewallStateService;
         _logger = logger;
@@ -57,7 +59,7 @@ internal class MongoDbServiceFactory : IMongoDbServiceFactory
             _lock.Wait();
             if (useCache && _databaseDbServices.TryGetValue(cacheKey, out dbService)) return dbService;
 
-            dbService = new MongoDbService(configuration, _mongoDbFirewallStateService, _logger);
+            dbService = new MongoDbService(configuration, _mongoDbFirewallStateService, _mongoDbClientProvider, _logger);
             dbService.CollectionAccessEvent += (s, e) => { CollectionAccessEvent?.Invoke(s, e); };
             _databaseDbServices.TryAdd(cacheKey, dbService);
             return dbService;

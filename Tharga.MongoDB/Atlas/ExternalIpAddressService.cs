@@ -13,7 +13,7 @@ internal class ExternalIpAddressService : IExternalIpAddressService
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<ExternalIpAddressService> _logger;
 
-    private readonly string[] _uris = { "https://ipv4.icanhazip.com", "http://icanhazip.com", "https://app-eplicta-aggregator-prod.azurewebsites.net/api/IpAddress", "https://quilt4net.com/api/IpAddress" };
+    private readonly string[] _uris = { "https://ipv4.icanhazip.com", "http://icanhazip.com", "https://quilt4net.com/api/IpAddress" };
 
     public ExternalIpAddressService(IHttpClientFactory httpClientFactory, ILogger<ExternalIpAddressService> logger)
     {
