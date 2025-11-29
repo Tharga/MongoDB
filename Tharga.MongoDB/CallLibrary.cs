@@ -1,36 +1,50 @@
-﻿using System;
+﻿using Microsoft.Extensions.Options;
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using Microsoft.Extensions.Options;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using Tharga.MongoDB;
 using Tharga.MongoDB.Configuration;
-
-namespace Tharga.MongoDB;
 
 internal class CallLibrary : ICallLibrary
 {
     private readonly DatabaseOptions _options;
     private readonly ConcurrentQueue<Guid> _recentCalls;
     private readonly ConcurrentDictionary<Guid, CallInfo> _calls;
-    private readonly ConcurrentQueue<CallInfo> _slowCalls;
+    private readonly PriorityQueue<CallInfo, double> _slowest;
+    private readonly SemaphoreSlim _slowestSemaphore = new(1, 1);
 
     public CallLibrary(IOptions<DatabaseOptions> options)
     {
         _options = options.Value;
         _recentCalls = new ConcurrentQueue<Guid>();
         _calls = new ConcurrentDictionary<Guid, CallInfo>();
-        _slowCalls = new ConcurrentQueue<CallInfo>();
+        _slowest = new PriorityQueue<CallInfo, double>();
     }
 
     public void StartCall(CallStartEventArgs e)
     {
-        _calls.TryAdd(e.CallKey, new CallInfo
+        _ = Task.Run(() => StartCallInternal(e));
+    }
+
+    public void EndCall(CallEndEventArgs e)
+    {
+        _ = Task.Run(() => EndCallInternal(e));
+    }
+
+    private void StartCallInternal(CallStartEventArgs e)
+    {
+        var info = new CallInfo
         {
             StartTime = DateTime.UtcNow,
             CollectionName = e.CollectionName,
             FunctionName = e.FunctionName,
             Operation = e.Operation
-        });
+        };
 
+        _calls.TryAdd(e.CallKey, info);
         _recentCalls.Enqueue(e.CallKey);
 
         while (_recentCalls.Count > _options.Monitor.LastCallsToKeep)
@@ -42,27 +56,36 @@ internal class CallLibrary : ICallLibrary
         }
     }
 
-    public void EndCall(CallEndEventArgs e)
+    private async Task EndCallInternal(CallEndEventArgs e)
     {
-        if (_calls.TryGetValue(e.CallKey, out var item))
-        {
-            item.Elapsed = e.Elapsed;
-            item.Count = e.Count;
-            item.Exception = e.Exception;
-            item.Final = e.Final;
-        }
+        if (!_calls.TryGetValue(e.CallKey, out var item)) return;
 
-        if (e.Elapsed > _options.Monitor.SlowCallThreshold)
+        item.Elapsed = e.Elapsed;
+        item.Count = e.Count;
+        item.Exception = e.Exception;
+        item.Final = e.Final;
+
+        var elapsedMs = e.Elapsed.TotalMilliseconds;
+
+        await _slowestSemaphore.WaitAsync().ConfigureAwait(false);
+        try
         {
-            if (_calls.TryGetValue(e.CallKey, out var slow))
+            if (_slowest.Count < _options.Monitor.SlowCallsToKeep)
             {
-                _slowCalls.Enqueue(slow);
-
-                while (_slowCalls.Count > _options.Monitor.SlowCallsToKeep)
+                _slowest.Enqueue(item, elapsedMs);
+            }
+            else if (_slowest.TryPeek(out _, out var smallest))
+            {
+                if (elapsedMs > smallest)
                 {
-                    _slowCalls.TryDequeue(out _);
+                    _slowest.Dequeue();
+                    _slowest.Enqueue(item, elapsedMs);
                 }
             }
+        }
+        finally
+        {
+            _slowestSemaphore.Release();
         }
     }
 
@@ -73,6 +96,14 @@ internal class CallLibrary : ICallLibrary
 
     public IEnumerable<CallInfo> GetSlowCalls()
     {
-        return _slowCalls;
+        _slowestSemaphore.Wait();
+        try
+        {
+            return _slowest.UnorderedItems.Select(x => x.Element);
+        }
+        finally
+        {
+            _slowestSemaphore.Release();
+        }
     }
 }
