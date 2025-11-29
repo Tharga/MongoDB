@@ -19,70 +19,97 @@ internal class DatabaseMonitor : IDatabaseMonitor
     private readonly IServiceProvider _serviceProvider;
     private readonly IRepositoryConfiguration _repositoryConfiguration;
     private readonly ICollectionProvider _collectionProvider;
+    private readonly ICallLibrary _callLibrary;
     private readonly DatabaseOptions _options;
     private readonly ConcurrentDictionary<(string ConfigurationName, string CollectionName), CollectionAccessData> _accessedCollections = new();
-    private readonly ConcurrentDictionary<Guid, CallInfo> _calls = new();
+    private bool _started;
 
-    public DatabaseMonitor(IMongoDbServiceFactory mongoDbServiceFactory, IMongoDbInstance mongoDbInstance, IServiceProvider serviceProvider, IRepositoryConfiguration repositoryConfiguration, ICollectionProvider collectionProvider, IOptions<DatabaseOptions> options)
+    public DatabaseMonitor(IMongoDbServiceFactory mongoDbServiceFactory, IMongoDbInstance mongoDbInstance, IServiceProvider serviceProvider, IRepositoryConfiguration repositoryConfiguration, ICollectionProvider collectionProvider, ICallLibrary callLibrary, IOptions<DatabaseOptions> options)
     {
         _mongoDbServiceFactory = mongoDbServiceFactory;
         _mongoDbInstance = mongoDbInstance;
         _serviceProvider = serviceProvider;
         _repositoryConfiguration = repositoryConfiguration;
         _collectionProvider = collectionProvider;
+        _callLibrary = callLibrary;
         _options = options.Value;
+    }
 
-        _mongoDbServiceFactory.ConfigurationAccessEvent += (_, _) =>
+    internal void Start()
+    {
+        if (_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has already been started.");
+
+        try
         {
-        };
-        _mongoDbServiceFactory.CollectionAccessEvent += (_, e) =>
-        {
-            var databaseContext = (e.DatabaseContext as DatabaseContextFull) ?? new DatabaseContextFull
+            _mongoDbServiceFactory.ConfigurationAccessEvent += (_, _) =>
             {
-                DatabaseName = null,
-                CollectionName = e.DatabaseContext.CollectionName,
-                DatabasePart = e.DatabaseContext.DatabasePart ?? e.CollectionName,
-                ConfigurationName = e.DatabaseContext.ConfigurationName?.Value ?? _options.DefaultConfigurationName.Value
             };
+            _mongoDbServiceFactory.CollectionAccessEvent += (_, e) =>
+            {
+                var databaseContext = (e.DatabaseContext as DatabaseContextFull) ?? new DatabaseContextFull
+                {
+                    DatabaseName = null,
+                    CollectionName = e.DatabaseContext.CollectionName,
+                    DatabasePart = e.DatabaseContext.DatabasePart ?? e.CollectionName,
+                    ConfigurationName = e.DatabaseContext.ConfigurationName?.Value ?? _options.DefaultConfigurationName
+                };
 
-            var now = DateTime.UtcNow;
-            _accessedCollections.AddOrUpdate((databaseContext.ConfigurationName?.Value, e.CollectionName), new CollectionAccessData
+                var now = DateTime.UtcNow;
+                _accessedCollections.AddOrUpdate((databaseContext.ConfigurationName?.Value, e.CollectionName), new CollectionAccessData
+                {
+                    DatabaseContext = databaseContext,
+                    EntityType = e.EntityType,
+                    FirstAccessed = now,
+                    LastAccessed = now,
+                    AccessCount = 1,
+                    Server = e.Server
+                }, (_, item) =>
+                {
+                    item.LastAccessed = now;
+                    item.AccessCount++;
+                    return item;
+                });
+            };
+            _mongoDbServiceFactory.CallStartEvent += (_, e) =>
             {
-                DatabaseContext = databaseContext,
-                EntityType = e.EntityType,
-                FirstAccessed = now,
-                LastAccessed = now,
-                AccessCount = 1,
-                Server = e.Server
-            }, (_, item) =>
+                _callLibrary.StartCall(e);
+            };
+            _mongoDbServiceFactory.CallEndEvent += (_, e) =>
             {
-                item.LastAccessed = now;
-                item.AccessCount++;
-                return item;
-            });
-        };
-        _mongoDbServiceFactory.CallStartEvent += (_, e) =>
+                _callLibrary.EndCall(e);
+            };
+            //_mongoDbServiceFactory.CallStartEvent += (_, e) =>
+            //{
+            //    _calls.TryAdd(e.CallKey, new CallInfo
+            //    {
+            //        StartTime = DateTime.UtcNow,
+            //        CollectionName = e.CollectionName,
+            //        FunctionName = e.FunctionName,
+            //        Operation = e.Operation
+            //    });
+            //    //TODO: Remove old calls, just keep a maximum number of 1000 calls or so.
+            //};
+            //_mongoDbServiceFactory.CallEndEvent += (_, e) =>
+            //{
+            //    if (_calls.TryGetValue(e.CallKey, out var item))
+            //    {
+            //        item.Elapsed = e.Elapsed;
+            //        item.Count = e.Count;
+            //        item.Exception = e.Exception;
+            //        item.Final = e.Final;
+            //    }
+            //};
+        }
+        finally
         {
-            _calls.TryAdd(e.CallKey, new CallInfo
-            {
-                StartTime = DateTime.UtcNow,
-                CollectionName = e.CollectionName,
-                FunctionName = e.FunctionName
-            });
-            //TODO: Remove old calls, just keep a maximum number of 1000 calls or so.
-        };
-        _mongoDbServiceFactory.CallEndEvent += (_, e) =>
-        {
-            if (_calls.TryGetValue(e.CallKey, out var item))
-            {
-                item.Elapsed = e.Elapsed;
-                item.Exception = e.Exception;
-            }
-        };
+            _started = true;
+        }
     }
 
     public IEnumerable<ConfigurationName> GetConfigurations()
     {
+        if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
+
         foreach (var item in _repositoryConfiguration.GetDatabaseConfigurationNames())
         {
             yield return item;
@@ -92,16 +119,18 @@ internal class DatabaseMonitor : IDatabaseMonitor
     //TODO: Should return information about database clean.
     public async IAsyncEnumerable<CollectionInfo> GetInstancesAsync(bool fullDatabaseScan)
     {
-        var configurations = GetConfigurations().Select(x => new DatabaseContext { ConfigurationName = x.Value ?? _options.DefaultConfigurationName.Value }).ToArray();
+        if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
+
+        var configurations = GetConfigurations().Select(x => new DatabaseContext { ConfigurationName = x.Value ?? _options.DefaultConfigurationName }).ToArray();
         var contexts = configurations.Union(_accessedCollections.Select(x => new DatabaseContext
             {
-                ConfigurationName = x.Value.DatabaseContext.ConfigurationName?.Value ?? _options.DefaultConfigurationName.Value,
+                ConfigurationName = x.Value.DatabaseContext.ConfigurationName?.Value ?? _options.DefaultConfigurationName,
                 DatabasePart = x.Value.DatabaseContext.DatabasePart
             }))
             .Distinct()
             .ToArray();
 
-        var collectionsFromCode = await GetStaticCollectionsFromCode().ToDictionaryAsync(x => (x.ConfigurationName ?? _options.DefaultConfigurationName.Value, x.CollectionName), x => x);
+        var collectionsFromCode = await GetStaticCollectionsFromCode().ToDictionaryAsync(x => (x.ConfigurationName ?? _options.DefaultConfigurationName, x.CollectionName), x => x);
         var accessedCollections = _accessedCollections;
         var dynamicCollectionsFromCode = GetDynamicRegistrations().ToDictionary(x => (x.Type), x => x);
 
@@ -197,12 +226,16 @@ internal class DatabaseMonitor : IDatabaseMonitor
 
     public async Task DropIndexAsync(DatabaseContext databaseContext)
     {
+        if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
+
         var collection = _collectionProvider.GetCollection<EntityBaseCollection, EntityBase>(databaseContext);
         await collection.DropIndex(collection.GetCollection());
     }
 
     public async Task RestoreIndexAsync(DatabaseContext databaseContext)
     {
+        if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
+
         var databaseName = (databaseContext as DatabaseContextFull)?.DatabaseName;
 
         var collections = await GetInstancesAsync(false)
@@ -253,6 +286,8 @@ internal class DatabaseMonitor : IDatabaseMonitor
 
     public async Task TouchAsync(CollectionInfo collectionInfo)
     {
+        if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
+
         var collections = await GetInstancesAsync(false)
             .Where(x => x.ConfigurationName == collectionInfo.ConfigurationName)
             .Where(x => x.CollectionName == collectionInfo.CollectionName)
@@ -292,9 +327,11 @@ internal class DatabaseMonitor : IDatabaseMonitor
         var collectionInstance = collectionMethod?.Invoke(collection, []);
     }
 
-    public IEnumerable<CallInfo> GetCalls()
+    public IEnumerable<CallInfo> GetLastCalls()
     {
-        return _calls.Values;
+        if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
+
+        return _callLibrary.GetLastCalls();
     }
 
     private async IAsyncEnumerable<StatColInfo> GetStaticCollectionsFromCode()

@@ -20,7 +20,6 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 {
     private readonly SemaphoreSlim _lock = new(1, 1);
     private IMongoCollection<TEntity> _collection;
-    //private readonly List<(IndexFailOperation Operation, string Name)> _failedIndices = new();
 
     /// <summary>
     /// Override this constructor for static collections.
@@ -89,7 +88,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 
         try
         {
-            ((MongoDbServiceFactory)_mongoDbServiceFactory).OnCallStart(this, new CallStartEventArgs(callKey, CollectionName, functionName));
+            ((MongoDbServiceFactory)_mongoDbServiceFactory).OnCallStart(this, new CallStartEventArgs(callKey, CollectionName, functionName, operation));
 
             switch (operation)
             {
@@ -135,7 +134,39 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         }
         finally
         {
-            ((MongoDbServiceFactory)_mongoDbServiceFactory).OnCallEnd(this, new CallEndEventArgs(callKey, sw.Elapsed, exception));
+            ((MongoDbServiceFactory)_mongoDbServiceFactory).OnCallEnd(this, new CallEndEventArgs(callKey, sw.Elapsed, exception, 1));
+        }
+    }
+
+    protected virtual async IAsyncEnumerable<T> ExecuteAsyncEnumerable<T>(string functionName, Func<IAsyncEnumerable<T>> action, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        var sw = new Stopwatch();
+        sw.Start();
+
+        var callKey = Guid.NewGuid();
+
+        ((MongoDbServiceFactory)_mongoDbServiceFactory).OnCallStart(this, new CallStartEventArgs(callKey, CollectionName, functionName, Operation.GetAsyncEnumerable));
+
+        var count = 0;
+        var final = false;
+
+        try
+        {
+            await foreach (var item in action.Invoke().WithCancellation(cancellationToken))
+            {
+                count++;
+                yield return item;
+            }
+
+            final = true;
+        }
+        finally
+        {
+            sw.Stop();
+
+            _logger?.Log(_executeInfoLogLevel, $"Executed {{repositoryType}} for {{CollectionName}} took {{elapsed}} ms and returned {{itemCount}} items. [action: Database, operation: {functionName}]", "DiskRepository", CollectionName, sw.Elapsed.TotalMilliseconds, count);
+            InvokeAction(new ActionEventArgs.ActionData { Operation = functionName, Elapsed = sw.Elapsed, ItemCount = count });
+            ((MongoDbServiceFactory)_mongoDbServiceFactory).OnCallEnd(this, new CallEndEventArgs(callKey, sw.Elapsed, null, count, final));
         }
     }
 
@@ -144,24 +175,20 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         InitiationLibrary.RecheckInitiateIndex(ServerName, DatabaseName, ProtectedCollectionName);
     }
 
-    public override async IAsyncEnumerable<TEntity> GetAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    public override IAsyncEnumerable<TEntity> GetAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default)
     {
-        var sw = new Stopwatch();
-        sw.Start();
-
-        var o = BuildOptions(options);
-        var cursor = await FindAsync(Collection, predicate, cancellationToken, o);
-
-        var count = 0;
-        await foreach (var item in BuildList(cursor, cancellationToken))
+        async IAsyncEnumerable<TEntity> Impl()
         {
-            count++;
-            yield return item;
+            var o = BuildOptions(options);
+            var cursor = await FindAsync(Collection, predicate, cancellationToken, o);
+
+            await foreach (var item in BuildList(cursor, cancellationToken))
+            {
+                yield return item;
+            }
         }
 
-        sw.Stop();
-        _logger?.Log(_executeInfoLogLevel, $"Executed {{repositoryType}} for {{CollectionName}} took {{elapsed}} ms and returned {{itemCount}} items. [action: Database, operation: {nameof(GetAsync)}]", "DiskRepository", CollectionName, sw.Elapsed.TotalMilliseconds, count);
-        InvokeAction(new ActionEventArgs.ActionData { Operation = nameof(GetAsync), Elapsed = sw.Elapsed, ItemCount = count });
+        return ExecuteAsyncEnumerable(nameof(GetAsync), Impl, cancellationToken);
     }
 
     private static FindOptions<TEntity, TEntity> BuildOptions(Options<TEntity> options)
@@ -179,147 +206,139 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         return o;
     }
 
-    public override async IAsyncEnumerable<TEntity> GetAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    public override IAsyncEnumerable<TEntity> GetAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default)
     {
-        var sw = new Stopwatch();
-        sw.Start();
-
-        var o = BuildOptions(options);
-        var cursor = await FindAsync(Collection, filter, cancellationToken, o);
-
-        var count = 0;
-        await foreach (var item in BuildList(cursor, cancellationToken))
+        async IAsyncEnumerable<TEntity> Impl()
         {
-            count++;
-            yield return item;
+            var o = BuildOptions(options);
+            var cursor = await FindAsync(Collection, filter, cancellationToken, o);
+
+            await foreach (var item in BuildList(cursor, cancellationToken))
+            {
+                yield return item;
+            }
         }
 
-        sw.Stop();
-        _logger?.Log(_executeInfoLogLevel, $"Executed {{repositoryType}} for {{CollectionName}} took {{elapsed}} ms and returned {{itemCount}} items. [action: Database, operation: {nameof(GetAsync)}]", "DiskRepository", CollectionName, sw.Elapsed.TotalMilliseconds, count);
-        InvokeAction(new ActionEventArgs.ActionData { Operation = nameof(GetAsync), Elapsed = sw.Elapsed, ItemCount = count });
+        return ExecuteAsyncEnumerable(nameof(GetAsync), Impl, cancellationToken);
     }
 
-    public override async IAsyncEnumerable<T> GetAsync<T>(Expression<Func<T, bool>> predicate = null, Options<T> options = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    public override IAsyncEnumerable<T> GetAsync<T>(Expression<Func<T, bool>> predicate = null, Options<T> options = null, CancellationToken cancellationToken = default)
     {
-        var sw = new Stopwatch();
-        sw.Start();
-
-        var filter = Builders<T>.Filter.And(Builders<T>.Filter.OfType<T>(), new ExpressionFilterDefinition<T>(predicate ?? (_ => true)));
-        var o = options == null ? null : new FindOptions<T, T> { Projection = options.Projection, Sort = options.Sort, Limit = options.Limit, Skip = options.Skip };
-
-        _ = Collection ?? throw new InvalidOperationException("Unable to initiate collection.");
-
-        var collection = await GetCollectionAsync<T>();
-        var cursor = await collection.FindAsync(filter ?? FilterDefinition<T>.Empty, o, cancellationToken);
-
-        var count = 0;
-        while (await cursor.MoveNextAsync(cancellationToken))
+        async IAsyncEnumerable<T> Impl()
         {
-            foreach (var current in cursor.Current)
+            var filter = Builders<T>.Filter.And(Builders<T>.Filter.OfType<T>(), new ExpressionFilterDefinition<T>(predicate ?? (_ => true)));
+            var o = options == null ? null : new FindOptions<T, T> { Projection = options.Projection, Sort = options.Sort, Limit = options.Limit, Skip = options.Skip };
+
+            _ = Collection ?? throw new InvalidOperationException("Unable to initiate collection.");
+
+            var collection = await GetCollectionAsync<T>();
+            var cursor = await collection.FindAsync(filter ?? FilterDefinition<T>.Empty, o, cancellationToken);
+
+            var count = 0;
+            while (await cursor.MoveNextAsync(cancellationToken))
             {
-                count++;
-                if (ResultLimit != null && count > ResultLimit)
+                foreach (var current in cursor.Current)
                 {
-                    throw new ResultLimitException(ResultLimit.Value);
-                }
+                    count++;
+                    if (ResultLimit != null && count > ResultLimit)
+                    {
+                        throw new ResultLimitException(ResultLimit.Value);
+                    }
 
-                yield return await CleanEntityAsync(collection, current);
+                    yield return await CleanEntityAsync(collection, current);
+                }
             }
         }
 
-        sw.Stop();
-        _logger?.Log(_executeInfoLogLevel, $"Executed {{repositoryType}} for {{CollectionName}} took {{elapsed}} ms and returned {{itemCount}} items. [action: Database, operation: {nameof(GetAsync)}]", "DiskRepository", CollectionName, sw.Elapsed.TotalMilliseconds, count);
-        InvokeAction(new ActionEventArgs.ActionData { Operation = $"{nameof(GetAsync)}<{typeof(T).Name}>", Elapsed = sw.Elapsed, ItemCount = count });
+        return ExecuteAsyncEnumerable(nameof(GetAsync), Impl, cancellationToken);
     }
 
-    public override async IAsyncEnumerable<T> GetProjectionAsync<T>(Expression<Func<T, bool>> predicate = null, Options<T> options = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    public override IAsyncEnumerable<T> GetProjectionAsync<T>(Expression<Func<T, bool>> predicate = null, Options<T> options = null, CancellationToken cancellationToken = default)
     {
-        var sw = new Stopwatch();
-        sw.Start();
+        async IAsyncEnumerable<T> Impl()
+        {
+            var filter = Builders<T>.Filter.And(new ExpressionFilterDefinition<T>(predicate ?? (_ => true)));
+            var o = options == null
+                ? new FindOptions<T, T>
+                {
+                    Projection = BuildProjection<T>(),
+                }
+                : new FindOptions<T, T>
+                {
+                    Projection = options.Projection ?? BuildProjection<T>(),
+                    Sort = options.Sort,
+                    Limit = options.Limit,
+                    Skip = options.Skip
+                };
 
-        var filter = Builders<T>.Filter.And(new ExpressionFilterDefinition<T>(predicate ?? (_ => true)));
-        var o = options == null
-            ? new FindOptions<T, T>
+            _ = Collection ?? throw new InvalidOperationException("Unable to initiate collection.");
+
+            var collection = await GetCollectionAsync<T>();
+            var cursor = await collection.FindAsync(filter ?? FilterDefinition<T>.Empty, o, cancellationToken);
+
+            var count = 0;
+            while (await cursor.MoveNextAsync(cancellationToken))
             {
-                Projection = BuildProjection<T>(),
+                foreach (var current in cursor.Current)
+                {
+                    count++;
+                    if (ResultLimit != null && count > ResultLimit)
+                    {
+                        throw new ResultLimitException(ResultLimit.Value);
+                    }
+
+                    yield return current;
+                }
             }
-            : new FindOptions<T, T>
+        }
+
+        return ExecuteAsyncEnumerable(nameof(GetProjectionAsync), Impl, cancellationToken);
+    }
+
+    public override Task<Result<TEntity, TKey>> QueryAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default)
+    {
+        return Execute(nameof(QueryAsync), async () =>
+        {
+            var o = BuildOptions(options);
+            var totalCount = await Collection.CountDocumentsAsync(predicate ?? FilterDefinition<TEntity>.Empty, cancellationToken: cancellationToken);
+            var cursor = await FindAsync(Collection, predicate, cancellationToken, o);
+
+            var items = await BuildList(cursor, cancellationToken).ToArrayAsync(cancellationToken: cancellationToken);
+            //var count = items.Length;
+
+            //sw.Stop();
+            //_logger?.Log(_executeInfoLogLevel, $"Executed {{repositoryType}} for {{CollectionName}} took {{elapsed}} ms and returned {{itemCount}} items. [action: Database, operation: {nameof(QueryAsync)}]", "DiskRepository", CollectionName, sw.Elapsed.TotalMilliseconds, count);
+            //InvokeAction(new ActionEventArgs.ActionData { Operation = nameof(GetAsync), Elapsed = sw.Elapsed, ItemCount = count });
+
+            return new Result<TEntity, TKey>
             {
-                Projection = options.Projection ?? BuildProjection<T>(),
-                Sort = options.Sort,
-                Limit = options.Limit,
-                Skip = options.Skip
+                Items = items,
+                TotalCount = (int)totalCount
             };
+        }, Operation.Get);
+    }
 
-        _ = Collection ?? throw new InvalidOperationException("Unable to initiate collection.");
-
-        var collection = await GetCollectionAsync<T>();
-        var cursor = await collection.FindAsync(filter ?? FilterDefinition<T>.Empty, o, cancellationToken);
-
-        var count = 0;
-        while (await cursor.MoveNextAsync(cancellationToken))
+    public override Task<Result<TEntity, TKey>> QueryAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default)
+    {
+        return Execute(nameof(QueryAsync), async () =>
         {
-            foreach (var current in cursor.Current)
+            var o = BuildOptions(options);
+            var totalCount = await Collection.CountDocumentsAsync(filter, cancellationToken: cancellationToken);
+            var cursor = await FindAsync(Collection, filter, cancellationToken, o);
+
+            var items = await BuildList(cursor, cancellationToken).ToArrayAsync(cancellationToken: cancellationToken);
+            //var count = items.Length;
+
+            //sw.Stop();
+            //_logger?.Log(_executeInfoLogLevel, $"Executed {{repositoryType}} for {{CollectionName}} took {{elapsed}} ms and returned {{itemCount}} items. [action: Database, operation: {nameof(QueryAsync)}]", "DiskRepository", CollectionName, sw.Elapsed.TotalMilliseconds, count);
+            //InvokeAction(new ActionEventArgs.ActionData { Operation = nameof(GetAsync), Elapsed = sw.Elapsed, ItemCount = count });
+
+            return new Result<TEntity, TKey>
             {
-                count++;
-                if (ResultLimit != null && count > ResultLimit)
-                {
-                    throw new ResultLimitException(ResultLimit.Value);
-                }
-
-                yield return current;
-            }
-        }
-
-        sw.Stop();
-        _logger?.Log(_executeInfoLogLevel, $"Executed {{repositoryType}} for {{CollectionName}} took {{elapsed}} ms and returned {{itemCount}} items. [action: Database, operation: {nameof(GetAsync)}]", "DiskRepository", CollectionName, sw.Elapsed.TotalMilliseconds, count);
-        InvokeAction(new ActionEventArgs.ActionData { Operation = $"{nameof(GetProjectionAsync)}<{typeof(T).Name}>", Elapsed = sw.Elapsed, ItemCount = count });
-    }
-
-    public override async Task<Result<TEntity, TKey>> QueryAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default)
-    {
-        var sw = new Stopwatch();
-        sw.Start();
-
-        var o = BuildOptions(options);
-        var totalCount = await Collection.CountDocumentsAsync(predicate ?? FilterDefinition<TEntity>.Empty, cancellationToken: cancellationToken);
-        var cursor = await FindAsync(Collection, predicate, cancellationToken, o);
-
-        var items = await BuildList(cursor, cancellationToken).ToArrayAsync(cancellationToken: cancellationToken);
-        var count = items.Length;
-
-        sw.Stop();
-        _logger?.Log(_executeInfoLogLevel, $"Executed {{repositoryType}} for {{CollectionName}} took {{elapsed}} ms and returned {{itemCount}} items. [action: Database, operation: {nameof(QueryAsync)}]", "DiskRepository", CollectionName, sw.Elapsed.TotalMilliseconds, count);
-        InvokeAction(new ActionEventArgs.ActionData { Operation = nameof(GetAsync), Elapsed = sw.Elapsed, ItemCount = count });
-
-        return new Result<TEntity, TKey>
-        {
-            Items = items,
-            TotalCount = (int)totalCount
-        };
-    }
-
-    public override async Task<Result<TEntity, TKey>> QueryAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default)
-    {
-        var sw = new Stopwatch();
-        sw.Start();
-
-        var o = BuildOptions(options);
-        var totalCount = await Collection.CountDocumentsAsync(filter, cancellationToken: cancellationToken);
-        var cursor = await FindAsync(Collection, filter, cancellationToken, o);
-
-        var items = await BuildList(cursor, cancellationToken).ToArrayAsync(cancellationToken: cancellationToken);
-        var count = items.Length;
-
-        sw.Stop();
-        _logger?.Log(_executeInfoLogLevel, $"Executed {{repositoryType}} for {{CollectionName}} took {{elapsed}} ms and returned {{itemCount}} items. [action: Database, operation: {nameof(QueryAsync)}]", "DiskRepository", CollectionName, sw.Elapsed.TotalMilliseconds, count);
-        InvokeAction(new ActionEventArgs.ActionData { Operation = nameof(GetAsync), Elapsed = sw.Elapsed, ItemCount = count });
-
-        return new Result<TEntity, TKey>
-        {
-            Items = items,
-            TotalCount = (int)totalCount
-        };
+                Items = items,
+                TotalCount = (int)totalCount
+            };
+        }, Operation.Get);
     }
 
     public override IAsyncEnumerable<ResultPage<TEntity, TKey>> GetPagesAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default)
@@ -329,43 +348,41 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         return GetPagesAsync(filter, options, cancellationToken);
     }
 
-    public override async IAsyncEnumerable<ResultPage<TEntity, TKey>> GetPagesAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    public override IAsyncEnumerable<ResultPage<TEntity, TKey>> GetPagesAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default)
     {
-        if (ResultLimit == null) throw new InvalidOperationException("Cannot use GetPagesAsync when no result limit has been configured.");
-        if (ResultLimit <= 0) throw new InvalidOperationException("GetPagesAsync has to be a number greater than 0.");
-        if (options?.Skip != null) throw new NotImplementedException("Skip while using page has not yet been implemented.");
-
-        var sw = new Stopwatch();
-        sw.Start();
-
-        var totalCount = (int)await Collection.CountDocumentsAsync(filter, new CountOptions(), cancellationToken);
-        var pages = (int)Math.Ceiling(totalCount / (decimal)ResultLimit.Value);
-        if (options?.Limit != null && options.Limit < pages)
+        async IAsyncEnumerable<ResultPage<TEntity, TKey>> Impl()
         {
-            pages = options.Limit.Value;
-        }
+            if (ResultLimit == null) throw new InvalidOperationException("Cannot use GetPagesAsync when no result limit has been configured.");
+            if (ResultLimit <= 0) throw new InvalidOperationException("GetPagesAsync has to be a number greater than 0.");
+            if (options?.Skip != null) throw new NotImplementedException("Skip while using page has not yet been implemented.");
 
-        for (var i = 0; i < pages; i++)
-        {
-            var skip = i * ResultLimit.Value;
-
-            var o = options == null
-                ? new FindOptions<TEntity, TEntity> { Limit = ResultLimit, Skip = skip }
-                : new FindOptions<TEntity, TEntity> { Projection = options.Projection, Sort = options.Sort, Limit = ResultLimit, Skip = skip };
-            var cursor = await FindAsync(Collection, filter, cancellationToken, o);
-
-            yield return new ResultPage<TEntity, TKey>
+            var totalCount = (int)await Collection.CountDocumentsAsync(filter, new CountOptions(), cancellationToken);
+            var pages = (int)Math.Ceiling(totalCount / (decimal)ResultLimit.Value);
+            if (options?.Limit != null && options.Limit < pages)
             {
-                Items = BuildList(cursor, cancellationToken),
-                TotalCount = totalCount,
-                Page = i,
-                TotalPages = pages
-            };
+                pages = options.Limit.Value;
+            }
+
+            for (var i = 0; i < pages; i++)
+            {
+                var skip = i * ResultLimit.Value;
+
+                var o = options == null
+                    ? new FindOptions<TEntity, TEntity> { Limit = ResultLimit, Skip = skip }
+                    : new FindOptions<TEntity, TEntity> { Projection = options.Projection, Sort = options.Sort, Limit = ResultLimit, Skip = skip };
+                var cursor = await FindAsync(Collection, filter, cancellationToken, o);
+
+                yield return new ResultPage<TEntity, TKey>
+                {
+                    Items = BuildList(cursor, cancellationToken),
+                    TotalCount = totalCount,
+                    Page = i,
+                    TotalPages = pages
+                };
+            }
         }
 
-        sw.Stop();
-        _logger?.Log(_executeInfoLogLevel, $"Executed {{repositoryType}} for {{CollectionName}} took {{elapsed}} ms and returned {{itemCount}} items on {{pages}} pages. [action: Database, operation: {nameof(GetPagesAsync)}]", "DiskRepository", CollectionName, sw.Elapsed.TotalMilliseconds, totalCount, pages);
-        InvokeAction(new ActionEventArgs.ActionData { Operation = nameof(GetPagesAsync), Elapsed = sw.Elapsed, ItemCount = totalCount, Data = new Dictionary<string, object> { { "pages", pages } } });
+        return ExecuteAsyncEnumerable(nameof(GetAsync), Impl, cancellationToken);
     }
 
     private async Task<IAsyncCursor<TEntity>> FindAsync(IMongoCollection<TEntity> collection, FilterDefinition<TEntity> filter, CancellationToken cancellationToken, FindOptions<TEntity, TEntity> options)
@@ -789,6 +806,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         }, Operation.Remove);
     }
 
+    //TODO: Should return a execute around pattern, so an operation (Get, Update, Delete, ...) can be provided for correct handling. (IE, Possible to wrap the Execute-metod)
     public override IMongoCollection<TEntity> GetCollection()
     {
         return Collection;
@@ -894,7 +912,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         await collection.Indexes.DropAllAsync();
     }
 
-    internal async Task AssureIndex(IMongoCollection<TEntity> collection, bool forceAssure = false, bool throwOnException = false)
+    private async Task AssureIndex(IMongoCollection<TEntity> collection, bool forceAssure = false, bool throwOnException = false)
     {
         var shouldAssureIndex = _mongoDbService.ShouldAssureIndex();
         if (!shouldAssureIndex && !forceAssure)

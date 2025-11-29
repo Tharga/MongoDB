@@ -1,6 +1,4 @@
-﻿using Tharga.MongoDB.Configuration;
-
-namespace Tharga.MongoDB;
+﻿namespace Tharga.MongoDB;
 
 public record CollectionMeta
 {
@@ -15,17 +13,4 @@ public record CollectionMeta
     public required long Size { get; init; }
     public required string[] Types { get; init; }
     public required IndexMeta[] Indexes { get; init; }
-}
-
-public record DocumentCount
-{
-    public required long Count { get; init; }
-    public long? Virtual { get; init; }
-
-    public bool IsValid => Virtual == null || Virtual == Count;
-
-    public static implicit operator long(DocumentCount item)
-    {
-        return item.Count;
-    }
 }

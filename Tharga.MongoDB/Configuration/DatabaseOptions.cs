@@ -13,15 +13,11 @@ namespace Tharga.MongoDB.Configuration;
 /// </summary>
 public record DatabaseOptions
 {
-    internal DatabaseOptions()
-    {
-    }
-
     /// <summary>
     /// The name of the connection string that will be used to read from appsettings.json or from ConnectionStringLoader.
     /// If not provided 'Default' will be used.
     /// </summary>
-    public ConfigurationName DefaultConfigurationName { get; set; }
+    public string DefaultConfigurationName { get; set; }
 
     /// <summary>
     /// This function can be provided to dynamically provide a connection string for a specific configuration.
@@ -74,7 +70,8 @@ public record DatabaseOptions
     /// The cache is keepts for the duration of the application lifetime.
     /// This cache disabled by default.
     /// </summary>
-    public bool UseCollectionProviderCache { get; set; } = false;
+    [Obsolete("Will be deprecated.")]
+    public bool UseCollectionProviderCache { get; set; }
 
     /// <summary>
     /// Log level for execution information.
@@ -93,4 +90,9 @@ public record DatabaseOptions
     /// By default, indexes are assured.
     /// </summary>
     public bool AssureIndex { get; set; } = true;
+
+    /// <summary>
+    /// Configuration for monitor. This is by default enabled.
+    /// </summary>
+    public MonitorOptions Monitor { get; set; } = new();
 }

@@ -3,6 +3,7 @@
 public enum Operation
 {
     Get,
+    GetAsyncEnumerable,
     Add,
     Update,
     AddOrUpdate,

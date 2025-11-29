@@ -11,18 +11,21 @@ else
                     AllowFiltering="false" FilterMode="FilterMode.Simple" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
                     AllowSorting="true"
                     AllowPaging="true" PageSize="8" PageSizeOptions="[8, 16, 32, 64]"
-                    ShowPagingSummary="true" PagingSummaryFormat="@("{2:N0} calls, page {0} of {1}")">
+                    ShowPagingSummary="true" PagingSummaryFormat="@("{2:N0} calls, page {0} of {1}")"
+                    CellRender="@OnCellRender">
         <Columns>
             <RadzenDataGridColumn Title="Start" Property="@nameof(CallInfo.StartTime)" SortOrder="SortOrder.Descending">
                 <Template>
-                    <DateTimeView Date="@context.StartTime" />
+                    <DateTimeView Date="@context.StartTime"/>
                 </Template>
             </RadzenDataGridColumn>
-            <RadzenDataGridColumn Title="Collection" Property="@nameof(CallInfo.CollectionName)" />
-            <RadzenDataGridColumn Title="Function" Property="@nameof(CallInfo.FunctionName)" />
-            <RadzenDataGridColumn Title="Elapsed" Property="@nameof(CallInfo.Elapsed)">
+            <RadzenDataGridColumn Title="Collection" Property="@nameof(CallInfo.CollectionName)"/>
+            <RadzenDataGridColumn Title="Function" Property="@nameof(CallInfo.FunctionName)"/>
+            <RadzenDataGridColumn Title="Operation" Property="@nameof(CallInfo.Operation)"/>
+            <RadzenDataGridColumn Title="Count" Property="@nameof(CallInfo.Count)"/>
+            <RadzenDataGridColumn Title="Elapsed" Property="@nameof(CallInfo.Elapsed)" CssClass="final">
                 <Template>
-                    <TimeSpanView TimeSpan="@context.Elapsed" />
+                    <TimeSpanView TimeSpan="@context.Elapsed"/>
                 </Template>
             </RadzenDataGridColumn>
             <RadzenDataGridColumn Title="Exception" Sortable="false" Filterable="false">
@@ -39,9 +42,31 @@ else
 
     protected override async Task OnParametersSetAsync()
     {
-        _model = DatabaseMonitor.GetCalls().ToArray();
+        _model = DatabaseMonitor.GetLastCalls().ToArray();
 
         await base.OnParametersSetAsync();
     }
 
+    void OnCellRender(DataGridCellRenderEventArgs<CallInfo> args)
+    {
+        var cssClass = args.Column.CssClass;
+        if (string.IsNullOrEmpty(cssClass) || !cssClass.StartsWith("final")) return;
+
+        string color = null;
+        if (!args.Data.Final)
+        {
+            color = "lightyellow";
+        }
+
+        if (color is null) return;
+
+        if (args.Attributes.TryGetValue("style", out var existing))
+        {
+            args.Attributes["style"] = existing + $"background-color: {color};";
+        }
+        else
+        {
+            args.Attributes.Add("style", $"background-color: {color};");
+        }
+    }
 }
