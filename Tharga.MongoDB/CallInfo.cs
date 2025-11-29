@@ -6,6 +6,8 @@ namespace Tharga.MongoDB;
 public record CallInfo
 {
     public required DateTime StartTime { get; init; }
+    public required string ConfigurationName { get; init; }
+    public required string DatabaseName { get; init; }
     public required string CollectionName { get; init; }
     public required string FunctionName { get; init; }
     public required Operation Operation { get; set; }

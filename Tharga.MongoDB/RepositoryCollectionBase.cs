@@ -56,7 +56,7 @@ public abstract class RepositoryCollectionBase<TEntity, TKey> : RepositoryCollec
     internal override string DatabaseName => _mongoDbService.GetDatabaseName();
     public override string CollectionName => _databaseContext?.CollectionName ?? DefaultCollectionName;
     public virtual string DatabasePart => _databaseContext?.CollectionName;
-    public override string ConfigurationName => _databaseContext?.ConfigurationName.Value;
+    public override string ConfigurationName => _databaseContext?.ConfigurationName;
     public virtual bool AutoClean => _mongoDbService.GetAutoClean();
     public virtual bool CleanOnStartup => _mongoDbService.GetCleanOnStartup();
     [Obsolete($"Use {nameof(CreateCollectionStrategy)} instead.")]

@@ -7,51 +7,76 @@
 }
 else
 {
-    <RadzenSelectBar TValue="CallType" @bind-Value="@SelectedCallType" Change="@Reload" Style="margin-bottom: 6px;">
-        <Items>
-            <RadzenSelectBarItem Text="Last" Value="CallType.Last" />
-            <RadzenSelectBarItem Text="Slow" Value="CallType.Slow" />
-        </Items>
-    </RadzenSelectBar>
+    <RadzenStack Orientation="Orientation.Vertical">
 
-    <RadzenDataGrid Data="_model" TItem="CallInfo"
-                    AllowFiltering="false" FilterMode="FilterMode.Simple" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
-                    AllowSorting="true"
-                    AllowPaging="true" PageSize="8" PageSizeOptions="[8, 16, 32, 64]"
-                    ShowPagingSummary="true" PagingSummaryFormat="@("{2:N0} calls, page {0} of {1}")"
-                    CellRender="@OnCellRender">
-        <Columns>
-            <RadzenDataGridColumn Title="Start" Property="@nameof(CallInfo.StartTime)" SortOrder="SortOrder.Descending">
-                <Template>
-                    <DateTimeView Date="@context.StartTime"/>
-                </Template>
-            </RadzenDataGridColumn>
-            <RadzenDataGridColumn Title="Collection" Property="@nameof(CallInfo.CollectionName)"/>
-            <RadzenDataGridColumn Title="Function" Property="@nameof(CallInfo.FunctionName)"/>
-            <RadzenDataGridColumn Title="Operation" Property="@nameof(CallInfo.Operation)"/>
-            <RadzenDataGridColumn Title="Count" Property="@nameof(CallInfo.Count)"/>
-            <RadzenDataGridColumn Title="Elapsed" Property="@nameof(CallInfo.Elapsed)" CssClass="final">
-                <Template>
-                    <TimeSpanView TimeSpan="@context.Elapsed"/>
-                </Template>
-            </RadzenDataGridColumn>
-            <RadzenDataGridColumn Title="Exception" Sortable="false" Filterable="false">
-                <Template>
-                    @context.Exception?.Message
-                </Template>
-            </RadzenDataGridColumn>
-        </Columns>
-    </RadzenDataGrid>
+        <RadzenRow>
+            <RadzenColumn>
+                <RadzenStack Orientation="Orientation.Vertical">
+                    <RadzenText TextStyle="TextStyle.Caption" Text="Type"/>
+                    <RadzenSelectBar TValue="CallType" @bind-Value="@SelectedCallType" Change="@ReloadData" Style="margin-bottom: 6px;">
+                        <Items>
+                            <RadzenSelectBarItem Text="Last" Value="CallType.Last"/>
+                            <RadzenSelectBarItem Text="Slow" Value="CallType.Slow"/>
+                        </Items>
+                    </RadzenSelectBar>
+                </RadzenStack>
+            </RadzenColumn>
+            <RadzenColumn>
+                <RadzenStack Orientation="Orientation.Vertical">
+                    <RadzenText TextStyle="TextStyle.Caption" Text="Databases"/>
+                    <RadzenDropDown Placeholder="Select databases" @bind-Value=@SelectedDatabases Data=@_databases Multiple=true Style="margin-bottom: 6px;" Change="@ReloadData"/>
+                </RadzenStack>
+            </RadzenColumn>
+        </RadzenRow>
+
+        <RadzenDataGrid Data="_model" TItem="CallInfo"
+                        AllowFiltering="false" FilterMode="FilterMode.Simple" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                        AllowSorting="true"
+                        AllowPaging="true" PageSize="8" PageSizeOptions="[8, 16, 32, 64]"
+                        ShowPagingSummary="true" PagingSummaryFormat="@("{2:N0} calls, page {0} of {1}")"
+                        CellRender="@OnCellRender">
+            <Columns>
+                <RadzenDataGridColumn Title="Start" Property="@nameof(CallInfo.StartTime)" SortOrder="SortOrder.Descending">
+                    <Template>
+                        <DateTimeView Date="@context.StartTime"/>
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn Title="Configuration" Property="@nameof(CallInfo.ConfigurationName)" Visible="@_showConfiguration" />
+                <RadzenDataGridColumn Title="Database" Property="@nameof(CallInfo.DatabaseName)" />
+                <RadzenDataGridColumn Title="Collection" Property="@nameof(CallInfo.CollectionName)" />
+                <RadzenDataGridColumn Title="Function" Property="@nameof(CallInfo.FunctionName)"/>
+                <RadzenDataGridColumn Title="Operation" Property="@nameof(CallInfo.Operation)"/>
+                <RadzenDataGridColumn Title="Count" Property="@nameof(CallInfo.Count)"/>
+                <RadzenDataGridColumn Title="Elapsed" Property="@nameof(CallInfo.Elapsed)" CssClass="final">
+                    <Template>
+                        <TimeSpanView TimeSpan="@context.Elapsed"/>
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn Title="Exception" Sortable="false" Filterable="false">
+                    <Template>
+                        @context.Exception?.Message
+                    </Template>
+                </RadzenDataGridColumn>
+            </Columns>
+        </RadzenDataGrid>
+    </RadzenStack>
 }
 
 @code {
+    private string[] _databases;
     private CallInfo[] _model;
+    private bool _showConfiguration;
+    private CallInfo[] _all;
 
     private CallType SelectedCallType { get; set; }
+    private IEnumerable<string> SelectedDatabases { get; set; }
 
     protected override async Task OnParametersSetAsync()
     {
-        Reload();
+        _all = DatabaseMonitor.GetCalls(CallType.Last).Union(DatabaseMonitor.GetCalls(CallType.Slow)).ToArray();
+        _databases = _all.GroupBy(x => x.DatabaseName).Select(x => x.First()).Select(x => x.DatabaseName).Order().ToArray();
+
+        ReloadData();
         await base.OnParametersSetAsync();
     }
 
@@ -78,9 +103,13 @@ else
         }
     }
 
-    private void Reload()
+    private void ReloadData()
     {
-        _model = DatabaseMonitor.GetCalls(SelectedCallType).ToArray();
+        _all = DatabaseMonitor.GetCalls(SelectedCallType).ToArray();
+        // _databases = _all.GroupBy(x => x.DatabaseName).Select(x => x.First()).Select(x => x.DatabaseName).Order().ToArray();
+        _model = _all.Where(x => SelectedDatabases == null || !SelectedDatabases.Any() || SelectedDatabases.Contains(x.DatabaseName)).ToArray();
+        _showConfiguration = _model.GroupBy(x => x.ConfigurationName).Count() > 1;
+        StateHasChanged();
     }
 
 }

@@ -11,64 +11,92 @@
 }
 else
 {
-    <RadzenDataGrid Data="_model" TItem="CollectionInfo"
-                    AllowFiltering="false" FilterMode="FilterMode.Simple" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
-                    AllowSorting="true"
-                    AllowPaging="true" PageSize="8" PageSizeOptions="[8, 16, 32, 64]"
-                    ShowPagingSummary="true" PagingSummaryFormat="@("{2:N0} collections, page {0} of {1}")"
-                    CellRender="@OnCellRender">
-        <Columns>
-            <RadzenDataGridColumn Title="Configuration" Property="@nameof(CollectionInfo.ConfigurationName)" Visible="@_showConfiguration"/>
-            <RadzenDataGridColumn Title="Database" Property="@nameof(CollectionInfo.DatabaseName)" />
-            <RadzenDataGridColumn Title="Collection" Property="@nameof(CollectionInfo.CollectionName)"/>
-            <RadzenDataGridColumn Title="Source" Property="@nameof(CollectionInfo.Source)"/>
-            <RadzenDataGridColumn Title="Registration" Property="@nameof(CollectionInfo.Registration)"/>
-            <RadzenDataGridColumn Title="AccessCount" Property="@nameof(CollectionInfo.AccessCount)" TextAlign="TextAlign.Right" FormatString="{0:N0}"/>
-            <RadzenDataGridColumn Title="DocumentCount" Property="@nameof(CollectionInfo.DocumentCount)" TextAlign="TextAlign.Right" CssClass="count">
-                <Template>
-                    @if (context.DocumentCount.IsValid)
-                    {
-                        <RadzenText Text="@($"{context.DocumentCount.Count:N0}")"/>
-                    }
-                    else
-                    {
-                        <RadzenText Text="@($"{context.DocumentCount.Count:N0} (Virtual count is {context.DocumentCount.Virtual:N0})")"/>
-                    }
-                </Template>
-            </RadzenDataGridColumn>
-            <RadzenDataGridColumn Title="Size" Property="@nameof(CollectionInfo.Size)" TextAlign="TextAlign.Right">
-                <Template>
-                    @context.Size.ToReadableByteSize()
-                </Template>
-            </RadzenDataGridColumn>
-            <RadzenDataGridColumn Title="Index" Sortable="false" Width="120px;">
-                <Template>
-                    @if (context.Index.Defined != null)
-                    {
-                        <StandardButton Icon="format_list_numbered" ButtonStyle="@(context.Index.Defined.SequenceEqual(context.Index.Current) ? ButtonStyle.Base : ButtonStyle.Warning)" Click="@(() => ShowIndexDialog(context))" Style="margin-right: 3px;" />
-                    }
-                    @if (context.Registration != Registration.NotInCode && context.AccessCount == 0)
-                    {
-                        <StandardButton Icon="touch_app" Click="@(() => TouchCollection(context))" />
-                    }
-                </Template>
-            </RadzenDataGridColumn>
-        </Columns>
-    </RadzenDataGrid>
+    <RadzenStack Orientation="Orientation.Vertical">
+        <RadzenRow>
+            <RadzenColumn>
+                <RadzenStack Orientation="Orientation.Vertical">
+                    <RadzenText TextStyle="TextStyle.Caption" Text="Registration" />
+                    <RadzenSelectBar TValue="IEnumerable<Registration>" @bind-Value="@SelectedRegistrationTypes" Change="@ReloadData" Style="margin-bottom: 6px;" Multiple="true">
+                        <Items>
+                            <RadzenSelectBarItem Text="Static" Value="Registration.Static" />
+                            <RadzenSelectBarItem Text="Dynamic" Value="Registration.Dynamic" />
+                            <RadzenSelectBarItem Text="Not in Code" Value="Registration.NotInCode" />
+                        </Items>
+                    </RadzenSelectBar>
+                </RadzenStack>
+            </RadzenColumn>
+            <RadzenColumn>
+                <RadzenStack Orientation="Orientation.Vertical">
+                    <RadzenText TextStyle="TextStyle.Caption" Text="Databases"/>
+                    <RadzenDropDown Placeholder="Select databases" @bind-Value=@SelectedDatabases Data=@_databases Multiple=true Style="margin-bottom: 6px;" Change="@ReloadData"/>
+                </RadzenStack>
+            </RadzenColumn>
+        </RadzenRow>
+
+        <RadzenDataGrid Data="_model" TItem="CollectionInfo"
+                        AllowFiltering="false" FilterMode="FilterMode.Simple" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                        AllowSorting="true"
+                        AllowPaging="true" PageSize="8" PageSizeOptions="[8, 16, 32, 64]"
+                        ShowPagingSummary="true" PagingSummaryFormat="@("{2:N0} collections, page {0} of {1}")"
+                        CellRender="@OnCellRender">
+            <Columns>
+                <RadzenDataGridColumn Title="Configuration" Property="@nameof(CollectionInfo.ConfigurationName)" Visible="@_showConfiguration"/>
+                <RadzenDataGridColumn Title="Database" Property="@nameof(CollectionInfo.DatabaseName)"/>
+                <RadzenDataGridColumn Title="Collection" Property="@nameof(CollectionInfo.CollectionName)"/>
+                <RadzenDataGridColumn Title="Source" Property="@nameof(CollectionInfo.Source)"/>
+                <RadzenDataGridColumn Title="Registration" Property="@nameof(CollectionInfo.Registration)"/>
+                <RadzenDataGridColumn Title="AccessCount" Property="@nameof(CollectionInfo.AccessCount)" TextAlign="TextAlign.Right" FormatString="{0:N0}"/>
+                <RadzenDataGridColumn Title="DocumentCount" Property="@nameof(CollectionInfo.DocumentCount)" TextAlign="TextAlign.Right" CssClass="count">
+                    <Template>
+                        @if (context.DocumentCount.IsValid)
+                        {
+                            <RadzenText Text="@($"{context.DocumentCount.Count:N0}")"/>
+                        }
+                        else
+                        {
+                            <RadzenText Text="@($"{context.DocumentCount.Count:N0} (Virtual count is {context.DocumentCount.Virtual:N0})")"/>
+                        }
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn Title="Size" Property="@nameof(CollectionInfo.Size)" TextAlign="TextAlign.Right">
+                    <Template>
+                        @context.Size.ToReadableByteSize()
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn Title="Index" Sortable="false" Width="120px;">
+                    <Template>
+                        @if (context.Index.Defined != null)
+                        {
+                            <StandardButton Icon="format_list_numbered" ButtonStyle="@(context.Index.Defined.SequenceEqual(context.Index.Current) ? ButtonStyle.Base : ButtonStyle.Warning)" Click="@(() => ShowIndexDialog(context))" Style="margin-right: 3px;"/>
+                        }
+                        @if (context.Registration != Registration.NotInCode && context.AccessCount == 0)
+                        {
+                            <StandardButton Icon="touch_app" Click="@(() => TouchCollection(context))"/>
+                        }
+                    </Template>
+                </RadzenDataGridColumn>
+            </Columns>
+        </RadzenDataGrid>
+    </RadzenStack>
 }
 
 @code {
+    private string[] _databases;
     private CollectionInfo[] _model;
     private bool _showConfiguration;
+    private CollectionInfo[] _all;
+
+    private IEnumerable<Registration> SelectedRegistrationTypes { get; set; }
+    private IEnumerable<string> SelectedDatabases { get; set; }
 
     [Parameter]
     public bool FullDatabaseScan { get; set; }
 
     protected override async Task OnParametersSetAsync()
     {
+        _all = await DatabaseMonitor.GetInstancesAsync(FullDatabaseScan).ToArrayAsync();
+        _databases = _all.GroupBy(x => x.DatabaseName).Select(x => x.First()).Select(x => x.DatabaseName).Order().ToArray();
         await ReloadData();
-        _showConfiguration = _model.GroupBy(x => x.ConfigurationName).Count() > 1;
-
         await base.OnParametersSetAsync();
     }
 
@@ -92,7 +120,11 @@ else
 
     private async Task ReloadData()
     {
-        _model = await DatabaseMonitor.GetInstancesAsync(FullDatabaseScan).ToArrayAsync();
+        _model = _all
+            .Where(x => SelectedDatabases == null || !SelectedDatabases.Any() || SelectedDatabases.Contains(x.DatabaseName))
+            .Where(x => SelectedRegistrationTypes == null || !SelectedRegistrationTypes.Any() || SelectedRegistrationTypes.Contains(x.Registration))
+            .ToArray();
+        _showConfiguration = _model.GroupBy(x => x.ConfigurationName).Count() > 1;
         StateHasChanged();
     }
 

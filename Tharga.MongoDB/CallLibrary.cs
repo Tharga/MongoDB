@@ -39,6 +39,8 @@ internal class CallLibrary : ICallLibrary
         var info = new CallInfo
         {
             StartTime = DateTime.UtcNow,
+            ConfigurationName = e.ConfigurationName,
+            DatabaseName = e.DatabaseName,
             CollectionName = e.CollectionName,
             FunctionName = e.FunctionName,
             Operation = e.Operation
