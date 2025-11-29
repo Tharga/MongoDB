@@ -327,11 +327,21 @@ internal class DatabaseMonitor : IDatabaseMonitor
         var collectionInstance = collectionMethod?.Invoke(collection, []);
     }
 
-    public IEnumerable<CallInfo> GetLastCalls()
+    public IEnumerable<CallInfo> GetCalls(CallType callType)
     {
         if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
 
-        return _callLibrary.GetLastCalls();
+        switch (callType)
+        {
+            case CallType.Last:
+                return _callLibrary.GetLastCalls();
+                break;
+            case CallType.Slow:
+                return _callLibrary.GetSlowCalls();
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(callType), callType, null);
+        }
     }
 
     private async IAsyncEnumerable<StatColInfo> GetStaticCollectionsFromCode()
@@ -483,4 +493,10 @@ internal class DatabaseMonitor : IDatabaseMonitor
     {
         public required string Type { get; init; }
     }
+}
+
+public enum CallType
+{
+    Last,
+    Slow
 }

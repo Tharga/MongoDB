@@ -7,6 +7,13 @@
 }
 else
 {
+    <RadzenSelectBar TValue="CallType" @bind-Value="@SelectedCallType" Change="@Reload" Style="margin-bottom: 6px;">
+        <Items>
+            <RadzenSelectBarItem Text="Last" Value="CallType.Last" />
+            <RadzenSelectBarItem Text="Slow" Value="CallType.Slow" />
+        </Items>
+    </RadzenSelectBar>
+
     <RadzenDataGrid Data="_model" TItem="CallInfo"
                     AllowFiltering="false" FilterMode="FilterMode.Simple" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
                     AllowSorting="true"
@@ -40,10 +47,11 @@ else
 @code {
     private CallInfo[] _model;
 
+    private CallType SelectedCallType { get; set; }
+
     protected override async Task OnParametersSetAsync()
     {
-        _model = DatabaseMonitor.GetLastCalls().ToArray();
-
+        Reload();
         await base.OnParametersSetAsync();
     }
 
@@ -69,4 +77,10 @@ else
             args.Attributes.Add("style", $"background-color: {color};");
         }
     }
+
+    private void Reload()
+    {
+        _model = DatabaseMonitor.GetCalls(SelectedCallType).ToArray();
+    }
+
 }

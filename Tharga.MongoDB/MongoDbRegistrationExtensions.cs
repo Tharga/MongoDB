@@ -33,7 +33,7 @@ public static class MongoDbRegistrationExtensions
         {
             Enabled = true,
             LastCallsToKeep = 1000,
-            SlowCallThreshold = TimeSpan.FromMicroseconds(1000),
+            SlowCallThreshold = TimeSpan.FromMilliseconds(1000),
             SlowCallsToKeep = 200,
         };
 

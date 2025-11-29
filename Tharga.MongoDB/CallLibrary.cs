@@ -11,7 +11,6 @@ internal class CallLibrary : ICallLibrary
     private readonly DatabaseOptions _options;
     private readonly ConcurrentQueue<Guid> _recentCalls;
     private readonly ConcurrentDictionary<Guid, CallInfo> _calls;
-    private readonly ConcurrentDictionary<string, AggregatedCallInfo> _stats;
     private readonly ConcurrentQueue<CallInfo> _slowCalls;
 
     public CallLibrary(IOptions<DatabaseOptions> options)
@@ -19,7 +18,6 @@ internal class CallLibrary : ICallLibrary
         _options = options.Value;
         _recentCalls = new ConcurrentQueue<Guid>();
         _calls = new ConcurrentDictionary<Guid, CallInfo>();
-        _stats = new ConcurrentDictionary<string, AggregatedCallInfo>();
         _slowCalls = new ConcurrentQueue<CallInfo>();
     }
 
@@ -52,28 +50,6 @@ internal class CallLibrary : ICallLibrary
             item.Count = e.Count;
             item.Exception = e.Exception;
             item.Final = e.Final;
-
-            var key = $"{item.CollectionName}.{item.FunctionName}";
-
-            _stats.AddOrUpdate(
-                key,
-                _ => new AggregatedCallInfo
-                {
-                    Count = 1,
-                    TotalElapsed = e.Elapsed,
-                    MaxElapsed = e.Elapsed
-                },
-                (_, agg) =>
-                {
-                    agg.Count++;
-                    agg.TotalElapsed += e.Elapsed;
-                    if (e.Elapsed > agg.MaxElapsed)
-                    {
-                        agg.MaxElapsed = e.Elapsed;
-                    }
-
-                    return agg;
-                });
         }
 
         if (e.Elapsed > _options.Monitor.SlowCallThreshold)
