@@ -1,10 +1,11 @@
-﻿using System;
+﻿using Microsoft.Extensions.Logging;
+using MongoDB.Driver;
+using System;
 using System.Collections.Generic;
 using System.Linq.Expressions;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.Extensions.Logging;
-using MongoDB.Driver;
+using Tharga.MongoDB.Configuration;
 using Tharga.MongoDB.Internals;
 
 namespace Tharga.MongoDB;
@@ -17,6 +18,7 @@ public abstract class RepositoryCollectionBase
     internal abstract string DatabaseName { get; }
     public abstract string CollectionName { get; }
     public abstract string ConfigurationName { get; }
+    public abstract long? VirtualCount { get; }
 
     internal void InvokeAction(ActionEventArgs.ActionData actionData, ActionEventArgs.ContextData contextData)
     {
@@ -27,6 +29,7 @@ public abstract class RepositoryCollectionBase
 public abstract class RepositoryCollectionBase<TEntity, TKey> : RepositoryCollectionBase, IRepositoryCollection<TEntity, TKey>
     where TEntity : EntityBase<TKey>
 {
+    protected readonly IMongoDbServiceFactory _mongoDbServiceFactory;
     protected readonly ILogger<RepositoryCollectionBase<TEntity, TKey>> _logger;
     protected readonly DatabaseContext _databaseContext;
     protected readonly IMongoDbService _mongoDbService;
@@ -36,6 +39,7 @@ public abstract class RepositoryCollectionBase<TEntity, TKey> : RepositoryCollec
 
     protected RepositoryCollectionBase(IMongoDbServiceFactory mongoDbServiceFactory, ILogger<RepositoryCollectionBase<TEntity, TKey>> logger, DatabaseContext databaseContext = null)
     {
+        _mongoDbServiceFactory = mongoDbServiceFactory;
         _logger = logger;
         _databaseContext = databaseContext;
 
@@ -48,15 +52,16 @@ public abstract class RepositoryCollectionBase<TEntity, TKey> : RepositoryCollec
     internal virtual IRepositoryCollection<TEntity, TKey> BaseCollection => this;
     private string DefaultCollectionName => typeof(TEntity).Name;
     protected string ProtectedCollectionName => CollectionName.ProtectCollectionName();
-
     internal override string ServerName => _mongoDbService.GetDatabaseHostName();
     internal override string DatabaseName => _mongoDbService.GetDatabaseName();
     public override string CollectionName => _databaseContext?.CollectionName ?? DefaultCollectionName;
     public virtual string DatabasePart => _databaseContext?.CollectionName;
-    public override string ConfigurationName => _databaseContext?.ConfigurationName.Value;
+    public override string ConfigurationName => _databaseContext?.ConfigurationName;
     public virtual bool AutoClean => _mongoDbService.GetAutoClean();
     public virtual bool CleanOnStartup => _mongoDbService.GetCleanOnStartup();
+    [Obsolete($"Use {nameof(CreateCollectionStrategy)} instead.")]
     public virtual bool DropEmptyCollections => _mongoDbService.DropEmptyCollections();
+    public virtual CreateStrategy CreateCollectionStrategy => _mongoDbService.CreateCollectionStrategy();
     public virtual int? ResultLimit => _mongoDbService.GetResultLimit();
     public virtual IEnumerable<CreateIndexModel<TEntity>> Indices => null;
     internal virtual IEnumerable<CreateIndexModel<TEntity>> CoreIndices => null;
@@ -83,10 +88,8 @@ public abstract class RepositoryCollectionBase<TEntity, TKey> : RepositoryCollec
     public abstract Task<EntityChangeResult<TEntity>> ReplaceOneAsync(TEntity entity, FilterDefinition<TEntity> filter, OneOption<TEntity> options = null);
     public abstract Task<long> UpdateAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update);
     public abstract Task<EntityChangeResult<TEntity>> UpdateOneAsync(TKey id, UpdateDefinition<TEntity> update);
-    public abstract Task<EntityChangeResult<TEntity>> UpdateOneAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update, FindOneAndUpdateOptions<TEntity> options);
     public abstract Task<EntityChangeResult<TEntity>> UpdateOneAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update, OneOption<TEntity> options = null);
     public abstract Task<TEntity> DeleteOneAsync(TKey id);
-    public abstract Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate, FindOneAndDeleteOptions<TEntity, TEntity> options);
     public abstract Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate = null, OneOption<TEntity> options = null);
     public abstract Task<long> DeleteManyAsync(Expression<Func<TEntity, bool>> predicate);
     public abstract IMongoCollection<TEntity> GetCollection();

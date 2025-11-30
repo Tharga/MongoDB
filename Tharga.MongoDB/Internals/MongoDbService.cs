@@ -4,11 +4,11 @@ using MongoDB.Bson.Serialization.Attributes;
 using MongoDB.Driver;
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Tharga.MongoDB.Atlas;
+using Tharga.MongoDB.Configuration;
 
 namespace Tharga.MongoDB.Internals;
 
@@ -21,15 +21,13 @@ internal class MongoDbService : IMongoDbService
     private readonly IMongoDatabase _mongoDatabase;
     private readonly MongoUrl _mongoUrl;
 
-    public MongoDbService(IRepositoryConfigurationInternal configuration, IMongoDbFirewallStateService mongoDbFirewallStateService, ILogger logger)
+    public MongoDbService(IRepositoryConfigurationInternal configuration, IMongoDbFirewallStateService mongoDbFirewallStateService, IMongoDbClientProvider mongoDbClientProvider, ILogger logger)
     {
         _configuration = configuration;
         _mongoDbFirewallStateService = mongoDbFirewallStateService;
         _logger = logger;
         _mongoUrl = configuration.GetDatabaseUrl() ?? throw new NullReferenceException("MongoUrl not found in configuration.");
-        var cfg = MongoClientSettings.FromUrl(_mongoUrl);
-        cfg.ConnectTimeout = Debugger.IsAttached ? TimeSpan.FromSeconds(5) : TimeSpan.FromSeconds(10);
-        _mongoClient = new MongoClient(cfg);
+        _mongoClient = mongoDbClientProvider.GetClient(_mongoUrl);
         var settings = new MongoDatabaseSettings { WriteConcern = WriteConcern.WMajority };
         _mongoDatabase = _mongoClient.GetDatabase(_mongoUrl.DatabaseName, settings);
     }
@@ -41,8 +39,8 @@ internal class MongoDbService : IMongoDbService
         await AssureFirewallAccessAsync();
 
         var collection = _mongoDatabase.GetCollection<T>(collectionName);
-        var databaseContext = _configuration.GetDatabaseContext();
 
+        var databaseContext = _configuration.GetDatabaseContext();
         CollectionAccessEvent?.Invoke(this, new CollectionAccessEventArgs(databaseContext, _mongoUrl.Url, typeof(T), collectionName));
 
         return collection;
@@ -110,7 +108,7 @@ internal class MongoDbService : IMongoDbService
                 .Distinct<string>("_t", FilterDefinition<BsonDocument>.Empty)
                 .ToListAsync();
 
-            var documents = await mongoCollection.CountDocumentsAsync(FilterDefinition<BsonDocument>.Empty);
+            var documentCount = await mongoCollection.CountDocumentsAsync(FilterDefinition<BsonDocument>.Empty);
             var size = GetSize(collectionName, mongoDatabase);
 
             var indexModels = new List<IndexMeta>();
@@ -134,19 +132,18 @@ internal class MongoDbService : IMongoDbService
             }
 
             var dbName = mongoDatabase.DatabaseNamespace.DatabaseName;
-            var server = _mongoUrl.Url.TrimEnd(dbName);
+            var server = ToServerName(dbName);
 
             yield return new CollectionMeta
             {
                 Server = server,
                 DatabaseName = dbName,
                 CollectionName = collectionName,
-                //Context = new DatabaseContext(),
+                DocumentCount = documentCount,
 
                 //--> Revisit
 
                 ConfigurationName = _configuration.GetConfigurationName(),
-                DocumentCount = documents,
                 Size = size,
                 Types = types.ToArray(),
                 Indexes = indexModels
@@ -154,6 +151,15 @@ internal class MongoDbService : IMongoDbService
                     .ToArray(),
             };
         }
+    }
+
+    private string ToServerName(string dbName)
+    {
+        var server = _mongoUrl.Url.TrimEnd(dbName);
+        server = server.Trim('/');
+        var p = server.LastIndexOf("//");
+        server = server.Substring(p + 2);
+        return server;
     }
 
     public async Task<bool> DoesCollectionExist(string name)
@@ -212,9 +218,15 @@ internal class MongoDbService : IMongoDbService
         return _configuration.GetConfiguration().CleanOnStartup;
     }
 
+    [Obsolete($"Use {nameof(CreateCollectionStrategy)} instead.")]
     public bool DropEmptyCollections()
     {
         return _configuration.GetConfiguration().DropEmptyCollections;
+    }
+
+    public CreateStrategy CreateCollectionStrategy()
+    {
+        return _configuration.GetConfiguration().CreateCollectionStrategy;
     }
 
     private string GetDatabaseDescription()

@@ -7,6 +7,5 @@ public record UseMongoOptions
     public ILogger Logger { get; set; }
     public DatabaseUsage DatabaseUsage { get; set; }
     public bool WaitToComplete { get; set; }
-    public bool UseMonitor { get; set; }
     public bool OpenFirewall { get; set; }
 }

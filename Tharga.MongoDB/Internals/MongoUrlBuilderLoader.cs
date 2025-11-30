@@ -29,7 +29,7 @@ internal class MongoUrlBuilderLoader : IMongoUrlBuilderLoader
 
     private string GetConnectionString(DatabaseContext databaseContext, DatabaseOptions databaseOptions, IServiceProvider provider)
     {
-        var configurationName = databaseContext?.ConfigurationName?.Value.NullIfEmpty() ?? databaseOptions.DefaultConfigurationName?.Value;
+        var configurationName = databaseContext?.ConfigurationName?.Value.NullIfEmpty() ?? databaseOptions.DefaultConfigurationName;
 
         if (configurationName == null) throw new InvalidOperationException("Cannot find configuration name.");
 

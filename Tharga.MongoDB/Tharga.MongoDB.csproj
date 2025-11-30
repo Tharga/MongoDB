@@ -8,7 +8,7 @@
     <Company>Thargelion AB</Company>
     <Product>Tharga MongoDB</Product>
     <Description>Dynamic names for databases and collections.</Description>
-    <PackageIconUrl>http://thargelion.se/wp-content/uploads/2019/11/Thargelion-White-Icon-150.png</PackageIconUrl>
+    <PackageIconUrl>https://thargelion.se/wp-content/uploads/2025/11/Thargelion-DB-Icon-150.png</PackageIconUrl>
     <GenerateDocumentationFile>True</GenerateDocumentationFile>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageProjectUrl>https://github.com/Tharga/MongoDB</PackageProjectUrl>
@@ -42,15 +42,9 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="MongoDB.Driver" Version="3.5.0" />
+    <PackageReference Include="MongoDB.Driver" Version="3.5.2" />
     <PackageReference Include="Tharga.Runtime" Version="0.1.2" />
-  </ItemGroup>
-
-  <ItemGroup Condition="'$(TargetFramework)' == 'net8.0'">
-    <PackageReference Include="System.Linq.Async" Version="6.0.3" />
-  </ItemGroup>
-  <ItemGroup Condition="'$(TargetFramework)' == 'net9.0'">
-    <PackageReference Include="System.Linq.Async" Version="6.0.3" />
+    <PackageReference Include="System.Linq.Async" Version="7.0.0" />
   </ItemGroup>
 
   <ItemGroup>

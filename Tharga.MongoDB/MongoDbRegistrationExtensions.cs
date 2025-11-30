@@ -7,6 +7,7 @@ using MongoDB.Bson.Serialization.Serializers;
 using System;
 using System.Linq;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
 using Tharga.MongoDB.Atlas;
 using Tharga.MongoDB.Configuration;
@@ -24,13 +25,31 @@ public static class MongoDbRegistrationExtensions
     {
         var mongoDbInstance = new MongoDbInstance();
 
+        var config = services.BuildServiceProvider().GetService<IConfiguration>();
+        var c = config.GetSection("MongoDB").Get<DatabaseOptions>();
+
         //NOTE: Set up default.
+        var om = new MonitorOptions()
+        {
+            Enabled = true,
+            LastCallsToKeep = 1000,
+            SlowCallsToKeep = 200,
+        };
+
         var o = new DatabaseOptions
         {
-            DefaultConfigurationName = Constants.DefaultConfigurationName,
-            AutoRegisterRepositories = Constants.AutoRegisterRepositoriesDefault,
-            AutoRegisterCollections = Constants.AutoRegisterCollectionsDefault,
-            ExecuteInfoLogLevel = LogLevel.Debug
+            DefaultConfigurationName = c?.DefaultConfigurationName ?? Constants.DefaultConfigurationName,
+            AutoRegisterRepositories = c?.AutoRegisterRepositories ?? Constants.AutoRegisterRepositoriesDefault,
+            AutoRegisterCollections = c?.AutoRegisterCollections ?? Constants.AutoRegisterCollectionsDefault,
+            UseCollectionProviderCache = c?.UseCollectionProviderCache ?? false,
+            ExecuteInfoLogLevel = c?.ExecuteInfoLogLevel ?? LogLevel.Debug,
+            AssureIndex = c?.AssureIndex ?? true,
+            Monitor = new MonitorOptions
+            {
+                Enabled = c?.Monitor?.Enabled ?? om.Enabled,
+                LastCallsToKeep = c?.Monitor?.LastCallsToKeep ?? om.LastCallsToKeep,
+                SlowCallsToKeep = c?.Monitor?.SlowCallsToKeep ?? om.SlowCallsToKeep,
+            }
         };
         options?.Invoke(o);
         services.AddSingleton(Options.Create(o));
@@ -48,13 +67,15 @@ public static class MongoDbRegistrationExtensions
 
         services.AddTransient<IExternalIpAddressService, ExternalIpAddressService>();
         services.AddTransient<IMongoDbFirewallService, MongoDbFirewallService>();
+        services.AddSingleton<IMongoDbClientProvider, MongoDbClientProvider>();
         services.AddSingleton<IMongoDbFirewallStateService, MongoDbFirewallStateService>();
         services.AddSingleton<IMongoDbServiceFactory>(serviceProvider =>
         {
+            var mongoDbClientProvider = serviceProvider.GetService<IMongoDbClientProvider>();
             var repositoryConfigurationLoader = serviceProvider.GetService<IRepositoryConfigurationLoader>();
             var mongoDbFirewallStateService = serviceProvider.GetService<IMongoDbFirewallStateService>();
             var logger = serviceProvider.GetService<ILogger<MongoDbServiceFactory>>();
-            return new MongoDbServiceFactory(repositoryConfigurationLoader, mongoDbFirewallStateService, logger);
+            return new MongoDbServiceFactory(mongoDbClientProvider, repositoryConfigurationLoader, mongoDbFirewallStateService, logger);
         });
         services.AddTransient<IRepositoryConfigurationLoader>(serviceProvider =>
         {
@@ -68,7 +89,7 @@ public static class MongoDbRegistrationExtensions
         services.AddSingleton<ICollectionProviderCache>(_ =>
         {
             if (o.UseCollectionProviderCache)
-                return new CollectionProviderCache();
+                return new CollectionProviderCache(); //NOTE: Makes dynamic collections singleton.
             return new CollectionProviderNoCache();
         });
 
@@ -160,8 +181,16 @@ public static class MongoDbRegistrationExtensions
         }
 
         services.AddTransient<ICollectionTypeService, CollectionTypeService>();
-        services.AddSingleton<IDatabaseMonitor, DatabaseMonitor>();
         services.AddSingleton<IMongoDbInstance>(mongoDbInstance);
+
+        if (o.Monitor?.Enabled ?? false)
+        {
+            services.AddSingleton<IDatabaseMonitor, DatabaseMonitor>();
+            services.AddSingleton<ICallLibrary, CallLibrary>();
+        }
+        else
+        {
+        }
 
         return services;
     }
@@ -169,6 +198,8 @@ public static class MongoDbRegistrationExtensions
     public static void UseMongoDB(this IHost app, Action<UseMongoOptions> options = null)
     {
         _actionEvent?.Invoke(new ActionEventArgs(new ActionEventArgs.ActionData { Message = $"Entering {nameof(UseMongoDB)}.", Level = LogLevel.Debug }, new ActionEventArgs.ContextData()));
+
+        var databaseOptions = app.Services.GetService<IOptions<DatabaseOptions>>();
 
         var mongoDbInstance = app.Services.GetService<IMongoDbInstance>();
         if (mongoDbInstance == null) throw new InvalidOperationException($"Tharga MongoDB has not been registered. Call {nameof(AddMongoDB)} first.");
@@ -181,12 +212,16 @@ public static class MongoDbRegistrationExtensions
             {
                 FirewallConfigurationNames = repositoryConfiguration.GetDatabaseConfigurationNames().ToArray()
             },
-            UseMonitor = true,
+            //UseMonitor = true,
             OpenFirewall = true,
         };
         options?.Invoke(o);
 
-        if (o.UseMonitor) app.Services.GetService<IDatabaseMonitor>();
+        if (databaseOptions.Value.Monitor?.Enabled ?? false)
+        {
+            var monitor = app.Services.GetService<IDatabaseMonitor>() as DatabaseMonitor;
+            monitor?.Start();
+        }
 
         if (o.OpenFirewall)
         {

@@ -1,4 +1,6 @@
-﻿namespace Tharga.MongoDB.Configuration;
+﻿using System;
+
+namespace Tharga.MongoDB.Configuration;
 
 public record MongoDbConfiguration
 {
@@ -32,5 +34,8 @@ public record MongoDbConfiguration
     /// Drops the collection when the last item is deleted. It also drops empty collection on access, if CleanOnStartup is set to true.
     /// Default value is true.
     /// </summary>
+    [Obsolete($"Use {nameof(CreateCollectionStrategy)} instead")]
     public bool? DropEmptyCollections { get; init; }
+
+    public CreateStrategy CreateCollectionStrategy { get; init; }
 }

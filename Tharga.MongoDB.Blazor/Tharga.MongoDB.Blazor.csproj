@@ -8,7 +8,7 @@
     <Company>Thargelion AB</Company>
     <Product>Tharga MongoDB Blazor</Product>
     <Description>Component for manageing the Tharga MongoDB features in blazor.</Description>
-    <PackageIconUrl>http://thargelion.se/wp-content/uploads/2019/11/Thargelion-White-Icon-150.png</PackageIconUrl>
+    <PackageIconUrl>https://thargelion.se/wp-content/uploads/2025/11/Thargelion-DB-Icon-150.png</PackageIconUrl>
     <GenerateDocumentationFile>True</GenerateDocumentationFile>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <DebugType>portable</DebugType>
@@ -31,19 +31,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="Tharga.Blazor" Version="1.0.8" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Tharga.MongoDB\Tharga.MongoDB.csproj" />
-  </ItemGroup>
-
-  <ItemGroup Condition="'$(TargetFramework)' == 'net9.0'">
-    <PackageReference Include="System.Linq.Async" Version="6.0.3" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Folder Include="wwwroot\" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <PackageReference Include="Tharga.Blazor" Version="1.0.6" />
   </ItemGroup>
 
 </Project>
