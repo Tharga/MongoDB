@@ -18,6 +18,7 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
     where TEntity : LockableEntityBase<TKey>
 {
     private DiskRepositoryCollectionBase<TEntity, TKey> _disk;
+    // ReSharper disable once StaticMemberInGenericType
     private static readonly AutoResetEvent _releaseEvent = new(false);
 
     protected LockableRepositoryCollectionBase(IMongoDbServiceFactory mongoDbServiceFactory, ILogger<LockableRepositoryCollectionBase<TEntity, TKey>> logger = null, DatabaseContext databaseContext = null)
@@ -244,11 +245,6 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
         throw new NotSupportedException(BuildErrorMessage());
     }
 
-    public override Task<EntityChangeResult<TEntity>> UpdateOneAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update, FindOneAndUpdateOptions<TEntity> options)
-    {
-        throw new NotSupportedException(BuildErrorMessage());
-    }
-
     public override Task<EntityChangeResult<TEntity>> UpdateOneAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update, OneOption<TEntity> options = null)
     {
         throw new NotSupportedException(BuildErrorMessage());
@@ -259,11 +255,6 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
         var scope = await PickForDeleteAsync(id);
         var item = await scope.CommitAsync();
         return item;
-    }
-
-    public override Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate, FindOneAndDeleteOptions<TEntity, TEntity> options)
-    {
-        throw new NotSupportedException(BuildErrorMessage());
     }
 
     public override Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate = null, OneOption<TEntity> options = null)

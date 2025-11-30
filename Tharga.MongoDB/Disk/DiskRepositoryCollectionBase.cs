@@ -679,22 +679,6 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         }, Operation.Update);
     }
 
-    [Obsolete("Use UpdateOneAsync with 'OneOption' instead.")]
-    public override async Task<EntityChangeResult<TEntity>> UpdateOneAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update, FindOneAndUpdateOptions<TEntity> options)
-    {
-        return await Execute(nameof(UpdateOneAsync), async () =>
-        {
-            options ??= new FindOneAndUpdateOptions<TEntity> { ReturnDocument = ReturnDocument.Before };
-            if (options.ReturnDocument != ReturnDocument.Before) throw new InvalidOperationException($"The ReturnDocument option has to be set to {ReturnDocument.Before}. To get the '{ReturnDocument.After}', call method '{nameof(EntityChangeResult<TEntity>.GetAfterAsync)}()' on the result.");
-            var before = await Collection.FindOneAndUpdateAsync(filter, update, options);
-            if (before == null) return new EntityChangeResult<TEntity>(null, default(TEntity));
-            return new EntityChangeResult<TEntity>(before, async () =>
-            {
-                return await Collection.Find(x => x.Id.Equals(before.Id)).SingleAsync();
-            });
-        }, Operation.Update);
-    }
-
     public override async Task<EntityChangeResult<TEntity>> UpdateOneAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update, OneOption<TEntity> options = null)
     {
         if (filter == null) throw new ArgumentException(nameof(filter));
@@ -742,17 +726,6 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         {
             var filter = Builders<TEntity>.Filter.Eq(x => x.Id, id);
             var item = await Collection.FindOneAndDeleteAsync(filter);
-            await DropEmpty(Collection);
-            return item;
-        }, Operation.Remove);
-    }
-
-    [Obsolete("Use DeleteOneAsync with 'OneOption' instead.")]
-    public override async Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate, FindOneAndDeleteOptions<TEntity, TEntity> options)
-    {
-        return await Execute(nameof(DeleteOneAsync), async () =>
-        {
-            var item = await Collection.FindOneAndDeleteAsync(predicate, options);
             await DropEmpty(Collection);
             return item;
         }, Operation.Remove);

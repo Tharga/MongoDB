@@ -22,17 +22,9 @@ public interface IRepositoryCollection<TEntity, TKey> : IReadOnlyRepositoryColle
     Task<EntityChangeResult<TEntity>> ReplaceOneAsync(TEntity entity, FilterDefinition<TEntity> filter, OneOption<TEntity> options = null);
     Task<long> UpdateAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update);
     Task<EntityChangeResult<TEntity>> UpdateOneAsync(TKey id, UpdateDefinition<TEntity> update);
-
-    [Obsolete("Use UpdateOneAsync with 'OneOption' instead.")]
-    Task<EntityChangeResult<TEntity>> UpdateOneAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update, FindOneAndUpdateOptions<TEntity> options);
-
     Task<EntityChangeResult<TEntity>> UpdateOneAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update, OneOption<TEntity> options = default);
     Task<TEntity> DeleteOneAsync(TKey id);
-
-    [Obsolete("Use DeleteOneAsync with 'OneOption' instead.")]
-    Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate, FindOneAndDeleteOptions<TEntity, TEntity> options);
-
-    Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate = null, OneOption<TEntity> options = default);
+    Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate = null, OneOption<TEntity> options = null);
     Task<long> DeleteManyAsync(Expression<Func<TEntity, bool>> predicate);
 
     IMongoCollection<TEntity> GetCollection();
