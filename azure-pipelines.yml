@@ -1,7 +1,7 @@
 ﻿trigger:
 - master
 
-name: 2.7.0-pre.$(Rev:r)
+name: 2.7.$(Rev:r)
 
 pool:
   vmImage: 'windows-latest'
