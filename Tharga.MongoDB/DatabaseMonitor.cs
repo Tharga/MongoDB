@@ -78,27 +78,6 @@ internal class DatabaseMonitor : IDatabaseMonitor
             {
                 _callLibrary.EndCall(e);
             };
-            //_mongoDbServiceFactory.CallStartEvent += (_, e) =>
-            //{
-            //    _calls.TryAdd(e.CallKey, new CallInfo
-            //    {
-            //        StartTime = DateTime.UtcNow,
-            //        CollectionName = e.CollectionName,
-            //        FunctionName = e.FunctionName,
-            //        Operation = e.Operation
-            //    });
-            //    //TODO: Remove old calls, just keep a maximum number of 1000 calls or so.
-            //};
-            //_mongoDbServiceFactory.CallEndEvent += (_, e) =>
-            //{
-            //    if (_calls.TryGetValue(e.CallKey, out var item))
-            //    {
-            //        item.Elapsed = e.Elapsed;
-            //        item.Count = e.Count;
-            //        item.Exception = e.Exception;
-            //        item.Final = e.Final;
-            //    }
-            //};
         }
         finally
         {
@@ -335,10 +314,8 @@ internal class DatabaseMonitor : IDatabaseMonitor
         {
             case CallType.Last:
                 return _callLibrary.GetLastCalls();
-                break;
             case CallType.Slow:
                 return _callLibrary.GetSlowCalls();
-                break;
             default:
                 throw new ArgumentOutOfRangeException(nameof(callType), callType, null);
         }
@@ -493,10 +470,4 @@ internal class DatabaseMonitor : IDatabaseMonitor
     {
         public required string Type { get; init; }
     }
-}
-
-public enum CallType
-{
-    Last,
-    Slow
 }

@@ -8,7 +8,7 @@
     <Company>Thargelion AB</Company>
     <Product>Tharga MongoDB</Product>
     <Description>Dynamic names for databases and collections.</Description>
-    <PackageIconUrl>http://thargelion.se/wp-content/uploads/2019/11/Thargelion-White-Icon-150.png</PackageIconUrl>
+    <PackageIconUrl>https://thargelion.se/wp-content/uploads/2025/11/Thargelion-DB-Icon-150.png</PackageIconUrl>
     <GenerateDocumentationFile>True</GenerateDocumentationFile>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageProjectUrl>https://github.com/Tharga/MongoDB</PackageProjectUrl>
