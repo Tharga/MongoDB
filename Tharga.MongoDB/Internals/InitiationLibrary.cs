@@ -50,7 +50,7 @@ internal static class InitiationLibrary
 
     public static void RecheckInitiateIndex(string serverName, string databaseName, string collectionName)
     {
-        if (!_initiated.TryGetValue($"{serverName}.{databaseName}.{collectionName}", out var initiationInfo)) throw new InvalidOperationException($"Always call {nameof(ShouldInitiate)} before calling {nameof(ShouldInitiateIndex)}.");
+        if (!_initiated.TryGetValue($"{serverName}.{databaseName}.{collectionName}", out var initiationInfo)) return;
         if (!initiationInfo.FailedIndices.Any()) return;
 
         var updated = initiationInfo with { IndexAssured = false };
