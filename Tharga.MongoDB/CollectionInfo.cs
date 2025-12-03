@@ -1,13 +1,8 @@
-﻿using System;
+﻿namespace Tharga.MongoDB;
 
-namespace Tharga.MongoDB;
-
-public record CollectionInfo
+public record CollectionInfo : CollectionFingerprint
 {
-    public required string ConfigurationName { get; init; }
     public required string Server { get; init; }
-    public required string DatabaseName { get; init; }
-    public required string CollectionName { get; init; }
     public DatabaseContext Context { get; init; }
     //public Uri Uri => new(new Uri(Server), $"{DatabaseName}?collection={CollectionName}");
     public required Source Source { get; init; }

@@ -880,9 +880,21 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         return collection;
     }
 
-    internal async Task DropIndex(IMongoCollection<TEntity> collection)
+    internal async Task<(int Before, int After)> DropIndex(IMongoCollection<TEntity> collection)
     {
+        var before = (await collection.Indexes.ListAsync())
+            .ToList()
+            .Select(x => x.GetValue("name").AsString)
+            .Count(x => !x.StartsWith("_id_"));
+
         await collection.Indexes.DropAllAsync();
+
+        var after = (await collection.Indexes.ListAsync())
+            .ToList()
+            .Select(x => x.GetValue("name").AsString)
+            .Count(x => !x.StartsWith("_id_"));
+
+        return (before, after);
     }
 
     private async Task AssureIndex(IMongoCollection<TEntity> collection, bool forceAssure = false, bool throwOnException = false)
@@ -890,7 +902,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         var shouldAssureIndex = _mongoDbService.ShouldAssureIndex();
         if (!shouldAssureIndex && !forceAssure)
         {
-            _logger?.LogTrace("Assure index is disabled");
+            _logger?.LogTrace("Assure index is disabled.");
             return;
         }
 
@@ -1053,7 +1065,6 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 
         if (any) return;
 
-        Debugger.Break();
         await DropCollectionAsync();
     }
 

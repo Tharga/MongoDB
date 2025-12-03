@@ -11,11 +11,16 @@ internal static class IndexMetaConverter
 {
     public static IEnumerable<IndexMeta> BuildIndexMetas(this RepositoryCollectionBase instance)
     {
-        var prop = instance.GetType().GetProperty("Indices");
-        var vals = prop?.GetValue(instance);
+        var indicesProp = instance.GetType().GetProperty("Indices");
+        var indices = indicesProp?.GetValue(instance) as IEnumerable;
+
+        var coreIndicesProp = instance.GetType().GetProperty("CoreIndices", BindingFlags.NonPublic | BindingFlags.Instance);
+        var coreIndices = coreIndicesProp?.GetValue(instance) as IEnumerable;
+
+        var allIndices = indices.Union(coreIndices);
 
         var definedIndices = new List<IndexMeta>();
-        if (vals is IEnumerable items)
+        if (allIndices is IEnumerable items)
         {
             foreach (var indexModel in items)
             {
@@ -60,5 +65,27 @@ internal static class IndexMetaConverter
             Fields = fields,
             IsUnique = model.Options.Unique ?? false
         };
+    }
+}
+
+public static class EnumerableExtensions
+{
+    public static IEnumerable Union(this IEnumerable first, IEnumerable second)
+    {
+        if (first != null)
+        {
+            foreach (var item in first)
+            {
+                yield return item;
+            }
+        }
+
+        if (second != null)
+        {
+            foreach (var item in second)
+            {
+                yield return item;
+            }
+        }
     }
 }

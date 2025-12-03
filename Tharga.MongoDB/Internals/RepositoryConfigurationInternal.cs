@@ -39,7 +39,7 @@ internal class RepositoryConfigurationInternal : IRepositoryConfigurationInterna
 
     public MongoUrl GetDatabaseUrl()
     {
-        var databaseName = (_databaseContext.Value as DatabaseContextFull)?.DatabaseName;
+        var databaseName = (_databaseContext.Value as DatabaseContextWithFingerprint)?.DatabaseName;
         if (databaseName != null)
         {
             var result = _mongoUrlBuilderLoader.GetConnectionStringBuilder(_databaseContext.Value);

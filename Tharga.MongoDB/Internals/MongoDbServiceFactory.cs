@@ -50,7 +50,7 @@ internal class MongoDbServiceFactory : IMongoDbServiceFactory
 
         //TODO: Can this be done differently
         var ctx = configuration.GetDatabaseContext();
-        var useCache = string.IsNullOrEmpty((ctx as DatabaseContextFull)?.DatabaseName);
+        var useCache = string.IsNullOrEmpty((ctx as DatabaseContextWithFingerprint)?.DatabaseName);
 
         if (useCache && _databaseDbServices.TryGetValue(cacheKey, out var dbService)) return dbService;
 

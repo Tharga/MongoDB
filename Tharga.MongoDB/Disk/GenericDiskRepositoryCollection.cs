@@ -23,6 +23,7 @@ internal class GenericDiskRepositoryCollection<TEntity, TKey> : DiskRepositoryCo
     public override string ConfigurationName => _proxy?.ConfigurationName ?? base.ConfigurationName;
     public override bool AutoClean => _proxy?.AutoClean ?? base.AutoClean;
     public override bool CleanOnStartup => _proxy?.CleanOnStartup ?? base.CleanOnStartup;
+    [Obsolete($"Use {nameof(CreateCollectionStrategy)} instead.")]
     public override bool DropEmptyCollections => _proxy?.DropEmptyCollections ?? base.DropEmptyCollections;
     public override int? ResultLimit => _proxy?.ResultLimit ?? base.ResultLimit;
     public override IEnumerable<CreateIndexModel<TEntity>> Indices => _proxy?.Indices ?? base.Indices;

@@ -33,46 +33,65 @@ else
             </RadzenColumn>
         </RadzenRow>
 
-        <RadzenDataGrid Data="_model" TItem="CollectionInfo"
-                        AllowFiltering="false" FilterMode="FilterMode.Simple" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+        <RadzenDataGrid Data="_model" TItem="CollectionModel"
+                        AllowFiltering="true" FilterMode="FilterMode.Simple" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
                         AllowSorting="true"
                         AllowPaging="true" PageSize="8" PageSizeOptions="[8, 16, 32, 64]"
                         ShowPagingSummary="true" PagingSummaryFormat="@("{2:N0} collections, page {0} of {1}")"
                         CellRender="@OnCellRender">
             <Columns>
-                <RadzenDataGridColumn Title="Configuration" Property="@nameof(CollectionInfo.ConfigurationName)" Visible="@_showConfiguration"/>
-                <RadzenDataGridColumn Title="Database" Property="@nameof(CollectionInfo.DatabaseName)"/>
-                <RadzenDataGridColumn Title="Collection" Property="@nameof(CollectionInfo.CollectionName)"/>
-                <RadzenDataGridColumn Title="Source" Property="@nameof(CollectionInfo.Source)"/>
-                <RadzenDataGridColumn Title="Registration" Property="@nameof(CollectionInfo.Registration)"/>
-                <RadzenDataGridColumn Title="AccessCount" Property="@nameof(CollectionInfo.AccessCount)" TextAlign="TextAlign.Right" FormatString="{0:N0}"/>
-                <RadzenDataGridColumn Title="DocumentCount" Property="@nameof(CollectionInfo.DocumentCount)" TextAlign="TextAlign.Right" CssClass="count">
+                <RadzenDataGridColumn Title="Configuration" Property="@nameof(CollectionModel.ConfigurationName)" Visible="@_showConfiguration" />
+                <RadzenDataGridColumn Title="Database" Property="@nameof(CollectionModel.DatabaseName)" />
+                <RadzenDataGridColumn Title="Collection" Property="@nameof(CollectionModel.CollectionName)" />
+                <RadzenDataGridColumn Title="Source" Property="@nameof(CollectionModel.Source)" Filterable="false"/>
+                <RadzenDataGridColumn Title="Registration" Property="@nameof(CollectionModel.Registration)" Filterable="false" Width="120px" />
+                <RadzenDataGridColumn Title="Access Count" Property="@nameof(CollectionModel.Accessed)" TextAlign="TextAlign.Right" CssClass="css-access" Width="120px">
                     <Template>
-                        @if (context.DocumentCount.IsValid)
+                        @if (context.AccessCount == 0)
                         {
-                            <RadzenText Text="@($"{context.DocumentCount.Count:N0}")"/>
+                            <span title="Never accessed."><RadzenText Text="@($"{context.AccessCount:N0}")"/></span>
                         }
                         else
                         {
-                            <RadzenText Text="@($"{context.DocumentCount.Count:N0} (Virtual count is {context.DocumentCount.Virtual:N0})")"/>
+                            <RadzenText Text="@($"{context.AccessCount:N0}")"/>
                         }
                     </Template>
                 </RadzenDataGridColumn>
-                <RadzenDataGridColumn Title="Size" Property="@nameof(CollectionInfo.Size)" TextAlign="TextAlign.Right">
+                <RadzenDataGridColumn Title="Document Count" Property="@nameof(CollectionModel.ValidDocumentCount)" TextAlign="TextAlign.Right" CssClass="css-count" Width="120px">
+                    <Template>
+                        @if (context.DocumentCount.IsValid)
+                        {
+                            <RadzenText Text="@($"{context.DocumentCount.Count:N0}")" />
+                        }
+                        else
+                        {
+                            <span title="@($"Virtual count is {context.DocumentCount.Virtual:N0}.")"><RadzenText Text="@($"{context.DocumentCount.Count:N0}")"/></span>
+                        }
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn Title="Size" Property="@nameof(CollectionModel.Size)" TextAlign="TextAlign.Right" Filterable="false" Width="120px">
                     <Template>
                         @context.Size.ToReadableByteSize()
                     </Template>
                 </RadzenDataGridColumn>
-                <RadzenDataGridColumn Title="Index" Sortable="false" Width="120px;">
+                <RadzenDataGridColumn Title="Indices" Property="@nameof(CollectionModel.IndexEqualFields)" CssClass="css-indices" Width="120px">
                     <Template>
-                        @if (context.Index.Defined != null)
+                        <span title="@context.Indices.Diff()">@context.IndexEqualFields</span>
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn Title="" Sortable="false" Width="60px;" Filterable="false">
+                    <Template>
+                        @*                         @if (context.Index.Defined != null)
                         {
+                            IndexInfo ii = context.Index;
+
                             <StandardButton Icon="format_list_numbered" ButtonStyle="@(context.Index.Defined.SequenceEqual(context.Index.Current) ? ButtonStyle.Base : ButtonStyle.Warning)" Click="@(() => ShowIndexDialog(context))" Style="margin-right: 3px;"/>
-                        }
-                        @if (context.Registration != Registration.NotInCode && context.AccessCount == 0)
+                        } *@
+                        <StandardButton Icon="format_list_numbered" Click="@(() => ShowIndexDialog(context))" Style="margin-right: 3px;" />
+                        @* @if (context.Registration != Registration.NotInCode && context.AccessCount == 0)
                         {
                             <StandardButton Icon="touch_app" Click="@(() => TouchCollection(context))"/>
-                        }
+                        } *@
                     </Template>
                 </RadzenDataGridColumn>
             </Columns>
@@ -82,7 +101,7 @@ else
 
 @code {
     private string[] _databases;
-    private CollectionInfo[] _model;
+    private CollectionModel[] _model;
     private bool _showConfiguration;
     private CollectionInfo[] _all;
 
@@ -100,17 +119,17 @@ else
         await base.OnParametersSetAsync();
     }
 
-    private async Task TouchCollection(CollectionInfo context)
-    {
-        await DatabaseMonitor.TouchAsync(context);
-        await ReloadData();
-    }
+    // private async Task TouchCollection(CollectionModel context)
+    // {
+    //     await DatabaseMonitor.TouchAsync(context);
+    //     await ReloadData();
+    // }
 
-    private async Task ShowIndexDialog(CollectionInfo context)
+    private async Task ShowIndexDialog(CollectionModel context)
     {
         var result = await DialogService.OpenAsync<CollectionDialog>(context.CollectionName, new Dictionary<string, object>
         {
-            { "CollectionInfo", context }
+            { "Fingerprint", context }
         }, new DialogOptions { Resizable = true, Draggable = true });
 
         if (result != true) return;
@@ -123,26 +142,72 @@ else
         _model = _all
             .Where(x => SelectedDatabases == null || !SelectedDatabases.Any() || SelectedDatabases.Contains(x.DatabaseName))
             .Where(x => SelectedRegistrationTypes == null || !SelectedRegistrationTypes.Any() || SelectedRegistrationTypes.Contains(x.Registration))
+            .Select(x =>
+            {
+                var indexModels = x.ToIndexModel().ToArray();
+
+                return new CollectionModel
+                {
+                    ConfigurationName = x.ConfigurationName,
+                    DocumentCount = x.DocumentCount,
+                    DatabaseName = x.DatabaseName,
+                    CollectionName = x.CollectionName,
+                    Source = x.Source,
+                    Registration = x.Registration,
+                    AccessCount = x.AccessCount,
+                    Size = x.Size,
+                    Indices = indexModels,
+                    IndexEqualFields = indexModels.All(y => y.EqualFields)
+                };
+            })
             .ToArray();
         _showConfiguration = _model.GroupBy(x => x.ConfigurationName).Count() > 1;
         StateHasChanged();
     }
 
-    void OnCellRender(DataGridCellRenderEventArgs<CollectionInfo> args)
+    void OnCellRender(DataGridCellRenderEventArgs<CollectionModel> args)
     {
         var cssClass = args.Column.CssClass;
-        if (string.IsNullOrEmpty(cssClass) || !cssClass.StartsWith("count")) return;
+        if (string.IsNullOrEmpty(cssClass)) return;
 
-        string color = null;
-        if (!args.Data.DocumentCount.IsValid)
+        if (cssClass.StartsWith("css-access"))
         {
-            color = "pink";
-        }
-        else if (args.Data.DocumentCount.Virtual == null)
-        {
-            color = "lightyellow";
-        }
+            string color = null;
+            if (args.Data.AccessCount == 0)
+            {
+                color = "lightyellow";
+            }
 
+            SetColor(args, color);
+        }
+        else if (cssClass.StartsWith("css-count"))
+        {
+            string color = null;
+            if (!args.Data.DocumentCount.IsValid)
+            {
+                color = "pink";
+            }
+            //else if (args.Data.DocumentCount.Virtual == null)
+            //{
+            //    color = "lightyellow";
+            //}
+
+            SetColor(args, color);
+        }
+        else if (cssClass.StartsWith("css-indices"))
+        {
+            string color = null;
+            if (!args.Data.IndexEqualFields)
+            {
+                color = "pink";
+            }
+
+            SetColor(args, color);
+        }
+    }
+
+    private static void SetColor(DataGridCellRenderEventArgs<CollectionModel> args, string color)
+    {
         if (color is null) return;
 
         if (args.Attributes.TryGetValue("style", out var existing))
@@ -154,4 +219,5 @@ else
             args.Attributes.Add("style", $"background-color: {color};");
         }
     }
+
 }
