@@ -208,6 +208,10 @@ else
             {
                 color = "pink";
             }
+            else if (args.Data.Defined != null && !args.Data.EqualFields)
+            {
+                color = "pink";
+            }
 
             SetColor(args, color);
         }

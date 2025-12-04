@@ -51,7 +51,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
                 {
                     DatabaseName = null,
                     CollectionName = e.DatabaseContext.CollectionName,
-                    DatabasePart = e.DatabaseContext.DatabasePart ?? e.CollectionName,
+                    DatabasePart = e.DatabaseContext.DatabasePart, // ?? e.CollectionName,
                     ConfigurationName = e.DatabaseContext.ConfigurationName?.Value ?? _options.DefaultConfigurationName
                 };
 
@@ -107,11 +107,12 @@ internal class DatabaseMonitor : IDatabaseMonitor
         if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
 
         var configurations = GetConfigurations().Select(x => new DatabaseContext { ConfigurationName = x.Value ?? _options.DefaultConfigurationName }).ToArray();
-        var contexts = configurations.Union(_accessedCollections.Select(x => new DatabaseContext
-            {
-                ConfigurationName = x.Value.DatabaseContext.ConfigurationName?.Value ?? _options.DefaultConfigurationName,
-                DatabasePart = x.Value.DatabaseContext.DatabasePart
-            }))
+        var databaseContexts = _accessedCollections.Select(x => new DatabaseContext
+        {
+            ConfigurationName = x.Value.DatabaseContext.ConfigurationName?.Value ?? _options.DefaultConfigurationName,
+            DatabasePart = x.Value.DatabaseContext.DatabasePart
+        });
+        var contexts = configurations.Union(databaseContexts)
             .Distinct()
             .ToArray();
 
@@ -280,44 +281,9 @@ internal class DatabaseMonitor : IDatabaseMonitor
     {
         if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
 
-        //var collections = await GetInstancesAsync(false)
-        //    .Where(x => x.ConfigurationName == context.ConfigurationName)
-        //    .Where(x => x.CollectionName == context.CollectionName)
-        //    .ToArrayAsync();
+        var databaseContext = ToDatabaseContext(context);
 
-        //IRepositoryCollection collection;
-        //if (collectionInfo.Registration == Registration.Static)
-        //{
-        //    var col = collections.Single();
-        //    var colType = _mongoDbInstance.RegisteredCollections.FirstOrDefault(x => x.Key.Name == col.CollectionTypeName).Key;
-
-        //    collection = _collectionProvider.GetCollection(colType);
-        //}
-        //else if (collectionInfo.Registration == Registration.Dynamic)
-        //{
-        //    var col = collections.First();
-        //    var colType = _mongoDbInstance.RegisteredCollections.FirstOrDefault(x => x.Key.Name == col.CollectionTypeName).Key;
-
-        //    var databaseContext = new DatabaseContextWithFingerprint
-        //    {
-        //        ConfigurationName = context.ConfigurationName,
-        //        CollectionName = context.CollectionName,
-        //        DatabaseName = context.DatabaseName,
-        //    };
-
-        //    collection = _collectionProvider.GetCollection(colType, databaseContext);
-        //}
-        //else
-        //{
-        //    throw new ArgumentOutOfRangeException(nameof(collectionInfo.Registration), $"Unknown {nameof(collectionInfo.Registration)} {collectionInfo.Registration}.");
-        //}
-
-        //var collectionType = collection.GetType();
-        //var collectionMethod = collectionType.GetMethod("GetCollection");
-
-        //if (collectionMethod == null) throw new NullReferenceException("Cannot find 'GetCollection' method.");
-        //var collectionInstance = collectionMethod?.Invoke(collection, []);
-        throw new NotImplementedException();
+        _collectionProvider.GetCollection<EntityBaseCollection, EntityBase>(databaseContext);
     }
 
     public IEnumerable<CallInfo> GetCalls(CallType callType)
