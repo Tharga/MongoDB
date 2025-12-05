@@ -3,12 +3,12 @@
 public record CollectionModel : CollectionFingerprint
 {
     public bool ValidDocumentCount => DocumentCount.IsValid;
-    public required DocumentCount DocumentCount { get; init; }
-    public required Source Source { get; init; }
+    public required DocumentCount DocumentCount { get; set; }
+    public Source Source { get; set; }
     public required Registration Registration { get; init; }
     public bool Accessed => AccessCount > 0;
-    public required int AccessCount { get; init; }
-    public required long Size { get; init; }
-    public required IndexModel[] Indices { get; init; }
-    public required bool IndexEqualFields { get; init; }
+    public required int AccessCount { get; set; }
+    public required long Size { get; set; }
+    public required IndexModel[] Indices { get; set; }
+    public required bool IndexEqualFields { get; set; }
 }

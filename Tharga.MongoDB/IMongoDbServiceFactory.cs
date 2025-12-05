@@ -4,7 +4,7 @@ namespace Tharga.MongoDB;
 
 public interface IMongoDbServiceFactory
 {
-    event EventHandler<ConfigurationAccessEventArgs> ConfigurationAccessEvent;
+    event EventHandler<IndexUpdatedEventArgs> IndexUpdatedEvent;
     event EventHandler<CollectionAccessEventArgs> CollectionAccessEvent;
     event EventHandler<CallStartEventArgs> CallStartEvent;
     event EventHandler<CallEndEventArgs> CallEndEvent;

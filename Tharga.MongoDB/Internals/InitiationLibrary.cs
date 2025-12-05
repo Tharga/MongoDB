@@ -54,7 +54,7 @@ internal static class InitiationLibrary
         if (!initiationInfo.FailedIndices.Any()) return;
 
         var updated = initiationInfo with { IndexAssured = false };
-        var x = _initiated.TryUpdate($"{serverName}.{databaseName}.{collectionName}", updated, initiationInfo);
+        _ = _initiated.TryUpdate($"{serverName}.{databaseName}.{collectionName}", updated, initiationInfo);
     }
 
     public static IEnumerable<(IndexFailOperation Operation, string Name)> GetFailedIndices(string serverName, string databaseName, string collectionName)

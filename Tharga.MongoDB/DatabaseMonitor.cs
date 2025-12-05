@@ -9,7 +9,6 @@ using System.Threading.Tasks;
 using Tharga.MongoDB.Configuration;
 using Tharga.MongoDB.Disk;
 using Tharga.MongoDB.Internals;
-using Tharga.MongoDB.Lockable;
 
 namespace Tharga.MongoDB;
 
@@ -22,8 +21,12 @@ internal class DatabaseMonitor : IDatabaseMonitor
     private readonly ICollectionProvider _collectionProvider;
     private readonly ICallLibrary _callLibrary;
     private readonly DatabaseOptions _options;
-    private readonly ConcurrentDictionary<(string ConfigurationName, string CollectionName), CollectionAccessData> _accessedCollections = new();
+    private readonly ConcurrentDictionary<string, CollectionAccessData> _accessedCollections = new();
     private bool _started;
+
+    //public event EventHandler<IndexUpdatedEventArgs> IndexUpdatedEvent;
+    //public event EventHandler<CollectionAccessEventArgs> CollectionAccessEvent;
+    public event EventHandler<CollectionInfoChangedEventArgs> CollectionInfoChangedEvent;
 
     public DatabaseMonitor(IMongoDbServiceFactory mongoDbServiceFactory, IMongoDbInstance mongoDbInstance, IServiceProvider serviceProvider, IRepositoryConfiguration repositoryConfiguration, ICollectionProvider collectionProvider, ICallLibrary callLibrary, IOptions<DatabaseOptions> options)
     {
@@ -42,34 +45,36 @@ internal class DatabaseMonitor : IDatabaseMonitor
 
         try
         {
-            _mongoDbServiceFactory.ConfigurationAccessEvent += (_, _) =>
+            _mongoDbServiceFactory.IndexUpdatedEvent += async (_, e) =>
             {
+                var item = await GetInstanceAsync(e.Fingerprint);
+                if (item != null) CollectionInfoChangedEvent?.Invoke(this, new CollectionInfoChangedEventArgs(item));
             };
-            _mongoDbServiceFactory.CollectionAccessEvent += (_, e) =>
+            _mongoDbServiceFactory.CollectionAccessEvent += async (_, e) =>
             {
-                var databaseContext = (e.DatabaseContext as DatabaseContextWithFingerprint) ?? new DatabaseContextWithFingerprint
-                {
-                    DatabaseName = null,
-                    CollectionName = e.DatabaseContext.CollectionName,
-                    DatabasePart = e.DatabaseContext.DatabasePart, // ?? e.CollectionName,
-                    ConfigurationName = e.DatabaseContext.ConfigurationName?.Value ?? _options.DefaultConfigurationName
-                };
-
                 var now = DateTime.UtcNow;
-                _accessedCollections.AddOrUpdate((databaseContext.ConfigurationName?.Value, e.CollectionName), new CollectionAccessData
+                _accessedCollections.AddOrUpdate(e.Fingerprint.Key, new CollectionAccessData
                 {
-                    DatabaseContext = databaseContext,
-                    EntityType = e.EntityType,
+                    ConfigurationName = e.Fingerprint.ConfigurationName,
+                    DatabaseName = e.Fingerprint.DatabaseName,
+                    CollectionName = e.Fingerprint.CollectionName,
+                    Server = e.Server,
+                    DatabasePart = e.DatabasePart.NullIfEmpty(),
+
                     FirstAccessed = now,
                     LastAccessed = now,
                     AccessCount = 1,
-                    Server = e.Server
+                    EntityTypes = [e.EntityType],
                 }, (_, item) =>
                 {
                     item.LastAccessed = now;
                     item.AccessCount++;
+                    item.EntityTypes = item.EntityTypes.Union([e.EntityType]).ToArray();
                     return item;
                 });
+
+                var item = await GetInstanceAsync(e.Fingerprint);
+                if (item != null) CollectionInfoChangedEvent?.Invoke(this, new CollectionInfoChangedEventArgs(item));
             };
             _mongoDbServiceFactory.CallStartEvent += (_, e) =>
             {
@@ -106,13 +111,13 @@ internal class DatabaseMonitor : IDatabaseMonitor
     {
         if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
 
-        var configurations = GetConfigurations().Select(x => new DatabaseContext { ConfigurationName = x.Value ?? _options.DefaultConfigurationName }).ToArray();
-        var databaseContexts = _accessedCollections.Select(x => new DatabaseContext
+        var configuredContexts = GetConfigurations().Select(x => new DatabaseContext { ConfigurationName = x.Value ?? _options.DefaultConfigurationName }).ToArray();
+        var accessedDatabaseContexts = _accessedCollections.Select(x => new DatabaseContext
         {
-            ConfigurationName = x.Value.DatabaseContext.ConfigurationName?.Value ?? _options.DefaultConfigurationName,
-            DatabasePart = x.Value.DatabaseContext.DatabasePart
+            ConfigurationName = x.Value.ConfigurationName?.Value ?? _options.DefaultConfigurationName,
+            DatabasePart = x.Value.DatabasePart.NullIfEmpty()
         });
-        var contexts = configurations.Union(databaseContexts)
+        var contexts = configuredContexts.Union(accessedDatabaseContexts)
             .Distinct()
             .ToArray();
 
@@ -131,22 +136,21 @@ internal class DatabaseMonitor : IDatabaseMonitor
                 //Map Static registrations
                 if (collectionsFromCode.TryGetValue((item.ConfigurationName, item.CollectionName), out var reg))
                 {
-                    //TODO: Add static DatabaseContext-part here.
+                    AssureNotDifferent(item.CollectionType?.Name, reg.CollectionType?.Name);
 
                     item = item with
                     {
                         Source = item.Source | reg.Source,
                         Registration = reg.Registration,
                         Types = item.Types.Union(reg.Types).ToArray(),
-                        CollectionTypeName = item.CollectionTypeName ?? reg.CollectionTypeName,
+                        CollectionType = item.CollectionType ?? reg.CollectionType,
+                        DocumentCount = new DocumentCount { Count = item.DocumentCount, Virtual = reg.VirtualCount },
                         Index = item.Index with
                         {
                             Current = item.Index.Current,
                             Defined = reg.DefinedIndices.ToArray()
                         },
-                        DocumentCount = new DocumentCount { Count = item.DocumentCount, Virtual = reg.VirtualCount }
                     };
-                    //TODO: Append information about registered indexes (so that we can compare with actual indexes)
                 }
                 else
                 {
@@ -154,18 +158,19 @@ internal class DatabaseMonitor : IDatabaseMonitor
                 }
 
                 //Map Accessed collections
-                if (accessedCollections.TryGetValue((inDatabase.ConfigurationName, inDatabase.CollectionName), out var t))
+                if (accessedCollections.TryGetValue(inDatabase.Key, out var t))
                 {
                     var cnt = InitiationLibrary.GetVirtualCount(inDatabase.Server, inDatabase.DatabaseName, inDatabase.CollectionName);
 
+                    AssureNotDifferent(item.DatabasePart, t.DatabasePart);
+
                     item = item with
                     {
-                        Context = item.Context ?? t.DatabaseContext,
+                        DatabasePart = item.DatabasePart ?? t.DatabasePart,
                         Source = item.Source | Source.Monitor,
+                        Types = item.Types.Union(t.EntityTypes.Select(x => x.Name)).ToArray(),
                         AccessCount = t.AccessCount,
-                        Types = item.Types.Union([t.EntityType.Name]).ToArray(),
-                        CollectionTypeName = item.CollectionTypeName,
-                        DocumentCount = new DocumentCount { Count = item.DocumentCount, Virtual = cnt }
+                        DocumentCount = new DocumentCount { Count = item.DocumentCount, Virtual = cnt },
                     };
                 }
                 else
@@ -181,19 +186,18 @@ internal class DatabaseMonitor : IDatabaseMonitor
                         //TODO: Check if this is from the same configuration (server)
                         //TODO: Can a dynamic DatabaseContext-part be found here?
 
-                        //AssureSame(item.CollectionTypeName, dyn.CollectionTypeName);
+                        AssureNotDifferent(item.CollectionType?.Name, dyn.CollectionType?.Name);
 
                         item = item with
                         {
                             Source = item.Source | dyn.Source,
                             Registration = Registration.Dynamic,
-                            CollectionTypeName = item.CollectionTypeName ?? dyn.CollectionTypeName,
+                            CollectionType = item.CollectionType ?? dyn.CollectionType,
                             Index = item.Index with
                             {
                                 Current = item.Index.Current,
                                 Defined = dyn.DefinedIndices.ToArray()
                             },
-                            //DocumentCount = new DocumentCount { Count = item.DocumentCount, Virtual = dyn.VirtualCount }
                         };
                         //TODO: Append information about registered indexes (so that we can compare with actual indexes)
                     }
@@ -212,78 +216,66 @@ internal class DatabaseMonitor : IDatabaseMonitor
         }
     }
 
-    public async Task<(int Before, int After)> DropIndexAsync(IDatabaseContext context)
+    private void AssureNotDifferent(string item, string other)
     {
-        if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
+        if (item.IsNullOrEmpty()) return;
+        if (other.IsNullOrEmpty()) return;
 
-        var databaseContext = ToDatabaseContext(context);
-
-        var collection = _collectionProvider.GetCollection<EntityBaseCollection, EntityBase>(databaseContext);
-        return await collection.DropIndex(collection.GetCollection());
+        if (item != other) throw new InvalidOperationException($"'{item}' and '{other}' differs.");
     }
 
-    public async Task RestoreIndexAsync(IDatabaseContext context)
+    public async Task TouchAsync(DatabaseContext databaseContext, Type collectionType, Registration registration)
     {
         if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
+        if (registration == Registration.NotInCode) throw new InvalidOperationException($"{nameof(RestoreIndexAsync)} does not support {nameof(Registration)} {registration}.");
 
-        var databaseContext = ToDatabaseContext(context);
-        var databaseName = (databaseContext as DatabaseContextWithFingerprint)?.DatabaseName;
+        var collection = _collectionProvider.GetCollection(collectionType, registration == Registration.Dynamic ? databaseContext : null);
 
-        var collections = await GetInstancesAsync(false)
-            .Where(x => x.ConfigurationName == databaseContext.ConfigurationName)
-            .Where(x => x.CollectionName == databaseContext.CollectionName)
-            .Where(x => x.DatabaseName == databaseName)
-            .ToArrayAsync();
-
-        IRepositoryCollection collection;
-        if (string.IsNullOrEmpty(databaseContext.DatabasePart)) // && string.IsNullOrEmpty(databaseName))
-        {
-            //NOTE: Static
-            var col = collections.Single();
-            var colTypes = _mongoDbInstance.RegisteredCollections.Where(x => x.Key.Name == col.CollectionTypeName).ToArray();
-            var colType = colTypes.Single().Key;
-
-            collection = _collectionProvider.GetCollection(colType);
-        }
-        else
-        {
-            //NOTE: Dynamic
-            var col = collections.Single();
-            var colTypes = _mongoDbInstance.RegisteredCollections.Where(x => x.Key.Name == col.CollectionTypeName).ToArray();
-            var colType = colTypes.Single().Key;
-
-            collection = _collectionProvider.GetCollection(colType, databaseContext);
-        }
-
-        var collectionType = collection.GetType();
-        var collectionMethod = collectionType.GetMethod("GetCollection");
-        if (collectionMethod == null) throw new NullReferenceException("Cannot find 'GetCollection' method.");
-        var collectionInstance = collectionMethod.Invoke(collection, []);
-
-        var indexMethod = collectionType.GetMethod("AssureIndex", BindingFlags.NonPublic | BindingFlags.Instance);
-        if (indexMethod == null) throw new NullReferenceException($"Cannot find 'AssureIndex' method in '{collectionType.Name}'.");
-
-        try
-        {
-            var result = indexMethod.Invoke(collection, [collectionInstance, true, true]);
-            await (Task)result!;
-        }
-        catch (Exception ex)
-        {
-            Debugger.Break();
-            Console.WriteLine(ex);
-            Console.WriteLine(ex.InnerException);
-            throw;
-        }
+        _ = await FetchMongoCollection(collection.GetType(), collection);
     }
 
-    public async Task TouchAsync(IDatabaseContext context)
+    public async Task<(int Before, int After)> DropIndexAsync(DatabaseContext databaseContext, Type collectionType, Registration registration)
     {
         if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
+        if (registration == Registration.NotInCode) throw new InvalidOperationException($"{nameof(RestoreIndexAsync)} does not support {nameof(Registration)} {registration}.");
 
-        var databaseContext = ToDatabaseContext(context);
+        var collection = _collectionProvider.GetCollection(collectionType, registration == Registration.Dynamic ? databaseContext : null);
 
-        _collectionProvider.GetCollection<EntityBaseCollection, EntityBase>(databaseContext);
+        var ct = collection.GetType();
+        var mongoCollection = await FetchMongoCollection(ct, collection);
+
+        var dropMethod = ct.GetMethod(nameof(DiskRepositoryCollectionBase<EntityBase>.DropIndex), BindingFlags.Instance | BindingFlags.NonPublic);
+        var dropResult = dropMethod?.Invoke(collection, [mongoCollection]);
+        var dropTask = (Task<(int Before, int After)>)dropResult;
+        await dropTask!;
+        return dropTask.Result;
+    }
+
+    public async Task RestoreIndexAsync(DatabaseContext databaseContext, Type collectionType, Registration registration)
+    {
+        if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
+        if (registration == Registration.NotInCode) throw new InvalidOperationException($"{nameof(RestoreIndexAsync)} does not support {nameof(Registration)} {registration}.");
+
+        var collection = _collectionProvider.GetCollection(collectionType, registration == Registration.Dynamic ? databaseContext : null);
+
+        var ct = collection.GetType();
+        var mongoCollection = await FetchMongoCollection(ct, collection);
+
+        var dropMethod = ct.GetMethod(nameof(DiskRepositoryCollectionBase<EntityBase>.AssureIndex), BindingFlags.Instance | BindingFlags.NonPublic);
+        var dropResult = dropMethod?.Invoke(collection, [mongoCollection, true, true]);
+        var dropTask = (Task)dropResult;
+        await dropTask!;
+    }
+
+    private static async Task<object> FetchMongoCollection(Type ct, IRepositoryCollection collection)
+    {
+        var fetchMethod = ct.GetMethod(nameof(DiskRepositoryCollectionBase<EntityBase>.FetchCollectionAsync), BindingFlags.Instance | BindingFlags.NonPublic);
+        var fetchResult = fetchMethod?.Invoke(collection, [false]);
+        var fetchTask = (Task)fetchResult;
+        await fetchTask!;
+        var resultProperty = fetchTask.GetType().GetProperty("Result");
+        var mongoCollection = resultProperty!.GetValue(fetchTask);
+        return mongoCollection;
     }
 
     public IEnumerable<CallInfo> GetCalls(CallType callType)
@@ -328,7 +320,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
                     ConfigurationName = instance.ConfigurationName,
                     CollectionName = instance.CollectionName,
                     Types = [genericParam?.Name],
-                    CollectionTypeName = registeredCollection.Key.Name,
+                    CollectionType = registeredCollection.Key,
                     Registration = Registration.Static,
                     DefinedIndices = instance.BuildIndexMetas().ToArray(),
                     VirtualCount = instance.VirtualCount
@@ -366,7 +358,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
                     {
                         Source = Source.Registration,
                         Type = genericParam.Name,
-                        CollectionTypeName = registeredCollection.Key.Name,
+                        CollectionType = registeredCollection.Key,
                         DefinedIndices = collection.BuildIndexMetas().ToArray(),
                         VirtualCount = collection?.VirtualCount
                     };
@@ -415,46 +407,64 @@ internal class DatabaseMonitor : IDatabaseMonitor
             DatabaseName = collection.DatabaseName,
             CollectionName = collection.CollectionName,
             Server = collection.Server,
+            DatabasePart = null,
             Source = Source.Database,
-            DocumentCount = new DocumentCount { Count = collection.DocumentCount },
-
-            //--> Revisit
-
-            Size = collection.Size,
             Types = collection.Types,
+            DocumentCount = new DocumentCount
+            {
+                Count = collection.DocumentCount
+            },
+            Size = collection.Size,
             Index = new IndexInfo
             {
-                Current = [..collection.Indexes],
+                Current =
+                [
+                    ..collection.Indexes
+                ],
                 Defined = null
-            }
+            },
+            Registration = Registration.NotInCode,
+            CollectionType = null
         };
     }
 
-    private static DatabaseContext ToDatabaseContext(IDatabaseContext context)
-    {
-        if (context is DatabaseContext databaseContext)
-        {
-        }
-        else if (context is DatabaseContextWithFingerprint fp)
-        {
-            databaseContext = fp;
-        }
-        else if (context is CollectionFingerprint fingerprint)
-        {
-            databaseContext = new DatabaseContextWithFingerprint { ConfigurationName = fingerprint.ConfigurationName, DatabaseName = fingerprint.DatabaseName, CollectionName = fingerprint.CollectionName };
-        }
-        else
-        {
-            throw new InvalidOperationException($"Cannot convert {nameof(context)} to a known type.");
-        }
+    //private static DatabaseContextWithFingerprint ToDatabaseContext(IDatabaseContext context)
+    //{
+    //    if (context is DatabaseContextWithFingerprint dcwf)
+    //    {
+    //    }
+    //    else if (context is DatabaseContext dc)
+    //    {
+    //        dcwf = new DatabaseContextWithFingerprint
+    //        {
+    //            ConfigurationName = dc.ConfigurationName,
+    //            DatabaseName = null,
+    //            CollectionName = dc.CollectionName,
+    //            DatabasePart = dc.DatabasePart
+    //        };
+    //    }
+    //    else if (context is CollectionFingerprint fingerprint)
+    //    {
+    //        dcwf = new DatabaseContextWithFingerprint
+    //        {
+    //            ConfigurationName = fingerprint.ConfigurationName,
+    //            DatabaseName = fingerprint.DatabaseName,
+    //            CollectionName = fingerprint.CollectionName,
+    //            DatabasePart = null
+    //        };
+    //    }
+    //    else
+    //    {
+    //        throw new InvalidOperationException($"Cannot convert {nameof(context)} to a known type.");
+    //    }
 
-        return databaseContext;
-    }
+    //    return dcwf;
+    //}
 
     internal abstract record ColInfo
     {
         public required Source Source { get; init; }
-        public required string CollectionTypeName { get; init; }
+        public required Type CollectionType { get; init; }
         public required IndexMeta[] DefinedIndices { get; init; }
         public required long? VirtualCount { get; init; }
     }

@@ -3,22 +3,19 @@ using Tharga.MongoDB.Configuration;
 
 namespace Tharga.MongoDB;
 
-public record CollectionFingerprint : IDatabaseContext
+public record CollectionFingerprint //: ICollectionFingerprint //: IDatabaseContext
 {
-    public required ConfigurationName ConfigurationName { get; init; }
+    private readonly ConfigurationName _configurationName;
+    private string _key;
+
+    public required ConfigurationName ConfigurationName
+    {
+        get => _configurationName;
+        init => _configurationName = value ?? throw new NullReferenceException($"{nameof(ConfigurationName)} cannot be null in {nameof(CollectionFingerprint)}.");
+    }
+
     public required string DatabaseName { get; init; }
     public required string CollectionName { get; init; }
 
-    public virtual bool Equals(CollectionFingerprint other)
-    {
-        if (other?.ConfigurationName != ConfigurationName) return false;
-        if (other?.DatabaseName != DatabaseName) return false;
-        if (other?.CollectionName != CollectionName) return false;
-        return true;
-    }
-
-    public override int GetHashCode()
-    {
-        return HashCode.Combine(ConfigurationName, DatabaseName, CollectionName);
-    }
+    public string Key => _key ??= $"{ConfigurationName.Value}.{DatabaseName}.{CollectionName}";
 }

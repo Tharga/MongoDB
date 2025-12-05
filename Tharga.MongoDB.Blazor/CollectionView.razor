@@ -81,7 +81,7 @@ else
                 </RadzenDataGridColumn>
                 <RadzenDataGridColumn Title="" Sortable="false" Width="60px;" Filterable="false">
                     <Template>
-                        @*                         @if (context.Index.Defined != null)
+                        @* @if (context.Index.Defined != null)
                         {
                             IndexInfo ii = context.Index;
 
@@ -113,17 +113,42 @@ else
 
     protected override async Task OnParametersSetAsync()
     {
+        DatabaseMonitor.CollectionInfoChangedEvent += async (_, e) =>
+        {
+            if (_all == null) return;
+
+            var item = _all.SingleOrDefault(x => x.Key == e.CollectionInfo.Key);
+
+            if (item != null)
+            {
+                item.Source = e.CollectionInfo.Source;
+                item.AccessCount = e.CollectionInfo.AccessCount;
+                item.DocumentCount = e.CollectionInfo.DocumentCount;
+                item.Size = e.CollectionInfo.Size;
+                item.Index = e.CollectionInfo.Index;
+
+                var m = _model.SingleOrDefault(x => x.ConfigurationName == item.ConfigurationName && x.CollectionName == item.CollectionName);
+                if (m != null)
+                {
+                    var indexModels = e.CollectionInfo.ToIndexModel().ToArray();
+
+                    m.Source = e.CollectionInfo.Source;
+                    m.AccessCount = e.CollectionInfo.AccessCount;
+                    m.DocumentCount = e.CollectionInfo.DocumentCount;
+                    m.Size = e.CollectionInfo.Size;
+                    m.Indices = indexModels;
+                    m.IndexEqualFields = indexModels.All(x => x.EqualFields);
+                }
+
+                await InvokeAsync(StateHasChanged);
+            }
+        };
+
         _all = await DatabaseMonitor.GetInstancesAsync(FullDatabaseScan).ToArrayAsync();
         _databases = _all.GroupBy(x => x.DatabaseName).Select(x => x.First()).Select(x => x.DatabaseName).Order().ToArray();
         await ReloadData();
         await base.OnParametersSetAsync();
     }
-
-    // private async Task TouchCollection(CollectionModel context)
-    // {
-    //     await DatabaseMonitor.TouchAsync(context);
-    //     await ReloadData();
-    // }
 
     private async Task ShowIndexDialog(CollectionModel context)
     {

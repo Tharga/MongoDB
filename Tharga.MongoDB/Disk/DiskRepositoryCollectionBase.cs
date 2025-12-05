@@ -843,9 +843,10 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         return await Execute(nameof(GetSizeAsync), () => Task.FromResult(_mongoDbService.GetSize(ProtectedCollectionName)), Operation.Get);
     }
 
-    private async Task<IMongoCollection<TEntity>> FetchCollectionAsync()
+    internal async Task<IMongoCollection<TEntity>> FetchCollectionAsync(bool initiate = true)
     {
         var collection = await GetCollectionAsync<TEntity>();
+        if (!initiate) return collection;
 
         if (InitiationLibrary.ShouldInitiate(ServerName, DatabaseName, ProtectedCollectionName))
         {
@@ -889,6 +890,14 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 
         await collection.Indexes.DropAllAsync();
 
+        var fingerprint = new CollectionFingerprint
+        {
+            ConfigurationName = ConfigurationName,
+            CollectionName = ProtectedCollectionName,
+            DatabaseName = DatabaseName
+        };
+        ((MongoDbServiceFactory)_mongoDbServiceFactory).OnIndexUpdatedEvent(this, new IndexUpdatedEventArgs(fingerprint));
+
         var after = (await collection.Indexes.ListAsync())
             .ToList()
             .Select(x => x.GetValue("name").AsString)
@@ -897,7 +906,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         return (before, after);
     }
 
-    private async Task AssureIndex(IMongoCollection<TEntity> collection, bool forceAssure = false, bool throwOnException = false)
+    protected internal async Task AssureIndex(IMongoCollection<TEntity> collection, bool forceAssure = false, bool throwOnException = false)
     {
         var shouldAssureIndex = _mongoDbService.ShouldAssureIndex();
         if (!shouldAssureIndex && !forceAssure)
@@ -906,7 +915,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             return;
         }
 
-        if (InitiationLibrary.ShouldInitiateIndex(ServerName, DatabaseName, ProtectedCollectionName) || forceAssure)
+        if (forceAssure || InitiationLibrary.ShouldInitiateIndex(ServerName, DatabaseName, ProtectedCollectionName))
         {
             _logger?.LogTrace($"Assure index for collection {{collection}} in {{repositoryType}}. [action: Database, operation: {nameof(CleanAsync)}]", ProtectedCollectionName, "DiskRepository");
 
@@ -957,6 +966,8 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         _logger?.LogDebug("Existing, non system, indices in collection {collection}: {indices}.", ProtectedCollectionName, string.Join(", ", existingIndexNames));
         _logger?.LogDebug("Defined indices for collection {collection}: {indices}.", ProtectedCollectionName, string.Join(", ", indices.Select(x => x.Options.Name)));
 
+        var hasChanged = false;
+
         //NOTE: Drop indexes not in list
         foreach (var indexName in existingIndexNames)
         {
@@ -967,6 +978,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                     _logger?.LogDebug("Index {indexName} will be dropped in collection {collection}.", indexName, ProtectedCollectionName);
                     await collection.Indexes.DropOneAsync(indexName);
                     _logger?.LogInformation("Index {indexName} was dropped in collection {collection}.", indexName, ProtectedCollectionName);
+                    hasChanged = true;
                 }
                 catch (Exception e)
                 {
@@ -989,6 +1001,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                     _logger?.LogDebug("Index {indexName} will be created in collection {collection}.", index.Options.Name, ProtectedCollectionName);
                     var message = await collection.Indexes.CreateOneAsync(index);
                     _logger?.LogInformation("Index {indexName} was created in collection {collection}. {message}", index.Options.Name, ProtectedCollectionName, message);
+                    hasChanged = true;
                 }
                 catch (Exception e)
                 {
@@ -999,6 +1012,17 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                     if (throwOnException) throw;
                 }
             }
+        }
+
+        if (hasChanged)
+        {
+            var fingerprint = new CollectionFingerprint
+            {
+                ConfigurationName = ConfigurationName,
+                CollectionName = ProtectedCollectionName,
+                DatabaseName = DatabaseName
+            };
+            ((MongoDbServiceFactory)_mongoDbServiceFactory).OnIndexUpdatedEvent(this, new IndexUpdatedEventArgs(fingerprint));
         }
     }
 
