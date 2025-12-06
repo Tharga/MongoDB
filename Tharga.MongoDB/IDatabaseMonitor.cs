@@ -7,8 +7,6 @@ namespace Tharga.MongoDB;
 
 public interface IDatabaseMonitor
 {
-    //event EventHandler<IndexUpdatedEventArgs> IndexUpdatedEvent;
-    //event EventHandler<CollectionAccessEventArgs> CollectionAccessEvent;
     event EventHandler<CollectionInfoChangedEventArgs> CollectionInfoChangedEvent;
 
     IEnumerable<ConfigurationName> GetConfigurations();

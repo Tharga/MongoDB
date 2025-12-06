@@ -2,7 +2,7 @@
 
 namespace Tharga.MongoDB;
 
-public record DatabaseContext //: IDatabaseContext
+public record DatabaseContext
 {
     /// <summary>
     /// Configuration name for the database. Not to be confuced with the name that is actually used to stor data in the database.

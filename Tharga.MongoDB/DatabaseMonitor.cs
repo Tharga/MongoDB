@@ -24,8 +24,6 @@ internal class DatabaseMonitor : IDatabaseMonitor
     private readonly ConcurrentDictionary<string, CollectionAccessData> _accessedCollections = new();
     private bool _started;
 
-    //public event EventHandler<IndexUpdatedEventArgs> IndexUpdatedEvent;
-    //public event EventHandler<CollectionAccessEventArgs> CollectionAccessEvent;
     public event EventHandler<CollectionInfoChangedEventArgs> CollectionInfoChangedEvent;
 
     public DatabaseMonitor(IMongoDbServiceFactory mongoDbServiceFactory, IMongoDbInstance mongoDbInstance, IServiceProvider serviceProvider, IRepositoryConfiguration repositoryConfiguration, ICollectionProvider collectionProvider, ICallLibrary callLibrary, IOptions<DatabaseOptions> options)
@@ -427,39 +425,6 @@ internal class DatabaseMonitor : IDatabaseMonitor
             CollectionType = null
         };
     }
-
-    //private static DatabaseContextWithFingerprint ToDatabaseContext(IDatabaseContext context)
-    //{
-    //    if (context is DatabaseContextWithFingerprint dcwf)
-    //    {
-    //    }
-    //    else if (context is DatabaseContext dc)
-    //    {
-    //        dcwf = new DatabaseContextWithFingerprint
-    //        {
-    //            ConfigurationName = dc.ConfigurationName,
-    //            DatabaseName = null,
-    //            CollectionName = dc.CollectionName,
-    //            DatabasePart = dc.DatabasePart
-    //        };
-    //    }
-    //    else if (context is CollectionFingerprint fingerprint)
-    //    {
-    //        dcwf = new DatabaseContextWithFingerprint
-    //        {
-    //            ConfigurationName = fingerprint.ConfigurationName,
-    //            DatabaseName = fingerprint.DatabaseName,
-    //            CollectionName = fingerprint.CollectionName,
-    //            DatabasePart = null
-    //        };
-    //    }
-    //    else
-    //    {
-    //        throw new InvalidOperationException($"Cannot convert {nameof(context)} to a known type.");
-    //    }
-
-    //    return dcwf;
-    //}
 
     internal abstract record ColInfo
     {

@@ -892,7 +892,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 
         var fingerprint = new CollectionFingerprint
         {
-            ConfigurationName = ConfigurationName,
+            ConfigurationName = ConfigurationName ?? _mongoDbService.GetConfigurationName(),
             CollectionName = ProtectedCollectionName,
             DatabaseName = DatabaseName
         };
@@ -1018,7 +1018,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         {
             var fingerprint = new CollectionFingerprint
             {
-                ConfigurationName = ConfigurationName,
+                ConfigurationName = ConfigurationName ?? _mongoDbService.GetConfigurationName(),
                 CollectionName = ProtectedCollectionName,
                 DatabaseName = DatabaseName
             };

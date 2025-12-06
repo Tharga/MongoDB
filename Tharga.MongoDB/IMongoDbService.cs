@@ -13,6 +13,7 @@ public interface IMongoDbService
     //event EventHandler<IndexUpdatedEventArgs> IndexUpdatedEvent;
 
     Task<IMongoCollection<T>> GetCollectionAsync<T>(string collectionName);
+    string GetConfigurationName();
     string GetDatabaseName();
     string GetDatabaseAddress();
     string GetDatabaseHostName();

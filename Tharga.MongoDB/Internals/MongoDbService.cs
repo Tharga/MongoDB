@@ -33,7 +33,6 @@ internal class MongoDbService : IMongoDbService
     }
 
     public event EventHandler<CollectionAccessEventArgs> CollectionAccessEvent;
-    //public event EventHandler<IndexUpdatedEventArgs> IndexUpdatedEvent;
 
     public async Task<IMongoCollection<T>> GetCollectionAsync<T>(string collectionName)
     {
@@ -50,6 +49,11 @@ internal class MongoDbService : IMongoDbService
         CollectionAccessEvent?.Invoke(this, new CollectionAccessEventArgs(fingerprint, _mongoUrl.Url, typeof(T), databaseContext.DatabasePart));
 
         return collection;
+    }
+
+    public string GetConfigurationName()
+    {
+        return _configuration.GetDatabaseContext()?.ConfigurationName.Value ?? _configuration.GetConfigurationName();
     }
 
     public async ValueTask<string> AssureFirewallAccessAsync(bool force = false)
