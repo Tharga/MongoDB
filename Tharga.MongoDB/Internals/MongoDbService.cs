@@ -42,7 +42,7 @@ internal class MongoDbService : IMongoDbService
         var databaseContext = _configuration.GetDatabaseContext();
         var fingerprint = new CollectionFingerprint
         {
-            ConfigurationName = databaseContext.ConfigurationName.Value ?? _configuration.GetConfigurationName(),
+            ConfigurationName = databaseContext.ConfigurationName?.Value ?? _configuration.GetConfigurationName(),
             DatabaseName = _mongoDatabase.DatabaseNamespace.DatabaseName,
             CollectionName = collectionName
         };
@@ -53,7 +53,7 @@ internal class MongoDbService : IMongoDbService
 
     public string GetConfigurationName()
     {
-        return _configuration.GetDatabaseContext()?.ConfigurationName.Value ?? _configuration.GetConfigurationName();
+        return _configuration.GetDatabaseContext()?.ConfigurationName?.Value ?? _configuration.GetConfigurationName();
     }
 
     public async ValueTask<string> AssureFirewallAccessAsync(bool force = false)

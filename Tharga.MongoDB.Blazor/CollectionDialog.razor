@@ -83,7 +83,7 @@ else
             <ActionButton Text="Touch" Icon="touch_app" Click="TouchCollection" Enabled="@CanTouch" />
             <ActionButton Text="Drop index" Icon="delete" Click="DropIndex" Enabled="@CanDrop" />
             <ActionButton Text="Restore Index" Icon="construction" Click="RestoreIndex" Enabled="@CanRestore" />
-            <ActionButton Text="Clean" Icon="cleaning_services" Click="CleanCollection" Enabled="@CanClean" />
+            @* <ActionButton Text="Clean" Icon="cleaning_services" Click="CleanCollection" Enabled="@CanClean" /> *@
         </RadzenStack>
 
     </RadzenStack>
@@ -111,14 +111,7 @@ else
     {
         try
         {
-            var context = new DatabaseContextWithFingerprint
-            {
-                ConfigurationName = _model.ConfigurationName,
-                DatabaseName = _model.DatabaseName,
-                CollectionName = _model.CollectionName,
-                DatabasePart = _model.DatabasePart
-            };
-            await DatabaseMonitor.TouchAsync(context, _model.CollectionType, _model.Registration);
+            await DatabaseMonitor.TouchAsync(_model);
 
             await ReloadData();
             NotificationService.Notify(new NotificationMessage { Summary = "Collection has been touched." });
@@ -137,14 +130,7 @@ else
             var result = await DialogService.Confirm("Indicies will be dropped.", "Confirm drop indicies");
             if (result != true) return;
 
-            var context = new DatabaseContextWithFingerprint
-            {
-                ConfigurationName = _model.ConfigurationName,
-                DatabaseName = _model.DatabaseName,
-                CollectionName = _model.CollectionName,
-                DatabasePart = _model.DatabasePart
-            };
-            var response = await DatabaseMonitor.DropIndexAsync(context, _model.CollectionType, _model.Registration);
+            var response = await DatabaseMonitor.DropIndexAsync(_model);
             var dropCount = response.Before - response.After;
 
             await ReloadData();
@@ -164,14 +150,7 @@ else
             var result = await DialogService.Confirm("Indicies will be restored.", "Confirm restore indicies");
             if (result != true) return;
 
-            var context = new DatabaseContextWithFingerprint
-            {
-                ConfigurationName = _model.ConfigurationName,
-                DatabaseName = _model.DatabaseName,
-                CollectionName = _model.CollectionName,
-                DatabasePart = _model.DatabasePart
-            };
-            await DatabaseMonitor.RestoreIndexAsync(context, _model.CollectionType, _model.Registration);
+            await DatabaseMonitor.RestoreIndexAsync(_model);
 
             await ReloadData();
             NotificationService.Notify(new NotificationMessage { Summary = "Indices has been restored." });

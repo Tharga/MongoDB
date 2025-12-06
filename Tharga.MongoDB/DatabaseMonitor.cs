@@ -222,22 +222,24 @@ internal class DatabaseMonitor : IDatabaseMonitor
         if (item != other) throw new InvalidOperationException($"'{item}' and '{other}' differs.");
     }
 
-    public async Task TouchAsync(DatabaseContext databaseContext, Type collectionType, Registration registration)
+    public async Task TouchAsync(CollectionInfo collectionInfo)
     {
         if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
-        if (registration == Registration.NotInCode) throw new InvalidOperationException($"{nameof(RestoreIndexAsync)} does not support {nameof(Registration)} {registration}.");
+        if (collectionInfo == null) throw new ArgumentNullException(nameof(collectionInfo));
+        if (collectionInfo.Registration == Registration.NotInCode) throw new InvalidOperationException($"{nameof(RestoreIndexAsync)} does not support {nameof(Registration)} {collectionInfo.Registration}.");
 
-        var collection = _collectionProvider.GetCollection(collectionType, registration == Registration.Dynamic ? databaseContext : null);
+        var collection = _collectionProvider.GetCollection(collectionInfo.CollectionType, collectionInfo.Registration == Registration.Dynamic ? collectionInfo.ToDatabaseContext() : null);
 
         _ = await FetchMongoCollection(collection.GetType(), collection);
     }
 
-    public async Task<(int Before, int After)> DropIndexAsync(DatabaseContext databaseContext, Type collectionType, Registration registration)
+    public async Task<(int Before, int After)> DropIndexAsync(CollectionInfo collectionInfo)
     {
         if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
-        if (registration == Registration.NotInCode) throw new InvalidOperationException($"{nameof(RestoreIndexAsync)} does not support {nameof(Registration)} {registration}.");
+        if (collectionInfo == null) throw new ArgumentNullException(nameof(collectionInfo));
+        if (collectionInfo.Registration == Registration.NotInCode) throw new InvalidOperationException($"{nameof(RestoreIndexAsync)} does not support {nameof(Registration)} {collectionInfo.Registration}.");
 
-        var collection = _collectionProvider.GetCollection(collectionType, registration == Registration.Dynamic ? databaseContext : null);
+        var collection = _collectionProvider.GetCollection(collectionInfo.CollectionType, collectionInfo.Registration == Registration.Dynamic ? collectionInfo.ToDatabaseContext() : null);
 
         var ct = collection.GetType();
         var mongoCollection = await FetchMongoCollection(ct, collection);
@@ -249,12 +251,13 @@ internal class DatabaseMonitor : IDatabaseMonitor
         return dropTask.Result;
     }
 
-    public async Task RestoreIndexAsync(DatabaseContext databaseContext, Type collectionType, Registration registration)
+    public async Task RestoreIndexAsync(CollectionInfo collectionInfo)
     {
         if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
-        if (registration == Registration.NotInCode) throw new InvalidOperationException($"{nameof(RestoreIndexAsync)} does not support {nameof(Registration)} {registration}.");
+        if (collectionInfo == null) throw new ArgumentNullException(nameof(collectionInfo));
+        if (collectionInfo.Registration == Registration.NotInCode) throw new InvalidOperationException($"{nameof(RestoreIndexAsync)} does not support {nameof(Registration)} {collectionInfo.Registration}.");
 
-        var collection = _collectionProvider.GetCollection(collectionType, registration == Registration.Dynamic ? databaseContext : null);
+        var collection = _collectionProvider.GetCollection(collectionInfo.CollectionType, collectionInfo.Registration == Registration.Dynamic ? collectionInfo.ToDatabaseContext() : null);
 
         var ct = collection.GetType();
         var mongoCollection = await FetchMongoCollection(ct, collection);
