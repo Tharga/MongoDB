@@ -39,11 +39,21 @@ internal class MongoDbService : IMongoDbService
         await AssureFirewallAccessAsync();
 
         var collection = _mongoDatabase.GetCollection<T>(collectionName);
-
         var databaseContext = _configuration.GetDatabaseContext();
-        CollectionAccessEvent?.Invoke(this, new CollectionAccessEventArgs(databaseContext, _mongoUrl.Url, typeof(T), collectionName));
+        var fingerprint = new CollectionFingerprint
+        {
+            ConfigurationName = databaseContext.ConfigurationName?.Value ?? _configuration.GetConfigurationName(),
+            DatabaseName = _mongoDatabase.DatabaseNamespace.DatabaseName,
+            CollectionName = collectionName
+        };
+        CollectionAccessEvent?.Invoke(this, new CollectionAccessEventArgs(fingerprint, _mongoUrl.Url, typeof(T), databaseContext.DatabasePart));
 
         return collection;
+    }
+
+    public string GetConfigurationName()
+    {
+        return _configuration.GetDatabaseContext()?.ConfigurationName?.Value ?? _configuration.GetConfigurationName();
     }
 
     public async ValueTask<string> AssureFirewallAccessAsync(bool force = false)
@@ -136,14 +146,11 @@ internal class MongoDbService : IMongoDbService
 
             yield return new CollectionMeta
             {
-                Server = server,
+                ConfigurationName = _configuration.GetConfigurationName(),
                 DatabaseName = dbName,
                 CollectionName = collectionName,
+                Server = server,
                 DocumentCount = documentCount,
-
-                //--> Revisit
-
-                ConfigurationName = _configuration.GetConfigurationName(),
                 Size = size,
                 Types = types.ToArray(),
                 Indexes = indexModels
@@ -157,7 +164,7 @@ internal class MongoDbService : IMongoDbService
     {
         var server = _mongoUrl.Url.TrimEnd(dbName);
         server = server.Trim('/');
-        var p = server.LastIndexOf("//");
+        var p = server.LastIndexOf("//", StringComparison.Ordinal);
         server = server.Substring(p + 2);
         return server;
     }

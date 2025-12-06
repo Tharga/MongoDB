@@ -78,7 +78,6 @@ public class CollectionController : ControllerBase
             x.Server,
             x.DatabaseName,
             x.CollectionName,
-            x.CollectionTypeName,
             Registration = $"{x.Registration}",
             x.AccessCount,
             x.DocumentCount,
@@ -88,31 +87,31 @@ public class CollectionController : ControllerBase
         }));
     }
 
-    [HttpDelete("index")]
-    public async Task<IActionResult> DeleteIndex(string configurationName, string databasePart, string collectionName)
-    {
-        var databaseContext = new DatabaseContext
-        {
-            ConfigurationName = configurationName,
-            CollectionName = collectionName,
-            DatabasePart = databasePart
-        };
-        await _databaseMonitor.DropIndexAsync(databaseContext);
-        return Ok();
-    }
+    //[HttpDelete("index")]
+    //public async Task<IActionResult> DeleteIndex(string configurationName, string databasePart, string collectionName)
+    //{
+    //    var databaseContext = new DatabaseContext
+    //    {
+    //        ConfigurationName = configurationName,
+    //        CollectionName = collectionName,
+    //        DatabasePart = databasePart
+    //    };
+    //    await _databaseMonitor.DropIndexAsync(databaseContext);
+    //    return Ok();
+    //}
 
-    [HttpPost("index")]
-    public async Task<IActionResult> RestoreIndex(string configurationName, string databasePart, string collectionName)
-    {
-        var databaseContext = new DatabaseContext
-        {
-            ConfigurationName = configurationName,
-            CollectionName = collectionName,
-            DatabasePart = databasePart
-        };
-        await _databaseMonitor.RestoreIndexAsync(databaseContext);
-        return Ok();
-    }
+    //[HttpPost("index")]
+    //public async Task<IActionResult> RestoreIndex(string configurationName, string databasePart, string collectionName)
+    //{
+    //    var databaseContext = new DatabaseContext
+    //    {
+    //        ConfigurationName = configurationName,
+    //        CollectionName = collectionName,
+    //        DatabasePart = databasePart
+    //    };
+    //    await _databaseMonitor.RestoreIndexAsync(databaseContext);
+    //    return Ok();
+    //}
 
     //[HttpGet("index")]
     //public async Task<IActionResult> GetIndexes()

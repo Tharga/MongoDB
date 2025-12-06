@@ -2,17 +2,13 @@
 
 namespace Tharga.MongoDB;
 
-internal record DatabaseContextFull : DatabaseContext
-{
-    public required string DatabaseName { get; init; }
-}
-
 public record DatabaseContext
 {
     /// <summary>
-    /// If specified the collection will have this name.
+    /// Configuration name for the database. Not to be confuced with the name that is actually used to stor data in the database.
+    /// This name is used to read data from DatabaseOptions or IConfiguration.
     /// </summary>
-    public string CollectionName { get; init; }
+    public ConfigurationName ConfigurationName { get; init; }
 
     /// <summary>
     /// Part of the database name that can be appended by the IConnectionStringBuilder. Normally the {part} is replaced by this value.
@@ -20,8 +16,7 @@ public record DatabaseContext
     public string DatabasePart { get; init; }
 
     /// <summary>
-    /// Configuration name for the database. Not to be confuced with the name that is actually used to stor data in the database.
-    /// This name is used to read data from DatabaseOptions or IConfiguration.
+    /// If specified the collection will have this name.
     /// </summary>
-    public ConfigurationName ConfigurationName { get; init; }
+    public string CollectionName { get; init; }
 }

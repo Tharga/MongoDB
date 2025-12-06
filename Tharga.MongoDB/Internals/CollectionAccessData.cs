@@ -2,12 +2,12 @@
 
 namespace Tharga.MongoDB.Internals;
 
-internal record CollectionAccessData
+internal record CollectionAccessData : CollectionFingerprint
 {
-    public required DatabaseContext DatabaseContext { get; internal init; }
-    public required Type EntityType { get; internal init; }
+    public required string Server { get; internal set; }
+    public required string DatabasePart { get; internal init; }
     public DateTime FirstAccessed { get; internal set; }
     public DateTime LastAccessed { get; internal set; }
     public int AccessCount { get; internal set; }
-    public string Server { get; internal set; }
+    public Type[] EntityTypes { get; internal set; }
 }

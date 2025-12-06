@@ -26,7 +26,7 @@ internal class MongoDbServiceFactory : IMongoDbServiceFactory
         _logger = logger;
     }
 
-    public event EventHandler<ConfigurationAccessEventArgs> ConfigurationAccessEvent;
+    public event EventHandler<IndexUpdatedEventArgs> IndexUpdatedEvent;
     public event EventHandler<CollectionAccessEventArgs> CollectionAccessEvent;
     public event EventHandler<CallStartEventArgs> CallStartEvent;
     public event EventHandler<CallEndEventArgs> CallEndEvent;
@@ -46,11 +46,13 @@ internal class MongoDbServiceFactory : IMongoDbServiceFactory
         var configurationName = configuration.GetConfigurationName();
         var mongoUrl = configuration.GetDatabaseUrl();
         var cacheKey = mongoUrl.Url;
-        ConfigurationAccessEvent?.Invoke(this, new ConfigurationAccessEventArgs(configurationName, mongoUrl));
+        //ConfigurationAccessEvent?.Invoke(this, new ConfigurationAccessEventArgs(configurationName, mongoUrl));
 
         //TODO: Can this be done differently
         var ctx = configuration.GetDatabaseContext();
-        var useCache = string.IsNullOrEmpty((ctx as DatabaseContextFull)?.DatabaseName);
+        //var useCache = string.IsNullOrEmpty((ctx as DatabaseContextWithFingerprint)?.DatabaseName);
+        //var useCache = string.IsNullOrEmpty((ctx as ICollectionFingerprint)?.DatabaseName);
+        var useCache = false;
 
         if (useCache && _databaseDbServices.TryGetValue(cacheKey, out var dbService)) return dbService;
 
@@ -78,5 +80,10 @@ internal class MongoDbServiceFactory : IMongoDbServiceFactory
     public void OnCallEnd(object sender, CallEndEventArgs e)
     {
         CallEndEvent?.Invoke(sender, e);
+    }
+
+    public void OnIndexUpdatedEvent(object sender, IndexUpdatedEventArgs e)
+    {
+        IndexUpdatedEvent?.Invoke(sender, e);
     }
 }

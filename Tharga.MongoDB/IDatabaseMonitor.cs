@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Tharga.MongoDB.Configuration;
 
@@ -6,10 +7,13 @@ namespace Tharga.MongoDB;
 
 public interface IDatabaseMonitor
 {
+    event EventHandler<CollectionInfoChangedEventArgs> CollectionInfoChangedEvent;
+
     IEnumerable<ConfigurationName> GetConfigurations();
+    Task<CollectionInfo> GetInstanceAsync(CollectionFingerprint fingerprint);
     IAsyncEnumerable<CollectionInfo> GetInstancesAsync(bool fullDatabaseScan = false);
-    Task DropIndexAsync(DatabaseContext databaseContext);
-    Task RestoreIndexAsync(DatabaseContext databaseContext);
     Task TouchAsync(CollectionInfo collectionInfo);
+    Task<(int Before, int After)> DropIndexAsync(CollectionInfo collectionInfo);
+    Task RestoreIndexAsync(CollectionInfo collectionInfo);
     IEnumerable<CallInfo> GetCalls(CallType callType);
 }
