@@ -52,6 +52,7 @@
     <InternalsVisibleTo Include="DynamicProxyGenAssembly2" />
     <InternalsVisibleTo Include="MongoDB.Driver" />
     <InternalsVisibleTo Include="Tharga.MongoDB.Blazor" />
+    <InternalsVisibleTo Include="Tharga.Cache.MongoDB" />
   </ItemGroup>
 
 </Project>

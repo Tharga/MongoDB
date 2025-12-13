@@ -20,7 +20,6 @@ public static class MongoDbRegistrationExtensions
 {
     private static Action<ActionEventArgs> _actionEvent;
 
-    //TODO: Make sure the Tharga.Cache cannot call this method explicitly (or implicitly) more than once. Multi thread tests should still work.
     public static IServiceCollection AddMongoDB(this IServiceCollection services, Action<DatabaseOptions> options = null)
     {
         var mongoDbInstance = new MongoDbInstance();
@@ -274,7 +273,20 @@ public static class MongoDbRegistrationExtensions
         }
     }
 
-    internal static void RegisterCollection(IServiceCollection services, MongoDbInstance mongoDbInstance, Type serviceType, Type implementationType, string regTypeName)
+    internal static IServiceCollection RegisterMongoDBCollection<TRepositoryCollection, TRepositoryCollectionBase>(this IServiceCollection services)
+        where TRepositoryCollection : IRepositoryCollection
+        where TRepositoryCollectionBase : RepositoryCollectionBase
+    {
+        var provider = services.BuildServiceProvider();
+        var mongoDbInstance = provider.GetService<IMongoDbInstance>();
+        var implementationType = typeof(TRepositoryCollectionBase);
+        var serviceType = typeof(TRepositoryCollection);
+
+        RegisterCollection(services, mongoDbInstance, serviceType, implementationType, "Direct");
+        return services;
+    }
+
+    internal static void RegisterCollection(this IServiceCollection services, IMongoDbInstance mongoDbInstance, Type serviceType, Type implementationType, string regTypeName)
     {
         if (!mongoDbInstance.RegisteredCollections.TryAdd(serviceType, implementationType))
         {
