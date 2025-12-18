@@ -82,5 +82,5 @@ internal class RepositoryConfigurationInternal : IRepositoryConfigurationInterna
         return logLevel;
     }
 
-    public bool ShouldAssureIndex() => _databaseOptions?.AssureIndex ?? true;
+    public AssureIndexMode GetAssureIndexMode() => _databaseOptions?.AssureIndex ?? AssureIndexMode.ByName;
 }

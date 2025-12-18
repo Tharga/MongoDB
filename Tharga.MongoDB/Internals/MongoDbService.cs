@@ -69,9 +69,9 @@ internal class MongoDbService : IMongoDbService
         return _configuration?.GetExecuteInfoLogLevel() ?? LogLevel.Debug;
     }
 
-    public bool ShouldAssureIndex()
+    public AssureIndexMode GetAssureIndexMode()
     {
-        return _configuration?.ShouldAssureIndex() ?? true;
+        return _configuration?.GetAssureIndexMode() ?? AssureIndexMode.ByName;
     }
 
     public string GetDatabaseName()

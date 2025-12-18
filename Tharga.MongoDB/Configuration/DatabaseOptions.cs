@@ -89,7 +89,7 @@ public record DatabaseOptions
     /// Enable or disable the assurance of incexes.
     /// By default, indexes are assured.
     /// </summary>
-    public bool AssureIndex { get; set; } = true;
+    public AssureIndexMode AssureIndex { get; set; } = AssureIndexMode.ByName;
 
     /// <summary>
     /// Configuration for monitor. This is by default enabled.

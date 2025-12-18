@@ -42,7 +42,7 @@ public static class MongoDbRegistrationExtensions
             AutoRegisterCollections = c?.AutoRegisterCollections ?? Constants.AutoRegisterCollectionsDefault,
             UseCollectionProviderCache = c?.UseCollectionProviderCache ?? false,
             ExecuteInfoLogLevel = c?.ExecuteInfoLogLevel ?? LogLevel.Debug,
-            AssureIndex = c?.AssureIndex ?? true,
+            AssureIndex = c?.AssureIndex ?? AssureIndexMode.ByName,
             Monitor = new MonitorOptions
             {
                 Enabled = c?.Monitor?.Enabled ?? om.Enabled,
@@ -211,7 +211,6 @@ public static class MongoDbRegistrationExtensions
             {
                 FirewallConfigurationNames = repositoryConfiguration.GetDatabaseConfigurationNames().ToArray()
             },
-            //UseMonitor = true,
             OpenFirewall = true,
         };
         options?.Invoke(o);
@@ -271,6 +270,13 @@ public static class MongoDbRegistrationExtensions
 
             if (o.WaitToComplete) Task.WaitAll(task);
         }
+
+        //if (o.AssureIndex)
+        //{
+        //    throw new NotImplementedException();
+
+        //    if (o.WaitToComplete) Task.WaitAll(task);
+        //}
     }
 
     internal static IServiceCollection RegisterMongoDBCollection<TRepositoryCollection, TRepositoryCollectionBase>(this IServiceCollection services)

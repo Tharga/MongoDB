@@ -9,9 +9,6 @@ namespace Tharga.MongoDB;
 
 public interface IMongoDbService
 {
-    //event EventHandler<CollectionAccessEventArgs> CollectionAccessEvent;
-    //event EventHandler<IndexUpdatedEventArgs> IndexUpdatedEvent;
-
     Task<IMongoCollection<T>> GetCollectionAsync<T>(string collectionName);
     string GetConfigurationName();
     string GetDatabaseName();
@@ -34,5 +31,5 @@ public interface IMongoDbService
     CreateStrategy CreateCollectionStrategy();
     ValueTask<string> AssureFirewallAccessAsync(bool force = false);
     LogLevel GetExecuteInfoLogLevel();
-    bool ShouldAssureIndex();
+    AssureIndexMode GetAssureIndexMode();
 }

@@ -1,4 +1,5 @@
 using Tharga.MongoDB;
+using Tharga.MongoDB.Configuration;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -8,7 +9,7 @@ builder.Services.AddSwaggerGen();
 
 builder.Services.AddMongoDB(o =>
 {
-    o.AssureIndex = false;
+    o.AssureIndex = AssureIndexMode.ByName;
     o.DefaultConfigurationName = "NoDefault";
 });
 
