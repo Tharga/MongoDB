@@ -8,15 +8,15 @@ public enum AssureIndexMode
     /// </summary>
     ByName,
 
-    ///// <summary>
-    ///// This method is slower but safer. It compares the defined index with the actual index based on the complete schema.
-    ///// </summary>
-    //BySchema,
+    /// <summary>
+    /// This method is slower but safer. It compares the defined index with the actual index based on the complete schema.
+    /// </summary>
+    BySchema,
 
-    ///// <summary>
-    ///// This is a crude and simple method. All indexes are dropped and recreated.
-    ///// </summary>
-    //DropCreate,
+    /// <summary>
+    /// This is a crude and simple method. All indexes are dropped and recreated.
+    /// </summary>
+    DropCreate,
 
     /// <summary>
     /// Automatic index assurance is disabled.

@@ -952,11 +952,12 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             case AssureIndexMode.ByName:
                 await UpdateIndicesByNameAsync(collection, throwOnException);
                 break;
-            //case AssureIndexMode.BySchema:
-            //    throw new NotImplementedException();
-            //case AssureIndexMode.DropCreate:
-            //    await UpdateIndicesByDropCreateAsync(collection, throwOnException);
-            //    break;
+            case AssureIndexMode.BySchema:
+                await UpdateIndicesBySchemaAsync(collection, throwOnException);
+                break;
+            case AssureIndexMode.DropCreate:
+                await UpdateIndicesByDropCreateAsync(collection, throwOnException);
+                break;
             case AssureIndexMode.Disabled:
                 return;
             default:
@@ -1026,6 +1027,77 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                     Debugger.Break();
                     _logger?.LogError(e, "Failed to create index {indexName} in collection {collection}. {message}", index.Options.Name, ProtectedCollectionName, e.Message);
                     InitiationLibrary.AddFailedInitiateIndex(ServerName, DatabaseName, ProtectedCollectionName, (IndexFailOperation.Create, index.Options.Name));
+                    if (throwOnException) throw;
+                }
+            }
+        }
+
+        if (hasChanged)
+        {
+            var fingerprint = new CollectionFingerprint
+            {
+                ConfigurationName = ConfigurationName ?? _mongoDbService.GetConfigurationName(),
+                CollectionName = ProtectedCollectionName,
+                DatabaseName = DatabaseName
+            };
+            ((MongoDbServiceFactory)_mongoDbServiceFactory).OnIndexUpdatedEvent(this, new IndexUpdatedEventArgs(fingerprint));
+        }
+    }
+
+    private async Task UpdateIndicesBySchemaAsync(IMongoCollection<TEntity> collection, bool throwOnException)
+    {
+        var indices = (CoreIndices?.ToArray() ?? []).Union(Indices?.ToArray() ?? []).ToArray();
+
+        var existingIndiceModel = (await MongoDbService.BuildIndicesModel(collection))
+            .Where(x => !x.Name.StartsWith("_id_"))
+            .ToArray();
+        var definedIndiceModel = this.BuildIndexMetas().ToArray();
+
+        var hasChanged = false;
+
+        //NOTE: Drop indexes not in list
+        foreach (var collectionIndexModel in existingIndiceModel)
+        {
+            if (definedIndiceModel.All(x => x != collectionIndexModel))
+            {
+                var indexName = collectionIndexModel.Name;
+
+                try
+                {
+                    _logger?.LogDebug("Index {indexName} will be dropped in collection {collection}.", indexName, ProtectedCollectionName);
+                    await collection.Indexes.DropOneAsync(indexName);
+                    _logger?.LogInformation("Index {indexName} was dropped in collection {collection}.", indexName, ProtectedCollectionName);
+                    hasChanged = true;
+                }
+                catch (Exception e)
+                {
+                    Debugger.Break();
+                    _logger?.LogError(e, "Failed to drop index {indexName} in collection {collection}. {message}", indexName, ProtectedCollectionName, e.Message);
+                    InitiationLibrary.AddFailedInitiateIndex(ServerName, DatabaseName, ProtectedCollectionName, (IndexFailOperation.Drop, indexName));
+                    if (throwOnException) throw;
+                }
+            }
+        }
+
+        //NOTE: Create indexes in the list
+        foreach (var definedIndexModel in definedIndiceModel)
+        {
+            if (existingIndiceModel.All(x => x != definedIndexModel))
+            {
+                try
+                {
+                    var index = indices.Single(x => x.Options.Name == definedIndexModel.Name);
+
+                    _logger?.LogDebug("Index {indexName} will be created in collection {collection}.", definedIndexModel.Name, ProtectedCollectionName);
+                    var message = await collection.Indexes.CreateOneAsync(index);
+                    _logger?.LogInformation("Index {indexName} was created in collection {collection}. {message}", definedIndexModel.Name, ProtectedCollectionName, message);
+                    hasChanged = true;
+                }
+                catch (Exception e)
+                {
+                    Debugger.Break();
+                    _logger?.LogError(e, "Failed to create index {indexName} in collection {collection}. {message}", definedIndexModel.Name, ProtectedCollectionName, e.Message);
+                    InitiationLibrary.AddFailedInitiateIndex(ServerName, DatabaseName, ProtectedCollectionName, (IndexFailOperation.Create, definedIndexModel.Name));
                     if (throwOnException) throw;
                 }
             }

@@ -121,25 +121,7 @@ internal class MongoDbService : IMongoDbService
             var documentCount = await mongoCollection.CountDocumentsAsync(FilterDefinition<BsonDocument>.Empty);
             var size = GetSize(collectionName, mongoDatabase);
 
-            var indexModels = new List<IndexMeta>();
-            using var cursor = await mongoCollection.Indexes.ListAsync();
-            var indexDocs = await cursor.ToListAsync();
-
-            foreach (var indexDoc in indexDocs)
-            {
-                var indexName = indexDoc.GetValue("name", BsonNull.Value).AsString;
-                var isUnique = indexDoc.TryGetValue("unique", out var uniqueVal) && uniqueVal.AsBoolean;
-                var keyDoc = indexDoc["key"].AsBsonDocument;
-
-                var fields = keyDoc.Names.ToArray();
-
-                indexModels.Add(new IndexMeta
-                {
-                    Name = indexName,
-                    Fields = fields,
-                    IsUnique = isUnique
-                });
-            }
+            var indexModels = await BuildIndicesModel(mongoCollection);
 
             var dbName = mongoDatabase.DatabaseNamespace.DatabaseName;
             var server = ToServerName(dbName);
@@ -158,6 +140,31 @@ internal class MongoDbService : IMongoDbService
                     .ToArray(),
             };
         }
+    }
+
+    internal static async Task<List<IndexMeta>> BuildIndicesModel<T>(IMongoCollection<T> collection)
+    {
+        var indexModels = new List<IndexMeta>();
+        using var cursor = await collection.Indexes.ListAsync();
+        var indexDocs = await cursor.ToListAsync();
+
+        foreach (var indexDoc in indexDocs)
+        {
+            var indexName = indexDoc.GetValue("name", BsonNull.Value).AsString;
+            var isUnique = indexDoc.TryGetValue("unique", out var uniqueVal) && uniqueVal.AsBoolean;
+            var keyDoc = indexDoc["key"].AsBsonDocument;
+
+            var fields = keyDoc.Names.ToArray();
+
+            indexModels.Add(new IndexMeta
+            {
+                Name = indexName,
+                Fields = fields,
+                IsUnique = isUnique
+            });
+        }
+
+        return indexModels;
     }
 
     private string ToServerName(string dbName)
