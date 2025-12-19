@@ -50,7 +50,6 @@ internal class RepositoryConfiguration : IRepositoryConfiguration
             ResultLimit = c1?.ResultLimit ?? c2?.ResultLimit ?? c3.Value?.ResultLimit ?? c4.Value?.ResultLimit,
             AutoClean = c1?.AutoClean ?? c2?.AutoClean ?? c3.Value?.AutoClean ?? c4.Value?.AutoClean ?? true,
             CleanOnStartup = c1?.CleanOnStartup ?? c2?.CleanOnStartup ?? c3.Value?.CleanOnStartup ?? c4.Value?.CleanOnStartup ?? false,
-            DropEmptyCollections = c1?.DropEmptyCollections ?? c2?.DropEmptyCollections ?? c3.Value?.DropEmptyCollections ?? c4.Value?.DropEmptyCollections ?? true,
             CreateCollectionStrategy = c1?.CreateCollectionStrategy ?? c2?.CreateCollectionStrategy ?? c3.Value?.CreateCollectionStrategy ?? c4.Value?.CreateCollectionStrategy ?? CreateStrategy.DropEmpty,
         };
 

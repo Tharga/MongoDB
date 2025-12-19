@@ -59,8 +59,6 @@ public abstract class RepositoryCollectionBase<TEntity, TKey> : RepositoryCollec
     public override string ConfigurationName => _databaseContext?.ConfigurationName;
     public virtual bool AutoClean => _mongoDbService.GetAutoClean();
     public virtual bool CleanOnStartup => _mongoDbService.GetCleanOnStartup();
-    [Obsolete($"Use {nameof(CreateCollectionStrategy)} instead.")]
-    public virtual bool DropEmptyCollections => _mongoDbService.DropEmptyCollections();
     public virtual CreateStrategy CreateCollectionStrategy => _mongoDbService.CreateCollectionStrategy();
     public virtual int? ResultLimit => _mongoDbService.GetResultLimit();
     public virtual IEnumerable<CreateIndexModel<TEntity>> Indices => null;

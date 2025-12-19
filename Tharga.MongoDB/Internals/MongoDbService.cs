@@ -232,12 +232,6 @@ internal class MongoDbService : IMongoDbService
         return _configuration.GetConfiguration().CleanOnStartup;
     }
 
-    [Obsolete($"Use {nameof(CreateCollectionStrategy)} instead.")]
-    public bool DropEmptyCollections()
-    {
-        return _configuration.GetConfiguration().DropEmptyCollections;
-    }
-
     public CreateStrategy CreateCollectionStrategy()
     {
         return _configuration.GetConfiguration().CreateCollectionStrategy;

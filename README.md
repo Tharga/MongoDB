@@ -183,7 +183,7 @@ The 'Default' database will have the firewall opened, if hosted in Atlas MongoDB
       "ResultLimit": 100,
       "AutoClean": true,
       "CleanOnStartup": true,
-      "DropEmptyCollections": true
+      "CreateCollectionStrategy": "DropEmpty"
     },
     "Other": {
       "ResultLimit": 200
@@ -191,7 +191,7 @@ The 'Default' database will have the firewall opened, if hosted in Atlas MongoDB
     "ResultLimit": 1000
     "AutoClean": false,
     "CleanOnStartup": false,
-    "DropEmptyCollections": false
+    "CreateCollectionStrategy": "DropEmpty"
   }
 ```
 
@@ -225,7 +225,7 @@ services.AddMongoDB(o =>
                     ResultLimit = 100,
                     AutoClean = true,
                     CleanOnStartup = true,
-                    DropEmptyCollections = true
+                    "CreateCollectionStrategy": "DropEmpty"
                 }
             },
             {
@@ -238,7 +238,7 @@ services.AddMongoDB(o =>
         ResultLimit = 1000,
         AutoClean = false,
         CleanOnStartup = false,
-        DropEmptyCollections = false
+        "CreateCollectionStrategy": "DropEmpty"
     };
 });
 ```
@@ -307,7 +307,7 @@ Read more about this in the section [MongoUrl Builder](#mongourlbuilder).
 Override property `ConfigurationName` to use different database than default (or set as default in `DatabaseOptions`).
 This makes it possible to use multiple databases from the same application.
 
-The properties `AutoClean`, `CleanOnStartup`, `DropEmptyCollections` and `ResultLimit` can be overridden by collection to be different from the configuration.
+The properties `AutoClean`, `CleanOnStartup`, `CreateCollectionStrategy` and `ResultLimit` can be overridden by collection to be different from the configuration.
 
 To automatically register known types when using multiple types in the same collection, provide a value for `Types`.
 

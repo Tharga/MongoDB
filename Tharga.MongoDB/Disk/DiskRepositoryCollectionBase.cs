@@ -1222,7 +1222,6 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 
     protected virtual async Task DropEmpty(IMongoCollection<TEntity> collection)
     {
-        if (!DropEmptyCollections) return;
         if (CreateCollectionStrategy != CreateStrategy.DropEmpty) return;
 
         var any = await GetVirtualCount(collection) != 0;
