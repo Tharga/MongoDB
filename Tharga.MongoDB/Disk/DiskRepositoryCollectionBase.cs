@@ -1,5 +1,7 @@
 ﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using MongoDB.Bson;
+using MongoDB.Bson.IO;
 using MongoDB.Bson.Serialization;
 using MongoDB.Driver;
 using System;
@@ -180,6 +182,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         async IAsyncEnumerable<TEntity> Impl()
         {
             var o = BuildOptions(options);
+            Explain(Collection, predicate, o);
             var cursor = await FindAsync(Collection, predicate, cancellationToken, o);
 
             await foreach (var item in BuildList(cursor, cancellationToken))
@@ -211,6 +214,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         async IAsyncEnumerable<TEntity> Impl()
         {
             var o = BuildOptions(options);
+            Explain(Collection, filter, o);
             var cursor = await FindAsync(Collection, filter, cancellationToken, o);
 
             await foreach (var item in BuildList(cursor, cancellationToken))
@@ -442,6 +446,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         {
             var sort = options?.Sort;
             var findFluent = Collection.Find(filter).Sort(sort).Limit(2);
+            //Explain(Collection, ); //TODO:
             TEntity item;
             switch (options?.Mode)
             {
@@ -1272,6 +1277,57 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         var virtualCount = await collection.CountDocumentsAsync(x => true);
         InitiationLibrary.SetVirtualCount(ServerName, DatabaseName, ProtectedCollectionName, virtualCount);
         return virtualCount;
+    }
+
+    //TODO: Create a service for indexes.
+    //TODO: Create a service for this
+    private void Explain(IMongoCollection<TEntity> collection, Expression<Func<TEntity, bool>> predicate, FindOptions<TEntity, TEntity> options)
+    {
+        var filter = new FilterDefinitionBuilder<TEntity>().Where(predicate);
+        Explain(collection, filter, options);
+    }
+
+    private void Explain(IMongoCollection<TEntity> collection, FilterDefinition<TEntity> filter, FindOptions<TEntity, TEntity> options)
+    {
+        //TODO: Handle projection in options
+
+        var renderArgs = new RenderArgs<TEntity>
+        {
+            DocumentSerializer = collection.DocumentSerializer,
+            SerializerRegistry = collection.Settings.SerializerRegistry
+        };
+
+        var renderedFilter = filter.Render(renderArgs);
+        var renderedSort = options?.Sort?.Render(renderArgs);
+
+        var explainCommand = new BsonDocument
+        {
+            {
+                "explain", new BsonDocument
+                {
+                    { "find", collection.CollectionNamespace.CollectionName },
+                    { "filter", renderedFilter },
+                    { "sort", renderedSort },
+                    { "skip", options?.Skip },
+                    { "limit", options?.Limit }
+                }
+            },
+            { "verbosity", "executionStats" }
+        };
+
+        var explainResult = collection.Database.RunCommand<BsonDocument>(explainCommand);
+
+        var combinedResult = new BsonDocument();
+        combinedResult.AddRange(explainResult.Elements);
+
+        if (explainResult.TryGetValue("$cosmosdb", out var cosmos))
+        {
+            var ru = cosmos["requestCharge"].ToDouble();
+            combinedResult.Add("requestUnits", ru);
+        }
+
+        string a = combinedResult.ToJson(new JsonWriterSettings { Indent = true });
+        Console.WriteLine(a);
     }
 }
 
