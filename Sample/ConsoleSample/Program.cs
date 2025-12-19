@@ -20,6 +20,8 @@ internal static class Program
             {
                 services.AddMongoDB(o =>
                 {
+                    o.AssureIndex = AssureIndexMode.DropCreate;
+
                     o.ConnectionStringLoader = (ConfigurationName _, IServiceProvider _) => Task.FromResult<ConnectionString>("mongodb://localhost:27017/Tharga_MongoDB_ConsoleSample{part}");
 
                     o.ActionEvent = data => { Console.WriteLine($"---> {data.Action.Message}"); };
@@ -40,7 +42,7 @@ internal static class Program
                                     ResultLimit = 100,
                                     AutoClean = true,
                                     CleanOnStartup = true,
-                                    DropEmptyCollections = true
+                                    CreateCollectionStrategy = CreateStrategy.DropEmpty
                                 }
                             },
                             {
@@ -53,7 +55,7 @@ internal static class Program
                         ResultLimit = 1000,
                         AutoClean = false,
                         CleanOnStartup = false,
-                        DropEmptyCollections = false
+                        CreateCollectionStrategy = CreateStrategy.DropEmpty
                     });
                 });
 

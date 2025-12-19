@@ -9,7 +9,7 @@ builder.Services.AddSwaggerGen();
 
 builder.Services.AddMongoDB(o =>
 {
-    o.AssureIndex = AssureIndexMode.ByName;
+    o.AssureIndex = AssureIndexMode.BySchema;
     o.DefaultConfigurationName = "NoDefault";
 });
 
