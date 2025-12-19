@@ -106,7 +106,6 @@ else
     private void ReloadData()
     {
         _all = DatabaseMonitor.GetCalls(SelectedCallType).ToArray();
-        // _databases = _all.GroupBy(x => x.DatabaseName).Select(x => x.First()).Select(x => x.DatabaseName).Order().ToArray();
         _model = _all.Where(x => SelectedDatabases == null || !SelectedDatabases.Any() || SelectedDatabases.Contains(x.DatabaseName)).ToArray();
         _showConfiguration = _model.GroupBy(x => x.ConfigurationName).Count() > 1;
         StateHasChanged();

@@ -21,6 +21,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 {
     private readonly SemaphoreSlim _lock = new(1, 1);
     private IMongoCollection<TEntity> _collection;
+    private string _explain;
 
     /// <summary>
     /// Override this constructor for static collections.
@@ -28,7 +29,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
     /// <param name="mongoDbServiceFactory"></param>
     /// <param name="logger"></param>
 	protected DiskRepositoryCollectionBase(IMongoDbServiceFactory mongoDbServiceFactory, ILogger<RepositoryCollectionBase<TEntity, TKey>> logger = null)
-	    : base(mongoDbServiceFactory, logger)
+        : base(mongoDbServiceFactory, logger)
     {
     }
 
@@ -135,12 +136,15 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         }
         finally
         {
-            ((MongoDbServiceFactory)_mongoDbServiceFactory).OnCallEnd(this, new CallEndEventArgs(callKey, sw.Elapsed, exception, 1));
-        }
+            //TODO: Only perform is monitor is attached
+            if (sw.Elapsed >= TimeSpan.FromMilliseconds(0))
+            {
+                _ = await action.Invoke(true);
+            }
 
-        if (sw.Elapsed > TimeSpan.FromMilliseconds(1))
-        {
-            _ = await action.Invoke(true);
+            var x = _explain;
+
+            ((MongoDbServiceFactory)_mongoDbServiceFactory).OnCallEnd(this, new CallEndEventArgs(callKey, sw.Elapsed, exception, 1, true, _explain));
         }
     }
 
@@ -170,15 +174,16 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         {
             sw.Stop();
 
+            //TODO: Only perform is monitor is attached
+            if (sw.Elapsed >= TimeSpan.FromMilliseconds(0))
+            {
+                await action.Invoke(true).ToArrayAsync(cancellationToken);
+            }
+
             _logger?.Log(_executeInfoLogLevel, $"Executed {{repositoryType}} for {{CollectionName}} took {{elapsed}} ms and returned {{itemCount}} items. [action: Database, operation: {functionName}]", "DiskRepository", CollectionName, sw.Elapsed.TotalMilliseconds, count);
             InvokeAction(new ActionEventArgs.ActionData { Operation = functionName, Elapsed = sw.Elapsed, ItemCount = count });
-            ((MongoDbServiceFactory)_mongoDbServiceFactory).OnCallEnd(this, new CallEndEventArgs(callKey, sw.Elapsed, null, count, final));
-        }
 
-        //TODO: Perform explain, if the call was slow.
-        if (sw.Elapsed > TimeSpan.FromMilliseconds(1))
-        {
-            await action.Invoke(true).ToArrayAsync(cancellationToken);
+            ((MongoDbServiceFactory)_mongoDbServiceFactory).OnCallEnd(this, new CallEndEventArgs(callKey, sw.Elapsed, null, count, final, _explain));
         }
     }
 
@@ -1437,59 +1442,77 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
     //TODO: Should be performed after the regular request, so it does not effect the time and we can filter on slow features.
     private void Explain<T, TProjection>(IMongoCollection<T> collection, Expression<Func<T, bool>> predicate, FindOptions<T, TProjection> options = null)
     {
-        var filter = new FilterDefinitionBuilder<T>().Where(predicate ?? (_ => true));
+        FilterDefinition<T> filter = null;
+        if (predicate != null) filter = new FilterDefinitionBuilder<T>().Where(predicate);
         Explain(collection, filter, options);
     }
 
-    //private void Explain<T, TProjection>(IMongoCollection<T> collection, IFindFluent<T, TProjection> findFluent, FindOptions<T, TProjection> options = null)
-    //{
-    //    Debugger.Break();
-    //    throw new NotImplementedException();
-    //}
-
     private void Explain<T, TProjection>(IMongoCollection<T> collection, FilterDefinition<T> filter, FindOptions<T, TProjection> options = null)
     {
-        return;
-
-        //TODO: Handle projection in options
-
         var renderArgs = new RenderArgs<T>
         {
             DocumentSerializer = collection.DocumentSerializer,
             SerializerRegistry = collection.Settings.SerializerRegistry
         };
 
-        var renderedFilter = filter.Render(renderArgs);
+        var renderedFilter = filter?.Render(renderArgs);
         var renderedSort = options?.Sort?.Render(renderArgs);
+        var renderedProjection = options?.Projection?.Render(renderArgs);
+
+        var findDocument = new BsonDocument { { "find", collection.CollectionNamespace.CollectionName } };
+
+        if (renderedFilter != null) findDocument.Add("filter", renderedFilter);
+        if (renderedSort != null) findDocument.Add("sort", renderedSort);
+        if (renderedProjection != null) findDocument.Add("projection", renderedProjection.Document);
+        if (options?.Skip != null) findDocument.Add("skip", options.Skip.Value);
+        if (options?.Limit != null) findDocument.Add("limit", options.Limit.Value);
 
         var explainCommand = new BsonDocument
         {
-            {
-                "explain", new BsonDocument
-                {
-                    { "find", collection.CollectionNamespace.CollectionName },
-                    { "filter", renderedFilter },
-                    { "sort", renderedSort },
-                    { "skip", options?.Skip },
-                    { "limit", options?.Limit }
-                }
-            },
+            { "explain", findDocument },
             { "verbosity", "executionStats" }
         };
 
-        var explainResult = collection.Database.RunCommand<BsonDocument>(explainCommand);
+        var raw = collection.Database.RunCommand<BsonDocument>(explainCommand);
 
         var combinedResult = new BsonDocument();
-        combinedResult.AddRange(explainResult.Elements);
+        combinedResult.AddRange(raw.Elements);
+        var rawJson = combinedResult.ToJson(new JsonWriterSettings { Indent = true });
+        //Console.WriteLine(a);
 
-        if (explainResult.TryGetValue("$cosmosdb", out var cosmos))
-        {
-            var ru = cosmos["requestCharge"].ToDouble();
-            combinedResult.Add("requestUnits", ru);
-        }
+        if (!string.IsNullOrEmpty(_explain)) throw new InvalidOperationException($"There is already data in {nameof(_explain)}.");
+        _explain = rawJson;
 
-        string a = combinedResult.ToJson(new JsonWriterSettings { Indent = true });
-        Console.WriteLine(a);
+        //var provider = raw.DetectProvider();
+
+        //var execution = provider switch
+        //{
+        //    ExplainProvider.MongoDb => raw.ParseMongoExecution(),
+        //    ExplainProvider.CosmosMongoApi => raw.ParseCosmosExecution(),
+        //    _ => null
+        //};
+
+        //var response = new ExplainResponse
+        //{
+        //    Provider = provider,
+        //    Query = new ExplainQuerySummary
+        //    {
+        //        Filter = renderedFilter?.ToJsonElement(),
+        //        Sort = renderedSort?.ToJsonElement(),
+        //        Projection = renderedProjection?.Document.ToJsonElement(),
+        //        Skip = options?.Skip,
+        //        Limit = options?.Limit
+        //    },
+        //    Execution = execution,
+        //    Raw = raw.ToJsonElement()
+        //};
+
+        //var reformatedJson = JsonSerializer.Serialize(
+        //    response,
+        //    new JsonSerializerOptions { WriteIndented = true }
+        //);
+
+        //return response;
     }
 }
 

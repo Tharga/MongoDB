@@ -15,4 +15,5 @@ public record CallInfo
     public int? Count { get; set; }
     public Exception Exception { get; set; }
     public bool Final { get; set; }
+    public string Explain { get; set; }
 }

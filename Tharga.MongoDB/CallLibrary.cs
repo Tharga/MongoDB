@@ -66,6 +66,7 @@ internal class CallLibrary : ICallLibrary
         item.Count = e.Count;
         item.Exception = e.Exception;
         item.Final = e.Final;
+        item.Explain = e.Explain;
 
         var elapsedMs = e.Elapsed.TotalMilliseconds;
 
