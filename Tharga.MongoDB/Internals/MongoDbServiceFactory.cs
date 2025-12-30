@@ -56,9 +56,9 @@ internal class MongoDbServiceFactory : IMongoDbServiceFactory
 
         if (useCache && _databaseDbServices.TryGetValue(cacheKey, out var dbService)) return dbService;
 
+        _lock.Wait();
         try
         {
-            _lock.Wait();
             if (useCache && _databaseDbServices.TryGetValue(cacheKey, out dbService)) return dbService;
 
             dbService = new MongoDbService(configuration, _mongoDbFirewallStateService, _mongoDbClientProvider, _logger);
