@@ -192,6 +192,7 @@ public static class MongoDbRegistrationExtensions
         }
         else
         {
+            services.AddSingleton<IDatabaseMonitor, DatabaseNullMonitor>();
         }
 
         return services;

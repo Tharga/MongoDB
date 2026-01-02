@@ -1,11 +1,18 @@
-﻿@using Tharga.Blazor
+﻿@using Microsoft.Extensions.Options
+@using Tharga.Blazor
 @using Tharga.Blazor.Framework.Buttons
 @using Tharga.MongoDB
+@using Tharga.MongoDB.Configuration
 @using Tharga.Toolkit
 @inject IDatabaseMonitor DatabaseMonitor;
 @inject DialogService DialogService
+@inject IOptions<DatabaseOptions> DatabaseOptions
 
-@if (_model == null)
+@if (!DatabaseOptions.Value.Monitor.Enabled)
+{
+    <RadzenText>Database monitor is disabled.</RadzenText>
+}
+else if (_model == null)
 {
     <Loading />
 }
