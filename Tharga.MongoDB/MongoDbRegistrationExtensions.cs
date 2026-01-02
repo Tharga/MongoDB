@@ -121,7 +121,10 @@ public static class MongoDbRegistrationExtensions
             var currentDomainDefinedTypes = AssemblyService.GetTypes<IRepository>(x => !x.IsGenericType && !x.IsInterface, o.AutoRegistrationAssemblies).ToArray();
             foreach (var repositoryType in currentDomainDefinedTypes)
             {
-                var serviceTypes = repositoryType.ImplementedInterfaces.Where(x => x.IsInterface && !x.IsGenericType && x != typeof(IRepository)).ToArray();
+                var serviceTypes = repositoryType.ImplementedInterfaces
+                    .Where(x => x.IsInterface && !x.IsGenericType && x != typeof(IRepository))
+                    .Where(x => x.IsOfType<IRepository>())
+                    .ToArray();
                 if (serviceTypes.Length > 1) throw new InvalidOperationException($"There are {serviceTypes.Length} interfaces for repository type '{repositoryType.Name}' ({string.Join(", ", serviceTypes.Select(x => x.Name))}).");
                 var implementationType = repositoryType.AsType();
                 var serviceType = serviceTypes.Length == 0 ? implementationType : serviceTypes.Single();
