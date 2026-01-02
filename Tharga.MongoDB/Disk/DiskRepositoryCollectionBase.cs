@@ -88,26 +88,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 
         try
         {
-            ((MongoDbServiceFactory)_mongoDbServiceFactory).OnCallStart(this, new CallStartEventArgs(callKey, ConfigurationName, DatabaseName, CollectionName, functionName, operation));
-
-            switch (operation)
-            {
-                case Operation.Get:
-                    break;
-                case Operation.Add:
-                    await AssureIndex(Collection);
-                    break;
-                case Operation.Update:
-                case Operation.AddOrUpdate:
-                    await AssureIndex(Collection);
-                    ArmRecheckInvalidIndex();
-                    break;
-                case Operation.Remove:
-                    ArmRecheckInvalidIndex();
-                    break;
-                default:
-                    throw new ArgumentOutOfRangeException(nameof(operation), operation, null);
-            }
+            await BeforeExecute(functionName, operation, callKey);
 
             var result = await action.Invoke();
 
@@ -135,6 +116,30 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         finally
         {
             ((MongoDbServiceFactory)_mongoDbServiceFactory).OnCallEnd(this, new CallEndEventArgs(callKey, sw.Elapsed, exception, 1));
+        }
+    }
+
+    private async Task BeforeExecute(string functionName, Operation operation, Guid callKey)
+    {
+        ((MongoDbServiceFactory)_mongoDbServiceFactory).OnCallStart(this, new CallStartEventArgs(callKey, ConfigurationName, DatabaseName, CollectionName, functionName, operation));
+
+        switch (operation)
+        {
+            case Operation.Get:
+                break;
+            case Operation.Add:
+                await AssureIndex(Collection);
+                break;
+            case Operation.Update:
+            case Operation.AddOrUpdate:
+                await AssureIndex(Collection);
+                ArmRecheckInvalidIndex();
+                break;
+            case Operation.Remove:
+                ArmRecheckInvalidIndex();
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(operation), operation, null);
         }
     }
 
@@ -780,9 +785,26 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
     }
 
     //TODO: Should return an execute around pattern, so an operation (Get, Update, Delete, ...) can be provided for correct handling. (IE, Possible to wrap the Execute-metod)
+    [Obsolete($"Use {nameof(GetCollectionScope)} instead. This method will be deprecated.")]
     public override IMongoCollection<TEntity> GetCollection()
     {
         return Collection;
+    }
+
+    public override async Task<CollectionScope<TEntity>> GetCollectionScope(Operation operation)
+    {
+        var callKey = Guid.NewGuid();
+        var functionName = nameof(GetCollectionScope);
+
+        await BeforeExecute(functionName, operation, callKey);
+
+        return new CollectionScope<TEntity>(Collection, (elapsed, exception) =>
+        {
+            _logger?.Log(_executeInfoLogLevel, $"Executed {{repositoryType}} for {{CollectionName}} took {{elapsed}} ms. [action: Database, operation: {functionName}]", "DiskRepository", CollectionName, elapsed.TotalMilliseconds);
+            InvokeAction(new ActionEventArgs.ActionData { Operation = functionName, Elapsed = elapsed });
+
+            ((MongoDbServiceFactory)_mongoDbServiceFactory).OnCallEnd(this, new CallEndEventArgs(callKey, elapsed, exception, 1));
+        });
     }
 
     public override async Task DropCollectionAsync()

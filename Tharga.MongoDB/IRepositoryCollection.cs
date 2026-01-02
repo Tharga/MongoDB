@@ -1,8 +1,9 @@
-﻿using System;
+﻿using MongoDB.Driver;
+using System;
 using System.Collections.Generic;
 using System.Linq.Expressions;
 using System.Threading.Tasks;
-using MongoDB.Driver;
+using Tharga.MongoDB.Disk;
 
 namespace Tharga.MongoDB;
 
@@ -28,4 +29,5 @@ public interface IRepositoryCollection<TEntity, TKey> : IReadOnlyRepositoryColle
     Task<long> DeleteManyAsync(Expression<Func<TEntity, bool>> predicate);
 
     IMongoCollection<TEntity> GetCollection();
+    Task<CollectionScope<TEntity>> GetCollectionScope(Operation operation);
 }

@@ -6,6 +6,7 @@ using System.Linq.Expressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Tharga.MongoDB.Configuration;
+using Tharga.MongoDB.Disk;
 using Tharga.MongoDB.Internals;
 
 namespace Tharga.MongoDB;
@@ -91,6 +92,7 @@ public abstract class RepositoryCollectionBase<TEntity, TKey> : RepositoryCollec
     public abstract Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate = null, OneOption<TEntity> options = null);
     public abstract Task<long> DeleteManyAsync(Expression<Func<TEntity, bool>> predicate);
     public abstract IMongoCollection<TEntity> GetCollection();
+    public abstract Task<CollectionScope<TEntity>> GetCollectionScope(Operation operation);
 
     public abstract Task DropCollectionAsync();
 

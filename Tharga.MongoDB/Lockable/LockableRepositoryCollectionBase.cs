@@ -280,7 +280,14 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
 
     public override IMongoCollection<TEntity> GetCollection()
     {
-        return Disk.GetCollection();
+        //return Disk.GetCollection();
+        throw new NotSupportedException();
+    }
+
+    public override Task<CollectionScope<TEntity>> GetCollectionScope(Operation operation)
+    {
+        //return Disk.GetCollectionScope();
+        throw new NotSupportedException();
     }
 
     public override Task DropCollectionAsync()
