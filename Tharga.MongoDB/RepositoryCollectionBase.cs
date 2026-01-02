@@ -37,6 +37,7 @@ public abstract class RepositoryCollectionBase<TEntity, TKey> : RepositoryCollec
     protected readonly LogLevel _executeInfoLogLevel;
 
     private readonly Lazy<ActionEventArgs.ContextData> _contextData;
+    internal readonly IExecuteLimiter _executeLimiter;
 
     protected RepositoryCollectionBase(IMongoDbServiceFactory mongoDbServiceFactory, ILogger<RepositoryCollectionBase<TEntity, TKey>> logger, DatabaseContext databaseContext = null)
     {
@@ -48,6 +49,7 @@ public abstract class RepositoryCollectionBase<TEntity, TKey> : RepositoryCollec
         _contextData = new Lazy<ActionEventArgs.ContextData>(BuildContextData);
 
         _executeInfoLogLevel = _mongoDbService.GetExecuteInfoLogLevel();
+        _executeLimiter = ((MongoDbService)_mongoDbService).ExecuteLimiter;
     }
 
     internal virtual IRepositoryCollection<TEntity, TKey> BaseCollection => this;
@@ -70,10 +72,21 @@ public abstract class RepositoryCollectionBase<TEntity, TKey> : RepositoryCollec
     public abstract IAsyncEnumerable<TEntity> GetAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default);
     public abstract IAsyncEnumerable<T> GetAsync<T>(Expression<Func<T, bool>> predicate = null, Options<T> options = null, CancellationToken cancellationToken = default) where T : TEntity;
     public abstract IAsyncEnumerable<T> GetProjectionAsync<T>(Expression<Func<T, bool>> predicate = null, Options<T> options = null, CancellationToken cancellationToken = default);
+
+    [Obsolete($"Use {nameof(GetManyAsync)} instead. This method will be deprecated.")]
     public abstract Task<Result<TEntity, TKey>> QueryAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default);
+    public abstract Task<Result<TEntity, TKey>> GetManyAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default);
+
+    [Obsolete($"Use {nameof(GetManyAsync)} instead. This method will be deprecated.")]
     public abstract Task<Result<TEntity, TKey>> QueryAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default);
+    public abstract Task<Result<TEntity, TKey>> GetManyAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default);
+
+    [Obsolete($"Use {nameof(GetManyAsync)} instead. This method will be deprecated.")]
     public abstract IAsyncEnumerable<ResultPage<TEntity, TKey>> GetPagesAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default);
+
+    [Obsolete($"Use {nameof(GetManyAsync)} instead. This method will be deprecated.")]
     public abstract IAsyncEnumerable<ResultPage<TEntity, TKey>> GetPagesAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default);
+
     public abstract Task<TEntity> GetOneAsync(TKey id, CancellationToken cancellationToken = default);
     public abstract Task<TEntity> GetOneAsync(Expression<Func<TEntity, bool>> predicate = null, OneOption<TEntity> options = null, CancellationToken cancellationToken = default);
     public abstract Task<TEntity> GetOneAsync(FilterDefinition<TEntity> filter, OneOption<TEntity> options = null, CancellationToken cancellationToken = default);
@@ -91,6 +104,8 @@ public abstract class RepositoryCollectionBase<TEntity, TKey> : RepositoryCollec
     public abstract Task<TEntity> DeleteOneAsync(TKey id);
     public abstract Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate = null, OneOption<TEntity> options = null);
     public abstract Task<long> DeleteManyAsync(Expression<Func<TEntity, bool>> predicate);
+
+    [Obsolete($"Use {nameof(GetCollectionScope)} instead. This method will be deprecated.")]
     public abstract IMongoCollection<TEntity> GetCollection();
     public abstract Task<CollectionScope<TEntity>> GetCollectionScope(Operation operation);
 

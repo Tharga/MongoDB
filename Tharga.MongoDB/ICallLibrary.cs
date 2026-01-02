@@ -8,4 +8,5 @@ internal interface ICallLibrary
     void EndCall(CallEndEventArgs callEndEventArgs);
     IEnumerable<CallInfo> GetLastCalls();
     IEnumerable<CallInfo> GetSlowCalls();
+    IEnumerable<CallInfo> GetOngoingCalls();
 }

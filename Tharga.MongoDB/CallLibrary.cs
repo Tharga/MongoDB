@@ -108,4 +108,9 @@ internal class CallLibrary : ICallLibrary
             _slowestSemaphore.Release();
         }
     }
+
+    public IEnumerable<CallInfo> GetOngoingCalls()
+    {
+        return _calls.Values.Where(x => !x.Final);
+    }
 }

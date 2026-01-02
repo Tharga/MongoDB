@@ -118,6 +118,9 @@ else
     [Parameter]
     public bool FullDatabaseScan { get; set; }
 
+    [Parameter]
+    public string Filter { get; set; }
+
     protected override async Task OnParametersSetAsync()
     {
         DatabaseMonitor.CollectionInfoChangedEvent += async (_, e) =>
@@ -134,7 +137,8 @@ else
                 item.Size = e.CollectionInfo.Size;
                 item.Index = e.CollectionInfo.Index;
 
-                var m = _model.SingleOrDefault(x => x.ConfigurationName == item.ConfigurationName && x.CollectionName == item.CollectionName);
+                // var m = _model.SingleOrDefault(x => x.ConfigurationName == item.ConfigurationName && x.CollectionName == item.CollectionName);
+                var m = _model.SingleOrDefault(x => x.ConfigurationName == item.ConfigurationName && x.DatabaseName == item.DatabaseName && x.CollectionName == item.CollectionName);
                 if (m != null)
                 {
                     var indexModels = e.CollectionInfo.ToIndexModel().ToArray();
@@ -151,7 +155,7 @@ else
             }
         };
 
-        _all = await DatabaseMonitor.GetInstancesAsync(FullDatabaseScan).ToArrayAsync();
+        _all = await DatabaseMonitor.GetInstancesAsync(FullDatabaseScan, Filter).ToArrayAsync();
         _databases = _all.GroupBy(x => x.DatabaseName).Select(x => x.First()).Select(x => x.DatabaseName).Order().ToArray();
         await ReloadData();
         await base.OnParametersSetAsync();

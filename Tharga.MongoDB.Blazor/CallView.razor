@@ -24,6 +24,7 @@ else
                         <Items>
                             <RadzenSelectBarItem Text="Last" Value="CallType.Last"/>
                             <RadzenSelectBarItem Text="Slow" Value="CallType.Slow"/>
+                            <RadzenSelectBarItem Text="Ongoing" Value="CallType.Ongoing"/>
                         </Items>
                     </RadzenSelectBar>
                 </RadzenStack>
@@ -80,6 +81,8 @@ else
 
     protected override async Task OnParametersSetAsync()
     {
+        //TODO: Add event listener to update, especially ongoing calls.
+
         _all = DatabaseMonitor.GetCalls(CallType.Last).Union(DatabaseMonitor.GetCalls(CallType.Slow)).ToArray();
         _databases = _all.GroupBy(x => x.DatabaseName).Select(x => x.First()).Select(x => x.DatabaseName).Order().ToArray();
 

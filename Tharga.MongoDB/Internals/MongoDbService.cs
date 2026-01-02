@@ -16,15 +16,17 @@ internal class MongoDbService : IMongoDbService
 {
     private readonly IRepositoryConfigurationInternal _configuration;
     private readonly IMongoDbFirewallStateService _mongoDbFirewallStateService;
+    private readonly IExecuteLimiter _executeLimiter;
     private readonly ILogger _logger;
     private readonly MongoClient _mongoClient;
     private readonly IMongoDatabase _mongoDatabase;
     private readonly MongoUrl _mongoUrl;
 
-    public MongoDbService(IRepositoryConfigurationInternal configuration, IMongoDbFirewallStateService mongoDbFirewallStateService, IMongoDbClientProvider mongoDbClientProvider, ILogger logger)
+    public MongoDbService(IRepositoryConfigurationInternal configuration, IMongoDbFirewallStateService mongoDbFirewallStateService, IMongoDbClientProvider mongoDbClientProvider, IExecuteLimiter executeLimiter, ILogger logger)
     {
         _configuration = configuration;
         _mongoDbFirewallStateService = mongoDbFirewallStateService;
+        _executeLimiter = executeLimiter;
         _logger = logger;
         _mongoUrl = configuration.GetDatabaseUrl() ?? throw new NullReferenceException("MongoUrl not found in configuration.");
         _mongoClient = mongoDbClientProvider.GetClient(_mongoUrl);
@@ -33,6 +35,8 @@ internal class MongoDbService : IMongoDbService
     }
 
     public event EventHandler<CollectionAccessEventArgs> CollectionAccessEvent;
+
+    public IExecuteLimiter ExecuteLimiter => _executeLimiter;
 
     public async Task<IMongoCollection<T>> GetCollectionAsync<T>(string collectionName)
     {
@@ -96,17 +100,20 @@ internal class MongoDbService : IMongoDbService
 
     public Task DropCollectionAsync(string name)
     {
+        //TODO: This uses a call to the database.
         return _mongoDatabase.DropCollectionAsync(name);
     }
 
     public IEnumerable<string> GetCollections()
     {
+        //TODO: This uses a call to the database.
         return _mongoDatabase.ListCollections().ToEnumerable().Select(x => x.AsBsonValue["name"].ToString());
     }
 
     public async IAsyncEnumerable<CollectionMeta> GetCollectionsWithMetaAsync(string databaseName = null)
     {
         var mongoDatabase = string.IsNullOrEmpty(databaseName) ? _mongoDatabase : _mongoClient.GetDatabase(databaseName);
+        //TODO: This uses a call to the database.
         var collections = (await mongoDatabase.ListCollectionsAsync()).ToEnumerable();
 
         foreach (var collection in collections)
@@ -180,12 +187,14 @@ internal class MongoDbService : IMongoDbService
     {
         var filter = new BsonDocument("name", name);
         var options = new ListCollectionNamesOptions { Filter = filter };
+        //TODO: This uses a call to the database.
         var exists = await (await _mongoDatabase.ListCollectionNamesAsync(options)).AnyAsync();
         return exists;
     }
 
     public long GetSize(string collectionName, IMongoDatabase mongoDatabase = null)
     {
+        //TODO: This uses a call to the database.
         var size = (mongoDatabase ?? _mongoDatabase).RunCommand<SizeResult>($"{{collstats: '{collectionName}'}}").Size;
         return size;
     }
@@ -250,6 +259,7 @@ internal class MongoDbService : IMongoDbService
 
     public IEnumerable<string> GetDatabases()
     {
+        //TODO: This uses a call to the database. Or?
         var dbs = _mongoClient.ListDatabases(CancellationToken.None).ToList();
         return dbs.Select(x => x.AsBsonValue["name"].ToString());
     }

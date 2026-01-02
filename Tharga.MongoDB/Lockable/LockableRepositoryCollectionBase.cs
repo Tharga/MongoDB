@@ -64,21 +64,35 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
         return Disk.GetProjectionAsync(predicate, options, cancellationToken);
     }
 
+    [Obsolete($"Use {nameof(GetManyAsync)} instead. This method will be deprecated.")]
     public override Task<Result<TEntity, TKey>> QueryAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default)
     {
         return Disk.QueryAsync(predicate, options, cancellationToken);
     }
 
+    public override Task<Result<TEntity, TKey>> GetManyAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default)
+    {
+        return Disk.GetManyAsync(predicate, options, cancellationToken);
+    }
+
+    [Obsolete($"Use {nameof(GetManyAsync)} instead. This method will be deprecated.")]
     public override Task<Result<TEntity, TKey>> QueryAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default)
     {
         return Disk.QueryAsync(filter, options, cancellationToken);
     }
 
+    public override Task<Result<TEntity, TKey>> GetManyAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default)
+    {
+        return Disk.GetManyAsync(filter, options, cancellationToken);
+    }
+
+    [Obsolete($"Use {nameof(GetManyAsync)} instead. This method will be deprecated.")]
     public override IAsyncEnumerable<ResultPage<TEntity, TKey>> GetPagesAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default)
     {
         return Disk.GetPagesAsync(predicate, options, cancellationToken);
     }
 
+    [Obsolete($"Use {nameof(GetManyAsync)} instead. This method will be deprecated.")]
     public override IAsyncEnumerable<ResultPage<TEntity, TKey>> GetPagesAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default)
     {
         return Disk.GetPagesAsync(filter, options, cancellationToken);

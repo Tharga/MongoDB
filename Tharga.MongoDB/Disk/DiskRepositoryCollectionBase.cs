@@ -44,11 +44,13 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 
     public override long? VirtualCount => InitiationLibrary.GetVirtualCount(ServerName, DatabaseName, ProtectedCollectionName);
 
+    //TODO: Try removing this and use FetchCollectionAsync directly. Have the stored _collection implemented in there instead.
     private IMongoCollection<TEntity> Collection => _collection ??= Task.Run(async () =>
     {
+        //TODO: Measure how long it takes to get a collection. (Cannot use Tharga.Toolkit-measure here, but implement the same pattern)
         try
         {
-            _lock.Wait();
+            await _lock.WaitAsync();
             return await FetchCollectionAsync();
         }
         catch (TimeoutException e)
@@ -90,7 +92,11 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         {
             await BeforeExecute(functionName, operation, callKey);
 
-            var result = await action.Invoke();
+            var result = await _executeLimiter.ExecuteAsync(ConfigurationName ?? Constants.DefaultConfigurationName, async () =>
+            {
+                var result = await action.Invoke();
+                return result;
+            });
 
             sw.Stop();
 
@@ -300,7 +306,13 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         return ExecuteAsyncEnumerable(nameof(GetProjectionAsync), Impl, cancellationToken);
     }
 
+    [Obsolete($"Use {nameof(GetManyAsync)} instead. This method will be deprecated.")]
     public override Task<Result<TEntity, TKey>> QueryAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default)
+    {
+        return GetManyAsync(predicate, options, cancellationToken);
+    }
+
+    public override Task<Result<TEntity, TKey>> GetManyAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default)
     {
         return Execute(nameof(QueryAsync), async () =>
         {
@@ -323,7 +335,13 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         }, Operation.Get);
     }
 
+    [Obsolete($"Use {nameof(GetManyAsync)} instead. This method will be deprecated.")]
     public override Task<Result<TEntity, TKey>> QueryAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default)
+    {
+        return GetManyAsync(filter, options, cancellationToken);
+    }
+
+    public override Task<Result<TEntity, TKey>> GetManyAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default)
     {
         return Execute(nameof(QueryAsync), async () =>
         {
@@ -346,6 +364,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         }, Operation.Get);
     }
 
+    [Obsolete($"Use {nameof(GetManyAsync)} instead. This method will be deprecated.")]
     public override IAsyncEnumerable<ResultPage<TEntity, TKey>> GetPagesAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default)
     {
         var builder = Builders<TEntity>.Filter;
@@ -353,6 +372,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         return GetPagesAsync(filter, options, cancellationToken);
     }
 
+    [Obsolete($"Use {nameof(GetManyAsync)} instead. This method will be deprecated.")]
     public override IAsyncEnumerable<ResultPage<TEntity, TKey>> GetPagesAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default)
     {
         async IAsyncEnumerable<ResultPage<TEntity, TKey>> Impl()
@@ -784,7 +804,6 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         }, Operation.Remove);
     }
 
-    //TODO: Should return an execute around pattern, so an operation (Get, Update, Delete, ...) can be provided for correct handling. (IE, Possible to wrap the Execute-metod)
     [Obsolete($"Use {nameof(GetCollectionScope)} instead. This method will be deprecated.")]
     public override IMongoCollection<TEntity> GetCollection()
     {

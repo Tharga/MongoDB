@@ -19,7 +19,7 @@ internal class DatabaseNullMonitor : IDatabaseMonitor
         return default;
     }
 
-    public async IAsyncEnumerable<CollectionInfo> GetInstancesAsync(bool fullDatabaseScan = false)
+    public async IAsyncEnumerable<CollectionInfo> GetInstancesAsync(bool fullDatabaseScan, string filter)
     {
         yield break;
     }

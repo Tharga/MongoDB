@@ -68,13 +68,15 @@ public static class MongoDbRegistrationExtensions
         services.AddTransient<IMongoDbFirewallService, MongoDbFirewallService>();
         services.AddSingleton<IMongoDbClientProvider, MongoDbClientProvider>();
         services.AddSingleton<IMongoDbFirewallStateService, MongoDbFirewallStateService>();
+        services.AddSingleton<IExecuteLimiter, ExecuteLimiter>();
         services.AddSingleton<IMongoDbServiceFactory>(serviceProvider =>
         {
             var mongoDbClientProvider = serviceProvider.GetService<IMongoDbClientProvider>();
             var repositoryConfigurationLoader = serviceProvider.GetService<IRepositoryConfigurationLoader>();
             var mongoDbFirewallStateService = serviceProvider.GetService<IMongoDbFirewallStateService>();
+            var executeLimiter = serviceProvider.GetService<IExecuteLimiter>();
             var logger = serviceProvider.GetService<ILogger<MongoDbServiceFactory>>();
-            return new MongoDbServiceFactory(mongoDbClientProvider, repositoryConfigurationLoader, mongoDbFirewallStateService, logger);
+            return new MongoDbServiceFactory(mongoDbClientProvider, repositoryConfigurationLoader, mongoDbFirewallStateService, executeLimiter, logger);
         });
         services.AddTransient<IRepositoryConfigurationLoader>(serviceProvider =>
         {
