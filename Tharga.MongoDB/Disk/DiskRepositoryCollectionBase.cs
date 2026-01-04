@@ -3,9 +3,13 @@ using MongoDB.Bson;
 using MongoDB.Driver;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Linq;
 using System.Linq.Expressions;
 using System.Threading;
 using System.Threading.Tasks;
+using MongoDB.Bson.Serialization;
+using Tharga.MongoDB.Configuration;
 using Tharga.MongoDB.Internals;
 
 namespace Tharga.MongoDB.Disk;
@@ -13,7 +17,9 @@ namespace Tharga.MongoDB.Disk;
 public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCollectionBase<TEntity, TKey>, IDiskRepositoryCollection<TEntity, TKey>
     where TEntity : EntityBase<TKey>
 {
-    internal readonly IExecuteLimiter _databaseExecutor;
+    private readonly IExecuteLimiter _databaseExecutor;
+    private readonly ICollectionPool _collectionPool;
+    private readonly SemaphoreSlim _fetchLock = new(1, 1);
 
     //private IMongoCollection<TEntity> _collection;
 
@@ -23,9 +29,8 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
     /// <param name="mongoDbServiceFactory"></param>
     /// <param name="logger"></param>
 	protected DiskRepositoryCollectionBase(IMongoDbServiceFactory mongoDbServiceFactory, ILogger<RepositoryCollectionBase<TEntity, TKey>> logger = null)
-	    : base(mongoDbServiceFactory, logger)
+	    : this(mongoDbServiceFactory, logger, null)
     {
-        _databaseExecutor = ((MongoDbService)_mongoDbService).ExecuteLimiter;
     }
 
     /// <summary>
@@ -38,17 +43,22 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         : base(mongoDbServiceFactory, logger, databaseContext)
     {
         _databaseExecutor = ((MongoDbService)_mongoDbService).ExecuteLimiter;
+        _collectionPool = ((MongoDbService)_mongoDbService).CollectionPool;
+
+        _databaseExecutor.ExecuteQueuedEvent += (s, e) => { };
+        _databaseExecutor.ExecuteStartEvent += (s, e) => { };
+        _databaseExecutor.ExecuteCompleteEvent += (s, e) => { };
     }
 
     //public override long? VirtualCount { get; }
 
-    protected virtual async Task<T> Execute<T>(string functionName, Func<Task<T>> action, Operation operation, CancellationToken cancellationToken)
+    protected virtual async Task<T> ExecuteAsync<T>(string functionName, Func<IMongoCollection<TEntity>, CancellationToken, Task<T>> action, Operation operation, CancellationToken cancellationToken = default)
     {
-        return await _databaseExecutor.ExecuteAsync("", async () =>
+        return await _databaseExecutor.ExecuteAsync(async ct =>
         {
-
-            return await action.Invoke();
-        });
+            var collection = await FetchCollectionAsync();
+            return await action.Invoke(collection, ct);
+        }, null, cancellationToken);
     }
 
     public override IAsyncEnumerable<TEntity> GetAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default)
@@ -151,9 +161,13 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         throw new NotImplementedException();
     }
 
-    public override Task AddAsync(TEntity entity)
+    public override async Task AddAsync(TEntity entity)
     {
-        throw new NotImplementedException();
+        await ExecuteAsync(nameof(AddAsync), async (collection, cancellationToken) =>
+        {
+            await collection.InsertOneAsync(entity, cancellationToken: cancellationToken);
+            return true;
+        }, Operation.Add);
     }
 
     public override Task<bool> TryAddAsync(TEntity entity)
@@ -231,14 +245,127 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         throw new NotImplementedException();
     }
 
+    //TODO: This should be called on add or update.
     protected internal async Task AssureIndex(IMongoCollection<TEntity> collection, bool forceAssure = false, bool throwOnException = false)
     {
         throw new NotImplementedException();
     }
 
+    protected virtual async Task CleanAsync(IMongoCollection<TEntity> collection)
+    {
+        if (!CleanOnStartup) return;
+
+        //if (!AutoClean)
+        //{
+        //    _logger?.LogWarning($"Both CleanOnStartup and AutoClean for collection {{collectionName}} has to be true for cleaning to run on startup. [action: Database, operation: {nameof(CleanAsync)}]", ProtectedCollectionName);
+        //    InvokeAction(new ActionEventArgs.ActionData { Operation = nameof(CleanAsync), Message = "Both CleanOnStartup and AutoClean for has to be true for cleaning to run on startup.", Level = LogLevel.Warning });
+        //    return;
+        //}
+
+        //var sw = new Stopwatch();
+        //sw.Start();
+
+        //var filter = Builders<TEntity>.Filter.Empty;
+
+        //try
+        //{
+        //    _logger?.LogTrace($"Starting to clean in collection {{collection}} in {{repositoryType}}. [action: Database, operation: {nameof(CleanAsync)}]", ProtectedCollectionName, "DiskRepository");
+
+        //    using var cursor = await FindAsync(collection, filter, CancellationToken.None, null);
+        //    var allItems = await cursor.ToListAsync();
+        //    var items = allItems.Where(x => x.NeedsCleaning());
+        //    var totalCount = allItems.Count;
+        //    var count = 0;
+        //    foreach (var item in items)
+        //    {
+        //        count++;
+        //        await CleanEntityAsync(collection, item);
+        //    }
+
+        //    sw.Stop();
+        //    if (count == 0)
+        //    {
+        //        _logger?.LogTrace($"Nothing to clean in collection {{collection}} in {{repositoryType}}. [action: Database, operation: {nameof(CleanAsync)}]", ProtectedCollectionName, "DiskRepository");
+        //        InvokeAction(new ActionEventArgs.ActionData { Operation = nameof(CleanAsync), Message = "Nothing to clean.", Level = LogLevel.Trace });
+        //    }
+        //    else
+        //    {
+        //        _logger?.LogInformation($"Cleaned {{count}} of {{totalCount}} took {{elapsed}} ms in collection {{collection}} in {{repositoryType}}. [action: Database, operation: {nameof(CleanAsync)}]", count, totalCount, sw.Elapsed.TotalMilliseconds, ProtectedCollectionName, "DiskRepository");
+        //        InvokeAction(new ActionEventArgs.ActionData { Operation = nameof(CleanAsync), Message = "Cleaned completed.", ItemCount = count, Elapsed = sw.Elapsed });
+        //    }
+        //}
+        //catch (FormatException)
+        //{
+        //    _logger?.LogError("Failed to clean collection {collection} in {repositoryType}.", ProtectedCollectionName, "DiskRepository");
+        //}
+
+        Debugger.Break();
+        throw new NotImplementedException($"{nameof(CleanAsync)} has not been implemented.");
+    }
+
+    //TODO: This should be called on delete
+    protected virtual async Task DropEmpty(IMongoCollection<TEntity> collection)
+    {
+        if (CreateCollectionStrategy != CreateStrategy.DropEmpty) return;
+
+        var any = (await collection.CountDocumentsAsync(x => true, new CountOptions { Limit = 1 })) != 0;
+
+        if (any) return;
+
+        await DropCollectionAsync();
+    }
+
     internal async Task<IMongoCollection<TEntity>> FetchCollectionAsync(bool initiate = true)
     {
-        throw new NotImplementedException();
+        var fullName = $"{(ConfigurationName ?? Constants.DefaultConfigurationName)}.{DatabaseName}.{CollectionName}";
+
+        if (_collectionPool.TryGetCollection<TEntity>(fullName, out var collection)) return collection;
+
+        await _fetchLock.WaitAsync();
+        try
+        {
+            if (_collectionPool.TryGetCollection<TEntity>(fullName, out collection)) return collection;
+
+            collection = await _mongoDbService.GetCollectionAsync<TEntity>(ProtectedCollectionName);
+
+            if (initiate && InitiationLibrary.ShouldInitiate(ServerName, DatabaseName, ProtectedCollectionName))
+            {
+                //        _logger?.LogTrace($"Starting to initiate {{collection}}. [action: Database, operation: {nameof(FetchCollectionAsync)}]", ProtectedCollectionName);
+                //        InvokeAction(new ActionEventArgs.ActionData { Operation = nameof(FetchCollectionAsync), Message = "Starting to initiate.", Level = LogLevel.Trace });
+                RegisterTypes();
+
+                //        var vExists = await GetVirtualCount(collection) != 0;
+                //        if (Debugger.IsAttached)
+                //        {
+                var exists = await _mongoDbService.DoesCollectionExist(ProtectedCollectionName);
+                //            if (vExists != dbExists) Debugger.Break();
+                //        }
+
+                if (exists)
+                {
+                    await AssureIndex(collection);
+                    await CleanAsync(collection);
+                    await DropEmpty(collection);
+                }
+
+                await InitAsync(collection);
+                //        _logger?.LogTrace($"Initiate {{collection}} is completed. [action: Database, operation: {nameof(FetchCollectionAsync)}]", ProtectedCollectionName);
+                //        InvokeAction(new ActionEventArgs.ActionData { Operation = nameof(FetchCollectionAsync), Message = "Initiation completed.", Level = LogLevel.Trace });
+            }
+            else
+            {
+                Debugger.Break(); //NOTE: We should never reach this, it should be protected before this.
+                //        _logger?.LogTrace($"Skip initiation of {{collection}} because it has already been initiated. [action: Database, operation: {nameof(FetchCollectionAsync)}]", ProtectedCollectionName);
+                //        InvokeAction(new ActionEventArgs.ActionData { Operation = nameof(FetchCollectionAsync), Message = "Skip initiation because it has already been completed.", Level = LogLevel.Trace });
+            }
+
+            _collectionPool.AddCollection(fullName, collection);
+            return collection;
+        }
+        finally
+        {
+            _fetchLock.Release();
+        }
     }
 
     //public override long? VirtualCount => InitiationLibrary.GetVirtualCount(ServerName, DatabaseName, ProtectedCollectionName);
@@ -1162,25 +1289,6 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
     //    }
     //}
 
-    //private void RegisterTypes()
-    //{
-    //    if ((typeof(TEntity).IsInterface || typeof(TEntity).IsAbstract) && (Types == null || !Types.Any()))
-    //    {
-    //        var kind = typeof(TEntity).IsInterface ? "an interface" : "an abstract class";
-    //        throw new InvalidOperationException($"Types has to be provided since '{typeof(TEntity).Name}' it is {kind}. Do this by overriding the the Types property in '{GetType().Name}' and provide the requested type.");
-    //    }
-
-    //    foreach (var type in Types ?? Array.Empty<Type>())
-    //    {
-    //        if (!BsonClassMap.IsClassMapRegistered(type))
-    //        {
-    //            var cm = new BsonClassMap(type);
-    //            cm.AutoMap();
-    //            BsonClassMap.RegisterClassMap(cm);
-    //        }
-    //    }
-    //}
-
     //private async Task UpdateIndicesAsync(IMongoCollection<TEntity> collection, AssureIndexMode assureIndexMode, bool throwOnException)
     //{
     //    switch (assureIndexMode)
@@ -1407,71 +1515,6 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
     //    ((MongoDbServiceFactory)_mongoDbServiceFactory).OnIndexUpdatedEvent(this, new IndexUpdatedEventArgs(fingerprint));
     //}
 
-    //protected virtual async Task CleanAsync(IMongoCollection<TEntity> collection)
-    //{
-    //    if (!CleanOnStartup) return;
-
-    //    if (!AutoClean)
-    //    {
-    //        _logger?.LogWarning($"Both CleanOnStartup and AutoClean for collection {{collectionName}} has to be true for cleaning to run on startup. [action: Database, operation: {nameof(CleanAsync)}]", ProtectedCollectionName);
-    //        InvokeAction(new ActionEventArgs.ActionData { Operation = nameof(CleanAsync), Message = "Both CleanOnStartup and AutoClean for has to be true for cleaning to run on startup.", Level = LogLevel.Warning });
-    //        return;
-    //    }
-
-    //    var sw = new Stopwatch();
-    //    sw.Start();
-
-    //    var filter = Builders<TEntity>.Filter.Empty;
-
-    //    try
-    //    {
-    //        _logger?.LogTrace($"Starting to clean in collection {{collection}} in {{repositoryType}}. [action: Database, operation: {nameof(CleanAsync)}]", ProtectedCollectionName, "DiskRepository");
-
-    //        using var cursor = await FindAsync(collection, filter, CancellationToken.None, null);
-    //        var allItems = await cursor.ToListAsync();
-    //        var items = allItems.Where(x => x.NeedsCleaning());
-    //        var totalCount = allItems.Count;
-    //        var count = 0;
-    //        foreach (var item in items)
-    //        {
-    //            count++;
-    //            await CleanEntityAsync(collection, item);
-    //        }
-
-    //        sw.Stop();
-    //        if (count == 0)
-    //        {
-    //            _logger?.LogTrace($"Nothing to clean in collection {{collection}} in {{repositoryType}}. [action: Database, operation: {nameof(CleanAsync)}]", ProtectedCollectionName, "DiskRepository");
-    //            InvokeAction(new ActionEventArgs.ActionData { Operation = nameof(CleanAsync), Message = "Nothing to clean.", Level = LogLevel.Trace });
-    //        }
-    //        else
-    //        {
-    //            _logger?.LogInformation($"Cleaned {{count}} of {{totalCount}} took {{elapsed}} ms in collection {{collection}} in {{repositoryType}}. [action: Database, operation: {nameof(CleanAsync)}]", count, totalCount, sw.Elapsed.TotalMilliseconds, ProtectedCollectionName, "DiskRepository");
-    //            InvokeAction(new ActionEventArgs.ActionData { Operation = nameof(CleanAsync), Message = "Cleaned completed.", ItemCount = count, Elapsed = sw.Elapsed });
-    //        }
-    //    }
-    //    catch (FormatException)
-    //    {
-    //        _logger?.LogError("Failed to clean collection {collection} in {repositoryType}.", ProtectedCollectionName, "DiskRepository");
-    //    }
-    //}
-
-    //protected virtual async Task DropEmpty(IMongoCollection<TEntity> collection)
-    //{
-    //    if (CreateCollectionStrategy != CreateStrategy.DropEmpty) return;
-
-    //    var any = await GetVirtualCount(collection) != 0;
-    //    if (Debugger.IsAttached)
-    //    {
-    //        var dbAny = (await collection.CountDocumentsAsync(x => true, new CountOptions { Limit = 1 })) != 0;
-    //        if (dbAny != any) Debugger.Break();
-    //    }
-
-    //    if (any) return;
-
-    //    await DropCollectionAsync();
-    //}
-
     //protected virtual async Task<TEntity> CleanEntityAsync(TEntity item)
     //{
     //    return await CleanEntityAsync(Collection, item);
@@ -1509,6 +1552,25 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
     //    InitiationLibrary.SetVirtualCount(ServerName, DatabaseName, ProtectedCollectionName, virtualCount);
     //    return virtualCount;
     //}
+
+    private void RegisterTypes()
+    {
+        if ((typeof(TEntity).IsInterface || typeof(TEntity).IsAbstract) && (Types == null || !Types.Any()))
+        {
+            var kind = typeof(TEntity).IsInterface ? "an interface" : "an abstract class";
+            throw new InvalidOperationException($"Types needs to be provided since '{typeof(TEntity).Name}' is {kind}. Do this by overriding the the Types property in '{GetType().Name}' and provide the requested type.");
+        }
+
+        foreach (var type in Types ?? Array.Empty<Type>())
+        {
+            if (!BsonClassMap.IsClassMapRegistered(type))
+            {
+                var cm = new BsonClassMap(type);
+                cm.AutoMap();
+                BsonClassMap.RegisterClassMap(cm);
+            }
+        }
+    }
 }
 
 public abstract class DiskRepositoryCollectionBase<TEntity> : DiskRepositoryCollectionBase<TEntity, ObjectId>

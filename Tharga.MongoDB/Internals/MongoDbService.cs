@@ -17,16 +17,18 @@ internal class MongoDbService : IMongoDbService
     private readonly IRepositoryConfigurationInternal _configuration;
     private readonly IMongoDbFirewallStateService _mongoDbFirewallStateService;
     private readonly IExecuteLimiter _executeLimiter;
+    private readonly ICollectionPool _collectionPool;
     private readonly ILogger _logger;
     private readonly MongoClient _mongoClient;
     private readonly IMongoDatabase _mongoDatabase;
     private readonly MongoUrl _mongoUrl;
 
-    public MongoDbService(IRepositoryConfigurationInternal configuration, IMongoDbFirewallStateService mongoDbFirewallStateService, IMongoDbClientProvider mongoDbClientProvider, IExecuteLimiter executeLimiter, ILogger logger)
+    public MongoDbService(IRepositoryConfigurationInternal configuration, IMongoDbFirewallStateService mongoDbFirewallStateService, IMongoDbClientProvider mongoDbClientProvider, IExecuteLimiter executeLimiter, ICollectionPool collectionPool, ILogger logger)
     {
         _configuration = configuration;
         _mongoDbFirewallStateService = mongoDbFirewallStateService;
         _executeLimiter = executeLimiter;
+        _collectionPool = collectionPool;
         _logger = logger;
         _mongoUrl = configuration.GetDatabaseUrl() ?? throw new NullReferenceException("MongoUrl not found in configuration.");
         _mongoClient = mongoDbClientProvider.GetClient(_mongoUrl);
@@ -37,6 +39,7 @@ internal class MongoDbService : IMongoDbService
     public event EventHandler<CollectionAccessEventArgs> CollectionAccessEvent;
 
     public IExecuteLimiter ExecuteLimiter => _executeLimiter;
+    public ICollectionPool CollectionPool => _collectionPool;
 
     public async Task<IMongoCollection<T>> GetCollectionAsync<T>(string collectionName)
     {

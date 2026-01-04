@@ -178,7 +178,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
                 //Map Accessed collections
                 if (accessedCollections.TryGetValue(inDatabase.Key, out var t))
                 {
-                    var cnt = InitiationLibrary.GetVirtualCount(inDatabase.Server, inDatabase.DatabaseName, inDatabase.CollectionName);
+                    //var cnt = InitiationLibrary.GetVirtualCount(inDatabase.Server, inDatabase.DatabaseName, inDatabase.CollectionName);
 
                     AssureNotDifferent(item.DatabasePart, t.DatabasePart);
 
