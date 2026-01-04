@@ -2,10 +2,14 @@
 
 public enum Operation
 {
-    Get,
-    GetAsyncEnumerable,
-    Add,
-    Update,
-    AddOrUpdate,
-    Remove
+    Create,
+    Read,
+    Updated,
+    Delete,
+    //Get,
+    ////GetAsyncEnumerable,
+    //Add,
+    ////Update,
+    ////AddOrUpdate,
+    ////Remove
 }

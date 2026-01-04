@@ -1,14 +1,16 @@
 ﻿using Microsoft.Extensions.Logging;
 using MongoDB.Bson;
+using MongoDB.Bson.Serialization;
 using MongoDB.Driver;
+using SharpCompress.Common;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Linq.Expressions;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
-using MongoDB.Bson.Serialization;
 using Tharga.MongoDB.Configuration;
 using Tharga.MongoDB.Internals;
 
@@ -61,14 +63,42 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         }, null, cancellationToken);
     }
 
-    public override IAsyncEnumerable<TEntity> GetAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default)
+    public override async IAsyncEnumerable<TEntity> GetAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default)
     {
-        throw new NotImplementedException();
+        var filter = predicate != null
+            ? Builders<TEntity>.Filter.Where(predicate)
+            : Builders<TEntity>.Filter.Empty;
+
+        await foreach (var item in GetAsync(filter, options, cancellationToken))
+        {
+            yield return item;
+        }
     }
 
-    public override IAsyncEnumerable<TEntity> GetAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default)
+    public override async IAsyncEnumerable<TEntity> GetAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default)
     {
-        throw new NotImplementedException();
+        options ??= new Options<TEntity>();
+
+        var skip = options.Skip ?? 0;
+        var limit = options.Limit ?? ResultLimit ?? 100;
+
+        while (true)
+        {
+            var pageOptions = options with { Skip = skip, Limit = limit };
+            var response = await GetManyAsync(filter, pageOptions, cancellationToken);
+
+            foreach (var item in response.Items)
+            {
+                yield return item;
+            }
+
+            skip += response.Items.Length;
+
+            if (skip >= response.TotalCount || response.Items.Length == 0)
+            {
+                break;
+            }
+        }
     }
 
     public override IAsyncEnumerable<T> GetAsync<T>(Expression<Func<T, bool>> predicate = null, Options<T> options = null, CancellationToken cancellationToken = default)
@@ -81,24 +111,47 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         throw new NotImplementedException();
     }
 
+    [Obsolete($"Use {nameof(GetManyAsync)} instead. This method will be deprecated.")]
     public override Task<Result<TEntity, TKey>> QueryAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default)
     {
-        throw new NotImplementedException();
+        return GetManyAsync(predicate, options, cancellationToken);
     }
 
     public override Task<Result<TEntity, TKey>> GetManyAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default)
     {
-        throw new NotImplementedException();
+        var filter = predicate != null
+            ? Builders<TEntity>.Filter.Where(predicate)
+            : FilterDefinition<TEntity>.Empty;
+
+        return GetManyAsync(filter, options, cancellationToken);
     }
 
+    [Obsolete($"Use {nameof(GetManyAsync)} instead. This method will be deprecated.")]
     public override Task<Result<TEntity, TKey>> QueryAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default)
     {
-        throw new NotImplementedException();
+        return GetManyAsync(filter, options, cancellationToken);
     }
 
-    public override Task<Result<TEntity, TKey>> GetManyAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default)
+    public override async Task<Result<TEntity, TKey>> GetManyAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default)
     {
-        throw new NotImplementedException();
+        return await ExecuteAsync(nameof(GetManyAsync), async (collection, ct) =>
+        {
+            var o = BuildOptions(options);
+            var cursor = await FindAsync(collection, filter, ct, o);
+            var items = await BuildList(collection, cursor, ct).ToArrayAsync(ct);
+
+            var totalCount = items.Length;
+            if (totalCount <= (options?.Limit ?? ResultLimit ?? 1000))
+            {
+                totalCount = (int)await collection.CountDocumentsAsync(filter, cancellationToken: ct);
+            }
+
+            return new Result<TEntity, TKey>
+            {
+                Items = items,
+                TotalCount = totalCount
+            };
+        }, Operation.Read, cancellationToken);
     }
 
     public override IAsyncEnumerable<ResultPage<TEntity, TKey>> GetPagesAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default)
@@ -163,11 +216,11 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 
     public override async Task AddAsync(TEntity entity)
     {
-        await ExecuteAsync(nameof(AddAsync), async (collection, cancellationToken) =>
+        await ExecuteAsync(nameof(AddAsync), async (collection, ct) =>
         {
-            await collection.InsertOneAsync(entity, cancellationToken: cancellationToken);
+            await collection.InsertOneAsync(entity, cancellationToken: ct);
             return true;
-        }, Operation.Add);
+        }, Operation.Create);
     }
 
     public override Task<bool> TryAddAsync(TEntity entity)
@@ -1552,6 +1605,85 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
     //    InitiationLibrary.SetVirtualCount(ServerName, DatabaseName, ProtectedCollectionName, virtualCount);
     //    return virtualCount;
     //}
+
+    private async IAsyncEnumerable<TEntity> BuildList(IMongoCollection<TEntity> collection, IAsyncCursor<TEntity> cursor, [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        var index = 0;
+        while (await cursor.MoveNextAsync(cancellationToken))
+        {
+            foreach (var current in cursor.Current)
+            {
+                index++;
+                if (ResultLimit != null && index > ResultLimit)
+                {
+                    throw new ResultLimitException(ResultLimit.Value);
+                }
+
+                yield return await CleanEntityAsync(collection, current);
+            }
+        }
+    }
+
+    private async Task<T> CleanEntityAsync<T>(IMongoCollection<T> collection, T item) where T : TEntity
+    {
+        if (item == null) return null;
+
+        if (item.NeedsCleaning())
+        {
+            if (AutoClean)
+            {
+                var filter = Builders<T>.Filter.Eq(x => x.Id, item.Id);
+                await collection.FindOneAndReplaceAsync(filter, item);
+                _logger?.LogInformation($"Entity {{id}} of type {{entityType}} in collection {{collection}} has been cleaned. [action: Database, operation: {nameof(CleanEntityAsync)}]", item.Id, typeof(TEntity), ProtectedCollectionName);
+                InvokeAction(new ActionEventArgs.ActionData { Operation = nameof(CleanEntityAsync), Message = "Entity cleaned.", Data = new Dictionary<string, object> { { "id", item.Id } } });
+            }
+            else
+            {
+                _logger?.LogWarning($"Entity {{id}} of type {{entityType}} in collection {{collection}} needs cleaning. [action: Database, operation: {nameof(CleanEntityAsync)}]", item.Id, typeof(TEntity), ProtectedCollectionName);
+                InvokeAction(new ActionEventArgs.ActionData { Operation = nameof(CleanEntityAsync), Message = "Entity needs cleaning.", Level = LogLevel.Warning, Data = new Dictionary<string, object> { { "id", item.Id } } });
+            }
+        }
+
+        return item;
+    }
+
+    private async Task<IAsyncCursor<TEntity>> FindAsync(IMongoCollection<TEntity> collection, FilterDefinition<TEntity> filter, CancellationToken cancellationToken, FindOptions<TEntity, TEntity> options)
+    {
+        IAsyncCursor<TEntity> cursor;
+        try
+        {
+            cursor = await collection.FindAsync(filter ?? FilterDefinition<TEntity>.Empty, options, cancellationToken);
+        }
+        catch (Exception e)
+        {
+            _logger?.LogError(e, $"Exception {{repositoryType}}. [action: Database, operation: {nameof(FindAsync)}]", "DiskRepository");
+            InvokeAction(new ActionEventArgs.ActionData { Operation = nameof(FindAsync), Exception = e });
+            throw;
+        }
+
+        return cursor;
+    }
+
+    private static FindOptions<TEntity, TEntity> BuildOptions(Options<TEntity> options)
+    {
+        FindOptions<TEntity, TEntity> o = null;
+        if (options != null)
+        {
+            o = new FindOptions<TEntity, TEntity>
+            {
+                Sort = options.Sort,
+                Limit = options.Limit,
+                Skip = options.Skip
+            };
+
+            if (options.Projection != null)
+            {
+                o.Projection = options.Projection;
+            }
+        }
+
+        return o;
+    }
 
     private void RegisterTypes()
     {
