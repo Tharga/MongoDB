@@ -42,7 +42,7 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
 
     protected virtual TimeSpan DefaultTimeout { get; init; } = TimeSpan.FromSeconds(30);
     protected virtual bool RequireActor => true;
-    public override long? VirtualCount => Disk.VirtualCount;
+    //public override long? VirtualCount => Disk.VirtualCount;
 
     public override IAsyncEnumerable<TEntity> GetAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default)
     {

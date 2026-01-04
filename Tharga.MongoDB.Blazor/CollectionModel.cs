@@ -2,7 +2,7 @@
 
 public record CollectionModel : CollectionFingerprint
 {
-    public bool ValidDocumentCount => DocumentCount.IsValid;
+    //public bool ValidDocumentCount => DocumentCount.IsValid;
     public required DocumentCount DocumentCount { get; set; }
     public Source Source { get; set; }
     public required Registration Registration { get; init; }

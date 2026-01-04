@@ -19,7 +19,7 @@ public abstract class RepositoryCollectionBase
     internal abstract string DatabaseName { get; }
     public abstract string CollectionName { get; }
     public abstract string ConfigurationName { get; }
-    public abstract long? VirtualCount { get; }
+    //public abstract long? VirtualCount { get; }
 
     internal void InvokeAction(ActionEventArgs.ActionData actionData, ActionEventArgs.ContextData contextData)
     {
@@ -37,7 +37,6 @@ public abstract class RepositoryCollectionBase<TEntity, TKey> : RepositoryCollec
     protected readonly LogLevel _executeInfoLogLevel;
 
     private readonly Lazy<ActionEventArgs.ContextData> _contextData;
-    internal readonly IExecuteLimiter _executeLimiter;
 
     protected RepositoryCollectionBase(IMongoDbServiceFactory mongoDbServiceFactory, ILogger<RepositoryCollectionBase<TEntity, TKey>> logger, DatabaseContext databaseContext = null)
     {
@@ -49,7 +48,6 @@ public abstract class RepositoryCollectionBase<TEntity, TKey> : RepositoryCollec
         _contextData = new Lazy<ActionEventArgs.ContextData>(BuildContextData);
 
         _executeInfoLogLevel = _mongoDbService.GetExecuteInfoLogLevel();
-        _executeLimiter = ((MongoDbService)_mongoDbService).ExecuteLimiter;
     }
 
     internal virtual IRepositoryCollection<TEntity, TKey> BaseCollection => this;

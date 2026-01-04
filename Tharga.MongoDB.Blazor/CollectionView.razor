@@ -64,16 +64,17 @@ else
                         }
                     </Template>
                 </RadzenDataGridColumn>
-                <RadzenDataGridColumn Title="Document Count" Property="@nameof(CollectionModel.ValidDocumentCount)" TextAlign="TextAlign.Right" CssClass="css-count" Width="120px">
+                <RadzenDataGridColumn Title="Document Count" Property="@($"{nameof(CollectionModel.DocumentCount)}.{nameof(CollectionModel.DocumentCount.Count)}")" TextAlign="TextAlign.Right" CssClass="css-count" Width="120px">
                     <Template>
-                        @if (context.DocumentCount.IsValid)
+                        <RadzenText Text="@($"{context.DocumentCount.Count:N0}")" />
+                        @* @if (context.DocumentCount.IsValid)
                         {
-                            <RadzenText Text="@($"{context.DocumentCount.Count:N0}")" />
+                            <RadzenText Text="@($"{context.DocumentCount.Count:N0}")"/>
                         }
                         else
                         {
                             <span title="@($"Virtual count is {context.DocumentCount.Virtual:N0}.")"><RadzenText Text="@($"{context.DocumentCount.Count:N0}")"/></span>
-                        }
+                        } *@
                     </Template>
                 </RadzenDataGridColumn>
                 <RadzenDataGridColumn Title="Size" Property="@nameof(CollectionModel.Size)" TextAlign="TextAlign.Right" Filterable="false" Width="120px">
@@ -219,10 +220,10 @@ else
         else if (cssClass.StartsWith("css-count"))
         {
             string color = null;
-            if (!args.Data.DocumentCount.IsValid)
-            {
-                color = "pink";
-            }
+            // if (!args.Data.DocumentCount.IsValid)
+            // {
+            //     color = "pink";
+            // }
             //else if (args.Data.DocumentCount.Virtual == null)
             //{
             //    color = "lightyellow";

@@ -161,7 +161,8 @@ internal class DatabaseMonitor : IDatabaseMonitor
                         Registration = reg.Registration,
                         Types = item.Types.Union(reg.Types).ToArray(),
                         CollectionType = item.CollectionType ?? reg.CollectionType,
-                        DocumentCount = new DocumentCount { Count = item.DocumentCount, Virtual = reg.VirtualCount },
+                        //DocumentCount = new DocumentCount { Count = item.DocumentCount, Virtual = reg.VirtualCount },
+                        DocumentCount = new DocumentCount { Count = item.DocumentCount },
                         Index = item.Index with
                         {
                             Current = item.Index.Current,
@@ -187,7 +188,8 @@ internal class DatabaseMonitor : IDatabaseMonitor
                         Source = item.Source | Source.Monitor,
                         Types = item.Types.Union(t.EntityTypes.Select(x => x.Name)).ToArray(),
                         AccessCount = t.AccessCount,
-                        DocumentCount = new DocumentCount { Count = item.DocumentCount, Virtual = cnt },
+                        //DocumentCount = new DocumentCount { Count = item.DocumentCount, Virtual = cnt },
+                        DocumentCount = new DocumentCount { Count = item.DocumentCount },
                     };
                 }
                 else
@@ -345,7 +347,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
                     CollectionType = registeredCollection.Key,
                     Registration = Registration.Static,
                     DefinedIndices = instance.BuildIndexMetas().ToArray(),
-                    VirtualCount = instance.VirtualCount
+                    //VirtualCount = instance.VirtualCount
                 };
 
                 yield return item;
@@ -382,7 +384,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
                         Type = genericParam.Name,
                         CollectionType = registeredCollection.Key,
                         DefinedIndices = collection.BuildIndexMetas().ToArray(),
-                        VirtualCount = collection?.VirtualCount
+                        //VirtualCount = collection?.VirtualCount
                     };
 
                     yield return item;
@@ -458,7 +460,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
         public required Source Source { get; init; }
         public required Type CollectionType { get; init; }
         public required IndexMeta[] DefinedIndices { get; init; }
-        public required long? VirtualCount { get; init; }
+        //public required long? VirtualCount { get; init; }
     }
 
     internal record StatColInfo : ColInfo
