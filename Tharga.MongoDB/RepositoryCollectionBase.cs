@@ -70,7 +70,11 @@ public abstract class RepositoryCollectionBase<TEntity, TKey> : RepositoryCollec
 
     public abstract IAsyncEnumerable<TEntity> GetAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default);
     public abstract IAsyncEnumerable<TEntity> GetAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default);
+
+    [Obsolete("Projection methods will have to be developed if needed.")]
     public abstract IAsyncEnumerable<T> GetAsync<T>(Expression<Func<T, bool>> predicate = null, Options<T> options = null, CancellationToken cancellationToken = default) where T : TEntity;
+
+    [Obsolete("Projection methods will have to be developed if needed.")]
     public abstract IAsyncEnumerable<T> GetProjectionAsync<T>(Expression<Func<T, bool>> predicate = null, Options<T> options = null, CancellationToken cancellationToken = default);
 
     [Obsolete($"Use {nameof(GetManyAsync)} instead. This method will be deprecated.")]

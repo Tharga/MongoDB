@@ -90,10 +90,10 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 
         try
         {
-            await BeforeExecute(functionName, operation, callKey);
-
             var result = await _executeLimiter.ExecuteAsync(ConfigurationName ?? Constants.DefaultConfigurationName, async () =>
             {
+                await BeforeExecute(functionName, operation, callKey);
+
                 var result = await action.Invoke();
                 return result;
             });
@@ -186,53 +186,45 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         InitiationLibrary.RecheckInitiateIndex(ServerName, DatabaseName, ProtectedCollectionName);
     }
 
-    public override IAsyncEnumerable<TEntity> GetAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default)
+    public override async IAsyncEnumerable<TEntity> GetAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        async IAsyncEnumerable<TEntity> Impl()
-        {
-            var o = BuildOptions(options);
-            var cursor = await FindAsync(Collection, predicate, cancellationToken, o);
+        var filter = predicate != null
+            ? Builders<TEntity>.Filter.Where(predicate)
+            : Builders<TEntity>.Filter.Empty;
 
-            await foreach (var item in BuildList(cursor, cancellationToken))
+        await foreach (var item in GetAsync(filter, options, cancellationToken))
+        {
+            yield return item;
+        }
+    }
+
+    public override async IAsyncEnumerable<TEntity> GetAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        options ??= new Options<TEntity>();
+
+        var skip = options.Skip ?? 0;
+        var limit = options.Limit ?? ResultLimit ?? 100;
+
+        while (true)
+        {
+            var pageOptions = options with { Skip = skip, Limit = limit };
+            var response = await GetManyAsync(filter, pageOptions, cancellationToken);
+
+            foreach (var item in response.Items)
             {
                 yield return item;
             }
-        }
 
-        return ExecuteAsyncEnumerable(nameof(GetAsync), Impl, cancellationToken);
-    }
+            skip += response.Items.Length;
 
-    private static FindOptions<TEntity, TEntity> BuildOptions(Options<TEntity> options)
-    {
-        FindOptions<TEntity, TEntity> o = null;
-        if (options != null)
-        {
-            o = new FindOptions<TEntity, TEntity> { Sort = options.Sort, Limit = options.Limit, Skip = options.Skip };
-            if (options.Projection != null)
+            if (skip >= response.TotalCount || response.Items.Length == 0)
             {
-                o.Projection = options.Projection;
+                break;
             }
         }
-
-        return o;
     }
 
-    public override IAsyncEnumerable<TEntity> GetAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default)
-    {
-        async IAsyncEnumerable<TEntity> Impl()
-        {
-            var o = BuildOptions(options);
-            var cursor = await FindAsync(Collection, filter, cancellationToken, o);
-
-            await foreach (var item in BuildList(cursor, cancellationToken))
-            {
-                yield return item;
-            }
-        }
-
-        return ExecuteAsyncEnumerable(nameof(GetAsync), Impl, cancellationToken);
-    }
-
+    [Obsolete("Projection methods will have to be developed if needed.")]
     public override IAsyncEnumerable<T> GetAsync<T>(Expression<Func<T, bool>> predicate = null, Options<T> options = null, CancellationToken cancellationToken = default)
     {
         async IAsyncEnumerable<T> Impl()
@@ -264,6 +256,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         return ExecuteAsyncEnumerable(nameof(GetAsync), Impl, cancellationToken);
     }
 
+    [Obsolete("Projection methods will have to be developed if needed.")]
     public override IAsyncEnumerable<T> GetProjectionAsync<T>(Expression<Func<T, bool>> predicate = null, Options<T> options = null, CancellationToken cancellationToken = default)
     {
         async IAsyncEnumerable<T> Impl()
@@ -314,25 +307,11 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 
     public override Task<Result<TEntity, TKey>> GetManyAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default)
     {
-        return Execute(nameof(QueryAsync), async () =>
-        {
-            var o = BuildOptions(options);
-            var totalCount = await Collection.CountDocumentsAsync(predicate ?? FilterDefinition<TEntity>.Empty, cancellationToken: cancellationToken);
-            var cursor = await FindAsync(Collection, predicate, cancellationToken, o);
+        var filter = predicate != null
+            ? Builders<TEntity>.Filter.Where(predicate)
+            : FilterDefinition<TEntity>.Empty;
 
-            var items = await BuildList(cursor, cancellationToken).ToArrayAsync(cancellationToken: cancellationToken);
-            //var count = items.Length;
-
-            //sw.Stop();
-            //_logger?.Log(_executeInfoLogLevel, $"Executed {{repositoryType}} for {{CollectionName}} took {{elapsed}} ms and returned {{itemCount}} items. [action: Database, operation: {nameof(QueryAsync)}]", "DiskRepository", CollectionName, sw.Elapsed.TotalMilliseconds, count);
-            //InvokeAction(new ActionEventArgs.ActionData { Operation = nameof(GetAsync), Elapsed = sw.Elapsed, ItemCount = count });
-
-            return new Result<TEntity, TKey>
-            {
-                Items = items,
-                TotalCount = (int)totalCount
-            };
-        }, Operation.Get);
+        return GetManyAsync(filter, options, cancellationToken);
     }
 
     [Obsolete($"Use {nameof(GetManyAsync)} instead. This method will be deprecated.")]
@@ -346,22 +325,42 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         return Execute(nameof(QueryAsync), async () =>
         {
             var o = BuildOptions(options);
-            var totalCount = await Collection.CountDocumentsAsync(filter, cancellationToken: cancellationToken);
             var cursor = await FindAsync(Collection, filter, cancellationToken, o);
+            var items = await BuildList(cursor, cancellationToken).ToArrayAsync(cancellationToken);
 
-            var items = await BuildList(cursor, cancellationToken).ToArrayAsync(cancellationToken: cancellationToken);
-            //var count = items.Length;
-
-            //sw.Stop();
-            //_logger?.Log(_executeInfoLogLevel, $"Executed {{repositoryType}} for {{CollectionName}} took {{elapsed}} ms and returned {{itemCount}} items. [action: Database, operation: {nameof(QueryAsync)}]", "DiskRepository", CollectionName, sw.Elapsed.TotalMilliseconds, count);
-            //InvokeAction(new ActionEventArgs.ActionData { Operation = nameof(GetAsync), Elapsed = sw.Elapsed, ItemCount = count });
+            var totalCount = items.Length;
+            if (totalCount <= (options?.Limit ?? ResultLimit ?? 1000))
+            {
+                totalCount = (int)await Collection.CountDocumentsAsync(filter, cancellationToken: cancellationToken);
+            }
 
             return new Result<TEntity, TKey>
             {
                 Items = items,
-                TotalCount = (int)totalCount
+                TotalCount = totalCount
             };
         }, Operation.Get);
+    }
+
+    private static FindOptions<TEntity, TEntity> BuildOptions(Options<TEntity> options)
+    {
+        FindOptions<TEntity, TEntity> o = null;
+        if (options != null)
+        {
+            o = new FindOptions<TEntity, TEntity>
+            {
+                Sort = options.Sort,
+                Limit = options.Limit,
+                Skip = options.Skip
+            };
+
+            if (options.Projection != null)
+            {
+                o.Projection = options.Projection;
+            }
+        }
+
+        return o;
     }
 
     [Obsolete($"Use {nameof(GetManyAsync)} instead. This method will be deprecated.")]
@@ -864,12 +863,9 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         }
         else
         {
-            await foreach (var page in GetPagesAsync())
+            await foreach (var item in GetAsync())
             {
-                await foreach (var item in page.Items)
-                {
-                    if (item.NeedsCleaning()) yield return item;
-                }
+                if (item.NeedsCleaning()) yield return item;
             }
         }
     }

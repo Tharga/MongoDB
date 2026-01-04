@@ -8,6 +8,7 @@ public interface IMongoDbServiceFactory
     event EventHandler<CollectionAccessEventArgs> CollectionAccessEvent;
     event EventHandler<CallStartEventArgs> CallStartEvent;
     event EventHandler<CallEndEventArgs> CallEndEvent;
+    event EventHandler<ExecuteInfoChangedEventArgs> ExecuteInfoChangedEvent;
 
     IMongoDbService GetMongoDbService(Func<DatabaseContext> databaseContextLoader);
 }

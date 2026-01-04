@@ -33,6 +33,7 @@ internal class MongoDbServiceFactory : IMongoDbServiceFactory
     public event EventHandler<CollectionAccessEventArgs> CollectionAccessEvent;
     public event EventHandler<CallStartEventArgs> CallStartEvent;
     public event EventHandler<CallEndEventArgs> CallEndEvent;
+    public event EventHandler<ExecuteInfoChangedEventArgs> ExecuteInfoChangedEvent;
 
     public IMongoDbService GetMongoDbService(Func<DatabaseContext> databaseContextLoader)
     {

@@ -25,6 +25,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
     private bool _started;
 
     public event EventHandler<CollectionInfoChangedEventArgs> CollectionInfoChangedEvent;
+    public event EventHandler<ExecuteInfoChangedEventArgs> ExecuteInfoChangedEvent;
 
     public DatabaseMonitor(IMongoDbServiceFactory mongoDbServiceFactory, IMongoDbInstance mongoDbInstance, IServiceProvider serviceProvider, IRepositoryConfiguration repositoryConfiguration, ICollectionProvider collectionProvider, ICallLibrary callLibrary, IOptions<DatabaseOptions> options)
     {
@@ -99,6 +100,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
             {
                 _callLibrary.EndCall(e);
             };
+            _mongoDbServiceFactory.ExecuteInfoChangedEvent += (s, e) => { ExecuteInfoChangedEvent?.Invoke(s, e); };
         }
         finally
         {

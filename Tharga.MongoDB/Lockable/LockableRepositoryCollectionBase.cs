@@ -54,11 +54,13 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
         return Disk.GetAsync(filter, options, cancellationToken);
     }
 
+    [Obsolete("Projection methods will have to be developed if needed.")]
     public override IAsyncEnumerable<T> GetAsync<T>(Expression<Func<T, bool>> predicate = null, Options<T> options = null, CancellationToken cancellationToken = default)
     {
         return Disk.GetAsync(predicate, options, cancellationToken);
     }
 
+    [Obsolete("Projection methods will have to be developed if needed.")]
     public override IAsyncEnumerable<T> GetProjectionAsync<T>(Expression<Func<T, bool>> predicate = null, Options<T> options = null, CancellationToken cancellationToken = default)
     {
         return Disk.GetProjectionAsync(predicate, options, cancellationToken);
@@ -201,12 +203,9 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
 
     public async IAsyncEnumerable<TEntity> GetUnlockedAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        await foreach (var page in Disk.GetPagesAsync(UnlockedOrExpiredFilter.AndAlso(predicate ?? (x => true)), options, cancellationToken))
+        await foreach (var item in Disk.GetAsync(UnlockedOrExpiredFilter.AndAlso(predicate ?? (x => true)), options, cancellationToken))
         {
-            await foreach (var item in page.Items.WithCancellation(cancellationToken))
-            {
-                yield return item;
-            }
+            yield return item;
         }
     }
 
@@ -292,6 +291,7 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
         }
     }
 
+    [Obsolete($"Use {nameof(GetCollectionScope)} instead. This method will be deprecated.")]
     public override IMongoCollection<TEntity> GetCollection()
     {
         //return Disk.GetCollection();
