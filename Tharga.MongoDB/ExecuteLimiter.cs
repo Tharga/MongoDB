@@ -4,6 +4,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 
 namespace Tharga.MongoDB;
 
@@ -14,14 +15,16 @@ public record ExecuteLimiterOptions
 
 internal class ExecuteLimiter : IExecuteLimiter
 {
+    private readonly ILogger<ExecuteLimiter> _logger;
     private const string DefaultKey = "Default";
 
     private readonly int _maxConcurrentPerKey;
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _semaphores = new();
     private readonly ConcurrentDictionary<string, int> _queuedCounts = new();
 
-    public ExecuteLimiter(IOptions<ExecuteLimiterOptions> options)
+    public ExecuteLimiter(IOptions<ExecuteLimiterOptions> options, ILogger<ExecuteLimiter> logger)
     {
+        _logger = logger;
         _maxConcurrentPerKey = options.Value.MaxConcurrent;
     }
 
@@ -34,6 +37,7 @@ internal class ExecuteLimiter : IExecuteLimiter
         key ??= DefaultKey;
 
         var executeId = Guid.NewGuid();
+
         var semaphore = _semaphores.GetOrAdd(key, _ => new SemaphoreSlim(_maxConcurrentPerKey, _maxConcurrentPerKey));
 
         var queuedAt = Stopwatch.GetTimestamp();
@@ -41,6 +45,10 @@ internal class ExecuteLimiter : IExecuteLimiter
         var queueCount = _queuedCounts.AddOrUpdate(key, _ => 1, (_, current) => current + 1);
 
         ExecuteQueuedEvent?.Invoke(this, new ExecuteQueuedEventArgs(executeId, queueCount));
+        if (queueCount > 1)
+        {
+            _logger.LogInformation("Queued {queueCount} executions for {key}.", queueCount, key);
+        }
 
         try
         {
@@ -56,33 +64,44 @@ internal class ExecuteLimiter : IExecuteLimiter
             throw;
         }
 
-        _queuedCounts.AddOrUpdate(key, _ => 0, (_, current) => current - 1);
+        var queueCountAfter = _queuedCounts.AddOrUpdate(key, _ => 0, (_, current) => current - 1);
 
         var startedAt = Stopwatch.GetTimestamp();
         var queueElapsed = GetElapsed(queuedAt, startedAt);
-        var wasCanceledBeforeStart = cancellationToken.IsCancellationRequested;
 
-        ExecuteStartEvent?.Invoke(this, new ExecuteStartEventArgs(executeId, queueElapsed, wasCanceledBeforeStart));
+        var concurrentCount = _maxConcurrentPerKey - semaphore.CurrentCount;
+
+        if (concurrentCount >= _maxConcurrentPerKey)
+        {
+            _logger.LogWarning("The maximum number of {count} concurrent executions for {key} has been reached.", concurrentCount, key);
+        }
+
+        ExecuteStartEvent?.Invoke(this, new ExecuteStartEventArgs(executeId, queueElapsed, concurrentCount));
 
         Exception exception = null;
 
         try
         {
-            return await action.Invoke(cancellationToken);
+            //TODO: Have more information abount the execution...
+            var response = await action.Invoke(cancellationToken);
+            return response;
         }
         catch (Exception ex)
         {
+            _logger.LogError(ex, ex.Message);
             exception = ex;
             throw;
         }
         finally
         {
             var completedAt = Stopwatch.GetTimestamp();
-            var executeTime = GetElapsed(startedAt, completedAt);
+            var executeElapsed = GetElapsed(startedAt, completedAt);
 
-            ExecuteCompleteEvent?.Invoke(this, new ExecuteCompleteEventArgs(executeId, queueElapsed, executeTime, cancellationToken.IsCancellationRequested, exception));
+            ExecuteCompleteEvent?.Invoke(this, new ExecuteCompleteEventArgs(executeId, queueElapsed, executeElapsed, cancellationToken.IsCancellationRequested, exception));
 
             semaphore.Release();
+
+            _logger.LogInformation("Executed {executeId} in {executeElapsed} ms. Queued for {queueElapsed} ms.", executeId, executeElapsed.TotalMilliseconds, queueElapsed.TotalMilliseconds);
         }
     }
 

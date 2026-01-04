@@ -2,10 +2,6 @@
 
 namespace Tharga.MongoDB;
 
-public class ExecuteInfoChangedEventArgs : EventArgs
-{
-}
-
 public class CollectionInfoChangedEventArgs : EventArgs
 {
     public CollectionInfoChangedEventArgs(CollectionInfo collectionInfo)

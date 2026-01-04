@@ -9,6 +9,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Tharga.MongoDB.Atlas;
 using Tharga.MongoDB.Configuration;
+using Tharga.MongoDB.Disk;
 
 namespace Tharga.MongoDB.Internals;
 
@@ -18,17 +19,19 @@ internal class MongoDbService : IMongoDbService
     private readonly IMongoDbFirewallStateService _mongoDbFirewallStateService;
     private readonly IExecuteLimiter _executeLimiter;
     private readonly ICollectionPool _collectionPool;
+    private readonly IInitiationLibrary _initiationLibrary;
     private readonly ILogger _logger;
     private readonly MongoClient _mongoClient;
     private readonly IMongoDatabase _mongoDatabase;
     private readonly MongoUrl _mongoUrl;
 
-    public MongoDbService(IRepositoryConfigurationInternal configuration, IMongoDbFirewallStateService mongoDbFirewallStateService, IMongoDbClientProvider mongoDbClientProvider, IExecuteLimiter executeLimiter, ICollectionPool collectionPool, ILogger logger)
+    public MongoDbService(IRepositoryConfigurationInternal configuration, IMongoDbFirewallStateService mongoDbFirewallStateService, IMongoDbClientProvider mongoDbClientProvider, IExecuteLimiter executeLimiter, ICollectionPool collectionPool, IInitiationLibrary initiationLibrary, ILogger logger)
     {
         _configuration = configuration;
         _mongoDbFirewallStateService = mongoDbFirewallStateService;
         _executeLimiter = executeLimiter;
         _collectionPool = collectionPool;
+        _initiationLibrary = initiationLibrary;
         _logger = logger;
         _mongoUrl = configuration.GetDatabaseUrl() ?? throw new NullReferenceException("MongoUrl not found in configuration.");
         _mongoClient = mongoDbClientProvider.GetClient(_mongoUrl);
@@ -40,6 +43,7 @@ internal class MongoDbService : IMongoDbService
 
     public IExecuteLimiter ExecuteLimiter => _executeLimiter;
     public ICollectionPool CollectionPool => _collectionPool;
+    public IInitiationLibrary InitiationLibrary => _initiationLibrary;
 
     public async Task<IMongoCollection<T>> GetCollectionAsync<T>(string collectionName)
     {

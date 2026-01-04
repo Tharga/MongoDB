@@ -1,16 +1,17 @@
-﻿using Microsoft.Extensions.DependencyInjection;
+﻿using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization;
 using MongoDB.Bson.Serialization.Serializers;
 using System;
 using System.Linq;
 using System.Threading.Tasks;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Options;
 using Tharga.MongoDB.Atlas;
 using Tharga.MongoDB.Configuration;
+using Tharga.MongoDB.Disk;
 using Tharga.MongoDB.Internals;
 using Tharga.Runtime;
 
@@ -70,6 +71,7 @@ public static class MongoDbRegistrationExtensions
         services.AddSingleton<IMongoDbFirewallStateService, MongoDbFirewallStateService>();
         services.AddSingleton<IExecuteLimiter, ExecuteLimiter>();
         services.AddSingleton<ICollectionPool, CollectionPool>();
+        services.AddSingleton<IInitiationLibrary, InitiationLibrary>();
         services.AddSingleton<IMongoDbServiceFactory>(serviceProvider =>
         {
             var mongoDbClientProvider = serviceProvider.GetService<IMongoDbClientProvider>();
@@ -77,8 +79,9 @@ public static class MongoDbRegistrationExtensions
             var mongoDbFirewallStateService = serviceProvider.GetService<IMongoDbFirewallStateService>();
             var executeLimiter = serviceProvider.GetService<IExecuteLimiter>();
             var collectionPool = serviceProvider.GetService<ICollectionPool>();
+            var initiationLibrary = serviceProvider.GetService<IInitiationLibrary>();
             var logger = serviceProvider.GetService<ILogger<MongoDbServiceFactory>>();
-            return new MongoDbServiceFactory(mongoDbClientProvider, repositoryConfigurationLoader, mongoDbFirewallStateService, executeLimiter, collectionPool, logger);
+            return new MongoDbServiceFactory(mongoDbClientProvider, repositoryConfigurationLoader, mongoDbFirewallStateService, executeLimiter, collectionPool, initiationLibrary, logger);
         });
         services.AddTransient<IRepositoryConfigurationLoader>(serviceProvider =>
         {

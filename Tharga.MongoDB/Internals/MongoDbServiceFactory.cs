@@ -7,6 +7,7 @@ using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Serializers;
 using MongoDB.Bson.Serialization;
 using Tharga.MongoDB.Atlas;
+using Tharga.MongoDB.Disk;
 
 namespace Tharga.MongoDB.Internals;
 
@@ -17,17 +18,19 @@ internal class MongoDbServiceFactory : IMongoDbServiceFactory
     private readonly IMongoDbFirewallStateService _mongoDbFirewallStateService;
     private readonly IExecuteLimiter _executeLimiter;
     private readonly ICollectionPool _collectionPool;
+    private readonly IInitiationLibrary _initiationLibrary;
     private readonly ILogger _logger;
     private readonly ConcurrentDictionary<string, MongoDbService> _databaseDbServices = new();
     private readonly SemaphoreSlim _lock = new(1, 1);
 
-    public MongoDbServiceFactory(IMongoDbClientProvider mongoDbClientProvider, IRepositoryConfigurationLoader repositoryConfigurationLoader, IMongoDbFirewallStateService mongoDbFirewallStateService, IExecuteLimiter executeLimiter, ICollectionPool collectionPool, ILogger<MongoDbServiceFactory> logger)
+    public MongoDbServiceFactory(IMongoDbClientProvider mongoDbClientProvider, IRepositoryConfigurationLoader repositoryConfigurationLoader, IMongoDbFirewallStateService mongoDbFirewallStateService, IExecuteLimiter executeLimiter, ICollectionPool collectionPool, IInitiationLibrary initiationLibrary, ILogger<MongoDbServiceFactory> logger)
     {
         _mongoDbClientProvider = mongoDbClientProvider;
         _repositoryConfigurationLoader = repositoryConfigurationLoader;
         _mongoDbFirewallStateService = mongoDbFirewallStateService;
         _executeLimiter = executeLimiter;
         _collectionPool = collectionPool;
+        _initiationLibrary = initiationLibrary;
         _logger = logger;
     }
 
@@ -68,7 +71,7 @@ internal class MongoDbServiceFactory : IMongoDbServiceFactory
         {
             if (useCache && _databaseDbServices.TryGetValue(cacheKey, out dbService)) return dbService;
 
-            dbService = new MongoDbService(configuration, _mongoDbFirewallStateService, _mongoDbClientProvider, _executeLimiter, _collectionPool, _logger);
+            dbService = new MongoDbService(configuration, _mongoDbFirewallStateService, _mongoDbClientProvider, _executeLimiter, _collectionPool, _initiationLibrary, _logger);
             dbService.CollectionAccessEvent += (s, e) =>
             {
                 CollectionAccessEvent?.Invoke(s, e);

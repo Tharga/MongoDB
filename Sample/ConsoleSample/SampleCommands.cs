@@ -1,7 +1,8 @@
-﻿using System;
+﻿using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using ConsoleSample.SampleRepo;
+using Microsoft.Extensions.Logging;
 using Tharga.Console.Commands.Base;
 
 namespace ConsoleSample;
@@ -13,6 +14,40 @@ internal class SampleCommands : ContainerCommandBase
     {
         RegisterCommand<AddCommand>();
         RegisterCommand<ListCommand>();
+        RegisterCommand<BurstCommand>();
+    }
+}
+
+internal class BurstCommand : AsyncActionCommandBase
+{
+    private readonly ISampleRepository _sampleRepository;
+    private readonly ILogger<BurstCommand> _logger;
+
+    public BurstCommand(ISampleRepository sampleRepository, ILogger<BurstCommand> logger)
+        : base("Burst")
+    {
+        _sampleRepository = sampleRepository;
+        _logger = logger;
+    }
+
+    public override async Task InvokeAsync(string[] param)
+    {
+        var count = QueryParam<int>("Count", param);
+
+        var tasks = new List<Task>();
+        var cnt = 0;
+        for (var i = 0; i < count; i++)
+        {
+            tasks.Add(Task.Run(async () =>
+            {
+                _ = await _sampleRepository.GetAsync().ToArrayAsync();
+                _logger.LogTrace("Step {step}", ++cnt);
+            }));
+        }
+
+        await Task.WhenAll(tasks);
+        //OutputInformation("Complete.");
+        _logger.LogInformation("Complete.");
     }
 }
 

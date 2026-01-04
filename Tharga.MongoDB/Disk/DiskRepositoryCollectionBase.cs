@@ -2,7 +2,6 @@
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization;
 using MongoDB.Driver;
-using SharpCompress.Common;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -21,6 +20,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 {
     private readonly IExecuteLimiter _databaseExecutor;
     private readonly ICollectionPool _collectionPool;
+    private readonly IInitiationLibrary _initiationLibrary;
     private readonly SemaphoreSlim _fetchLock = new(1, 1);
 
     //private IMongoCollection<TEntity> _collection;
@@ -46,20 +46,26 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
     {
         _databaseExecutor = ((MongoDbService)_mongoDbService).ExecuteLimiter;
         _collectionPool = ((MongoDbService)_mongoDbService).CollectionPool;
+        _initiationLibrary = ((MongoDbService)_mongoDbService).InitiationLibrary;
 
         _databaseExecutor.ExecuteQueuedEvent += (s, e) => { };
         _databaseExecutor.ExecuteStartEvent += (s, e) => { };
         _databaseExecutor.ExecuteCompleteEvent += (s, e) => { };
     }
 
-    //public override long? VirtualCount { get; }
-
     protected virtual async Task<T> ExecuteAsync<T>(string functionName, Func<IMongoCollection<TEntity>, CancellationToken, Task<T>> action, Operation operation, CancellationToken cancellationToken = default)
     {
         return await _databaseExecutor.ExecuteAsync(async ct =>
         {
-            var collection = await FetchCollectionAsync();
-            return await action.Invoke(collection, ct);
+            var startAt = Stopwatch.GetTimestamp();
+
+            var result = await FetchCollectionAsync();
+
+            var fetchedAt = Stopwatch.GetTimestamp();
+            var collectionFetchTime = GetElapsed(startAt, fetchedAt);
+            _logger.LogInformation("Fetched collection with {action} took {elapsed} ms.", result.InitiateAction, collectionFetchTime.TotalMilliseconds);
+
+            return await action.Invoke(result.Collection, ct);
         }, null, cancellationToken);
     }
 
@@ -301,7 +307,42 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
     //TODO: This should be called on add or update.
     protected internal async Task AssureIndex(IMongoCollection<TEntity> collection, bool forceAssure = false, bool throwOnException = false)
     {
-        throw new NotImplementedException();
+        var assureIndexMode = _mongoDbService.GetAssureIndexMode();
+        if (assureIndexMode == AssureIndexMode.Disabled && !forceAssure)
+        {
+            _logger?.LogTrace("Assure index is disabled.");
+            return;
+        }
+
+        if (forceAssure || _initiationLibrary.ShouldInitiateIndex(ServerName, DatabaseName, ProtectedCollectionName))
+        {
+            //_logger?.LogTrace($"Assure index for collection {{collection}} in {{repositoryType}}. [action: Database, operation: {nameof(CleanAsync)}]", ProtectedCollectionName, "DiskRepository");
+
+            //Not sure why this index should be created like this. Trying to disable.
+            //await collection.Indexes.CreateOneAsync(new CreateIndexModel<TEntity>(Builders<TEntity>.IndexKeys.Ascending(x => x.Id).Ascending("_t"), new CreateIndexOptions()));
+
+            await UpdateIndicesAsync(collection, assureIndexMode, throwOnException);
+        }
+    }
+
+    private async Task UpdateIndicesAsync(IMongoCollection<TEntity> collection, AssureIndexMode assureIndexMode, bool throwOnException)
+    {
+        switch (assureIndexMode)
+        {
+            case AssureIndexMode.ByName:
+                await UpdateIndicesByNameAsync(collection, throwOnException);
+                break;
+            case AssureIndexMode.BySchema:
+                await UpdateIndicesBySchemaAsync(collection, throwOnException);
+                break;
+            case AssureIndexMode.DropCreate:
+                await UpdateIndicesByDropCreateAsync(collection, throwOnException);
+                break;
+            case AssureIndexMode.Disabled:
+                return;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(assureIndexMode), assureIndexMode, null);
+        }
     }
 
     protected virtual async Task CleanAsync(IMongoCollection<TEntity> collection)
@@ -368,32 +409,27 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         await DropCollectionAsync();
     }
 
-    internal async Task<IMongoCollection<TEntity>> FetchCollectionAsync(bool initiate = true)
+    internal async Task<(IMongoCollection<TEntity> Collection, InitiateAction InitiateAction)> FetchCollectionAsync(bool initiate = true)
     {
         var fullName = $"{(ConfigurationName ?? Constants.DefaultConfigurationName)}.{DatabaseName}.{CollectionName}";
 
-        if (_collectionPool.TryGetCollection<TEntity>(fullName, out var collection)) return collection;
+        if (_collectionPool.TryGetCollection<TEntity>(fullName, out var collection)) return (collection, InitiateAction.NoAction);
 
         await _fetchLock.WaitAsync();
         try
         {
-            if (_collectionPool.TryGetCollection<TEntity>(fullName, out collection)) return collection;
+            if (_collectionPool.TryGetCollection(fullName, out collection)) return (collection, InitiateAction.WaitForOtherTask);
 
             collection = await _mongoDbService.GetCollectionAsync<TEntity>(ProtectedCollectionName);
 
-            if (initiate && InitiationLibrary.ShouldInitiate(ServerName, DatabaseName, ProtectedCollectionName))
+            InitiateAction initiateAction;
+            if (initiate && _initiationLibrary.ShouldInitiate(ServerName, DatabaseName, ProtectedCollectionName))
             {
-                //        _logger?.LogTrace($"Starting to initiate {{collection}}. [action: Database, operation: {nameof(FetchCollectionAsync)}]", ProtectedCollectionName);
-                //        InvokeAction(new ActionEventArgs.ActionData { Operation = nameof(FetchCollectionAsync), Message = "Starting to initiate.", Level = LogLevel.Trace });
+                //_logger?.LogTrace($"Starting to initiate {{collection}}. [action: Database, operation: {nameof(FetchCollectionAsync)}]", ProtectedCollectionName);
+                //InvokeAction(new ActionEventArgs.ActionData { Operation = nameof(FetchCollectionAsync), Message = "Starting to initiate.", Level = LogLevel.Trace });
                 RegisterTypes();
 
-                //        var vExists = await GetVirtualCount(collection) != 0;
-                //        if (Debugger.IsAttached)
-                //        {
                 var exists = await _mongoDbService.DoesCollectionExist(ProtectedCollectionName);
-                //            if (vExists != dbExists) Debugger.Break();
-                //        }
-
                 if (exists)
                 {
                     await AssureIndex(collection);
@@ -402,18 +438,20 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                 }
 
                 await InitAsync(collection);
-                //        _logger?.LogTrace($"Initiate {{collection}} is completed. [action: Database, operation: {nameof(FetchCollectionAsync)}]", ProtectedCollectionName);
-                //        InvokeAction(new ActionEventArgs.ActionData { Operation = nameof(FetchCollectionAsync), Message = "Initiation completed.", Level = LogLevel.Trace });
+                //_logger?.LogTrace($"Initiate {{collection}} is completed. [action: Database, operation: {nameof(FetchCollectionAsync)}]", ProtectedCollectionName);
+                //InvokeAction(new ActionEventArgs.ActionData { Operation = nameof(FetchCollectionAsync), Message = "Initiation completed.", Level = LogLevel.Trace });
+
+                initiateAction = InitiateAction.InitiationPerformed;
             }
             else
             {
-                Debugger.Break(); //NOTE: We should never reach this, it should be protected before this.
-                //        _logger?.LogTrace($"Skip initiation of {{collection}} because it has already been initiated. [action: Database, operation: {nameof(FetchCollectionAsync)}]", ProtectedCollectionName);
-                //        InvokeAction(new ActionEventArgs.ActionData { Operation = nameof(FetchCollectionAsync), Message = "Skip initiation because it has already been completed.", Level = LogLevel.Trace });
+                //_logger?.LogTrace($"Skip initiation of {{collection}} because it has already been initiated. [action: Database, operation: {nameof(FetchCollectionAsync)}]", ProtectedCollectionName);
+                //InvokeAction(new ActionEventArgs.ActionData { Operation = nameof(FetchCollectionAsync), Message = "Skip initiation because it has already been completed.", Level = LogLevel.Trace });
+                initiateAction = InitiateAction.NoAction;
             }
 
             _collectionPool.AddCollection(fullName, collection);
-            return collection;
+            return (collection, initiateAction);
         }
         finally
         {
@@ -1362,211 +1400,211 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
     //    }
     //}
 
-    //private async Task UpdateIndicesByNameAsync(IMongoCollection<TEntity> collection, bool throwOnException)
-    //{
-    //    var indices = (CoreIndices?.ToArray() ?? []).Union(Indices?.ToArray() ?? []).ToArray();
+    private async Task UpdateIndicesByNameAsync(IMongoCollection<TEntity> collection, bool throwOnException)
+    {
+        var indices = (CoreIndices?.ToArray() ?? []).Union(Indices?.ToArray() ?? []).ToArray();
 
-    //    var firstInvalid = indices.GroupBy(x => x.Options.Name).FirstOrDefault(x => x.Count() > 1);
-    //    if (firstInvalid != null) throw new InvalidOperationException($"Indices can only be defined once with the same name. Index {firstInvalid.First().Options.Name} has been defined {firstInvalid.Count()} times for collection {ProtectedCollectionName}.");
+        var firstInvalid = indices.GroupBy(x => x.Options.Name).FirstOrDefault(x => x.Count() > 1);
+        if (firstInvalid != null) throw new InvalidOperationException($"Indices can only be defined once with the same name. Index {firstInvalid.First().Options.Name} has been defined {firstInvalid.Count()} times for collection {ProtectedCollectionName}.");
 
-    //    if (indices.Any(x => string.IsNullOrEmpty(x.Options.Name))) throw new InvalidOperationException("Indices needs to have a name.");
+        if (indices.Any(x => string.IsNullOrEmpty(x.Options.Name))) throw new InvalidOperationException("Indices needs to have a name.");
 
-    //    var allExistingIndexNames = (await collection.Indexes.ListAsync()).ToList()
-    //        .Select(x => x.GetValue("name").AsString)
-    //        .ToArray();
-    //    var existingIndexNames = allExistingIndexNames
-    //        .Where(x => !x.StartsWith("_id_"))
-    //        .ToArray();
+        var allExistingIndexNames = (await collection.Indexes.ListAsync()).ToList()
+            .Select(x => x.GetValue("name").AsString)
+            .ToArray();
+        var existingIndexNames = allExistingIndexNames
+            .Where(x => !x.StartsWith("_id_"))
+            .ToArray();
 
-    //    _logger?.Log(_executeInfoLogLevel, "Assure index for collection {collection} with {count} documents.", ProtectedCollectionName, await collection.CountDocumentsAsync(x => true));
-    //    _logger?.LogTrace("All existing indices in collection {collection}: {indices}.", ProtectedCollectionName, string.Join(", ", allExistingIndexNames));
-    //    _logger?.LogDebug("Existing, non system, indices in collection {collection}: {indices}.", ProtectedCollectionName, string.Join(", ", existingIndexNames));
-    //    _logger?.LogDebug("Defined indices for collection {collection}: {indices}.", ProtectedCollectionName, string.Join(", ", indices.Select(x => x.Options.Name)));
+        _logger?.Log(_executeInfoLogLevel, "Assure index for collection {collection} with {count} documents.", ProtectedCollectionName, await collection.CountDocumentsAsync(x => true));
+        _logger?.LogTrace("All existing indices in collection {collection}: {indices}.", ProtectedCollectionName, string.Join(", ", allExistingIndexNames));
+        _logger?.LogDebug("Existing, non system, indices in collection {collection}: {indices}.", ProtectedCollectionName, string.Join(", ", existingIndexNames));
+        _logger?.LogDebug("Defined indices for collection {collection}: {indices}.", ProtectedCollectionName, string.Join(", ", indices.Select(x => x.Options.Name)));
 
-    //    var hasChanged = false;
+        var hasChanged = false;
 
-    //    //NOTE: Drop indexes not in list
-    //    foreach (var indexName in existingIndexNames)
-    //    {
-    //        if (indices.All(x => x.Options.Name != indexName))
-    //        {
-    //            try
-    //            {
-    //                _logger?.LogDebug("Index {indexName} will be dropped in collection {collection}.", indexName, ProtectedCollectionName);
-    //                await collection.Indexes.DropOneAsync(indexName);
-    //                _logger?.LogInformation("Index {indexName} was dropped in collection {collection}.", indexName, ProtectedCollectionName);
-    //                hasChanged = true;
-    //            }
-    //            catch (Exception e)
-    //            {
-    //                Debugger.Break();
-    //                _logger?.LogError(e, "Failed to drop index {indexName} in collection {collection}. {message}", indexName, ProtectedCollectionName, e.Message);
-    //                InitiationLibrary.AddFailedInitiateIndex(ServerName, DatabaseName, ProtectedCollectionName, (IndexFailOperation.Drop, indexName));
-    //                if (throwOnException) throw;
-    //            }
-    //        }
-    //    }
+        //NOTE: Drop indexes not in list
+        foreach (var indexName in existingIndexNames)
+        {
+            if (indices.All(x => x.Options.Name != indexName))
+            {
+                try
+                {
+                    _logger?.LogDebug("Index {indexName} will be dropped in collection {collection}.", indexName, ProtectedCollectionName);
+                    await collection.Indexes.DropOneAsync(indexName);
+                    _logger?.LogInformation("Index {indexName} was dropped in collection {collection}.", indexName, ProtectedCollectionName);
+                    hasChanged = true;
+                }
+                catch (Exception e)
+                {
+                    Debugger.Break();
+                    _logger?.LogError(e, "Failed to drop index {indexName} in collection {collection}. {message}", indexName, ProtectedCollectionName, e.Message);
+                    _initiationLibrary.AddFailedInitiateIndex(ServerName, DatabaseName, ProtectedCollectionName, (IndexFailOperation.Drop, indexName));
+                    if (throwOnException) throw;
+                }
+            }
+        }
 
-    //    //NOTE: Create indexes in the list
-    //    foreach (var index in indices)
-    //    {
-    //        if (existingIndexNames.All(x => index.Options.Name != x))
-    //        {
-    //            try
-    //            {
-    //                _logger?.LogDebug("Index {indexName} will be created in collection {collection}.", index.Options.Name, ProtectedCollectionName);
-    //                var message = await collection.Indexes.CreateOneAsync(index);
-    //                _logger?.LogInformation("Index {indexName} was created in collection {collection}. {message}", index.Options.Name, ProtectedCollectionName, message);
-    //                hasChanged = true;
-    //            }
-    //            catch (Exception e)
-    //            {
-    //                Debugger.Break();
-    //                _logger?.LogError(e, "Failed to create index {indexName} in collection {collection}. {message}", index.Options.Name, ProtectedCollectionName, e.Message);
-    //                InitiationLibrary.AddFailedInitiateIndex(ServerName, DatabaseName, ProtectedCollectionName, (IndexFailOperation.Create, index.Options.Name));
-    //                if (throwOnException) throw;
-    //            }
-    //        }
-    //    }
+        //NOTE: Create indexes in the list
+        foreach (var index in indices)
+        {
+            if (existingIndexNames.All(x => index.Options.Name != x))
+            {
+                try
+                {
+                    _logger?.LogDebug("Index {indexName} will be created in collection {collection}.", index.Options.Name, ProtectedCollectionName);
+                    var message = await collection.Indexes.CreateOneAsync(index);
+                    _logger?.LogInformation("Index {indexName} was created in collection {collection}. {message}", index.Options.Name, ProtectedCollectionName, message);
+                    hasChanged = true;
+                }
+                catch (Exception e)
+                {
+                    Debugger.Break();
+                    _logger?.LogError(e, "Failed to create index {indexName} in collection {collection}. {message}", index.Options.Name, ProtectedCollectionName, e.Message);
+                    _initiationLibrary.AddFailedInitiateIndex(ServerName, DatabaseName, ProtectedCollectionName, (IndexFailOperation.Create, index.Options.Name));
+                    if (throwOnException) throw;
+                }
+            }
+        }
 
-    //    if (hasChanged)
-    //    {
-    //        var fingerprint = new CollectionFingerprint
-    //        {
-    //            ConfigurationName = ConfigurationName ?? _mongoDbService.GetConfigurationName(),
-    //            CollectionName = ProtectedCollectionName,
-    //            DatabaseName = DatabaseName
-    //        };
-    //        ((MongoDbServiceFactory)_mongoDbServiceFactory).OnIndexUpdatedEvent(this, new IndexUpdatedEventArgs(fingerprint));
-    //    }
-    //}
+        if (hasChanged)
+        {
+            var fingerprint = new CollectionFingerprint
+            {
+                ConfigurationName = ConfigurationName ?? _mongoDbService.GetConfigurationName(),
+                CollectionName = ProtectedCollectionName,
+                DatabaseName = DatabaseName
+            };
+            ((MongoDbServiceFactory)_mongoDbServiceFactory).OnIndexUpdatedEvent(this, new IndexUpdatedEventArgs(fingerprint));
+        }
+    }
 
-    //private async Task UpdateIndicesBySchemaAsync(IMongoCollection<TEntity> collection, bool throwOnException)
-    //{
-    //    var indices = (CoreIndices?.ToArray() ?? []).Union(Indices?.ToArray() ?? []).ToArray();
+    private async Task UpdateIndicesBySchemaAsync(IMongoCollection<TEntity> collection, bool throwOnException)
+    {
+        var indices = (CoreIndices?.ToArray() ?? []).Union(Indices?.ToArray() ?? []).ToArray();
 
-    //    var existingIndiceModel = (await MongoDbService.BuildIndicesModel(collection))
-    //        .Where(x => !x.Name.StartsWith("_id_"))
-    //        .ToArray();
-    //    var definedIndiceModel = this.BuildIndexMetas().ToArray();
+        var existingIndiceModel = (await MongoDbService.BuildIndicesModel(collection))
+            .Where(x => !x.Name.StartsWith("_id_"))
+            .ToArray();
+        var definedIndiceModel = this.BuildIndexMetas().ToArray();
 
-    //    var hasChanged = false;
+        var hasChanged = false;
 
-    //    //NOTE: Drop indexes not in list
-    //    foreach (var collectionIndexModel in existingIndiceModel)
-    //    {
-    //        if (definedIndiceModel.All(x => x != collectionIndexModel))
-    //        {
-    //            var indexName = collectionIndexModel.Name;
+        //NOTE: Drop indexes not in list
+        foreach (var collectionIndexModel in existingIndiceModel)
+        {
+            if (definedIndiceModel.All(x => x != collectionIndexModel))
+            {
+                var indexName = collectionIndexModel.Name;
 
-    //            try
-    //            {
-    //                _logger?.LogDebug("Index {indexName} will be dropped in collection {collection}.", indexName, ProtectedCollectionName);
-    //                await collection.Indexes.DropOneAsync(indexName);
-    //                _logger?.LogInformation("Index {indexName} was dropped in collection {collection}.", indexName, ProtectedCollectionName);
-    //                hasChanged = true;
-    //            }
-    //            catch (Exception e)
-    //            {
-    //                Debugger.Break();
-    //                _logger?.LogError(e, "Failed to drop index {indexName} in collection {collection}. {message}", indexName, ProtectedCollectionName, e.Message);
-    //                InitiationLibrary.AddFailedInitiateIndex(ServerName, DatabaseName, ProtectedCollectionName, (IndexFailOperation.Drop, indexName));
-    //                if (throwOnException) throw;
-    //            }
-    //        }
-    //    }
+                try
+                {
+                    _logger?.LogDebug("Index {indexName} will be dropped in collection {collection}.", indexName, ProtectedCollectionName);
+                    await collection.Indexes.DropOneAsync(indexName);
+                    _logger?.LogInformation("Index {indexName} was dropped in collection {collection}.", indexName, ProtectedCollectionName);
+                    hasChanged = true;
+                }
+                catch (Exception e)
+                {
+                    Debugger.Break();
+                    _logger?.LogError(e, "Failed to drop index {indexName} in collection {collection}. {message}", indexName, ProtectedCollectionName, e.Message);
+                    _initiationLibrary.AddFailedInitiateIndex(ServerName, DatabaseName, ProtectedCollectionName, (IndexFailOperation.Drop, indexName));
+                    if (throwOnException) throw;
+                }
+            }
+        }
 
-    //    //NOTE: Create indexes in the list
-    //    foreach (var definedIndexModel in definedIndiceModel)
-    //    {
-    //        if (existingIndiceModel.All(x => x != definedIndexModel))
-    //        {
-    //            try
-    //            {
-    //                var index = indices.Single(x => x.Options.Name == definedIndexModel.Name);
+        //NOTE: Create indexes in the list
+        foreach (var definedIndexModel in definedIndiceModel)
+        {
+            if (existingIndiceModel.All(x => x != definedIndexModel))
+            {
+                try
+                {
+                    var index = indices.Single(x => x.Options.Name == definedIndexModel.Name);
 
-    //                _logger?.LogDebug("Index {indexName} will be created in collection {collection}.", definedIndexModel.Name, ProtectedCollectionName);
-    //                var message = await collection.Indexes.CreateOneAsync(index);
-    //                _logger?.LogInformation("Index {indexName} was created in collection {collection}. {message}", definedIndexModel.Name, ProtectedCollectionName, message);
-    //                hasChanged = true;
-    //            }
-    //            catch (Exception e)
-    //            {
-    //                Debugger.Break();
-    //                _logger?.LogError(e, "Failed to create index {indexName} in collection {collection}. {message}", definedIndexModel.Name, ProtectedCollectionName, e.Message);
-    //                InitiationLibrary.AddFailedInitiateIndex(ServerName, DatabaseName, ProtectedCollectionName, (IndexFailOperation.Create, definedIndexModel.Name));
-    //                if (throwOnException) throw;
-    //            }
-    //        }
-    //    }
+                    _logger?.LogDebug("Index {indexName} will be created in collection {collection}.", definedIndexModel.Name, ProtectedCollectionName);
+                    var message = await collection.Indexes.CreateOneAsync(index);
+                    _logger?.LogInformation("Index {indexName} was created in collection {collection}. {message}", definedIndexModel.Name, ProtectedCollectionName, message);
+                    hasChanged = true;
+                }
+                catch (Exception e)
+                {
+                    Debugger.Break();
+                    _logger?.LogError(e, "Failed to create index {indexName} in collection {collection}. {message}", definedIndexModel.Name, ProtectedCollectionName, e.Message);
+                    _initiationLibrary.AddFailedInitiateIndex(ServerName, DatabaseName, ProtectedCollectionName, (IndexFailOperation.Create, definedIndexModel.Name));
+                    if (throwOnException) throw;
+                }
+            }
+        }
 
-    //    if (hasChanged)
-    //    {
-    //        var fingerprint = new CollectionFingerprint
-    //        {
-    //            ConfigurationName = ConfigurationName ?? _mongoDbService.GetConfigurationName(),
-    //            CollectionName = ProtectedCollectionName,
-    //            DatabaseName = DatabaseName
-    //        };
-    //        ((MongoDbServiceFactory)_mongoDbServiceFactory).OnIndexUpdatedEvent(this, new IndexUpdatedEventArgs(fingerprint));
-    //    }
-    //}
+        if (hasChanged)
+        {
+            var fingerprint = new CollectionFingerprint
+            {
+                ConfigurationName = ConfigurationName ?? _mongoDbService.GetConfigurationName(),
+                CollectionName = ProtectedCollectionName,
+                DatabaseName = DatabaseName
+            };
+            ((MongoDbServiceFactory)_mongoDbServiceFactory).OnIndexUpdatedEvent(this, new IndexUpdatedEventArgs(fingerprint));
+        }
+    }
 
-    //private async Task UpdateIndicesByDropCreateAsync(IMongoCollection<TEntity> collection, bool throwOnException)
-    //{
-    //    var indices = (CoreIndices?.ToArray() ?? []).Union(Indices?.ToArray() ?? []).ToArray();
+    private async Task UpdateIndicesByDropCreateAsync(IMongoCollection<TEntity> collection, bool throwOnException)
+    {
+        var indices = (CoreIndices?.ToArray() ?? []).Union(Indices?.ToArray() ?? []).ToArray();
 
-    //    var allExistingIndexNames = (await collection.Indexes.ListAsync()).ToList()
-    //        .Select(x => x.GetValue("name").AsString)
-    //        .ToArray();
-    //    var existingIndexNames = allExistingIndexNames
-    //        .Where(x => !x.StartsWith("_id_"))
-    //        .ToArray();
+        var allExistingIndexNames = (await collection.Indexes.ListAsync()).ToList()
+            .Select(x => x.GetValue("name").AsString)
+            .ToArray();
+        var existingIndexNames = allExistingIndexNames
+            .Where(x => !x.StartsWith("_id_"))
+            .ToArray();
 
-    //    //NOTE: Drop indexes not in list
-    //    foreach (var indexName in existingIndexNames)
-    //    {
-    //        try
-    //        {
-    //            _logger?.LogDebug("Index {indexName} will be dropped in collection {collection}.", indexName, ProtectedCollectionName);
-    //            await collection.Indexes.DropOneAsync(indexName);
-    //            _logger?.LogInformation("Index {indexName} was dropped in collection {collection}.", indexName, ProtectedCollectionName);
-    //        }
-    //        catch (Exception e)
-    //        {
-    //            Debugger.Break();
-    //            _logger?.LogError(e, "Failed to drop index {indexName} in collection {collection}. {message}", indexName, ProtectedCollectionName, e.Message);
-    //            InitiationLibrary.AddFailedInitiateIndex(ServerName, DatabaseName, ProtectedCollectionName, (IndexFailOperation.Drop, indexName));
-    //            if (throwOnException) throw;
-    //        }
-    //    }
+        //NOTE: Drop indexes not in list
+        foreach (var indexName in existingIndexNames)
+        {
+            try
+            {
+                _logger?.LogDebug("Index {indexName} will be dropped in collection {collection}.", indexName, ProtectedCollectionName);
+                await collection.Indexes.DropOneAsync(indexName);
+                _logger?.LogInformation("Index {indexName} was dropped in collection {collection}.", indexName, ProtectedCollectionName);
+            }
+            catch (Exception e)
+            {
+                Debugger.Break();
+                _logger?.LogError(e, "Failed to drop index {indexName} in collection {collection}. {message}", indexName, ProtectedCollectionName, e.Message);
+                _initiationLibrary.AddFailedInitiateIndex(ServerName, DatabaseName, ProtectedCollectionName, (IndexFailOperation.Drop, indexName));
+                if (throwOnException) throw;
+            }
+        }
 
-    //    //NOTE: Create indexes in the list
-    //    foreach (var index in indices)
-    //    {
-    //        try
-    //        {
-    //            _logger?.LogDebug("Index {indexName} will be created in collection {collection}.", index.Options.Name, ProtectedCollectionName);
-    //            var message = await collection.Indexes.CreateOneAsync(index);
-    //            _logger?.LogInformation("Index {indexName} was created in collection {collection}. {message}", index.Options.Name, ProtectedCollectionName, message);
-    //        }
-    //        catch (Exception e)
-    //        {
-    //            Debugger.Break();
-    //            _logger?.LogError(e, "Failed to create index {indexName} in collection {collection}. {message}", index.Options.Name, ProtectedCollectionName, e.Message);
-    //            InitiationLibrary.AddFailedInitiateIndex(ServerName, DatabaseName, ProtectedCollectionName, (IndexFailOperation.Create, index.Options.Name));
-    //            if (throwOnException) throw;
-    //        }
-    //    }
+        //NOTE: Create indexes in the list
+        foreach (var index in indices)
+        {
+            try
+            {
+                _logger?.LogDebug("Index {indexName} will be created in collection {collection}.", index.Options.Name, ProtectedCollectionName);
+                var message = await collection.Indexes.CreateOneAsync(index);
+                _logger?.LogInformation("Index {indexName} was created in collection {collection}. {message}", index.Options.Name, ProtectedCollectionName, message);
+            }
+            catch (Exception e)
+            {
+                Debugger.Break();
+                _logger?.LogError(e, "Failed to create index {indexName} in collection {collection}. {message}", index.Options.Name, ProtectedCollectionName, e.Message);
+                _initiationLibrary.AddFailedInitiateIndex(ServerName, DatabaseName, ProtectedCollectionName, (IndexFailOperation.Create, index.Options.Name));
+                if (throwOnException) throw;
+            }
+        }
 
-    //    var fingerprint = new CollectionFingerprint
-    //    {
-    //        ConfigurationName = ConfigurationName ?? _mongoDbService.GetConfigurationName(),
-    //        CollectionName = ProtectedCollectionName,
-    //        DatabaseName = DatabaseName
-    //    };
-    //    ((MongoDbServiceFactory)_mongoDbServiceFactory).OnIndexUpdatedEvent(this, new IndexUpdatedEventArgs(fingerprint));
-    //}
+        var fingerprint = new CollectionFingerprint
+        {
+            ConfigurationName = ConfigurationName ?? _mongoDbService.GetConfigurationName(),
+            CollectionName = ProtectedCollectionName,
+            DatabaseName = DatabaseName
+        };
+        ((MongoDbServiceFactory)_mongoDbServiceFactory).OnIndexUpdatedEvent(this, new IndexUpdatedEventArgs(fingerprint));
+    }
 
     //protected virtual async Task<TEntity> CleanEntityAsync(TEntity item)
     //{
@@ -1640,7 +1678,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             else
             {
                 _logger?.LogWarning($"Entity {{id}} of type {{entityType}} in collection {{collection}} needs cleaning. [action: Database, operation: {nameof(CleanEntityAsync)}]", item.Id, typeof(TEntity), ProtectedCollectionName);
-                InvokeAction(new ActionEventArgs.ActionData { Operation = nameof(CleanEntityAsync), Message = "Entity needs cleaning.", Level = LogLevel.Warning, Data = new Dictionary<string, object> { { "id", item.Id } } });
+                InvokeAction(new ActionEventArgs.ActionData { Operation = nameof(CleanEntityAsync), Message = "Entity needs cleaning.", Level = Microsoft.Extensions.Logging.LogLevel.Warning, Data = new Dictionary<string, object> { { "id", item.Id } } });
             }
         }
 
@@ -1703,6 +1741,11 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             }
         }
     }
+
+    private static TimeSpan GetElapsed(long from, long to)
+    {
+        return TimeSpan.FromSeconds((to - from) / (double)Stopwatch.Frequency);
+    }
 }
 
 public abstract class DiskRepositoryCollectionBase<TEntity> : DiskRepositoryCollectionBase<TEntity, ObjectId>
@@ -1712,6 +1755,13 @@ public abstract class DiskRepositoryCollectionBase<TEntity> : DiskRepositoryColl
         : base(mongoDbServiceFactory, logger, databaseContext)
     {
     }
+}
+
+internal enum InitiateAction
+{
+    NoAction,
+    InitiationPerformed,
+    WaitForOtherTask
 }
 
 //internal class EntityBaseCollection : DiskRepositoryCollectionBase<EntityBase>

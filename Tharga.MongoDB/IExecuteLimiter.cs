@@ -27,30 +27,36 @@ public class ExecuteQueuedEventArgs : ExecuteEventArgs
     public int QueueCount { get; }
 }
 
-public class ExecuteStartEventArgs : ExecuteEventArgs
+public sealed class ExecuteStartEventArgs : EventArgs
 {
-    public ExecuteStartEventArgs(Guid executeId, TimeSpan queueTime, bool isCanceled)
-        : base(executeId)
+    public ExecuteStartEventArgs(Guid executeId, TimeSpan queueElapsed, int concurrentCount)
     {
-        QueueTime = queueTime;
-        IsCanceled = isCanceled;
+        ExecuteId = executeId;
+        QueueElapsed = queueElapsed;
+        ConcurrentCount = concurrentCount;
     }
 
-    public TimeSpan QueueTime { get; }
-    public bool IsCanceled { get; }
+    public Guid ExecuteId { get; }
+    public TimeSpan QueueElapsed { get; }
+    public int ConcurrentCount { get; }
 }
 
-public class ExecuteCompleteEventArgs : ExecuteStartEventArgs
+public class ExecuteCompleteEventArgs
 {
-    public ExecuteCompleteEventArgs(Guid executeId, TimeSpan queueTime, TimeSpan executeTime, bool isCanceled, Exception exception)
-        : base(executeId, queueTime, isCanceled)
+    public ExecuteCompleteEventArgs(Guid executeId, TimeSpan queueElapsed, TimeSpan executeElapsed, bool isCanceled, Exception exception)
     {
-        ExecuteTime = executeTime;
+        ExecuteId = executeId;
+        QueueElapsed = queueElapsed;
+        ExecuteElapsed = executeElapsed;
+        IsCanceled = isCanceled;
         Exception = exception;
     }
 
-    public TimeSpan ExecuteTime { get; }
-    public TimeSpan TotalTime => QueueTime + ExecuteTime;
+    public Guid ExecuteId { get; }
+    public TimeSpan QueueElapsed { get; }
+    public TimeSpan ExecuteElapsed { get; }
+    public TimeSpan TotalTime => QueueElapsed + ExecuteElapsed;
+    public bool IsCanceled { get; }
     public Exception Exception { get; }
 }
 

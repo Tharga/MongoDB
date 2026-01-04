@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.Options;
+﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -20,6 +21,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
     private readonly IRepositoryConfiguration _repositoryConfiguration;
     private readonly ICollectionProvider _collectionProvider;
     private readonly ICallLibrary _callLibrary;
+    private readonly ILogger<DatabaseMonitor> _logger;
     private readonly DatabaseOptions _options;
     private readonly ConcurrentDictionary<string, CollectionAccessData> _accessedCollections = new();
     private bool _started;
@@ -27,7 +29,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
     public event EventHandler<CollectionInfoChangedEventArgs> CollectionInfoChangedEvent;
     public event EventHandler<ExecuteInfoChangedEventArgs> ExecuteInfoChangedEvent;
 
-    public DatabaseMonitor(IMongoDbServiceFactory mongoDbServiceFactory, IMongoDbInstance mongoDbInstance, IServiceProvider serviceProvider, IRepositoryConfiguration repositoryConfiguration, ICollectionProvider collectionProvider, ICallLibrary callLibrary, IOptions<DatabaseOptions> options)
+    public DatabaseMonitor(IMongoDbServiceFactory mongoDbServiceFactory, IMongoDbInstance mongoDbInstance, IServiceProvider serviceProvider, IRepositoryConfiguration repositoryConfiguration, ICollectionProvider collectionProvider, ICallLibrary callLibrary, IOptions<DatabaseOptions> options, ILogger<DatabaseMonitor> logger)
     {
         _mongoDbServiceFactory = mongoDbServiceFactory;
         _mongoDbInstance = mongoDbInstance;
@@ -35,6 +37,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
         _repositoryConfiguration = repositoryConfiguration;
         _collectionProvider = collectionProvider;
         _callLibrary = callLibrary;
+        _logger = logger;
         _options = options.Value;
     }
 
@@ -46,6 +49,8 @@ internal class DatabaseMonitor : IDatabaseMonitor
         {
             _mongoDbServiceFactory.IndexUpdatedEvent += async (_, e) =>
             {
+                _logger.LogTrace($"{nameof(IMongoDbServiceFactory.IndexUpdatedEvent)}: {e.Fingerprint}");
+
                 if (CollectionInfoChangedEvent != null)
                 {
                     var item = await GetInstanceAsync(e.Fingerprint);
@@ -54,6 +59,8 @@ internal class DatabaseMonitor : IDatabaseMonitor
             };
             _mongoDbServiceFactory.CollectionAccessEvent += async (_, e) =>
             {
+                _logger.LogTrace($"{nameof(IMongoDbServiceFactory.CollectionAccessEvent)}: {e.Fingerprint}");
+
                 var now = DateTime.UtcNow;
                 _accessedCollections.AddOrUpdate(e.Fingerprint.Key, new CollectionAccessData
                 {
@@ -94,13 +101,22 @@ internal class DatabaseMonitor : IDatabaseMonitor
             };
             _mongoDbServiceFactory.CallStartEvent += (_, e) =>
             {
+                _logger.LogTrace($"{nameof(IMongoDbServiceFactory.CallStartEvent)}: {e.CollectionName}");
+
                 _callLibrary.StartCall(e);
             };
             _mongoDbServiceFactory.CallEndEvent += (_, e) =>
             {
+                _logger.LogTrace($"{nameof(IMongoDbServiceFactory.CallEndEvent)}: {e.Elapsed}");
+
                 _callLibrary.EndCall(e);
             };
-            _mongoDbServiceFactory.ExecuteInfoChangedEvent += (s, e) => { ExecuteInfoChangedEvent?.Invoke(s, e); };
+            _mongoDbServiceFactory.ExecuteInfoChangedEvent += (s, e) =>
+            {
+                _logger.LogTrace($"{nameof(IMongoDbServiceFactory.ExecuteInfoChangedEvent)}");
+
+                ExecuteInfoChangedEvent?.Invoke(s, e);
+            };
         }
         finally
         {
