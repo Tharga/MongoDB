@@ -1,10 +1,13 @@
-﻿using Microsoft.Extensions.Options;
+﻿using DnsClient.Internal;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.Extensions.Logging;
+using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace Tharga.MongoDB;
 
@@ -45,7 +48,7 @@ internal class ExecuteLimiter : IExecuteLimiter
         var queueCount = _queuedCounts.AddOrUpdate(key, _ => 1, (_, current) => current + 1);
 
         //ExecuteQueuedEvent?.Invoke(this, new ExecuteQueuedEventArgs(executeId, queueCount));
-        //TODO: Add count info so that it is picked up by the Measure-count-graph.
+        LogCount("ExecuteQueue", queueCount);
         if (queueCount > 1)
         {
             _logger.LogInformation("Queued {queueCount} executions for {key}.", queueCount, key);
@@ -72,7 +75,7 @@ internal class ExecuteLimiter : IExecuteLimiter
 
         var concurrentCount = _maxConcurrentPerKey - semaphore.CurrentCount;
 
-        //TODO: Add elapsed info so that it is picked up by the Measure-elapsed-graph.
+        LogCount("ExecuteConcurrent", concurrentCount);
         if (concurrentCount >= _maxConcurrentPerKey)
         {
             _logger.LogWarning("The maximum number of {count} concurrent executions for {key} has been reached.", concurrentCount, key);
@@ -109,6 +112,18 @@ internal class ExecuteLimiter : IExecuteLimiter
 
             //_logger.LogInformation("Executed {executeId} in {executeElapsed} ms. Queued for {queueElapsed} ms.", executeId, executeElapsed.TotalMilliseconds, queueElapsed.TotalMilliseconds);
         }
+    }
+
+    private void LogCount(string action, int count)
+    {
+        var data = new Dictionary<string, object>
+        {
+            { "Monitor", "MongoDB" },
+            { "Method", "Count" },
+            //{ "Count", count },
+        };
+        var details = System.Text.Json.JsonSerializer.Serialize(data);
+        _logger.LogInformation("Count {Action} as {Count}. {Details}", action, count, details);
     }
 
     private static TimeSpan GetElapsed(long from, long to)

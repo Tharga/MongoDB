@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.Logging;
+﻿using DnsClient.Internal;
+using Microsoft.Extensions.Logging;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization;
 using MongoDB.Driver;
@@ -121,7 +122,15 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             var ss = string.Join(", ", info);
 
             ((MongoDbServiceFactory)_mongoDbServiceFactory).OnCallEnd(this, new CallEndEventArgs(callKey, elapsed, exception, count));
-            _logger?.LogInformation("Executed {method} on {collection} took {elapsed} ms. [{steps}, overhead: {overhead}]", functionName, CollectionName, elapsed.TotalMilliseconds, ss, (elapsed - total).TotalMilliseconds);
+            //_logger?.LogInformation("Executed {method} on {collection} took {elapsed} ms. [{steps}, overhead: {overhead}]", functionName, CollectionName, elapsed.TotalMilliseconds, ss, (elapsed - total).TotalMilliseconds);
+            var data = new Dictionary<string, object>
+            {
+                { "Monitor", "MongoDB" },
+                { "Method", "Measure" },
+            };
+
+            var details = System.Text.Json.JsonSerializer.Serialize(data);
+            _logger?.LogInformation("Measured {Action} in {Elapsed} ms. {Details} [{steps}, overhead: {overhead}]", $"MongoDB.{CollectionName}.{functionName}", elapsed, details, ss, (elapsed - total).TotalMilliseconds);
         }
     }
 
