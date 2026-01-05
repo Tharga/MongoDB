@@ -8,12 +8,12 @@ public enum CreateStrategy
     DropEmpty,
 
     /// <summary>
-    /// Create collection if it does not exist when a record is added.
+    /// Create collection if it does not exist when a record is added. Do not automatically drop empty collections.
     /// </summary>
     CreateOnAdd,
 
     /// <summary>
-    /// Create collection if it does not exist, on get and do not automatically drop empty collections.
+    /// Create collection if it does not exist on get and add calls. Do not automatically drop empty collections.
     /// </summary>
     CreateOnGet,
 }

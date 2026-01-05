@@ -21,10 +21,13 @@ internal class MongoDbService : IMongoDbService
     private readonly IMongoDatabase _mongoDatabase;
     private readonly MongoUrl _mongoUrl;
 
-    public MongoDbService(IRepositoryConfigurationInternal configuration, IMongoDbFirewallStateService mongoDbFirewallStateService, IMongoDbClientProvider mongoDbClientProvider, ILogger logger)
+    public MongoDbService(IRepositoryConfigurationInternal configuration, IMongoDbFirewallStateService mongoDbFirewallStateService, IMongoDbClientProvider mongoDbClientProvider, IExecuteLimiter executeLimiter, ICollectionPool collectionPool, IInitiationLibrary initiationLibrary, ILogger logger)
     {
         _configuration = configuration;
         _mongoDbFirewallStateService = mongoDbFirewallStateService;
+        ExecuteLimiter = executeLimiter;
+        CollectionPool = collectionPool;
+        InitiationLibrary = initiationLibrary;
         _logger = logger;
         _mongoUrl = configuration.GetDatabaseUrl() ?? throw new NullReferenceException("MongoUrl not found in configuration.");
         _mongoClient = mongoDbClientProvider.GetClient(_mongoUrl);
@@ -34,21 +37,31 @@ internal class MongoDbService : IMongoDbService
 
     public event EventHandler<CollectionAccessEventArgs> CollectionAccessEvent;
 
-    public async Task<IMongoCollection<T>> GetCollectionAsync<T>(string collectionName)
+    public IExecuteLimiter ExecuteLimiter { get; }
+    public ICollectionPool CollectionPool { get; }
+    public IInitiationLibrary InitiationLibrary { get; }
+
+    public async Task<IMongoCollection<T>> GetCollectionAsync<T>(string name)
     {
         await AssureFirewallAccessAsync();
 
-        var collection = _mongoDatabase.GetCollection<T>(collectionName);
+        var collection = _mongoDatabase.GetCollection<T>(name);
         var databaseContext = _configuration.GetDatabaseContext();
         var fingerprint = new CollectionFingerprint
         {
             ConfigurationName = databaseContext.ConfigurationName?.Value ?? _configuration.GetConfigurationName(),
             DatabaseName = _mongoDatabase.DatabaseNamespace.DatabaseName,
-            CollectionName = collectionName
+            CollectionName = name
         };
         CollectionAccessEvent?.Invoke(this, new CollectionAccessEventArgs(fingerprint, _mongoUrl.Url, typeof(T), databaseContext.DatabasePart));
 
         return collection;
+    }
+
+    public async Task<IMongoCollection<T>> CreateCollectionAsync<T>(string name)
+    {
+        await _mongoDatabase.CreateCollectionAsync(name);
+        return await GetCollectionAsync<T>(name);
     }
 
     public string GetConfigurationName()
@@ -69,9 +82,9 @@ internal class MongoDbService : IMongoDbService
         return _configuration?.GetExecuteInfoLogLevel() ?? LogLevel.Debug;
     }
 
-    public bool ShouldAssureIndex()
+    public AssureIndexMode GetAssureIndexMode()
     {
-        return _configuration?.ShouldAssureIndex() ?? true;
+        return _configuration?.GetAssureIndexMode() ?? AssureIndexMode.ByName;
     }
 
     public string GetDatabaseName()
@@ -121,25 +134,7 @@ internal class MongoDbService : IMongoDbService
             var documentCount = await mongoCollection.CountDocumentsAsync(FilterDefinition<BsonDocument>.Empty);
             var size = GetSize(collectionName, mongoDatabase);
 
-            var indexModels = new List<IndexMeta>();
-            using var cursor = await mongoCollection.Indexes.ListAsync();
-            var indexDocs = await cursor.ToListAsync();
-
-            foreach (var indexDoc in indexDocs)
-            {
-                var indexName = indexDoc.GetValue("name", BsonNull.Value).AsString;
-                var isUnique = indexDoc.TryGetValue("unique", out var uniqueVal) && uniqueVal.AsBoolean;
-                var keyDoc = indexDoc["key"].AsBsonDocument;
-
-                var fields = keyDoc.Names.ToArray();
-
-                indexModels.Add(new IndexMeta
-                {
-                    Name = indexName,
-                    Fields = fields,
-                    IsUnique = isUnique
-                });
-            }
+            var indexModels = await BuildIndicesModel(mongoCollection);
 
             var dbName = mongoDatabase.DatabaseNamespace.DatabaseName;
             var server = ToServerName(dbName);
@@ -158,6 +153,31 @@ internal class MongoDbService : IMongoDbService
                     .ToArray(),
             };
         }
+    }
+
+    internal static async Task<List<IndexMeta>> BuildIndicesModel<T>(IMongoCollection<T> collection)
+    {
+        var indexModels = new List<IndexMeta>();
+        using var cursor = await collection.Indexes.ListAsync();
+        var indexDocs = await cursor.ToListAsync();
+
+        foreach (var indexDoc in indexDocs)
+        {
+            var indexName = indexDoc.GetValue("name", BsonNull.Value).AsString;
+            var isUnique = indexDoc.TryGetValue("unique", out var uniqueVal) && uniqueVal.AsBoolean;
+            var keyDoc = indexDoc["key"].AsBsonDocument;
+
+            var fields = keyDoc.Names.ToArray();
+
+            indexModels.Add(new IndexMeta
+            {
+                Name = indexName,
+                Fields = fields,
+                IsUnique = isUnique
+            });
+        }
+
+        return indexModels;
     }
 
     private string ToServerName(string dbName)
@@ -225,12 +245,6 @@ internal class MongoDbService : IMongoDbService
         return _configuration.GetConfiguration().CleanOnStartup;
     }
 
-    [Obsolete($"Use {nameof(CreateCollectionStrategy)} instead.")]
-    public bool DropEmptyCollections()
-    {
-        return _configuration.GetConfiguration().DropEmptyCollections;
-    }
-
     public CreateStrategy CreateCollectionStrategy()
     {
         return _configuration.GetConfiguration().CreateCollectionStrategy;
@@ -249,6 +263,7 @@ internal class MongoDbService : IMongoDbService
 
     public IEnumerable<string> GetDatabases()
     {
+        //TODO: This uses a call to the database. Or?
         var dbs = _mongoClient.ListDatabases(CancellationToken.None).ToList();
         return dbs.Select(x => x.AsBsonValue["name"].ToString());
     }

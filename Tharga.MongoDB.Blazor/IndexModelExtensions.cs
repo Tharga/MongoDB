@@ -19,9 +19,9 @@ public static class IndexModelExtensions
 
             var equalFields = (index.Current?.Fields.Order().ToArray() ?? []).SequenceEqual(index.Defined?.Fields.Order().ToArray() ?? []);
             if (equalFields)
-                sb.Append($"Fields are correct.");
+                sb.Append("Fields are correct.");
             else
-                sb.Append($"Invalid fields.");
+                sb.Append("Invalid fields.");
 
             sb.AppendLine();
         }
@@ -30,6 +30,8 @@ public static class IndexModelExtensions
 
     public static IEnumerable<IndexModel> ToIndexModel(this CollectionInfo collectionInfo)
     {
+        if (collectionInfo == null) yield break;
+
         var names = (collectionInfo.Index.Current?.Select(x => x.Name) ?? [])
             .Union(collectionInfo.Index.Defined?.Select(x => x.Name) ?? []);
 

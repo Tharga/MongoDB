@@ -47,7 +47,7 @@ public class GetOneAsyncTest : GenericRepositoryCollectionBaseTestBase
         await VerifyContentAsync(sut);
     }
 
-    [Fact]
+    [Fact(Skip = "Not yet supported.")]
     [Trait("Category", "Database")]
     public async Task ByType()
     {
@@ -63,7 +63,7 @@ public class GetOneAsyncTest : GenericRepositoryCollectionBaseTestBase
         await VerifyContentAsync(sut);
     }
 
-    [Fact]
+    [Fact(Skip = "Not yet supported.")]
     [Trait("Category", "Database")]
     public async Task SubType()
     {

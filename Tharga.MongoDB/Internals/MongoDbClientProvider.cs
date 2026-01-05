@@ -31,9 +31,6 @@ internal class MongoDbClientProvider : IMongoDbClientProvider
 
     string GetServerKey(MongoUrl url)
     {
-        return string.Join(
-            ",",
-            url.Servers.Select(s => s.ToString()).OrderBy(x => x)
-        );
+        return string.Join(",", url.Servers.Select(s => s.ToString()).OrderBy(x => x));
     }
 }

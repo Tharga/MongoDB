@@ -6,6 +6,7 @@ using System.Linq.Expressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Tharga.MongoDB.Configuration;
+using Tharga.MongoDB.Disk;
 using Tharga.MongoDB.Internals;
 
 namespace Tharga.MongoDB;
@@ -18,7 +19,7 @@ public abstract class RepositoryCollectionBase
     internal abstract string DatabaseName { get; }
     public abstract string CollectionName { get; }
     public abstract string ConfigurationName { get; }
-    public abstract long? VirtualCount { get; }
+    //public abstract long? VirtualCount { get; }
 
     internal void InvokeAction(ActionEventArgs.ActionData actionData, ActionEventArgs.ContextData contextData)
     {
@@ -59,8 +60,6 @@ public abstract class RepositoryCollectionBase<TEntity, TKey> : RepositoryCollec
     public override string ConfigurationName => _databaseContext?.ConfigurationName;
     public virtual bool AutoClean => _mongoDbService.GetAutoClean();
     public virtual bool CleanOnStartup => _mongoDbService.GetCleanOnStartup();
-    [Obsolete($"Use {nameof(CreateCollectionStrategy)} instead.")]
-    public virtual bool DropEmptyCollections => _mongoDbService.DropEmptyCollections();
     public virtual CreateStrategy CreateCollectionStrategy => _mongoDbService.CreateCollectionStrategy();
     public virtual int? ResultLimit => _mongoDbService.GetResultLimit();
     public virtual IEnumerable<CreateIndexModel<TEntity>> Indices => null;
@@ -69,12 +68,27 @@ public abstract class RepositoryCollectionBase<TEntity, TKey> : RepositoryCollec
 
     public abstract IAsyncEnumerable<TEntity> GetAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default);
     public abstract IAsyncEnumerable<TEntity> GetAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default);
+
+    [Obsolete("Projection methods will have to be developed if needed.")]
     public abstract IAsyncEnumerable<T> GetAsync<T>(Expression<Func<T, bool>> predicate = null, Options<T> options = null, CancellationToken cancellationToken = default) where T : TEntity;
+
+    [Obsolete("Projection methods will have to be developed if needed.")]
     public abstract IAsyncEnumerable<T> GetProjectionAsync<T>(Expression<Func<T, bool>> predicate = null, Options<T> options = null, CancellationToken cancellationToken = default);
+
+    [Obsolete($"Use {nameof(GetManyAsync)} instead. This method will be deprecated.")]
     public abstract Task<Result<TEntity, TKey>> QueryAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default);
+    public abstract Task<Result<TEntity, TKey>> GetManyAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default);
+
+    [Obsolete($"Use {nameof(GetManyAsync)} instead. This method will be deprecated.")]
     public abstract Task<Result<TEntity, TKey>> QueryAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default);
+    public abstract Task<Result<TEntity, TKey>> GetManyAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default);
+
+    [Obsolete($"Use {nameof(GetManyAsync)} instead. This method will be deprecated.")]
     public abstract IAsyncEnumerable<ResultPage<TEntity, TKey>> GetPagesAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default);
+
+    [Obsolete($"Use {nameof(GetManyAsync)} instead. This method will be deprecated.")]
     public abstract IAsyncEnumerable<ResultPage<TEntity, TKey>> GetPagesAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default);
+
     public abstract Task<TEntity> GetOneAsync(TKey id, CancellationToken cancellationToken = default);
     public abstract Task<TEntity> GetOneAsync(Expression<Func<TEntity, bool>> predicate = null, OneOption<TEntity> options = null, CancellationToken cancellationToken = default);
     public abstract Task<TEntity> GetOneAsync(FilterDefinition<TEntity> filter, OneOption<TEntity> options = null, CancellationToken cancellationToken = default);
@@ -92,7 +106,10 @@ public abstract class RepositoryCollectionBase<TEntity, TKey> : RepositoryCollec
     public abstract Task<TEntity> DeleteOneAsync(TKey id);
     public abstract Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate = null, OneOption<TEntity> options = null);
     public abstract Task<long> DeleteManyAsync(Expression<Func<TEntity, bool>> predicate);
+
+    [Obsolete($"Use {nameof(GetCollectionScope)} instead. This method will be deprecated.")]
     public abstract IMongoCollection<TEntity> GetCollection();
+    public abstract Task<CollectionScope<TEntity>> GetCollectionScope(Operation operation);
 
     public abstract Task DropCollectionAsync();
 

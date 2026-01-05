@@ -1,11 +1,18 @@
-﻿@using Tharga.Blazor
+﻿@using Microsoft.Extensions.Options
+@using Tharga.Blazor
 @using Tharga.Blazor.Framework.Buttons
 @using Tharga.MongoDB
+@using Tharga.MongoDB.Configuration
 @using Tharga.Toolkit
 @inject IDatabaseMonitor DatabaseMonitor;
 @inject DialogService DialogService
+@inject IOptions<DatabaseOptions> DatabaseOptions
 
-@if (_model == null)
+@if (!DatabaseOptions.Value.Monitor.Enabled)
+{
+    <RadzenText>Database monitor is disabled.</RadzenText>
+}
+else if (_model == null)
 {
     <Loading />
 }
@@ -45,7 +52,7 @@ else
                 <RadzenDataGridColumn Title="Collection" Property="@nameof(CollectionModel.CollectionName)" />
                 <RadzenDataGridColumn Title="Source" Property="@nameof(CollectionModel.Source)" Filterable="false"/>
                 <RadzenDataGridColumn Title="Registration" Property="@nameof(CollectionModel.Registration)" Filterable="false" Width="120px" />
-                <RadzenDataGridColumn Title="Access Count" Property="@nameof(CollectionModel.Accessed)" TextAlign="TextAlign.Right" CssClass="css-access" Width="120px">
+                <RadzenDataGridColumn Title="Access" Property="@nameof(CollectionModel.Accessed)" TextAlign="TextAlign.Right" CssClass="css-access" Width="120px">
                     <Template>
                         @if (context.AccessCount == 0)
                         {
@@ -57,16 +64,22 @@ else
                         }
                     </Template>
                 </RadzenDataGridColumn>
-                <RadzenDataGridColumn Title="Document Count" Property="@nameof(CollectionModel.ValidDocumentCount)" TextAlign="TextAlign.Right" CssClass="css-count" Width="120px">
+                <RadzenDataGridColumn Title=Calls Property="@nameof(CollectionModel.CallCount)" Filterable="false" TextAlign="TextAlign.Right" Width="120px">
                     <Template>
-                        @if (context.DocumentCount.IsValid)
+                        <RadzenText Text="@($"{context.CallCount:N0}")" />
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn Title="Documents" Property="@($"{nameof(CollectionModel.DocumentCount)}.{nameof(CollectionModel.DocumentCount.Count)}")" TextAlign="TextAlign.Right" CssClass="css-count" Width="120px">
+                    <Template>
+                        <RadzenText Text="@($"{context.DocumentCount.Count:N0}")" />
+                        @* @if (context.DocumentCount.IsValid)
                         {
-                            <RadzenText Text="@($"{context.DocumentCount.Count:N0}")" />
+                            <RadzenText Text="@($"{context.DocumentCount.Count:N0}")"/>
                         }
                         else
                         {
                             <span title="@($"Virtual count is {context.DocumentCount.Virtual:N0}.")"><RadzenText Text="@($"{context.DocumentCount.Count:N0}")"/></span>
-                        }
+                        } *@
                     </Template>
                 </RadzenDataGridColumn>
                 <RadzenDataGridColumn Title="Size" Property="@nameof(CollectionModel.Size)" TextAlign="TextAlign.Right" Filterable="false" Width="120px">
@@ -111,6 +124,9 @@ else
     [Parameter]
     public bool FullDatabaseScan { get; set; }
 
+    [Parameter]
+    public string Filter { get; set; }
+
     protected override async Task OnParametersSetAsync()
     {
         DatabaseMonitor.CollectionInfoChangedEvent += async (_, e) =>
@@ -123,17 +139,19 @@ else
             {
                 item.Source = e.CollectionInfo.Source;
                 item.AccessCount = e.CollectionInfo.AccessCount;
+                item.CallCount = e.CollectionInfo.CallCount;
                 item.DocumentCount = e.CollectionInfo.DocumentCount;
                 item.Size = e.CollectionInfo.Size;
                 item.Index = e.CollectionInfo.Index;
 
-                var m = _model.SingleOrDefault(x => x.ConfigurationName == item.ConfigurationName && x.CollectionName == item.CollectionName);
+                var m = _model.SingleOrDefault(x => x.ConfigurationName == item.ConfigurationName && x.DatabaseName == item.DatabaseName && x.CollectionName == item.CollectionName);
                 if (m != null)
                 {
                     var indexModels = e.CollectionInfo.ToIndexModel().ToArray();
 
                     m.Source = e.CollectionInfo.Source;
                     m.AccessCount = e.CollectionInfo.AccessCount;
+                    m.CallCount = e.CollectionInfo.CallCount;
                     m.DocumentCount = e.CollectionInfo.DocumentCount;
                     m.Size = e.CollectionInfo.Size;
                     m.Indices = indexModels;
@@ -144,7 +162,7 @@ else
             }
         };
 
-        _all = await DatabaseMonitor.GetInstancesAsync(FullDatabaseScan).ToArrayAsync();
+        _all = await DatabaseMonitor.GetInstancesAsync(FullDatabaseScan, Filter).ToArrayAsync();
         _databases = _all.GroupBy(x => x.DatabaseName).Select(x => x.First()).Select(x => x.DatabaseName).Order().ToArray();
         await ReloadData();
         await base.OnParametersSetAsync();
@@ -180,6 +198,7 @@ else
                     Source = x.Source,
                     Registration = x.Registration,
                     AccessCount = x.AccessCount,
+                    CallCount = x.CallCount,
                     Size = x.Size,
                     Indices = indexModels,
                     IndexEqualFields = indexModels.All(y => y.EqualFields)
@@ -208,10 +227,10 @@ else
         else if (cssClass.StartsWith("css-count"))
         {
             string color = null;
-            if (!args.Data.DocumentCount.IsValid)
-            {
-                color = "pink";
-            }
+            // if (!args.Data.DocumentCount.IsValid)
+            // {
+            //     color = "pink";
+            // }
             //else if (args.Data.DocumentCount.Virtual == null)
             //{
             //    color = "lightyellow";

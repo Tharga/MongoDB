@@ -8,10 +8,11 @@ namespace Tharga.MongoDB;
 public interface IDatabaseMonitor
 {
     event EventHandler<CollectionInfoChangedEventArgs> CollectionInfoChangedEvent;
+    event EventHandler<ExecuteInfoChangedEventArgs> ExecuteInfoChangedEvent;
 
     IEnumerable<ConfigurationName> GetConfigurations();
     Task<CollectionInfo> GetInstanceAsync(CollectionFingerprint fingerprint);
-    IAsyncEnumerable<CollectionInfo> GetInstancesAsync(bool fullDatabaseScan = false);
+    IAsyncEnumerable<CollectionInfo> GetInstancesAsync(bool fullDatabaseScan = false, string filter = default);
     Task TouchAsync(CollectionInfo collectionInfo);
     Task<(int Before, int After)> DropIndexAsync(CollectionInfo collectionInfo);
     Task RestoreIndexAsync(CollectionInfo collectionInfo);

@@ -1,7 +1,14 @@
-﻿@using Tharga.Blazor
+﻿@using Microsoft.Extensions.Options
+@using Tharga.Blazor
+@using Tharga.MongoDB.Configuration
 @inject IDatabaseMonitor DatabaseMonitor;
+@inject IOptions<DatabaseOptions> DatabaseOptions
 
-@if (_model == null)
+@if (!DatabaseOptions.Value.Monitor.Enabled)
+{
+    <RadzenText>Database monitor is disabled.</RadzenText>
+}
+else if (_model == null)
 {
     <Loading />
 }
@@ -17,6 +24,7 @@ else
                         <Items>
                             <RadzenSelectBarItem Text="Last" Value="CallType.Last"/>
                             <RadzenSelectBarItem Text="Slow" Value="CallType.Slow"/>
+                            <RadzenSelectBarItem Text="Ongoing" Value="CallType.Ongoing"/>
                         </Items>
                     </RadzenSelectBar>
                 </RadzenStack>
@@ -41,9 +49,9 @@ else
                         <DateTimeView Date="@context.StartTime"/>
                     </Template>
                 </RadzenDataGridColumn>
-                <RadzenDataGridColumn Title="Configuration" Property="@nameof(CallInfo.ConfigurationName)" Visible="@_showConfiguration" />
-                <RadzenDataGridColumn Title="Database" Property="@nameof(CallInfo.DatabaseName)" />
-                <RadzenDataGridColumn Title="Collection" Property="@nameof(CallInfo.CollectionName)" />
+                <RadzenDataGridColumn Title="Configuration" Property="@($"{nameof(CallInfo.Fingerprint)}.{nameof(CallInfo.Fingerprint.ConfigurationName)}")" Visible="@_showConfiguration" />
+                <RadzenDataGridColumn Title="Database" Property="@($"{nameof(CallInfo.Fingerprint)}.{nameof(CallInfo.Fingerprint.DatabaseName)}")" />
+                <RadzenDataGridColumn Title="Collection" Property="@($"{nameof(CallInfo.Fingerprint)}.{nameof(CallInfo.Fingerprint.CollectionName)}")" />
                 <RadzenDataGridColumn Title="Function" Property="@nameof(CallInfo.FunctionName)"/>
                 <RadzenDataGridColumn Title="Operation" Property="@nameof(CallInfo.Operation)"/>
                 <RadzenDataGridColumn Title="Count" Property="@nameof(CallInfo.Count)"/>
@@ -73,8 +81,10 @@ else
 
     protected override async Task OnParametersSetAsync()
     {
+        //TODO: Add event listener to update, especially ongoing calls.
+
         _all = DatabaseMonitor.GetCalls(CallType.Last).Union(DatabaseMonitor.GetCalls(CallType.Slow)).ToArray();
-        _databases = _all.GroupBy(x => x.DatabaseName).Select(x => x.First()).Select(x => x.DatabaseName).Order().ToArray();
+        _databases = _all.GroupBy(x => x.Fingerprint.DatabaseName).Select(x => x.First()).Select(x => x.Fingerprint.DatabaseName).Order().ToArray();
 
         ReloadData();
         await base.OnParametersSetAsync();
@@ -107,8 +117,8 @@ else
     {
         _all = DatabaseMonitor.GetCalls(SelectedCallType).ToArray();
         // _databases = _all.GroupBy(x => x.DatabaseName).Select(x => x.First()).Select(x => x.DatabaseName).Order().ToArray();
-        _model = _all.Where(x => SelectedDatabases == null || !SelectedDatabases.Any() || SelectedDatabases.Contains(x.DatabaseName)).ToArray();
-        _showConfiguration = _model.GroupBy(x => x.ConfigurationName).Count() > 1;
+        _model = _all.Where(x => SelectedDatabases == null || !SelectedDatabases.Any() || SelectedDatabases.Contains(x.Fingerprint.DatabaseName)).ToArray();
+        _showConfiguration = _model.GroupBy(x => x.Fingerprint.ConfigurationName).Count() > 1;
         StateHasChanged();
     }
 

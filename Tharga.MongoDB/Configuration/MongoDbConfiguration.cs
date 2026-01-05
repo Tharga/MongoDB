@@ -31,11 +31,7 @@ public record MongoDbConfiguration
     public bool? CleanOnStartup { get; init; }
 
     /// <summary>
-    /// Drops the collection when the last item is deleted. It also drops empty collection on access, if CleanOnStartup is set to true.
-    /// Default value is true.
+    /// Default value is DropEmpty, meaning collections are created when the first entity is added and removed when the last entity is deleted. Change this behaviour with this configuration.
     /// </summary>
-    [Obsolete($"Use {nameof(CreateCollectionStrategy)} instead")]
-    public bool? DropEmptyCollections { get; init; }
-
     public CreateStrategy CreateCollectionStrategy { get; init; }
 }

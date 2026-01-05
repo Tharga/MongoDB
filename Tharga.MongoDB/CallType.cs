@@ -3,5 +3,6 @@
 public enum CallType
 {
     Last,
-    Slow
+    Slow,
+    Ongoing
 }

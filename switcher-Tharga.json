@@ -1,0 +1,8 @@
+{
+  "solution": "Tharga.MongoDB.sln",
+  "solutionFolder": null,
+  "mappings": {
+    "Tharga.Blazor": "../Blazor/Tharga.Blazor/Tharga.Blazor.csproj"
+  },
+  "removeProjects": true
+}

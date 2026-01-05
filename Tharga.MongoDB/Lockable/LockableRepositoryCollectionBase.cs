@@ -42,7 +42,7 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
 
     protected virtual TimeSpan DefaultTimeout { get; init; } = TimeSpan.FromSeconds(30);
     protected virtual bool RequireActor => true;
-    public override long? VirtualCount => Disk.VirtualCount;
+    //public override long? VirtualCount => Disk.VirtualCount;
 
     public override IAsyncEnumerable<TEntity> GetAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default)
     {
@@ -54,31 +54,47 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
         return Disk.GetAsync(filter, options, cancellationToken);
     }
 
+    [Obsolete("Projection methods will have to be developed if needed.")]
     public override IAsyncEnumerable<T> GetAsync<T>(Expression<Func<T, bool>> predicate = null, Options<T> options = null, CancellationToken cancellationToken = default)
     {
         return Disk.GetAsync(predicate, options, cancellationToken);
     }
 
+    [Obsolete("Projection methods will have to be developed if needed.")]
     public override IAsyncEnumerable<T> GetProjectionAsync<T>(Expression<Func<T, bool>> predicate = null, Options<T> options = null, CancellationToken cancellationToken = default)
     {
         return Disk.GetProjectionAsync(predicate, options, cancellationToken);
     }
 
+    [Obsolete($"Use {nameof(GetManyAsync)} instead. This method will be deprecated.")]
     public override Task<Result<TEntity, TKey>> QueryAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default)
     {
         return Disk.QueryAsync(predicate, options, cancellationToken);
     }
 
+    public override Task<Result<TEntity, TKey>> GetManyAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default)
+    {
+        return Disk.GetManyAsync(predicate, options, cancellationToken);
+    }
+
+    [Obsolete($"Use {nameof(GetManyAsync)} instead. This method will be deprecated.")]
     public override Task<Result<TEntity, TKey>> QueryAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default)
     {
         return Disk.QueryAsync(filter, options, cancellationToken);
     }
 
+    public override Task<Result<TEntity, TKey>> GetManyAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default)
+    {
+        return Disk.GetManyAsync(filter, options, cancellationToken);
+    }
+
+    [Obsolete($"Use {nameof(GetManyAsync)} instead. This method will be deprecated.")]
     public override IAsyncEnumerable<ResultPage<TEntity, TKey>> GetPagesAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default)
     {
         return Disk.GetPagesAsync(predicate, options, cancellationToken);
     }
 
+    [Obsolete($"Use {nameof(GetManyAsync)} instead. This method will be deprecated.")]
     public override IAsyncEnumerable<ResultPage<TEntity, TKey>> GetPagesAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default)
     {
         return Disk.GetPagesAsync(filter, options, cancellationToken);
@@ -187,12 +203,9 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
 
     public async IAsyncEnumerable<TEntity> GetUnlockedAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        await foreach (var page in Disk.GetPagesAsync(UnlockedOrExpiredFilter.AndAlso(predicate ?? (x => true)), options, cancellationToken))
+        await foreach (var item in Disk.GetAsync(UnlockedOrExpiredFilter.AndAlso(predicate ?? (x => true)), options, cancellationToken))
         {
-            await foreach (var item in page.Items.WithCancellation(cancellationToken))
-            {
-                yield return item;
-            }
+            yield return item;
         }
     }
 
@@ -278,9 +291,17 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
         }
     }
 
+    [Obsolete($"Use {nameof(GetCollectionScope)} instead. This method will be deprecated.")]
     public override IMongoCollection<TEntity> GetCollection()
     {
-        return Disk.GetCollection();
+        //return Disk.GetCollection();
+        throw new NotSupportedException();
+    }
+
+    public override Task<CollectionScope<TEntity>> GetCollectionScope(Operation operation)
+    {
+        //return Disk.GetCollectionScope();
+        throw new NotSupportedException();
     }
 
     public override Task DropCollectionAsync()

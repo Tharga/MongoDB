@@ -1,6 +1,5 @@
 ﻿using Microsoft.Extensions.Logging;
 using MongoDB.Driver;
-using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Tharga.MongoDB.Configuration;
@@ -9,10 +8,8 @@ namespace Tharga.MongoDB;
 
 public interface IMongoDbService
 {
-    //event EventHandler<CollectionAccessEventArgs> CollectionAccessEvent;
-    //event EventHandler<IndexUpdatedEventArgs> IndexUpdatedEvent;
-
-    Task<IMongoCollection<T>> GetCollectionAsync<T>(string collectionName);
+    Task<IMongoCollection<T>> GetCollectionAsync<T>(string name);
+    Task<IMongoCollection<T>> CreateCollectionAsync<T>(string name);
     string GetConfigurationName();
     string GetDatabaseName();
     string GetDatabaseAddress();
@@ -29,10 +26,8 @@ public interface IMongoDbService
     int? GetResultLimit();
     bool GetAutoClean();
     bool GetCleanOnStartup();
-    [Obsolete($"Use {nameof(CreateCollectionStrategy)} instead.")]
-    bool DropEmptyCollections();
     CreateStrategy CreateCollectionStrategy();
     ValueTask<string> AssureFirewallAccessAsync(bool force = false);
     LogLevel GetExecuteInfoLogLevel();
-    bool ShouldAssureIndex();
+    AssureIndexMode GetAssureIndexMode();
 }

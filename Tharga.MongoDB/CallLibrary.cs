@@ -26,22 +26,10 @@ internal class CallLibrary : ICallLibrary
 
     public void StartCall(CallStartEventArgs e)
     {
-        _ = Task.Run(() => StartCallInternal(e));
-    }
-
-    public void EndCall(CallEndEventArgs e)
-    {
-        _ = Task.Run(() => EndCallInternal(e));
-    }
-
-    private void StartCallInternal(CallStartEventArgs e)
-    {
         var info = new CallInfo
         {
             StartTime = DateTime.UtcNow,
-            ConfigurationName = e.ConfigurationName,
-            DatabaseName = e.DatabaseName,
-            CollectionName = e.CollectionName,
+            Fingerprint = e.Fingerprint,
             FunctionName = e.FunctionName,
             Operation = e.Operation
         };
@@ -58,9 +46,9 @@ internal class CallLibrary : ICallLibrary
         }
     }
 
-    private async Task EndCallInternal(CallEndEventArgs e)
+    public async Task<CollectionFingerprint> EndCallAsync(CallEndEventArgs e)
     {
-        if (!_calls.TryGetValue(e.CallKey, out var item)) return;
+        if (!_calls.TryGetValue(e.CallKey, out var item)) return default;
 
         item.Elapsed = e.Elapsed;
         item.Count = e.Count;
@@ -89,6 +77,8 @@ internal class CallLibrary : ICallLibrary
         {
             _slowestSemaphore.Release();
         }
+
+        return item.Fingerprint;
     }
 
     public IEnumerable<CallInfo> GetLastCalls()
@@ -107,5 +97,10 @@ internal class CallLibrary : ICallLibrary
         {
             _slowestSemaphore.Release();
         }
+    }
+
+    public IEnumerable<CallInfo> GetOngoingCalls()
+    {
+        return _calls.Values.Where(x => !x.Final);
     }
 }

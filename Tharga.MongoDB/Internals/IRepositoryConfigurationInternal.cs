@@ -11,5 +11,5 @@ internal interface IRepositoryConfigurationInternal
     MongoUrl GetDatabaseUrl();
     MongoDbConfig GetConfiguration();
     LogLevel GetExecuteInfoLogLevel();
-    bool ShouldAssureIndex();
+    AssureIndexMode GetAssureIndexMode();
 }

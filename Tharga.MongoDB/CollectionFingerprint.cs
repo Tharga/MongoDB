@@ -3,7 +3,7 @@ using Tharga.MongoDB.Configuration;
 
 namespace Tharga.MongoDB;
 
-public record CollectionFingerprint //: ICollectionFingerprint //: IDatabaseContext
+public record CollectionFingerprint
 {
     private readonly ConfigurationName _configurationName;
     private string _key;

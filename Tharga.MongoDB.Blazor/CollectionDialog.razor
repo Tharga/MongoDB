@@ -42,14 +42,15 @@ else
             </RadzenColumn>
             <RadzenColumn>
                 <RadzenText TextStyle="TextStyle.Caption" Text="Document Count"/>
-                @if (_model.DocumentCount.IsValid)
+                <RadzenText Text="@($"{_model.DocumentCount.Count:N0}")" />
+                @* @if (_model.DocumentCount.IsValid)
                 {
                     <RadzenText Text="@($"{_model.DocumentCount.Count:N0}")" />
                 }
                 else
                 {
                     <RadzenText Text="@($"{_model.DocumentCount.Count:N0} (Virtual count is {_model.DocumentCount.Virtual:N0})")" />
-                }
+                } *@
             </RadzenColumn>
             <RadzenColumn>
                 <RadzenText TextStyle="TextStyle.Caption" Text="Size"/>

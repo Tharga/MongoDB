@@ -1,18 +1,20 @@
-﻿using Microsoft.Extensions.DependencyInjection;
+﻿using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization;
 using MongoDB.Bson.Serialization.Serializers;
 using System;
 using System.Linq;
 using System.Threading.Tasks;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Options;
 using Tharga.MongoDB.Atlas;
 using Tharga.MongoDB.Configuration;
+using Tharga.MongoDB.Disk;
 using Tharga.MongoDB.Internals;
 using Tharga.Runtime;
+using static Tharga.MongoDB.DatabaseMonitor;
 
 namespace Tharga.MongoDB;
 
@@ -42,7 +44,7 @@ public static class MongoDbRegistrationExtensions
             AutoRegisterCollections = c?.AutoRegisterCollections ?? Constants.AutoRegisterCollectionsDefault,
             UseCollectionProviderCache = c?.UseCollectionProviderCache ?? false,
             ExecuteInfoLogLevel = c?.ExecuteInfoLogLevel ?? LogLevel.Debug,
-            AssureIndex = c?.AssureIndex ?? true,
+            AssureIndex = c?.AssureIndex ?? AssureIndexMode.ByName,
             Monitor = new MonitorOptions
             {
                 Enabled = c?.Monitor?.Enabled ?? om.Enabled,
@@ -68,13 +70,19 @@ public static class MongoDbRegistrationExtensions
         services.AddTransient<IMongoDbFirewallService, MongoDbFirewallService>();
         services.AddSingleton<IMongoDbClientProvider, MongoDbClientProvider>();
         services.AddSingleton<IMongoDbFirewallStateService, MongoDbFirewallStateService>();
+        services.AddSingleton<IExecuteLimiter, ExecuteLimiter>();
+        services.AddSingleton<ICollectionPool, CollectionPool>();
+        services.AddSingleton<IInitiationLibrary, InitiationLibrary>();
         services.AddSingleton<IMongoDbServiceFactory>(serviceProvider =>
         {
             var mongoDbClientProvider = serviceProvider.GetService<IMongoDbClientProvider>();
             var repositoryConfigurationLoader = serviceProvider.GetService<IRepositoryConfigurationLoader>();
             var mongoDbFirewallStateService = serviceProvider.GetService<IMongoDbFirewallStateService>();
+            var executeLimiter = serviceProvider.GetService<IExecuteLimiter>();
+            var collectionPool = serviceProvider.GetService<ICollectionPool>();
+            var initiationLibrary = serviceProvider.GetService<IInitiationLibrary>();
             var logger = serviceProvider.GetService<ILogger<MongoDbServiceFactory>>();
-            return new MongoDbServiceFactory(mongoDbClientProvider, repositoryConfigurationLoader, mongoDbFirewallStateService, logger);
+            return new MongoDbServiceFactory(mongoDbClientProvider, repositoryConfigurationLoader, mongoDbFirewallStateService, executeLimiter, collectionPool, initiationLibrary, logger);
         });
         services.AddTransient<IRepositoryConfigurationLoader>(serviceProvider =>
         {
@@ -85,6 +93,7 @@ public static class MongoDbRegistrationExtensions
         services.AddTransient<IMongoUrlBuilderLoader>(serviceProvider => new MongoUrlBuilderLoader(serviceProvider, o));
         services.AddTransient<IRepositoryConfiguration>(serviceProvider => new RepositoryConfiguration(serviceProvider, o));
 
+        //TODO: Is this needed now, when we have the new FetchCollection, it should use the same handling.
         services.AddSingleton<ICollectionProviderCache>(_ =>
         {
             if (o.UseCollectionProviderCache)
@@ -121,7 +130,10 @@ public static class MongoDbRegistrationExtensions
             var currentDomainDefinedTypes = AssemblyService.GetTypes<IRepository>(x => !x.IsGenericType && !x.IsInterface, o.AutoRegistrationAssemblies).ToArray();
             foreach (var repositoryType in currentDomainDefinedTypes)
             {
-                var serviceTypes = repositoryType.ImplementedInterfaces.Where(x => x.IsInterface && !x.IsGenericType && x != typeof(IRepository)).ToArray();
+                var serviceTypes = repositoryType.ImplementedInterfaces
+                    .Where(x => x.IsInterface && !x.IsGenericType && x != typeof(IRepository))
+                    .Where(x => x.IsOfType<IRepository>())
+                    .ToArray();
                 if (serviceTypes.Length > 1) throw new InvalidOperationException($"There are {serviceTypes.Length} interfaces for repository type '{repositoryType.Name}' ({string.Join(", ", serviceTypes.Select(x => x.Name))}).");
                 var implementationType = repositoryType.AsType();
                 var serviceType = serviceTypes.Length == 0 ? implementationType : serviceTypes.Single();
@@ -189,6 +201,7 @@ public static class MongoDbRegistrationExtensions
         }
         else
         {
+            services.AddSingleton<IDatabaseMonitor, DatabaseNullMonitor>();
         }
 
         return services;
@@ -211,7 +224,6 @@ public static class MongoDbRegistrationExtensions
             {
                 FirewallConfigurationNames = repositoryConfiguration.GetDatabaseConfigurationNames().ToArray()
             },
-            //UseMonitor = true,
             OpenFirewall = true,
         };
         options?.Invoke(o);
@@ -267,6 +279,20 @@ public static class MongoDbRegistrationExtensions
 
                 _actionEvent?.Invoke(new ActionEventArgs(new ActionEventArgs.ActionData { Message = "Firewall open process complete.", Level = LogLevel.Debug }, new ActionEventArgs.ContextData()));
                 o.Logger?.LogDebug("Firewall open process complete.");
+            });
+
+            if (o.WaitToComplete) Task.WaitAll(task);
+        }
+
+        if (o.AssureIndex)
+        {
+            var task = Task.Run(async () =>
+            {
+                var monitor = app.Services.GetService<IDatabaseMonitor>();
+                await foreach (var collectionInfo in monitor.GetInstancesAsync().Where(x => x.Registration == Registration.Static))
+                {
+                    await monitor.RestoreIndexAsync(collectionInfo);
+                }
             });
 
             if (o.WaitToComplete) Task.WaitAll(task);

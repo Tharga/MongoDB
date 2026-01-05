@@ -2,10 +2,23 @@
 
 public enum Operation
 {
-    Get,
-    GetAsyncEnumerable,
-    Add,
+    /// <summary>
+    /// Create operations might initiate indices, .
+    /// </summary>
+    Create,
+
+    /// <summary>
+    /// Read operations will not change the collection.
+    /// </summary>
+    Read,
+
+    /// <summary>
+    /// Use for 'CreateOrUpdate' features.
+    /// </summary>
     Update,
-    AddOrUpdate,
-    Remove
+
+    /// <summary>
+    /// Delete operations.
+    /// </summary>
+    Delete,
 }

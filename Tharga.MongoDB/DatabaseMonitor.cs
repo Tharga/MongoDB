@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.Options;
+﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -20,13 +21,15 @@ internal class DatabaseMonitor : IDatabaseMonitor
     private readonly IRepositoryConfiguration _repositoryConfiguration;
     private readonly ICollectionProvider _collectionProvider;
     private readonly ICallLibrary _callLibrary;
+    private readonly ILogger<DatabaseMonitor> _logger;
     private readonly DatabaseOptions _options;
     private readonly ConcurrentDictionary<string, CollectionAccessData> _accessedCollections = new();
     private bool _started;
 
     public event EventHandler<CollectionInfoChangedEventArgs> CollectionInfoChangedEvent;
+    public event EventHandler<ExecuteInfoChangedEventArgs> ExecuteInfoChangedEvent;
 
-    public DatabaseMonitor(IMongoDbServiceFactory mongoDbServiceFactory, IMongoDbInstance mongoDbInstance, IServiceProvider serviceProvider, IRepositoryConfiguration repositoryConfiguration, ICollectionProvider collectionProvider, ICallLibrary callLibrary, IOptions<DatabaseOptions> options)
+    public DatabaseMonitor(IMongoDbServiceFactory mongoDbServiceFactory, IMongoDbInstance mongoDbInstance, IServiceProvider serviceProvider, IRepositoryConfiguration repositoryConfiguration, ICollectionProvider collectionProvider, ICallLibrary callLibrary, IOptions<DatabaseOptions> options, ILogger<DatabaseMonitor> logger)
     {
         _mongoDbServiceFactory = mongoDbServiceFactory;
         _mongoDbInstance = mongoDbInstance;
@@ -34,6 +37,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
         _repositoryConfiguration = repositoryConfiguration;
         _collectionProvider = collectionProvider;
         _callLibrary = callLibrary;
+        _logger = logger;
         _options = options.Value;
     }
 
@@ -45,11 +49,18 @@ internal class DatabaseMonitor : IDatabaseMonitor
         {
             _mongoDbServiceFactory.IndexUpdatedEvent += async (_, e) =>
             {
-                var item = await GetInstanceAsync(e.Fingerprint);
-                if (item != null) CollectionInfoChangedEvent?.Invoke(this, new CollectionInfoChangedEventArgs(item));
+                _logger.LogTrace($"{nameof(IMongoDbServiceFactory.IndexUpdatedEvent)}: {e.Fingerprint}");
+
+                if (CollectionInfoChangedEvent != null)
+                {
+                    var item = await GetInstanceAsync(e.Fingerprint);
+                    if (item != null) CollectionInfoChangedEvent?.Invoke(this, new CollectionInfoChangedEventArgs(item));
+                }
             };
             _mongoDbServiceFactory.CollectionAccessEvent += async (_, e) =>
             {
+                _logger.LogTrace($"{nameof(IMongoDbServiceFactory.CollectionAccessEvent)}: {e.Fingerprint}");
+
                 var now = DateTime.UtcNow;
                 _accessedCollections.AddOrUpdate(e.Fingerprint.Key, new CollectionAccessData
                 {
@@ -71,16 +82,52 @@ internal class DatabaseMonitor : IDatabaseMonitor
                     return item;
                 });
 
-                var item = await GetInstanceAsync(e.Fingerprint);
-                if (item != null) CollectionInfoChangedEvent?.Invoke(this, new CollectionInfoChangedEventArgs(item));
+                if (Debugger.IsAttached)
+                {
+                    if (_accessedCollections.TryGetValue(e.Fingerprint.Key, out var item))
+                    {
+                        if (item.AccessCount > 1)
+                        {
+                            //TODO: Check why this collection was "accessed" more than once.
+                        }
+                    }
+                }
+
+                if (CollectionInfoChangedEvent != null)
+                {
+                    var item = await GetInstanceAsync(e.Fingerprint);
+                    if (item != null) CollectionInfoChangedEvent?.Invoke(this, new CollectionInfoChangedEventArgs(item));
+                }
             };
             _mongoDbServiceFactory.CallStartEvent += (_, e) =>
             {
+                _logger.LogTrace($"{nameof(IMongoDbServiceFactory.CallStartEvent)}: {e.Fingerprint.CollectionName}");
+
                 _callLibrary.StartCall(e);
             };
-            _mongoDbServiceFactory.CallEndEvent += (_, e) =>
+            _mongoDbServiceFactory.CallEndEvent += async (_, e) =>
             {
-                _callLibrary.EndCall(e);
+                _logger.LogTrace($"{nameof(IMongoDbServiceFactory.CallEndEvent)}: {e.Elapsed}");
+
+                var fingerprint = await _callLibrary.EndCallAsync(e);
+
+                if (_accessedCollections.TryGetValue(fingerprint.Key, out var data))
+                {
+                    var updated = data with { CallCount = data.CallCount + 1 };
+                    _accessedCollections.TryUpdate(fingerprint.Key, updated, data);
+                }
+
+                if (CollectionInfoChangedEvent != null)
+                {
+                    var item = await GetInstanceAsync(fingerprint);
+                    if (item != null) CollectionInfoChangedEvent?.Invoke(this, new CollectionInfoChangedEventArgs(item));
+                }
+            };
+            _mongoDbServiceFactory.ExecuteInfoChangedEvent += (s, e) =>
+            {
+                _logger.LogTrace($"{nameof(IMongoDbServiceFactory.ExecuteInfoChangedEvent)}");
+
+                ExecuteInfoChangedEvent?.Invoke(s, e);
             };
         }
         finally
@@ -101,11 +148,11 @@ internal class DatabaseMonitor : IDatabaseMonitor
 
     public async Task<CollectionInfo> GetInstanceAsync(CollectionFingerprint databaseContext)
     {
-        return await GetInstancesAsync(false).SingleOrDefaultAsync(x => x.ConfigurationName == databaseContext.ConfigurationName && x.DatabaseName == databaseContext.DatabaseName && x.CollectionName == databaseContext.CollectionName);
+        return await GetInstancesAsync(false, default).SingleOrDefaultAsync(x => x.ConfigurationName == databaseContext.ConfigurationName && x.DatabaseName == databaseContext.DatabaseName && x.CollectionName == databaseContext.CollectionName);
     }
 
     //TODO: Should return information about database clean.
-    public async IAsyncEnumerable<CollectionInfo> GetInstancesAsync(bool fullDatabaseScan)
+    public async IAsyncEnumerable<CollectionInfo> GetInstancesAsync(bool fullDatabaseScan, string filter)
     {
         if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
 
@@ -126,7 +173,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
         var visited = new Dictionary<string, CollectionInfo>();
         foreach (var context in contexts)
         {
-            await foreach (var inDatabase in GetCollectionsInDatabase(context, fullDatabaseScan))
+            await foreach (var inDatabase in GetCollectionsInDatabase(context, fullDatabaseScan, filter))
             {
                 var item = inDatabase;
                 if (!visited.TryAdd($"{item.ConfigurationName}.{item.DatabaseName}.{item.CollectionName}", item)) continue;
@@ -142,7 +189,8 @@ internal class DatabaseMonitor : IDatabaseMonitor
                         Registration = reg.Registration,
                         Types = item.Types.Union(reg.Types).ToArray(),
                         CollectionType = item.CollectionType ?? reg.CollectionType,
-                        DocumentCount = new DocumentCount { Count = item.DocumentCount, Virtual = reg.VirtualCount },
+                        //DocumentCount = new DocumentCount { Count = item.DocumentCount, Virtual = reg.VirtualCount },
+                        DocumentCount = new DocumentCount { Count = item.DocumentCount },
                         Index = item.Index with
                         {
                             Current = item.Index.Current,
@@ -158,7 +206,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
                 //Map Accessed collections
                 if (accessedCollections.TryGetValue(inDatabase.Key, out var t))
                 {
-                    var cnt = InitiationLibrary.GetVirtualCount(inDatabase.Server, inDatabase.DatabaseName, inDatabase.CollectionName);
+                    //var cnt = InitiationLibrary.GetVirtualCount(inDatabase.Server, inDatabase.DatabaseName, inDatabase.CollectionName);
 
                     AssureNotDifferent(item.DatabasePart, t.DatabasePart);
 
@@ -168,7 +216,9 @@ internal class DatabaseMonitor : IDatabaseMonitor
                         Source = item.Source | Source.Monitor,
                         Types = item.Types.Union(t.EntityTypes.Select(x => x.Name)).ToArray(),
                         AccessCount = t.AccessCount,
-                        DocumentCount = new DocumentCount { Count = item.DocumentCount, Virtual = cnt },
+                        CallCount = t.CallCount,
+                        //DocumentCount = new DocumentCount { Count = item.DocumentCount, Virtual = cnt },
+                        DocumentCount = new DocumentCount { Count = item.DocumentCount },
                     };
                 }
                 else
@@ -230,7 +280,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
 
         var collection = _collectionProvider.GetCollection(collectionInfo.CollectionType, collectionInfo.Registration == Registration.Dynamic ? collectionInfo.ToDatabaseContext() : null);
 
-        _ = await FetchMongoCollection(collection.GetType(), collection);
+        _ = await FetchMongoCollection(collection.GetType(), collection, true);
     }
 
     public async Task<(int Before, int After)> DropIndexAsync(CollectionInfo collectionInfo)
@@ -242,7 +292,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
         var collection = _collectionProvider.GetCollection(collectionInfo.CollectionType, collectionInfo.Registration == Registration.Dynamic ? collectionInfo.ToDatabaseContext() : null);
 
         var ct = collection.GetType();
-        var mongoCollection = await FetchMongoCollection(ct, collection);
+        var mongoCollection = await FetchMongoCollection(ct, collection, false);
 
         var dropMethod = ct.GetMethod(nameof(DiskRepositoryCollectionBase<EntityBase>.DropIndex), BindingFlags.Instance | BindingFlags.NonPublic);
         var dropResult = dropMethod?.Invoke(collection, [mongoCollection]);
@@ -260,7 +310,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
         var collection = _collectionProvider.GetCollection(collectionInfo.CollectionType, collectionInfo.Registration == Registration.Dynamic ? collectionInfo.ToDatabaseContext() : null);
 
         var ct = collection.GetType();
-        var mongoCollection = await FetchMongoCollection(ct, collection);
+        var mongoCollection = await FetchMongoCollection(ct, collection, true);
 
         var dropMethod = ct.GetMethod(nameof(DiskRepositoryCollectionBase<EntityBase>.AssureIndex), BindingFlags.Instance | BindingFlags.NonPublic);
         var dropResult = dropMethod?.Invoke(collection, [mongoCollection, true, true]);
@@ -268,15 +318,17 @@ internal class DatabaseMonitor : IDatabaseMonitor
         await dropTask!;
     }
 
-    private static async Task<object> FetchMongoCollection(Type ct, IRepositoryCollection collection)
+    private static async Task<object> FetchMongoCollection(Type ct, IRepositoryCollection collection, bool initiate)
     {
         var fetchMethod = ct.GetMethod(nameof(DiskRepositoryCollectionBase<EntityBase>.FetchCollectionAsync), BindingFlags.Instance | BindingFlags.NonPublic);
-        var fetchResult = fetchMethod?.Invoke(collection, [false]);
+        var fetchResult = fetchMethod?.Invoke(collection, [initiate]);
         var fetchTask = (Task)fetchResult;
         await fetchTask!;
         var resultProperty = fetchTask.GetType().GetProperty("Result");
-        var mongoCollection = resultProperty!.GetValue(fetchTask);
-        return mongoCollection;
+        var result = resultProperty!.GetValue(fetchTask);
+        var valueProperty = result!.GetType().GetProperty("Value");
+        var mongoDbCollection = valueProperty!.GetValue(result);
+        return mongoDbCollection;
     }
 
     public IEnumerable<CallInfo> GetCalls(CallType callType)
@@ -289,6 +341,8 @@ internal class DatabaseMonitor : IDatabaseMonitor
                 return _callLibrary.GetLastCalls();
             case CallType.Slow:
                 return _callLibrary.GetSlowCalls();
+            case CallType.Ongoing:
+                return _callLibrary.GetOngoingCalls();
             default:
                 throw new ArgumentOutOfRangeException(nameof(callType), callType, null);
         }
@@ -324,7 +378,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
                     CollectionType = registeredCollection.Key,
                     Registration = Registration.Static,
                     DefinedIndices = instance.BuildIndexMetas().ToArray(),
-                    VirtualCount = instance.VirtualCount
+                    //VirtualCount = instance.VirtualCount
                 };
 
                 yield return item;
@@ -361,7 +415,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
                         Type = genericParam.Name,
                         CollectionType = registeredCollection.Key,
                         DefinedIndices = collection.BuildIndexMetas().ToArray(),
-                        VirtualCount = collection?.VirtualCount
+                        //VirtualCount = collection?.VirtualCount
                     };
 
                     yield return item;
@@ -374,7 +428,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
         }
     }
 
-    private async IAsyncEnumerable<CollectionInfo> GetCollectionsInDatabase(DatabaseContext databaseContext, bool fullDatabaseScan)
+    private async IAsyncEnumerable<CollectionInfo> GetCollectionsInDatabase(DatabaseContext databaseContext, bool fullDatabaseScan, string filter)
     {
         var mongoDbService = _mongoDbServiceFactory.GetMongoDbService(() => databaseContext);
 
@@ -383,10 +437,13 @@ internal class DatabaseMonitor : IDatabaseMonitor
             var databases = mongoDbService.GetDatabases().ToArray();
             foreach (var database in databases)
             {
-                var collections = await mongoDbService.GetCollectionsWithMetaAsync(database).ToArrayAsync();
-                foreach (var collection in collections)
+                if (filter == null || database.ProtectCollectionName().Contains(filter))
                 {
-                    yield return BuildCollectionInfo(collection);
+                    var collections = await mongoDbService.GetCollectionsWithMetaAsync(database).ToArrayAsync();
+                    foreach (var collection in collections)
+                    {
+                        yield return BuildCollectionInfo(collection);
+                    }
                 }
             }
         }
@@ -434,7 +491,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
         public required Source Source { get; init; }
         public required Type CollectionType { get; init; }
         public required IndexMeta[] DefinedIndices { get; init; }
-        public required long? VirtualCount { get; init; }
+        //public required long? VirtualCount { get; init; }
     }
 
     internal record StatColInfo : ColInfo
