@@ -1,4 +1,5 @@
 ﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization;
 using MongoDB.Driver;
@@ -438,19 +439,53 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         }, Operation.Update);
     }
 
-    public override Task<long> UpdateAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update)
+    public override Task<long> UpdateAsync(FilterDefinition<TEntity> predicate, UpdateDefinition<TEntity> update)
     {
         throw new NotImplementedException();
     }
 
     public override Task<EntityChangeResult<TEntity>> UpdateOneAsync(TKey id, UpdateDefinition<TEntity> update)
     {
-        throw new NotImplementedException();
+        var filter = Builders<TEntity>.Filter.Eq(x => x.Id, id);
+        return UpdateOneAsync(filter, update);
     }
 
-    public override Task<EntityChangeResult<TEntity>> UpdateOneAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update, OneOption<TEntity> options = null)
+    public override async Task<EntityChangeResult<TEntity>> UpdateOneAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update, OneOption<TEntity> options = null)
     {
-        throw new NotImplementedException();
+        if (filter == null) throw new ArgumentException(nameof(filter));
+        if (update == null) throw new ArgumentException(nameof(update));
+
+        return await ExecuteAsync(nameof(UpdateOneAsync), async (collection, ct) =>
+        {
+            var sort = options?.Sort;
+            var findFluent = collection.Find(filter).Sort(sort).Limit(2);
+            TEntity item;
+            switch (options?.Mode)
+            {
+                case null:
+                case EMode.SingleOrDefault:
+                    item = await findFluent.SingleOrDefaultAsync(ct);
+                    break;
+                case EMode.Single:
+                    item = await findFluent.SingleAsync(ct);
+                    break;
+                case EMode.FirstOrDefault:
+                    item = await findFluent.FirstOrDefaultAsync(ct);
+                    break;
+                case EMode.First:
+                    item = await findFluent.FirstAsync(ct);
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException();
+            }
+
+            if (item == null) return (new EntityChangeResult<TEntity>(null, default(TEntity)), 0);
+
+            var itemFilter = new FilterDefinitionBuilder<TEntity>().Eq(x => x.Id, item.Id);
+            item = await collection.FindOneAndUpdateAsync(itemFilter, update, cancellationToken: ct);
+
+            return (new EntityChangeResult<TEntity>(item, async () => { return await collection.Find(x => x.Id.Equals(item.Id)).SingleAsync(ct); }), 1);
+        }, Operation.Update);
     }
 
     public override Task<TEntity> DeleteOneAsync(TKey id)
