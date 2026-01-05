@@ -14,6 +14,7 @@ using Tharga.MongoDB.Configuration;
 using Tharga.MongoDB.Disk;
 using Tharga.MongoDB.Internals;
 using Tharga.Runtime;
+using static Tharga.MongoDB.DatabaseMonitor;
 
 namespace Tharga.MongoDB;
 
@@ -92,6 +93,7 @@ public static class MongoDbRegistrationExtensions
         services.AddTransient<IMongoUrlBuilderLoader>(serviceProvider => new MongoUrlBuilderLoader(serviceProvider, o));
         services.AddTransient<IRepositoryConfiguration>(serviceProvider => new RepositoryConfiguration(serviceProvider, o));
 
+        //TODO: Is this needed now, when we have the new FetchCollection, it should use the same handling.
         services.AddSingleton<ICollectionProviderCache>(_ =>
         {
             if (o.UseCollectionProviderCache)
@@ -282,12 +284,36 @@ public static class MongoDbRegistrationExtensions
             if (o.WaitToComplete) Task.WaitAll(task);
         }
 
-        //if (o.AssureIndex)
-        //{
-        //    throw new NotImplementedException();
+        if (o.AssureIndex)
+        {
+            var task = Task.Run(async () =>
+            {
+                foreach (var registeredCollection in mongoDbInstance.RegisteredCollections)
+                {
+                    var isDynamic = registeredCollection.Value
+                        .GetConstructors()
+                        .Any(ctor => ctor.GetParameters()
+                            .Any(param => param.ParameterType == typeof(DatabaseContext)));
 
-        //    if (o.WaitToComplete) Task.WaitAll(task);
-        //}
+                    if (!isDynamic)
+                    {
+                        var genericParam = registeredCollection.Key
+                            .GetInterfaces() // get all implemented interfaces
+                            .Where(i => i.IsGenericType)
+                            .Select(i => i.GetGenericArguments().FirstOrDefault())
+                            .FirstOrDefault();
+
+                        //NOTE: Create an instance and find the collection name.
+                        var instance = app.Services.GetService(registeredCollection.Key) as RepositoryCollectionBase;
+                        if (instance == null) throw new InvalidOperationException($"Cannot create instance of '{registeredCollection.Key}'.");
+
+                        //TODO: REFACTOR: Assure index on this instance.
+                    }
+                }
+            });
+
+            if (o.WaitToComplete) Task.WaitAll(task);
+        }
     }
 
     internal static IServiceCollection RegisterMongoDBCollection<TRepositoryCollection, TRepositoryCollectionBase>(this IServiceCollection services)

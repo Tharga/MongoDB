@@ -24,12 +24,12 @@ public record UseMongoOptions
     /// </summary>
     public DatabaseUsage DatabaseUsage { get; set; }
 
-    ///// <summary>
-    ///// Assure index on all statically defined collections.
-    ///// If this is false, the indexes will be checked the first time they are used.
-    ///// By default, this is false.
-    ///// </summary>
-    //public bool AssureIndex { get; set; }
+    /// <summary>
+    /// Assure index on all statically defined collections.
+    /// If this is false, the indexes will be checked the first time they are used.
+    /// By default, this is true.
+    /// </summary>
+    public bool AssureIndex { get; set; } = true;
 
     /// <summary>
     /// Attach a logger on startup.
