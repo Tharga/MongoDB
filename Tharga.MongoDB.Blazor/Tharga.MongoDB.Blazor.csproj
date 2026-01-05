@@ -27,7 +27,9 @@
     </None>
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\Blazor\Tharga.Blazor\Tharga.Blazor.csproj" />
+    <PackageReference Include="Tharga.Blazor" Version="1.1.5" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\Tharga.MongoDB\Tharga.MongoDB.csproj" />
   </ItemGroup>
 </Project>

@@ -51,7 +51,7 @@ internal class ExecuteLimiter : IExecuteLimiter
         LogCount("ExecuteQueue", queueCount);
         if (queueCount > 1)
         {
-            _logger.LogInformation("Queued {queueCount} executions for {key}.", queueCount, key);
+            _logger?.LogInformation("Queued {queueCount} executions for {key}.", queueCount, key);
         }
 
         //try
@@ -78,7 +78,7 @@ internal class ExecuteLimiter : IExecuteLimiter
         LogCount("ExecuteConcurrent", concurrentCount);
         if (concurrentCount >= _maxConcurrentPerKey)
         {
-            _logger.LogWarning("The maximum number of {count} concurrent executions for {key} has been reached.", concurrentCount, key);
+            _logger?.LogWarning("The maximum number of {count} concurrent executions for {key} has been reached.", concurrentCount, key);
         }
 
         //ExecuteStartEvent?.Invoke(this, new ExecuteStartEventArgs(executeId, queueElapsed, concurrentCount));
@@ -123,7 +123,7 @@ internal class ExecuteLimiter : IExecuteLimiter
             //{ "Count", count },
         };
         var details = System.Text.Json.JsonSerializer.Serialize(data);
-        _logger.LogInformation("Count {Action} as {Count}. {Details}", action, count, details);
+        _logger?.LogInformation("Count {Action} as {Count}. {Details}", action, count, details);
     }
 
     private static TimeSpan GetElapsed(long from, long to)

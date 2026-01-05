@@ -7,7 +7,6 @@ using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Serializers;
 using MongoDB.Bson.Serialization;
 using Tharga.MongoDB.Atlas;
-using Tharga.MongoDB.Disk;
 
 namespace Tharga.MongoDB.Internals;
 

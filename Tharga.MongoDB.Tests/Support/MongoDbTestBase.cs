@@ -1,5 +1,7 @@
 ﻿using System;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using MongoDB.Driver;
 using Moq;
 using Moq.AutoMock;
@@ -16,7 +18,7 @@ public abstract class MongoDbTestBase : IDisposable
 
     protected MongoDbTestBase()
     {
-        var mocker = new AutoMocker();
+        var mocker = new AutoMocker(MockBehavior.Strict);
 
         _databaseContext = Mock.Of<DatabaseContext>(x => x.DatabasePart == Guid.NewGuid().ToString() && x.ConfigurationName == "Default");
         _configurationMock = new Mock<IRepositoryConfigurationInternal>(MockBehavior.Strict);
@@ -38,6 +40,15 @@ public abstract class MongoDbTestBase : IDisposable
             return new MongoClient(settings);
         });
         mocker.Use(mongoDbClientProvider);
+
+        var executeLimiter = new ExecuteLimiter(Mock.Of<IOptions<ExecuteLimiterOptions>>(x => x.Value == new ExecuteLimiterOptions { MaxConcurrent = 20 }), null);
+        mocker.Use((IExecuteLimiter)executeLimiter);
+
+        var collectionPool = new Mock<ICollectionPool>(MockBehavior.Loose);
+        mocker.Use(collectionPool);
+
+        var initiationLibrary = new Mock<IInitiationLibrary>(MockBehavior.Loose);
+        mocker.Use(initiationLibrary);
 
         _mongoDbServiceFactory = mocker.CreateInstance<MongoDbServiceFactory>();
     }

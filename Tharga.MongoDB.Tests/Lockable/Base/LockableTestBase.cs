@@ -1,8 +1,9 @@
-﻿using System;
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using MongoDB.Driver;
 using Moq;
 using Moq.AutoMock;
+using System;
 using Tharga.MongoDB.Configuration;
 using Tharga.MongoDB.Internals;
 
@@ -15,7 +16,7 @@ public abstract class LockableTestBase : IDisposable
 
     protected LockableTestBase()
     {
-        var mocker = new AutoMocker();
+        var mocker = new AutoMocker(MockBehavior.Strict);
 
         var databaseContext = Mock.Of<DatabaseContext>(x => x.DatabasePart == Guid.NewGuid().ToString());
         _configurationMock = new Mock<IRepositoryConfigurationInternal>(MockBehavior.Strict);
@@ -37,6 +38,15 @@ public abstract class LockableTestBase : IDisposable
             return new MongoClient(settings);
         });
         mocker.Use(mongoDbClientProvider);
+
+        var executeLimiter = new ExecuteLimiter(Mock.Of<IOptions<ExecuteLimiterOptions>>(x => x.Value == new ExecuteLimiterOptions { MaxConcurrent = 20 }), null);
+        mocker.Use((IExecuteLimiter)executeLimiter);
+
+        var collectionPool = new Mock<ICollectionPool>(MockBehavior.Loose);
+        mocker.Use(collectionPool);
+
+        var initiationLibrary = new Mock<IInitiationLibrary>(MockBehavior.Loose);
+        mocker.Use(initiationLibrary);
 
         _mongoDbServiceFactory = mocker.CreateInstance<MongoDbServiceFactory>();
     }

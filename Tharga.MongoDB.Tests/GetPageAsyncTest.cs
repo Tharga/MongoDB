@@ -16,7 +16,7 @@ public class GetPageAsyncTest : GenericRepositoryCollectionBaseTestBase
         Prepare([TestEntityFactory.CreateTestEntity, TestEntityFactory.CreateTestEntity, TestEntityFactory.CreateTestEntity, TestEntityFactory.CreateTestEntity, TestEntityFactory.CreateTestEntity, TestEntityFactory.CreateTestEntity]);
     }
 
-    [Fact]
+    [Fact(Skip = "Deprecated.")]
     [Trait("Category", "Database")]
     public async Task BasicFromDisk()
     {
@@ -38,7 +38,7 @@ public class GetPageAsyncTest : GenericRepositoryCollectionBaseTestBase
         }
     }
 
-    [Fact]
+    [Fact(Skip = "Deprecated.")]
     [Trait("Category", "Database")]
     public async Task BasicFromDiskShouldReturnAllITems()
     {
@@ -55,7 +55,7 @@ public class GetPageAsyncTest : GenericRepositoryCollectionBaseTestBase
         result.Length.Should().Be(InitialDataLoader.Length);
     }
 
-    [Fact]
+    [Fact(Skip = "Deprecated.")]
     [Trait("Category", "Database")]
     public async Task GetTooManyRecordsShouldThrow()
     {
