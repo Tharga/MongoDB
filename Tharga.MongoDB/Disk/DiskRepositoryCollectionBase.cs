@@ -1,5 +1,4 @@
-﻿using DnsClient.Internal;
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization;
 using MongoDB.Driver;
@@ -189,8 +188,9 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         options ??= new Options<TEntity>();
 
         var skip = options.Skip ?? 0;
-        var limit = options.Limit ?? ResultLimit ?? 100;
+        var limit = options.Limit ?? ResultLimit ?? 1000;
 
+        var page = 0;
         while (true)
         {
             var pageOptions = options with { Skip = skip, Limit = limit };
@@ -207,6 +207,13 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             {
                 break;
             }
+
+            page++;
+        }
+
+        if (page >= 5)
+        {
+            _logger?.LogWarning("Query on collection {collection} returned {pages} pages with items {count} each. Limit the total response or increase the count for each page.", CollectionName, page, limit);
         }
     }
 
@@ -277,19 +284,50 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         throw new NotImplementedException();
     }
 
-    public override Task<TEntity> GetOneAsync(TKey id, CancellationToken cancellationToken = default)
+    public override async Task<TEntity> GetOneAsync(TKey id, CancellationToken cancellationToken = default)
     {
-        throw new NotImplementedException();
+        return await ExecuteAsync(nameof(GetOneAsync), async (collection, ct) =>
+        {
+            var filter = Builders<TEntity>.Filter.Eq(x => x.Id, id);
+            var item = await collection.Find(filter).Limit(1).SingleOrDefaultAsync(ct);
+            return (await CleanEntityAsync(collection, item), item == null ? 0 : 1);
+        }, Operation.Read, cancellationToken);
     }
 
     public override Task<TEntity> GetOneAsync(Expression<Func<TEntity, bool>> predicate = null, OneOption<TEntity> options = null, CancellationToken cancellationToken = default)
     {
-        throw new NotImplementedException();
+        var filter = predicate == null ? FilterDefinition<TEntity>.Empty : new ExpressionFilterDefinition<TEntity>(predicate);
+        return GetOneAsync(filter, options, cancellationToken);
     }
 
-    public override Task<TEntity> GetOneAsync(FilterDefinition<TEntity> filter, OneOption<TEntity> options = null, CancellationToken cancellationToken = default)
+    public override async Task<TEntity> GetOneAsync(FilterDefinition<TEntity> filter, OneOption<TEntity> options = null, CancellationToken cancellationToken = default)
     {
-        throw new NotImplementedException();
+        return await ExecuteAsync(nameof(GetOneAsync), async (collection, ct) =>
+        {
+            var sort = options?.Sort;
+            var findFluent = collection.Find(filter).Sort(sort).Limit(2);
+            TEntity item;
+            switch (options?.Mode)
+            {
+                case null:
+                case EMode.SingleOrDefault:
+                    item = await findFluent.SingleOrDefaultAsync(cancellationToken: ct);
+                    break;
+                case EMode.Single:
+                    item = await findFluent.SingleAsync(cancellationToken: ct);
+                    break;
+                case EMode.FirstOrDefault:
+                    item = await findFluent.FirstOrDefaultAsync(cancellationToken: ct);
+                    break;
+                case EMode.First:
+                    item = await findFluent.FirstAsync(cancellationToken: ct);
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException();
+            }
+
+            return (await CleanEntityAsync(collection, item), item == null ? 0 : 1);
+        }, Operation.Read, cancellationToken);
     }
 
     public override Task<T> GetOneAsync<T>(Expression<Func<T, bool>> predicate = null, OneOption<T> options = null, CancellationToken cancellationToken = default)
@@ -353,12 +391,50 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 
     public override Task<EntityChangeResult<TEntity>> ReplaceOneAsync(TEntity entity, OneOption<TEntity> options = null)
     {
-        throw new NotImplementedException();
+        var filter = Builders<TEntity>.Filter.Eq(x => x.Id, entity.Id);
+        return ReplaceOneWithCheckAsync(entity, filter, options);
     }
 
     public override Task<EntityChangeResult<TEntity>> ReplaceOneAsync(TEntity entity, FilterDefinition<TEntity> filter, OneOption<TEntity> options = null)
     {
-        throw new NotImplementedException();
+        return ReplaceOneWithCheckAsync(entity, filter, options);
+    }
+
+    private async Task<EntityChangeResult<TEntity>> ReplaceOneWithCheckAsync(TEntity entity, FilterDefinition<TEntity> filter, OneOption<TEntity> options)
+    {
+        if (entity == null) throw new ArgumentNullException(nameof(entity));
+
+        return await ExecuteAsync(nameof(ReplaceOneAsync), async (collection, ct) =>
+        {
+            var sort = options?.Sort;
+            var findFluent = collection.Find(filter).Sort(sort).Limit(2);
+            TEntity item;
+            switch (options?.Mode)
+            {
+                case null:
+                case EMode.SingleOrDefault:
+                    item = await findFluent.SingleOrDefaultAsync(ct);
+                    break;
+                case EMode.Single:
+                    item = await findFluent.SingleAsync(ct);
+                    break;
+                case EMode.FirstOrDefault:
+                    item = await findFluent.FirstOrDefaultAsync(ct);
+                    break;
+                case EMode.First:
+                    item = await findFluent.FirstAsync(ct);
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException();
+            }
+
+            if (item == null) return (new EntityChangeResult<TEntity>(null, (TEntity)null), 0);
+
+            filter = Builders<TEntity>.Filter.Eq(x => x.Id, item.Id);
+            var before = await collection.FindOneAndReplaceAsync(filter, entity, cancellationToken: ct);
+            return (new EntityChangeResult<TEntity>(before, entity), 1);
+
+        }, Operation.Update);
     }
 
     public override Task<long> UpdateAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update)
@@ -408,7 +484,27 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 
     internal async Task<(int Before, int After)> DropIndex(IMongoCollection<TEntity> collection)
     {
-        throw new NotImplementedException();
+        var before = (await collection.Indexes.ListAsync())
+            .ToList()
+            .Select(x => x.GetValue("name").AsString)
+            .Count(x => !x.StartsWith("_id_"));
+
+        await collection.Indexes.DropAllAsync();
+
+        var fingerprint = new CollectionFingerprint
+        {
+            ConfigurationName = ConfigurationName ?? _mongoDbService.GetConfigurationName(),
+            CollectionName = ProtectedCollectionName,
+            DatabaseName = DatabaseName
+        };
+        ((MongoDbServiceFactory)_mongoDbServiceFactory).OnIndexUpdatedEvent(this, new IndexUpdatedEventArgs(fingerprint));
+
+        var after = (await collection.Indexes.ListAsync())
+            .ToList()
+            .Select(x => x.GetValue("name").AsString)
+            .Count(x => !x.StartsWith("_id_"));
+
+        return (before, after);
     }
 
     private bool ArmRecheckInvalidIndex()

@@ -288,27 +288,10 @@ public static class MongoDbRegistrationExtensions
         {
             var task = Task.Run(async () =>
             {
-                foreach (var registeredCollection in mongoDbInstance.RegisteredCollections)
+                var monitor = app.Services.GetService<IDatabaseMonitor>();
+                await foreach (var collectionInfo in monitor.GetInstancesAsync().Where(x => x.Registration == Registration.Static))
                 {
-                    var isDynamic = registeredCollection.Value
-                        .GetConstructors()
-                        .Any(ctor => ctor.GetParameters()
-                            .Any(param => param.ParameterType == typeof(DatabaseContext)));
-
-                    if (!isDynamic)
-                    {
-                        var genericParam = registeredCollection.Key
-                            .GetInterfaces() // get all implemented interfaces
-                            .Where(i => i.IsGenericType)
-                            .Select(i => i.GetGenericArguments().FirstOrDefault())
-                            .FirstOrDefault();
-
-                        //NOTE: Create an instance and find the collection name.
-                        var instance = app.Services.GetService(registeredCollection.Key) as RepositoryCollectionBase;
-                        if (instance == null) throw new InvalidOperationException($"Cannot create instance of '{registeredCollection.Key}'.");
-
-                        //TODO: REFACTOR: Assure index on this instance.
-                    }
+                    await monitor.RestoreIndexAsync(collectionInfo);
                 }
             });
 

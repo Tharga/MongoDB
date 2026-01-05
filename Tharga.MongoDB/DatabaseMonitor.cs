@@ -267,7 +267,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
 
         var collection = _collectionProvider.GetCollection(collectionInfo.CollectionType, collectionInfo.Registration == Registration.Dynamic ? collectionInfo.ToDatabaseContext() : null);
 
-        _ = await FetchMongoCollection(collection.GetType(), collection);
+        _ = await FetchMongoCollection(collection.GetType(), collection, true);
     }
 
     public async Task<(int Before, int After)> DropIndexAsync(CollectionInfo collectionInfo)
@@ -279,7 +279,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
         var collection = _collectionProvider.GetCollection(collectionInfo.CollectionType, collectionInfo.Registration == Registration.Dynamic ? collectionInfo.ToDatabaseContext() : null);
 
         var ct = collection.GetType();
-        var mongoCollection = await FetchMongoCollection(ct, collection);
+        var mongoCollection = await FetchMongoCollection(ct, collection, false);
 
         var dropMethod = ct.GetMethod(nameof(DiskRepositoryCollectionBase<EntityBase>.DropIndex), BindingFlags.Instance | BindingFlags.NonPublic);
         var dropResult = dropMethod?.Invoke(collection, [mongoCollection]);
@@ -297,7 +297,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
         var collection = _collectionProvider.GetCollection(collectionInfo.CollectionType, collectionInfo.Registration == Registration.Dynamic ? collectionInfo.ToDatabaseContext() : null);
 
         var ct = collection.GetType();
-        var mongoCollection = await FetchMongoCollection(ct, collection);
+        var mongoCollection = await FetchMongoCollection(ct, collection, true);
 
         var dropMethod = ct.GetMethod(nameof(DiskRepositoryCollectionBase<EntityBase>.AssureIndex), BindingFlags.Instance | BindingFlags.NonPublic);
         var dropResult = dropMethod?.Invoke(collection, [mongoCollection, true, true]);
@@ -305,15 +305,17 @@ internal class DatabaseMonitor : IDatabaseMonitor
         await dropTask!;
     }
 
-    private static async Task<object> FetchMongoCollection(Type ct, IRepositoryCollection collection)
+    private static async Task<object> FetchMongoCollection(Type ct, IRepositoryCollection collection, bool initiate)
     {
         var fetchMethod = ct.GetMethod(nameof(DiskRepositoryCollectionBase<EntityBase>.FetchCollectionAsync), BindingFlags.Instance | BindingFlags.NonPublic);
-        var fetchResult = fetchMethod?.Invoke(collection, [false]);
+        var fetchResult = fetchMethod?.Invoke(collection, [initiate]);
         var fetchTask = (Task)fetchResult;
         await fetchTask!;
         var resultProperty = fetchTask.GetType().GetProperty("Result");
-        var mongoCollection = resultProperty!.GetValue(fetchTask);
-        return mongoCollection;
+        var result = resultProperty!.GetValue(fetchTask);
+        var valueProperty = result!.GetType().GetProperty("Value");
+        var mongoDbCollection = valueProperty!.GetValue(result);
+        return mongoDbCollection;
     }
 
     public IEnumerable<CallInfo> GetCalls(CallType callType)
