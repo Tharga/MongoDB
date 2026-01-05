@@ -48,28 +48,122 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         _collectionPool = ((MongoDbService)_mongoDbService).CollectionPool;
         _initiationLibrary = ((MongoDbService)_mongoDbService).InitiationLibrary;
 
-        _databaseExecutor.ExecuteQueuedEvent += (s, e) => { };
-        _databaseExecutor.ExecuteStartEvent += (s, e) => { };
-        _databaseExecutor.ExecuteCompleteEvent += (s, e) => { };
+        //_databaseExecutor.ExecuteQueuedEvent += (s, e) => { };
+        //_databaseExecutor.ExecuteStartEvent += (s, e) => { };
+        //_databaseExecutor.ExecuteCompleteEvent += (s, e) => { };
     }
 
-    protected virtual async Task<T> ExecuteAsync<T>(string functionName, Func<IMongoCollection<TEntity>, CancellationToken, Task<T>> action, Operation operation, CancellationToken cancellationToken = default)
+    protected virtual async Task<T> ExecuteAsync<T>(string functionName, Func<IMongoCollection<TEntity>, CancellationToken, Task<(T Data, int Count)>> action, Operation operation, CancellationToken cancellationToken = default)
     {
-        return await _databaseExecutor.ExecuteAsync(async ct =>
+        var callKey = Guid.NewGuid();
+        var startAt = Stopwatch.GetTimestamp();
+        var steps = new List<StepResponse>();
+        var count = -1;
+
+        //NOTE: Register call started, in monitor
+        steps.Add(FireCallStartEvent(functionName, operation, callKey));
+
+        Exception exception = null;
+        try
         {
-            var startAt = Stopwatch.GetTimestamp();
+            var response = await _databaseExecutor.ExecuteAsync(async ct =>
+            {
+                steps.Add(new StepResponse { Timestamp = Stopwatch.GetTimestamp(), Step = "Queue" });
 
-            var result = await FetchCollectionAsync();
+                //NOTE: Fetch collection
+                var fetchCollectionStep = await FetchCollectionAsync();
+                steps.Add(fetchCollectionStep);
+                var collection = fetchCollectionStep.Value;
 
-            var fetchedAt = Stopwatch.GetTimestamp();
-            var collectionFetchTime = GetElapsed(startAt, fetchedAt);
-            _logger.LogInformation("Fetched collection with {action} took {elapsed} ms.", result.InitiateAction, collectionFetchTime.TotalMilliseconds);
+                //NOTE: Handle index depending on operation
+                steps.Add(await OperationIndexManagement(operation, collection));
 
-            return await action.Invoke(result.Collection, ct);
-        }, null, cancellationToken);
+                //NOTE: Perform action
+                var response = await action.Invoke(collection, ct);
+                steps.Add(new StepResponse { Timestamp = Stopwatch.GetTimestamp(), Step = "Action" });
+
+                //TODO: Option to turn on explain mode. This will be the analysis steps.
+                //TODO: Try to get more information about the filter or predicate on the call.
+
+                return response;
+            }, $"MongoDB.{ConfigurationName ?? Constants.DefaultConfigurationName}", cancellationToken);
+
+            count = response.Result.Count;
+            return response.Result.Data;
+        }
+        catch (Exception e) when (e is MongoConnectionException || e is TimeoutException || e is MongoConnectionPoolPausedException)
+        {
+            exception = e;
+            _logger?.LogWarning(e, $"{e.GetType().Name} {{repositoryType}}. [action: Database, operation: {functionName}]", "DiskRepository");
+            InvokeAction(new ActionEventArgs.ActionData { Operation = functionName, Exception = e });
+            throw;
+        }
+        catch (Exception e)
+        {
+            exception = e;
+            _logger?.LogError(e, $"{e.GetType().Name} {{repositoryType}}. [action: Database, operation: {functionName}]", "DiskRepository");
+            InvokeAction(new ActionEventArgs.ActionData { Operation = functionName, Exception = e });
+            throw;
+        }
+        finally
+        {
+            //NOTE: Finalize
+            var elapsed = GetElapsed(startAt, Stopwatch.GetTimestamp());
+
+            var total = TimeSpan.Zero;
+            var info = steps.Select((x, index) =>
+            {
+                var from = index == 0 ? startAt : steps[index - 1].Timestamp;
+                var delta = GetElapsed(from, x.Timestamp);
+                total = total.Add(delta);
+                return $"{x.Step}: {delta.TotalMilliseconds}";
+            });
+            var ss = string.Join(", ", info);
+
+            ((MongoDbServiceFactory)_mongoDbServiceFactory).OnCallEnd(this, new CallEndEventArgs(callKey, elapsed, exception, count));
+            _logger?.LogInformation("Executed {method} on {collection} took {elapsed} ms. [{steps}, overhead: {overhead}]", functionName, CollectionName, elapsed.TotalMilliseconds, ss, (elapsed - total).TotalMilliseconds);
+        }
     }
 
-    public override async IAsyncEnumerable<TEntity> GetAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default)
+    private StepResponse FireCallStartEvent(string functionName, Operation operation, Guid callKey)
+    {
+        ((MongoDbServiceFactory)_mongoDbServiceFactory).OnCallStart(this, new CallStartEventArgs(callKey, ConfigurationName, DatabaseName, CollectionName, functionName, operation));
+
+        return new StepResponse
+        {
+            Timestamp = Stopwatch.GetTimestamp(),
+            Step = nameof(FireCallStartEvent)
+        };
+    }
+
+    private async Task<StepResponse> OperationIndexManagement(Operation operation, IMongoCollection<TEntity> collection)
+    {
+        switch (operation)
+        {
+            case Operation.Read:
+                break;
+            case Operation.Create:
+                await AssureIndex(collection);
+                break;
+            case Operation.Update:
+                await AssureIndex(collection);
+                ArmRecheckInvalidIndex();
+                break;
+            case Operation.Delete:
+                ArmRecheckInvalidIndex();
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(operation), operation, null);
+        }
+
+        return new StepResponse
+        {
+            Timestamp = Stopwatch.GetTimestamp(),
+            Step = nameof(OperationIndexManagement),
+        };
+    }
+
+    public override async IAsyncEnumerable<TEntity> GetAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         var filter = predicate != null
             ? Builders<TEntity>.Filter.Where(predicate)
@@ -81,7 +175,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         }
     }
 
-    public override async IAsyncEnumerable<TEntity> GetAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default)
+    public override async IAsyncEnumerable<TEntity> GetAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         options ??= new Options<TEntity>();
 
@@ -107,11 +201,13 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         }
     }
 
+    [Obsolete("Projection methods will have to be developed if needed.")]
     public override IAsyncEnumerable<T> GetAsync<T>(Expression<Func<T, bool>> predicate = null, Options<T> options = null, CancellationToken cancellationToken = default)
     {
         throw new NotImplementedException();
     }
 
+    [Obsolete("Projection methods will have to be developed if needed.")]
     public override IAsyncEnumerable<T> GetProjectionAsync<T>(Expression<Func<T, bool>> predicate = null, Options<T> options = null, CancellationToken cancellationToken = default)
     {
         throw new NotImplementedException();
@@ -152,19 +248,21 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                 totalCount = (int)await collection.CountDocumentsAsync(filter, cancellationToken: ct);
             }
 
-            return new Result<TEntity, TKey>
+            return (new Result<TEntity, TKey>
             {
                 Items = items,
                 TotalCount = totalCount
-            };
+            }, items.Length);
         }, Operation.Read, cancellationToken);
     }
 
+    [Obsolete($"Use {nameof(GetManyAsync)} instead. This method will be deprecated.")]
     public override IAsyncEnumerable<ResultPage<TEntity, TKey>> GetPagesAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default)
     {
         throw new NotImplementedException();
     }
 
+    [Obsolete($"Use {nameof(GetManyAsync)} instead. This method will be deprecated.")]
     public override IAsyncEnumerable<ResultPage<TEntity, TKey>> GetPagesAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default)
     {
         throw new NotImplementedException();
@@ -225,7 +323,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         await ExecuteAsync(nameof(AddAsync), async (collection, ct) =>
         {
             await collection.InsertOneAsync(entity, cancellationToken: ct);
-            return true;
+            return (true, 1);
         }, Operation.Create);
     }
 
@@ -304,14 +402,18 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         throw new NotImplementedException();
     }
 
-    //TODO: This should be called on add or update.
-    protected internal async Task AssureIndex(IMongoCollection<TEntity> collection, bool forceAssure = false, bool throwOnException = false)
+    private bool ArmRecheckInvalidIndex()
+    {
+        return _initiationLibrary.RecheckInitiateIndex(ServerName, DatabaseName, ProtectedCollectionName);
+    }
+
+    protected internal async Task<bool> AssureIndex(IMongoCollection<TEntity> collection, bool forceAssure = false, bool throwOnException = false)
     {
         var assureIndexMode = _mongoDbService.GetAssureIndexMode();
         if (assureIndexMode == AssureIndexMode.Disabled && !forceAssure)
         {
             _logger?.LogTrace("Assure index is disabled.");
-            return;
+            return false;
         }
 
         if (forceAssure || _initiationLibrary.ShouldInitiateIndex(ServerName, DatabaseName, ProtectedCollectionName))
@@ -322,7 +424,10 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             //await collection.Indexes.CreateOneAsync(new CreateIndexModel<TEntity>(Builders<TEntity>.IndexKeys.Ascending(x => x.Id).Ascending("_t"), new CreateIndexOptions()));
 
             await UpdateIndicesAsync(collection, assureIndexMode, throwOnException);
+            return true;
         }
+
+        return false;
     }
 
     private async Task UpdateIndicesAsync(IMongoCollection<TEntity> collection, AssureIndexMode assureIndexMode, bool throwOnException)
@@ -409,20 +514,37 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         await DropCollectionAsync();
     }
 
-    internal async Task<(IMongoCollection<TEntity> Collection, InitiateAction InitiateAction)> FetchCollectionAsync(bool initiate = true)
+    internal async Task<StepResponse<IMongoCollection<TEntity>>> FetchCollectionAsync(bool initiate = true)
     {
-        var fullName = $"{(ConfigurationName ?? Constants.DefaultConfigurationName)}.{DatabaseName}.{CollectionName}";
+        var fullName = $"{ConfigurationName ?? Constants.DefaultConfigurationName}.{DatabaseName}.{CollectionName}";
 
-        if (_collectionPool.TryGetCollection<TEntity>(fullName, out var collection)) return (collection, InitiateAction.NoAction);
+        if (_collectionPool.TryGetCollection<TEntity>(fullName, out var collection))
+        {
+            return new StepResponse<IMongoCollection<TEntity>>
+            {
+                Timestamp = Stopwatch.GetTimestamp(),
+                Value = collection,
+                Step = nameof(FetchCollectionAsync),
+            };
+        }
 
         await _fetchLock.WaitAsync();
         try
         {
-            if (_collectionPool.TryGetCollection(fullName, out collection)) return (collection, InitiateAction.WaitForOtherTask);
+            if (_collectionPool.TryGetCollection(fullName, out collection))
+            {
+                return new StepResponse<IMongoCollection<TEntity>>
+                {
+                    Timestamp = Stopwatch.GetTimestamp(),
+                    Value = collection,
+                    Step = nameof(FetchCollectionAsync),
+                    Message = "Waited for another task to initate.",
+                };
+            }
 
             collection = await _mongoDbService.GetCollectionAsync<TEntity>(ProtectedCollectionName);
 
-            InitiateAction initiateAction;
+            string message = null;
             if (initiate && _initiationLibrary.ShouldInitiate(ServerName, DatabaseName, ProtectedCollectionName))
             {
                 //_logger?.LogTrace($"Starting to initiate {{collection}}. [action: Database, operation: {nameof(FetchCollectionAsync)}]", ProtectedCollectionName);
@@ -436,22 +558,34 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                     await CleanAsync(collection);
                     await DropEmpty(collection);
                 }
+                else if (CreateCollectionStrategy == CreateStrategy.CreateOnGet)
+                {
+                    collection = await _mongoDbService.CreateCollectionAsync<TEntity>(ProtectedCollectionName);
+                    await AssureIndex(collection);
+                }
 
                 await InitAsync(collection);
                 //_logger?.LogTrace($"Initiate {{collection}} is completed. [action: Database, operation: {nameof(FetchCollectionAsync)}]", ProtectedCollectionName);
                 //InvokeAction(new ActionEventArgs.ActionData { Operation = nameof(FetchCollectionAsync), Message = "Initiation completed.", Level = LogLevel.Trace });
 
-                initiateAction = InitiateAction.InitiationPerformed;
+                //initiateAction = InitiateAction.InitiationPerformed;
+                message = "Initiated collection.";
             }
             else
             {
                 //_logger?.LogTrace($"Skip initiation of {{collection}} because it has already been initiated. [action: Database, operation: {nameof(FetchCollectionAsync)}]", ProtectedCollectionName);
                 //InvokeAction(new ActionEventArgs.ActionData { Operation = nameof(FetchCollectionAsync), Message = "Skip initiation because it has already been completed.", Level = LogLevel.Trace });
-                initiateAction = InitiateAction.NoAction;
+                //initiateAction = InitiateAction.NoAction;
             }
 
             _collectionPool.AddCollection(fullName, collection);
-            return (collection, initiateAction);
+            return new StepResponse<IMongoCollection<TEntity>>
+            {
+                Timestamp = Stopwatch.GetTimestamp(),
+                Value = collection,
+                Step = nameof(FetchCollectionAsync),
+                Message = message
+            };
         }
         finally
         {
@@ -1757,12 +1891,12 @@ public abstract class DiskRepositoryCollectionBase<TEntity> : DiskRepositoryColl
     }
 }
 
-internal enum InitiateAction
-{
-    NoAction,
-    InitiationPerformed,
-    WaitForOtherTask
-}
+//internal enum InitiateAction
+//{
+//    NoAction,
+//    InitiationPerformed,
+//    WaitForOtherTask
+//}
 
 //internal class EntityBaseCollection : DiskRepositoryCollectionBase<EntityBase>
 //{
@@ -1771,3 +1905,15 @@ internal enum InitiateAction
 //    {
 //    }
 //}
+
+internal record StepResponse
+{
+    public required long Timestamp { get; init; }
+    public required string Step { get; init; }
+    public string Message { get; init; }
+}
+
+internal record StepResponse<T> : StepResponse
+{
+    public required T Value { get; init; }
+}

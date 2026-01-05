@@ -10,6 +10,7 @@ public interface IInitiationLibrary
     bool ShouldInitiate(string serverName, string databaseName, string collectionName);
     bool ShouldInitiateIndex(string serverName, string databaseName, string collectionName);
     void AddFailedInitiateIndex(string serverName, string databaseName, string collectionName, (IndexFailOperation Drop, string indexName) valueTuple);
+    bool RecheckInitiateIndex(string serverName, string databaseName, string collectionName);
 }
 
 internal class InitiationLibrary : IInitiationLibrary
@@ -55,13 +56,14 @@ internal class InitiationLibrary : IInitiationLibrary
         initiationInfo.FailedIndices.Add(valueTuple);
     }
 
-    public void RecheckInitiateIndex(string serverName, string databaseName, string collectionName)
+    public bool RecheckInitiateIndex(string serverName, string databaseName, string collectionName)
     {
-        if (!_initiated.TryGetValue($"{serverName}.{databaseName}.{collectionName}", out var initiationInfo)) return;
-        if (!initiationInfo.FailedIndices.Any()) return;
+        if (!_initiated.TryGetValue($"{serverName}.{databaseName}.{collectionName}", out var initiationInfo)) return false;
+        if (!initiationInfo.FailedIndices.Any()) return false;
 
         var updated = initiationInfo with { IndexAssured = false };
         _ = _initiated.TryUpdate($"{serverName}.{databaseName}.{collectionName}", updated, initiationInfo);
+        return true;
     }
 
     public IEnumerable<(IndexFailOperation Operation, string Name)> GetFailedIndices(string serverName, string databaseName, string collectionName)

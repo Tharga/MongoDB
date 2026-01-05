@@ -62,11 +62,18 @@ public class ExecuteCompleteEventArgs
 
 internal interface IExecuteLimiter
 {
-    event EventHandler<ExecuteQueuedEventArgs> ExecuteQueuedEvent;
-    event EventHandler<ExecuteStartEventArgs> ExecuteStartEvent;
-    event EventHandler<ExecuteCompleteEventArgs> ExecuteCompleteEvent;
+    //event EventHandler<ExecuteQueuedEventArgs> ExecuteQueuedEvent;
+    //event EventHandler<ExecuteStartEventArgs> ExecuteStartEvent;
+    //event EventHandler<ExecuteCompleteEventArgs> ExecuteCompleteEvent;
 
-    Task<T> ExecuteAsync<T>(Func<CancellationToken, Task<T>> action, string key = default, CancellationToken cancellationToken = default);
+    Task<(T Result, ExecuteInfo Info)> ExecuteAsync<T>(Func<CancellationToken, Task<T>> action, string key = default, CancellationToken cancellationToken = default);
+}
+
+internal record ExecuteInfo
+{
+    public required TimeSpan QueueElapsed { get; init; }
+    public required int ConcurrentCount { get; init; }
+    public required int QueueCount { get; init; }
 }
 
 internal interface ICollectionPool

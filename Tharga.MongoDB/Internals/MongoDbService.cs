@@ -9,7 +9,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Tharga.MongoDB.Atlas;
 using Tharga.MongoDB.Configuration;
-using Tharga.MongoDB.Disk;
 
 namespace Tharga.MongoDB.Internals;
 
@@ -17,9 +16,6 @@ internal class MongoDbService : IMongoDbService
 {
     private readonly IRepositoryConfigurationInternal _configuration;
     private readonly IMongoDbFirewallStateService _mongoDbFirewallStateService;
-    private readonly IExecuteLimiter _executeLimiter;
-    private readonly ICollectionPool _collectionPool;
-    private readonly IInitiationLibrary _initiationLibrary;
     private readonly ILogger _logger;
     private readonly MongoClient _mongoClient;
     private readonly IMongoDatabase _mongoDatabase;
@@ -29,9 +25,9 @@ internal class MongoDbService : IMongoDbService
     {
         _configuration = configuration;
         _mongoDbFirewallStateService = mongoDbFirewallStateService;
-        _executeLimiter = executeLimiter;
-        _collectionPool = collectionPool;
-        _initiationLibrary = initiationLibrary;
+        ExecuteLimiter = executeLimiter;
+        CollectionPool = collectionPool;
+        InitiationLibrary = initiationLibrary;
         _logger = logger;
         _mongoUrl = configuration.GetDatabaseUrl() ?? throw new NullReferenceException("MongoUrl not found in configuration.");
         _mongoClient = mongoDbClientProvider.GetClient(_mongoUrl);
@@ -41,25 +37,31 @@ internal class MongoDbService : IMongoDbService
 
     public event EventHandler<CollectionAccessEventArgs> CollectionAccessEvent;
 
-    public IExecuteLimiter ExecuteLimiter => _executeLimiter;
-    public ICollectionPool CollectionPool => _collectionPool;
-    public IInitiationLibrary InitiationLibrary => _initiationLibrary;
+    public IExecuteLimiter ExecuteLimiter { get; }
+    public ICollectionPool CollectionPool { get; }
+    public IInitiationLibrary InitiationLibrary { get; }
 
-    public async Task<IMongoCollection<T>> GetCollectionAsync<T>(string collectionName)
+    public async Task<IMongoCollection<T>> GetCollectionAsync<T>(string name)
     {
         await AssureFirewallAccessAsync();
 
-        var collection = _mongoDatabase.GetCollection<T>(collectionName);
+        var collection = _mongoDatabase.GetCollection<T>(name);
         var databaseContext = _configuration.GetDatabaseContext();
         var fingerprint = new CollectionFingerprint
         {
             ConfigurationName = databaseContext.ConfigurationName?.Value ?? _configuration.GetConfigurationName(),
             DatabaseName = _mongoDatabase.DatabaseNamespace.DatabaseName,
-            CollectionName = collectionName
+            CollectionName = name
         };
         CollectionAccessEvent?.Invoke(this, new CollectionAccessEventArgs(fingerprint, _mongoUrl.Url, typeof(T), databaseContext.DatabasePart));
 
         return collection;
+    }
+
+    public async Task<IMongoCollection<T>> CreateCollectionAsync<T>(string name)
+    {
+        await _mongoDatabase.CreateCollectionAsync(name);
+        return await GetCollectionAsync<T>(name);
     }
 
     public string GetConfigurationName()
@@ -107,20 +109,17 @@ internal class MongoDbService : IMongoDbService
 
     public Task DropCollectionAsync(string name)
     {
-        //TODO: This uses a call to the database.
         return _mongoDatabase.DropCollectionAsync(name);
     }
 
     public IEnumerable<string> GetCollections()
     {
-        //TODO: This uses a call to the database.
         return _mongoDatabase.ListCollections().ToEnumerable().Select(x => x.AsBsonValue["name"].ToString());
     }
 
     public async IAsyncEnumerable<CollectionMeta> GetCollectionsWithMetaAsync(string databaseName = null)
     {
         var mongoDatabase = string.IsNullOrEmpty(databaseName) ? _mongoDatabase : _mongoClient.GetDatabase(databaseName);
-        //TODO: This uses a call to the database.
         var collections = (await mongoDatabase.ListCollectionsAsync()).ToEnumerable();
 
         foreach (var collection in collections)
@@ -194,14 +193,12 @@ internal class MongoDbService : IMongoDbService
     {
         var filter = new BsonDocument("name", name);
         var options = new ListCollectionNamesOptions { Filter = filter };
-        //TODO: This uses a call to the database.
         var exists = await (await _mongoDatabase.ListCollectionNamesAsync(options)).AnyAsync();
         return exists;
     }
 
     public long GetSize(string collectionName, IMongoDatabase mongoDatabase = null)
     {
-        //TODO: This uses a call to the database.
         var size = (mongoDatabase ?? _mongoDatabase).RunCommand<SizeResult>($"{{collstats: '{collectionName}'}}").Size;
         return size;
     }

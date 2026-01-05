@@ -8,7 +8,8 @@ namespace Tharga.MongoDB;
 
 public interface IMongoDbService
 {
-    Task<IMongoCollection<T>> GetCollectionAsync<T>(string collectionName);
+    Task<IMongoCollection<T>> GetCollectionAsync<T>(string name);
+    Task<IMongoCollection<T>> CreateCollectionAsync<T>(string name);
     string GetConfigurationName();
     string GetDatabaseName();
     string GetDatabaseAddress();
