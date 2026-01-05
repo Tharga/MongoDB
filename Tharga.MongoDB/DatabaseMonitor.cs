@@ -101,15 +101,27 @@ internal class DatabaseMonitor : IDatabaseMonitor
             };
             _mongoDbServiceFactory.CallStartEvent += (_, e) =>
             {
-                _logger.LogTrace($"{nameof(IMongoDbServiceFactory.CallStartEvent)}: {e.CollectionName}");
+                _logger.LogTrace($"{nameof(IMongoDbServiceFactory.CallStartEvent)}: {e.Fingerprint.CollectionName}");
 
                 _callLibrary.StartCall(e);
             };
-            _mongoDbServiceFactory.CallEndEvent += (_, e) =>
+            _mongoDbServiceFactory.CallEndEvent += async (_, e) =>
             {
                 _logger.LogTrace($"{nameof(IMongoDbServiceFactory.CallEndEvent)}: {e.Elapsed}");
 
-                _callLibrary.EndCall(e);
+                var fingerprint = await _callLibrary.EndCallAsync(e);
+
+                if (_accessedCollections.TryGetValue(fingerprint.Key, out var data))
+                {
+                    var updated = data with { CallCount = data.CallCount + 1 };
+                    _accessedCollections.TryUpdate(fingerprint.Key, updated, data);
+                }
+
+                if (CollectionInfoChangedEvent != null)
+                {
+                    var item = await GetInstanceAsync(fingerprint);
+                    if (item != null) CollectionInfoChangedEvent?.Invoke(this, new CollectionInfoChangedEventArgs(item));
+                }
             };
             _mongoDbServiceFactory.ExecuteInfoChangedEvent += (s, e) =>
             {
@@ -204,6 +216,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
                         Source = item.Source | Source.Monitor,
                         Types = item.Types.Union(t.EntityTypes.Select(x => x.Name)).ToArray(),
                         AccessCount = t.AccessCount,
+                        CallCount = t.CallCount,
                         //DocumentCount = new DocumentCount { Count = item.DocumentCount, Virtual = cnt },
                         DocumentCount = new DocumentCount { Count = item.DocumentCount },
                     };
