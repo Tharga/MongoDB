@@ -114,7 +114,7 @@ public abstract class RepositoryCollectionBase<TEntity, TKey> : RepositoryCollec
     //Update
     //public abstract Task<EntityChangeResult<TEntity>> AddOrReplaceAsync(TEntity entity);
     //public abstract Task<EntityChangeResult<TEntity>> ReplaceOneAsync(TEntity entity, OneOption<TEntity> options = null);
-    //public abstract Task<EntityChangeResult<TEntity>> ReplaceOneAsync(TEntity entity, FilterDefinition<TEntity> filter, OneOption<TEntity> options = null); //TODO: This is a trange one. Check what it is used for.
+    //public abstract Task<EntityChangeResult<TEntity>> ReplaceOneAsync(TEntity entity, FilterDefinition<TEntity> filter, OneOption<TEntity> options = null);
 
     //public abstract Task<EntityChangeResult<TEntity>> UpdateOneAsync(TKey id, UpdateDefinition<TEntity> update);
     //public abstract Task<EntityChangeResult<TEntity>> UpdateOneAsync(Expression<Func<TEntity, bool>> predicate, UpdateDefinition<TEntity> update, OneOption<TEntity> options = null);
