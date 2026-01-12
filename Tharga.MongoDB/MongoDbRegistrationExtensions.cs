@@ -11,10 +11,8 @@ using System.Linq;
 using System.Threading.Tasks;
 using Tharga.MongoDB.Atlas;
 using Tharga.MongoDB.Configuration;
-using Tharga.MongoDB.Disk;
 using Tharga.MongoDB.Internals;
 using Tharga.Runtime;
-using static Tharga.MongoDB.DatabaseMonitor;
 
 namespace Tharga.MongoDB;
 
@@ -22,12 +20,16 @@ public static class MongoDbRegistrationExtensions
 {
     private static Action<ActionEventArgs> _actionEvent;
 
-    public static IServiceCollection AddMongoDB(this IServiceCollection services, Action<DatabaseOptions> options = null)
+    public static IServiceCollection AddMongoDB(this IHostApplicationBuilder builder, Action<DatabaseOptions> options = null)
+    {
+        return AddMongoDB(builder.Services, builder.Configuration, options);
+    }
+
+    public static IServiceCollection AddMongoDB(this IServiceCollection services, IConfiguration configuration, Action<DatabaseOptions> options = null)
     {
         var mongoDbInstance = new MongoDbInstance();
 
-        var config = services.BuildServiceProvider().GetService<IConfiguration>();
-        var c = config.GetSection("MongoDB").Get<DatabaseOptions>();
+        var c = configuration.GetSection("MongoDB").Get<DatabaseOptions>();
 
         //NOTE: Set up default.
         var om = new MonitorOptions()
@@ -303,13 +305,14 @@ public static class MongoDbRegistrationExtensions
         where TRepositoryCollection : IRepositoryCollection
         where TRepositoryCollectionBase : RepositoryCollectionBase
     {
-        var provider = services.BuildServiceProvider();
-        var mongoDbInstance = provider.GetService<IMongoDbInstance>();
-        var implementationType = typeof(TRepositoryCollectionBase);
-        var serviceType = typeof(TRepositoryCollection);
+        //var provider = services.BuildServiceProvider(); //TODO: Not allowed to do this, singletons will be strange.
+        //var mongoDbInstance = provider.GetService<IMongoDbInstance>();
+        //var implementationType = typeof(TRepositoryCollectionBase);
+        //var serviceType = typeof(TRepositoryCollection);
 
-        RegisterCollection(services, mongoDbInstance, serviceType, implementationType, "Direct");
-        return services;
+        //RegisterCollection(services, mongoDbInstance, serviceType, implementationType, "Direct");
+        //return services;
+        throw new NotImplementedException();
     }
 
     internal static void RegisterCollection(this IServiceCollection services, IMongoDbInstance mongoDbInstance, Type serviceType, Type implementationType, string regTypeName)

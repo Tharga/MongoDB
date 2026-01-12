@@ -1,4 +1,7 @@
-﻿using System;
+﻿using Microsoft.Extensions.Logging;
+using MongoDB.Bson;
+using MongoDB.Driver;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -6,9 +9,6 @@ using System.Linq.Expressions;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.Extensions.Logging;
-using MongoDB.Bson;
-using MongoDB.Driver;
 using Tharga.MongoDB.Disk;
 using Tharga.MongoDB.Internals;
 
@@ -26,8 +26,10 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
     {
     }
 
+    public event EventHandler<LockEventArgs<TEntity>> LockEvent;
+
     internal override IRepositoryCollection<TEntity, TKey> BaseCollection => Disk;
-    private RepositoryCollectionBase<TEntity, TKey> Disk => _disk ??= new GenericDiskRepositoryCollection<TEntity, TKey>(_mongoDbServiceFactory, _databaseContext ?? new DatabaseContext { CollectionName = CollectionName, DatabasePart = DatabasePart, ConfigurationName = ConfigurationName }, _logger, this);
+    private DiskRepositoryCollectionBase<TEntity, TKey> Disk => _disk ??= new GenericDiskRepositoryCollection<TEntity, TKey>(_mongoDbServiceFactory, _databaseContext ?? new DatabaseContext { CollectionName = CollectionName, DatabasePart = DatabasePart, ConfigurationName = ConfigurationName }, _logger, this);
     internal override IEnumerable<CreateIndexModel<TEntity>> CoreIndices =>
     [
         new(Builders<TEntity>.IndexKeys.Ascending(x => x.Lock), new CreateIndexOptions { Name = nameof(LockableEntityBase.Lock) }),
@@ -42,8 +44,8 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
 
     protected virtual TimeSpan DefaultTimeout { get; init; } = TimeSpan.FromSeconds(30);
     protected virtual bool RequireActor => true;
-    //public override long? VirtualCount => Disk.VirtualCount;
 
+    //Read
     public override IAsyncEnumerable<TEntity> GetAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default)
     {
         return Disk.GetAsync(predicate, options, cancellationToken);
@@ -66,39 +68,39 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
         return Disk.GetProjectionAsync(predicate, options, cancellationToken);
     }
 
-    [Obsolete($"Use {nameof(GetManyAsync)} instead. This method will be deprecated.")]
-    public override Task<Result<TEntity, TKey>> QueryAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default)
-    {
-        return Disk.QueryAsync(predicate, options, cancellationToken);
-    }
+    //[Obsolete($"Use {nameof(GetManyAsync)} instead. This method will be deprecated.")]
+    //public override Task<Result<TEntity, TKey>> QueryAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default)
+    //{
+    //    return Disk.QueryAsync(predicate, options, cancellationToken);
+    //}
 
     public override Task<Result<TEntity, TKey>> GetManyAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default)
     {
         return Disk.GetManyAsync(predicate, options, cancellationToken);
     }
 
-    [Obsolete($"Use {nameof(GetManyAsync)} instead. This method will be deprecated.")]
-    public override Task<Result<TEntity, TKey>> QueryAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default)
-    {
-        return Disk.QueryAsync(filter, options, cancellationToken);
-    }
+    //[Obsolete($"Use {nameof(GetManyAsync)} instead. This method will be deprecated.")]
+    //public override Task<Result<TEntity, TKey>> QueryAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default)
+    //{
+    //    return Disk.QueryAsync(filter, options, cancellationToken);
+    //}
 
     public override Task<Result<TEntity, TKey>> GetManyAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default)
     {
         return Disk.GetManyAsync(filter, options, cancellationToken);
     }
 
-    [Obsolete($"Use {nameof(GetManyAsync)} instead. This method will be deprecated.")]
-    public override IAsyncEnumerable<ResultPage<TEntity, TKey>> GetPagesAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default)
-    {
-        return Disk.GetPagesAsync(predicate, options, cancellationToken);
-    }
+    //[Obsolete($"Use {nameof(GetManyAsync)} instead. This method will be deprecated.")]
+    //public override IAsyncEnumerable<ResultPage<TEntity, TKey>> GetPagesAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default)
+    //{
+    //    return Disk.GetPagesAsync(predicate, options, cancellationToken);
+    //}
 
-    [Obsolete($"Use {nameof(GetManyAsync)} instead. This method will be deprecated.")]
-    public override IAsyncEnumerable<ResultPage<TEntity, TKey>> GetPagesAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default)
-    {
-        return Disk.GetPagesAsync(filter, options, cancellationToken);
-    }
+    //[Obsolete($"Use {nameof(GetManyAsync)} instead. This method will be deprecated.")]
+    //public override IAsyncEnumerable<ResultPage<TEntity, TKey>> GetPagesAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default)
+    //{
+    //    return Disk.GetPagesAsync(filter, options, cancellationToken);
+    //}
 
     public override Task<TEntity> GetOneAsync(TKey id, CancellationToken cancellationToken = default)
     {
@@ -115,15 +117,15 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
         return Disk.GetOneAsync(filter, options, cancellationToken);
     }
 
-    public override Task<T> GetOneAsync<T>(Expression<Func<T, bool>> predicate = null, OneOption<T> options = null, CancellationToken cancellationToken = default)
-    {
-        return Disk.GetOneAsync(predicate, options, cancellationToken);
-    }
+    //public override Task<T> GetOneAsync<T>(Expression<Func<T, bool>> predicate = null, OneOption<T> options = null, CancellationToken cancellationToken = default)
+    //{
+    //    return Disk.GetOneAsync(predicate, options, cancellationToken);
+    //}
 
-    public override Task<T> GetOneProjectionAsync<T>(Expression<Func<T, bool>> predicate = null, OneOption<T> options = null, CancellationToken cancellationToken = default)
-    {
-        return Disk.GetOneProjectionAsync(predicate, options, cancellationToken);
-    }
+    //public override Task<T> GetOneProjectionAsync<T>(Expression<Func<T, bool>> predicate = null, OneOption<T> options = null, CancellationToken cancellationToken = default)
+    //{
+    //    return Disk.GetOneProjectionAsync(predicate, options, cancellationToken);
+    //}
 
     public override Task<long> CountAsync(Expression<Func<TEntity, bool>> predicate, CancellationToken cancellationToken = default)
     {
@@ -133,6 +135,132 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
     public override Task<long> CountAsync(FilterDefinition<TEntity> filter, CancellationToken cancellationToken = default)
     {
         return Disk.CountAsync(filter, cancellationToken);
+    }
+
+    public override Task<long> GetSizeAsync()
+    {
+        return Disk.GetSizeAsync();
+    }
+
+    //Create
+    public override Task AddAsync(TEntity entity)
+    {
+        return Disk.AddAsync(entity);
+    }
+
+    public override Task<bool> TryAddAsync(TEntity entity)
+    {
+        return Disk.TryAddAsync(entity);
+    }
+
+    //public override Task AddManyAsync(IEnumerable<TEntity> entities)
+    //{
+    //    throw new NotSupportedException(BuildErrorMessage());
+    //}
+
+    //Update
+    //public override Task<EntityChangeResult<TEntity>> AddOrReplaceAsync(TEntity entity)
+    //{
+    //    throw new NotSupportedException(BuildErrorMessage());
+    //}
+
+    //public override Task<EntityChangeResult<TEntity>> ReplaceOneAsync(TEntity entity, OneOption<TEntity> options = null)
+    //{
+    //    throw new NotSupportedException(BuildErrorMessage());
+    //}
+
+    //public override Task<EntityChangeResult<TEntity>> ReplaceOneAsync(TEntity entity, FilterDefinition<TEntity> filter, OneOption<TEntity> options = null)
+    //{
+    //    throw new NotSupportedException(BuildErrorMessage());
+    //}
+
+    //public override Task<EntityChangeResult<TEntity>> UpdateOneAsync(TKey id, UpdateDefinition<TEntity> update)
+    //{
+    //    throw new NotSupportedException(BuildErrorMessage());
+    //}
+
+    //public override Task<EntityChangeResult<TEntity>> UpdateOneAsync(Expression<Func<TEntity, bool>> predicate, UpdateDefinition<TEntity> update, OneOption<TEntity> options = null)
+    //{
+    //    throw new NotSupportedException(BuildErrorMessage());
+    //}
+
+    //public override Task<EntityChangeResult<TEntity>> UpdateOneAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update, OneOption<TEntity> options = null)
+    //{
+    //    throw new NotSupportedException(BuildErrorMessage());
+    //}
+
+    //public override async Task<long> UpdateAsync(Expression<Func<TEntity, bool>> predicate, UpdateDefinition<TEntity> update)
+    //{
+    //    throw new NotImplementedException();
+    //}
+
+    /// <summary>
+    /// Update all entities that are not locked.
+    /// </summary>
+    /// <param name="filter"></param>
+    /// <param name="update"></param>
+    /// <returns></returns>
+    public override async Task<long> UpdateAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update)
+    {
+        var filters = new FilterDefinitionBuilder<TEntity>().And(UnlockedOrExpiredFilter, filter);
+        return await Disk.UpdateAsync(filters, update);
+    }
+
+    //Delete
+    public override async Task<TEntity> DeleteOneAsync(TKey id)
+    {
+        var scope = await PickForDeleteAsync(id);
+        var item = await scope.CommitAsync();
+        return item;
+    }
+
+    public override Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate, OneOption<TEntity> options = null)
+    {
+        return Disk.DeleteOneAsync(UnlockedOrExpiredFilter.AndAlso(predicate), options);
+    }
+
+    public override Task<TEntity> DeleteOneAsync(FilterDefinition<TEntity> filter, OneOption<TEntity> options = null)
+    {
+        throw new NotImplementedException();
+    }
+
+    public override Task<long> DeleteManyAsync(Expression<Func<TEntity, bool>> predicate)
+    {
+        return Disk.DeleteManyAsync(UnlockedOrExpiredFilter.AndAlso(predicate));
+    }
+
+    public override async Task<long> DeleteManyAsync(FilterDefinition<TEntity> filter)
+    {
+        throw new NotImplementedException();
+    }
+
+    public async Task<long> DeleteManyAsync(DeleteMode deleteMode, Expression<Func<TEntity, bool>> predicate = null)
+    {
+        switch (deleteMode)
+        {
+            case DeleteMode.Exception:
+                return await Disk.DeleteManyAsync(ExceptionFilter.AndAlso(predicate ?? (_ => true)));
+            default:
+                throw new ArgumentOutOfRangeException(nameof(deleteMode), deleteMode, null);
+        }
+    }
+
+    //Other
+
+    //[Obsolete($"Use {nameof(GetCollectionScope)} instead. This method will be deprecated.")]
+    //public override IMongoCollection<TEntity> GetCollection()
+    //{
+    //    throw new NotSupportedException();
+    //}
+
+    public virtual Task<CollectionScope<TEntity>> GetCollectionScope(Operation operation)
+    {
+        throw new NotSupportedException();
+    }
+
+    public override Task DropCollectionAsync()
+    {
+        return Disk.DropCollectionAsync();
     }
 
     public override IAsyncEnumerable<TEntity> GetDirtyAsync()
@@ -145,11 +273,27 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
         return Disk.GetFailedIndices();
     }
 
-    public override Task<long> GetSizeAsync()
+    internal override Task<StepResponse<IMongoCollection<TEntity>>> FetchCollectionAsync(bool initiate = true)
     {
-        return Disk.GetSizeAsync();
+        return Disk.FetchCollectionAsync(initiate);
     }
 
+    internal override Task<bool> AssureIndex(IMongoCollection<TEntity> collection, bool forceAssure = false, bool throwOnException = false)
+    {
+        return Disk.AssureIndex(collection, forceAssure, throwOnException);
+    }
+
+    internal override Task<(int Before, int After)> DropIndex(IMongoCollection<TEntity> collection)
+    {
+        return Disk.DropIndex(collection);
+    }
+
+    internal override Task CleanAsync(IMongoCollection<TEntity> collection)
+    {
+        return Disk.CleanAsync(collection);
+    }
+
+    //Lock
     public Expression<Func<TEntity, bool>> UnlockedOrExpiredFilter
     {
         get
@@ -217,98 +361,6 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
         return Disk.GetAsync(combinedFilter, options, cancellationToken);
     }
 
-    public override Task AddAsync(TEntity entity)
-    {
-        return Disk.AddAsync(entity);
-    }
-
-    public override Task<bool> TryAddAsync(TEntity entity)
-    {
-        return Disk.TryAddAsync(entity);
-    }
-
-    public override Task AddManyAsync(IEnumerable<TEntity> entities)
-    {
-        throw new NotSupportedException(BuildErrorMessage());
-    }
-
-    public override Task<EntityChangeResult<TEntity>> AddOrReplaceAsync(TEntity entity)
-    {
-        throw new NotSupportedException(BuildErrorMessage());
-    }
-
-    public override Task<EntityChangeResult<TEntity>> ReplaceOneAsync(TEntity entity, OneOption<TEntity> options = null)
-    {
-        throw new NotSupportedException(BuildErrorMessage());
-    }
-
-    public override Task<EntityChangeResult<TEntity>> ReplaceOneAsync(TEntity entity, FilterDefinition<TEntity> filter, OneOption<TEntity> options = null)
-    {
-        throw new NotSupportedException(BuildErrorMessage());
-    }
-
-    public override async Task<long> UpdateAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update)
-    {
-        var filters = new FilterDefinitionBuilder<TEntity>().And(UnlockedOrExpiredFilter, filter);
-        return await Disk.UpdateAsync(filters, update);
-    }
-
-    public override Task<EntityChangeResult<TEntity>> UpdateOneAsync(TKey id, UpdateDefinition<TEntity> update)
-    {
-        throw new NotSupportedException(BuildErrorMessage());
-    }
-
-    public override Task<EntityChangeResult<TEntity>> UpdateOneAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update, OneOption<TEntity> options = null)
-    {
-        throw new NotSupportedException(BuildErrorMessage());
-    }
-
-    public override async Task<TEntity> DeleteOneAsync(TKey id)
-    {
-        var scope = await PickForDeleteAsync(id);
-        var item = await scope.CommitAsync();
-        return item;
-    }
-
-    public override Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate = null, OneOption<TEntity> options = null)
-    {
-        throw new NotSupportedException(BuildErrorMessage());
-    }
-
-    public override async Task<long> DeleteManyAsync(Expression<Func<TEntity, bool>> predicate)
-    {
-        return await Disk.DeleteManyAsync(UnlockedOrExpiredFilter.AndAlso(predicate));
-    }
-
-    public async Task<long> DeleteManyAsync(DeleteMode deleteMode, Expression<Func<TEntity, bool>> predicate = null)
-    {
-        switch (deleteMode)
-        {
-            case DeleteMode.Exception:
-                return await Disk.DeleteManyAsync(ExceptionFilter.AndAlso(predicate ?? (_ => true)));
-            default:
-                throw new ArgumentOutOfRangeException(nameof(deleteMode), deleteMode, null);
-        }
-    }
-
-    [Obsolete($"Use {nameof(GetCollectionScope)} instead. This method will be deprecated.")]
-    public override IMongoCollection<TEntity> GetCollection()
-    {
-        //return Disk.GetCollection();
-        throw new NotSupportedException();
-    }
-
-    public override Task<CollectionScope<TEntity>> GetCollectionScope(Operation operation)
-    {
-        //return Disk.GetCollectionScope();
-        throw new NotSupportedException();
-    }
-
-    public override Task DropCollectionAsync()
-    {
-        return Disk.DropCollectionAsync();
-    }
-
     public async Task<EntityScope<TEntity, TKey>> PickForUpdateAsync(TKey id, TimeSpan? timeout = null, string actor = null, Func<CallbackResult<TEntity>, Task> completeAction = null)
     {
         var result = await CreateLockAsync(Builders<TEntity>.Filter.Eq(x => x.Id, id), timeout, actor, CommitMode.Update, completeAction);
@@ -359,6 +411,12 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
     public async Task<EntityScope<TEntity, TKey>> WaitForDeleteAsync(TKey id, TimeSpan? lockTimeout = null, TimeSpan? waitTimeout = null, string actor = null, Func<CallbackResult<TEntity>, Task> completeAction = null, CancellationToken cancellationToken = default)
     {
         return await WaitForLock(id, lockTimeout, waitTimeout, actor, cancellationToken, CommitMode.Delete, completeAction);
+    }
+
+    public IAsyncEnumerable<EntityLock<TEntity, TKey>> GetWithLockInfoAsync(FilterDefinition<TEntity> filter = null, Options<TEntity> options = null, CancellationToken cancellationToken = default)
+    {
+        return Disk.GetAsync(filter, options, cancellationToken)
+            .Select(x => new EntityLock<TEntity, TKey>(x, x.Lock));
     }
 
     public IAsyncEnumerable<EntityLock<TEntity, TKey>> GetLockedAsync(LockMode lockMode, FilterDefinition<TEntity> filter = null, Options<TEntity> options = null, CancellationToken cancellationToken = default)
@@ -416,17 +474,11 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
             .Select(x => new EntityLock<TEntity, TKey>(x, x.Lock));
     }
 
-    /// <summary>
-    /// Release locked document depending on mode.
-    /// </summary>
-    /// <param name="id"></param>
-    /// <param name="mode"></param>
-    /// <returns></returns>
     public async Task<EntityChangeResult<TEntity>> ReleaseOneAsync(TKey id, ReleaseMode mode)
     {
         var filter = Builders<TEntity>.Filter.And(Builders<TEntity>.Filter.Eq(x => x.Id, id), BuildReleaseFilter(mode));
         var update = new UpdateDefinitionBuilder<TEntity>().Set(x => x.Lock, null);
-        var result = await Disk.UpdateOneAsync(filter, update);
+        var result = await Disk.UpdateOneAsync(filter, update, OneOption<TEntity>.FirstOrDefault); //Use FirstOrDefault since it is atomic safe.
         return result;
     }
 
@@ -509,7 +561,7 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
     {
         var timeoutTotUse = timeout ?? DefaultTimeout;
         if (timeoutTotUse.Ticks < 0) throw new ArgumentException($"{nameof(timeout)} cannot be less than zero. Provided or default value is {timeoutTotUse}.");
-        if (RequireActor && actor.IsNullOrEmpty()) throw new ArgumentNullException(nameof(actor), $"No {nameof(actor)} provided.");
+        if (RequireActor && actor.IsNullOrEmpty()) throw new ArgumentNullException(nameof(actor), $"No {nameof(actor)} provided. Set {nameof(RequireActor)} to false or provide {nameof(actor)}.");
 
         var now = DateTime.UtcNow;
         var lockKey = Guid.NewGuid();
@@ -538,45 +590,51 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
 
         var update = new UpdateDefinitionBuilder<TEntity>().Set(x => x.Lock, entityLock);
 
-        var result = await Disk.UpdateOneAsync(matchFilter, update, OneOption<TEntity>.FirstOrDefault);
+        var result = await Disk.UpdateOneAsync(matchFilter, update, OneOption<TEntity>.FirstOrDefault); //Use FirstOrDefault since it is atomic safe.
         if (result.Before == null) //Document is missing or is already locked
         {
-            var docs = await GetAsync(filter).ToArrayAsync();
+            return (null, null, false); //No document matches the filter.
+            //var docs = await GetAsync(filter).ToArrayAsync();
 
-            if (!docs.Any()) return (null, null, false); //No document matches the filter.
+            //if (!docs.Any()) return (null, null, false); //No document matches the filter.
 
-            if (docs.Length == 1)
-            {
-                var doc = docs.Single();
-                if (doc.Lock?.ExceptionInfo == null)
-                {
-                    var timeString = doc.Lock == null ? null : $" for {doc.Lock.ExpireTime - now}";
-                    var actorString = doc.Lock?.Actor == null ? null : $" by '{doc.Lock.Actor}'";
+            //if (docs.Length == 1)
+            //{
+            //    var doc = docs.Single();
+            //    if (doc.Lock?.ExceptionInfo == null)
+            //    {
+            //        var timeString = doc.Lock == null ? null : $" for {doc.Lock.ExpireTime - now}";
+            //        var actorString = doc.Lock?.Actor == null ? null : $" by '{doc.Lock.Actor}'";
 
-                    return (null, new ErrorInfo
-                    {
-                        Message = $"Entity with id '{doc.Id}' is locked{actorString}{timeString}.",
-                        Type = ErrorInfoType.Locked
-                    }, true);
-                }
+            //        return (null, new ErrorInfo
+            //        {
+            //            Message = $"Entity with id '{doc.Id}' is locked{actorString}{timeString}.",
+            //            Type = ErrorInfoType.Locked
+            //        }, true);
+            //    }
 
-                if (doc.Lock.ExceptionInfo != null)
-                {
-                    return (null, new ErrorInfo
-                    {
-                        Message = $"Entity with id '{doc.Id}' has an exception attached.",
-                        Type = ErrorInfoType.Error
-                    }, false);
-                }
+            //    if (doc.Lock.ExceptionInfo != null)
+            //    {
+            //        return (null, new ErrorInfo
+            //        {
+            //            Message = $"Entity with id '{doc.Id}' has an exception attached.",
+            //            Type = ErrorInfoType.Error
+            //        }, false);
+            //    }
 
-                return (null, new ErrorInfo
-                {
-                    Message = $"Entity with id '{doc.Id}' has an unknown state.",
-                    Type = ErrorInfoType.Unknown
-                }, false);
-            }
+            //    return (null, new ErrorInfo
+            //    {
+            //        Message = $"Entity with id '{doc.Id}' has an unknown state.",
+            //        Type = ErrorInfoType.Unknown
+            //    }, false);
+            //}
 
-            throw new NotSupportedException("Multiple documents matches with the provided expression.");
+            ////throw new NotSupportedException("Multiple documents matches with the provided expression.");
+            //return (null, null, false); //No document matches the filter.
+        }
+        else
+        {
+            FireAndForgetEvent(() => Task.FromResult(result.Before), LockAction.Locked); //NOTE: using before here would be same as after, since we are not getting the lock information.
         }
 
         if (result.Before.Lock != null)
@@ -619,6 +677,8 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
 
     private async Task<bool> ReleaseAsync(TEntity entity, Lock entityLock, bool commit, Exception exception, Func<CallbackResult<TEntity>, Task> completeAction, Func<TEntity, Lock, Func<CallbackResult<TEntity>, Task>, Lock, Task<EntityChangeResult<TEntity>>> releaseAction)
     {
+        if (commit && exception != null) throw new ArgumentException("Cannot commit entity when there is an exception.");
+
         var lockTime = DateTime.UtcNow - entityLock.ExpireTime;
         var timeout = entityLock.ExpireTime - entityLock.LockTime;
         var lockInfo = BuildLockInfo(entityLock, exception);
@@ -630,6 +690,7 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
         }
 
         EntityChangeResult<TEntity> result;
+        TEntity after = null;
         if (commit)
         {
             result = await releaseAction.Invoke(entity, entityLock, completeAction, lockInfo);
@@ -640,12 +701,19 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
             var update = new UpdateDefinitionBuilder<TEntity>()
                 .Set(x => x.Lock, lockInfo);
             result = await Disk.UpdateOneAsync(entity.Id, update);
+
+            if (LockEvent != null)
+            {
+                after = await result.GetAfterAsync();
+                var afterCopy = after;
+                FireAndForgetEvent(() => Task.FromResult(afterCopy), lockInfo.ExceptionInfo != null ? LockAction.Exception : LockAction.Abandoned);
+            }
         }
 
         if (result.Before == null) throw new InvalidOperationException("Cannot find entity before release.");
         if (result.Before.Lock == null) throw new InvalidOperationException("No lock information for document before release.");
 
-        var after = await result.GetAfterAsync();
+        after ??= await result.GetAfterAsync();
         if (after == null && Debugger.IsAttached) throw new InvalidOperationException($"Entity {typeof(TEntity).Name} with id '{entity.Id}' does not exist after release.");
 
         if (completeAction != null && !expired)
@@ -669,7 +737,10 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
             Builders<TEntity>.Filter.Ne(x => x.Lock, null),
             Builders<TEntity>.Filter.Eq(x => x.Lock.LockKey, entityLock.LockKey)
         );
-        var result = await Disk.ReplaceOneAsync(updatedEntity, filter);
+        var result = await Disk.ReplaceOneAsync(updatedEntity, filter, OneOption<TEntity>.FirstOrDefault); //Use FirstOrDefault since it is atomic safe.
+
+        FireAndForgetEvent(async () => await result.GetAfterAsync(), LockAction.CommitUpdated);
+
         return result;
     }
 
@@ -678,10 +749,12 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
         var before = await Disk.DeleteOneAsync(x => x.Id.Equals(entity.Id) && x.Lock != null && x.Lock.LockKey == entityLock.LockKey);
         if (before == null)
         {
-            var item = await Disk.GetOneAsync(x => x.Id.Equals(entity.Id));
+            var item = await Disk.GetOneAsync(entity.Id);
             if (item == null) throw new InvalidOperationException($"Entity of type {typeof(TEntity).Name} with id '{entity.Id}' was not deleted on commit, it did not exist. [EntityActor: {entity.Lock?.Actor}, EntityLockTime: {entity.Lock?.LockTime}, EntityExpireTime: {entity.Lock?.ExpireTime}, EntityException: {entity.Lock?.ExceptionInfo?.Message}, Now: {DateTime.UtcNow}]");
             throw new InvalidOperationException($"Entity of type {typeof(TEntity).Name} with id '{entity.Id}' was not deleted on commit, lock key missmatch. [EntityActor: {entity.Lock?.Actor}, EntityLockTime: {entity.Lock?.LockTime}, EntityExpireTime: {entity.Lock?.ExpireTime}, EntityException: {entity.Lock?.ExceptionInfo?.Message}, CurrentActor: {item.Lock?.Actor}, CurrentLockTime: {item.Lock?.LockTime}, CurrentExpireTime: {item.Lock?.ExpireTime}, CurrentException: {item.Lock?.ExceptionInfo?.Message}, Now: {DateTime.UtcNow}]");
         }
+
+        FireAndForgetEvent(() => Task.FromResult(before), LockAction.CommitDeleted);
 
         if (completeAction != null)
         {
@@ -689,6 +762,24 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
         }
 
         return null;
+    }
+
+    private void FireAndForgetEvent(Func<Task<TEntity>> entityLoader, LockAction lockAction)
+    {
+        if (LockEvent == null) return;
+
+        Task.Run(async () =>
+        {
+            try
+            {
+                var entity = await entityLoader.Invoke();
+                LockEvent?.Invoke(this, new LockEventArgs<TEntity>(entity, lockAction));
+            }
+            catch (Exception e)
+            {
+                _logger?.LogWarning(e, e.Message);
+            }
+        });
     }
 
     private Lock BuildLockInfo(Lock entityLock, Exception exception)

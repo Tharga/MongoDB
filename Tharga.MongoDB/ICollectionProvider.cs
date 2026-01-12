@@ -24,7 +24,7 @@ public interface ICollectionProvider
     /// <param name="databaseContext"></param>
     /// <returns></returns>
     TCollection GetCollection<TCollection, TEntity, TKey>(DatabaseContext databaseContext = null)
-        where TCollection : IReadOnlyRepositoryCollection<TEntity, TKey>
+        where TCollection : IDiskReadOnlyRepositoryCollection<TEntity, TKey>
         where TEntity : EntityBase<TKey>;
 
     /// <summary>
@@ -35,7 +35,7 @@ public interface ICollectionProvider
     /// <param name="databaseContext"></param>
     /// <returns></returns>
     TCollection GetCollection<TCollection, TEntity>(DatabaseContext databaseContext = null)
-        where TCollection : IReadOnlyRepositoryCollection<TEntity, ObjectId>
+        where TCollection : IDiskReadOnlyRepositoryCollection<TEntity, ObjectId>
         where TEntity : EntityBase;
 
     IRepositoryCollection GetCollection(Type collectionType, DatabaseContext databaseContext = null);

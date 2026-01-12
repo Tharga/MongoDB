@@ -49,85 +49,121 @@ internal class DatabaseMonitor : IDatabaseMonitor
         {
             _mongoDbServiceFactory.IndexUpdatedEvent += async (_, e) =>
             {
-                _logger.LogTrace($"{nameof(IMongoDbServiceFactory.IndexUpdatedEvent)}: {e.Fingerprint}");
-
-                if (CollectionInfoChangedEvent != null)
+                try
                 {
-                    var item = await GetInstanceAsync(e.Fingerprint);
-                    if (item != null) CollectionInfoChangedEvent?.Invoke(this, new CollectionInfoChangedEventArgs(item));
+                    _logger.LogTrace($"{nameof(IMongoDbServiceFactory.IndexUpdatedEvent)}: {e.Fingerprint}");
+
+                    if (CollectionInfoChangedEvent != null)
+                    {
+                        var item = await GetInstanceAsync(e.Fingerprint);
+                        if (item != null) CollectionInfoChangedEvent?.Invoke(this, new CollectionInfoChangedEventArgs(item));
+                    }
+                }
+                catch (Exception exception)
+                {
+                    _logger.LogError(exception, exception.Message);
                 }
             };
             _mongoDbServiceFactory.CollectionAccessEvent += async (_, e) =>
             {
-                _logger.LogTrace($"{nameof(IMongoDbServiceFactory.CollectionAccessEvent)}: {e.Fingerprint}");
-
-                var now = DateTime.UtcNow;
-                _accessedCollections.AddOrUpdate(e.Fingerprint.Key, new CollectionAccessData
+                try
                 {
-                    ConfigurationName = e.Fingerprint.ConfigurationName,
-                    DatabaseName = e.Fingerprint.DatabaseName,
-                    CollectionName = e.Fingerprint.CollectionName,
-                    Server = e.Server,
-                    DatabasePart = e.DatabasePart.NullIfEmpty(),
+                    _logger.LogTrace($"{nameof(IMongoDbServiceFactory.CollectionAccessEvent)}: {e.Fingerprint}");
 
-                    FirstAccessed = now,
-                    LastAccessed = now,
-                    AccessCount = 1,
-                    EntityTypes = [e.EntityType],
-                }, (_, item) =>
-                {
-                    item.LastAccessed = now;
-                    item.AccessCount++;
-                    item.EntityTypes = item.EntityTypes.Union([e.EntityType]).ToArray();
-                    return item;
-                });
-
-                if (Debugger.IsAttached)
-                {
-                    if (_accessedCollections.TryGetValue(e.Fingerprint.Key, out var item))
+                    var now = DateTime.UtcNow;
+                    _accessedCollections.AddOrUpdate(e.Fingerprint.Key, new CollectionAccessData
                     {
-                        if (item.AccessCount > 1)
+                        ConfigurationName = e.Fingerprint.ConfigurationName,
+                        DatabaseName = e.Fingerprint.DatabaseName,
+                        CollectionName = e.Fingerprint.CollectionName,
+                        Server = e.Server,
+                        DatabasePart = e.DatabasePart.NullIfEmpty(),
+
+                        FirstAccessed = now,
+                        LastAccessed = now,
+                        AccessCount = 1,
+                        EntityTypes = [e.EntityType],
+                    }, (_, item) =>
+                    {
+                        item.LastAccessed = now;
+                        item.AccessCount++;
+                        item.EntityTypes = item.EntityTypes.Union([e.EntityType]).ToArray();
+                        return item;
+                    });
+
+                    if (Debugger.IsAttached)
+                    {
+                        if (_accessedCollections.TryGetValue(e.Fingerprint.Key, out var item))
                         {
-                            //TODO: Check why this collection was "accessed" more than once.
+                            if (item.AccessCount > 1)
+                            {
+                                //TODO: Check why this collection was "accessed" more than once.
+                            }
                         }
                     }
-                }
 
-                if (CollectionInfoChangedEvent != null)
+                    if (CollectionInfoChangedEvent != null)
+                    {
+                        var item = await GetInstanceAsync(e.Fingerprint);
+                        if (item != null) CollectionInfoChangedEvent?.Invoke(this, new CollectionInfoChangedEventArgs(item));
+                    }
+                }
+                catch (Exception exception)
                 {
-                    var item = await GetInstanceAsync(e.Fingerprint);
-                    if (item != null) CollectionInfoChangedEvent?.Invoke(this, new CollectionInfoChangedEventArgs(item));
+                    _logger.LogError(exception, exception.Message);
                 }
             };
             _mongoDbServiceFactory.CallStartEvent += (_, e) =>
             {
-                _logger.LogTrace($"{nameof(IMongoDbServiceFactory.CallStartEvent)}: {e.Fingerprint.CollectionName}");
+                try
+                {
+                    _logger.LogTrace($"{nameof(IMongoDbServiceFactory.CallStartEvent)}: {e.Fingerprint.CollectionName}");
 
-                _callLibrary.StartCall(e);
+                    _callLibrary.StartCall(e);
+                }
+                catch (Exception exception)
+                {
+                    _logger.LogError(exception, exception.Message);
+                }
             };
             _mongoDbServiceFactory.CallEndEvent += async (_, e) =>
             {
-                _logger.LogTrace($"{nameof(IMongoDbServiceFactory.CallEndEvent)}: {e.Elapsed}");
-
-                var fingerprint = await _callLibrary.EndCallAsync(e);
-
-                if (_accessedCollections.TryGetValue(fingerprint.Key, out var data))
+                try
                 {
-                    var updated = data with { CallCount = data.CallCount + 1 };
-                    _accessedCollections.TryUpdate(fingerprint.Key, updated, data);
+                    _logger.LogTrace($"{nameof(IMongoDbServiceFactory.CallEndEvent)}: {e.Elapsed}");
+
+                    var fingerprint = await _callLibrary.EndCallAsync(e);
+                    if (fingerprint == null) return;
+
+                    if (_accessedCollections.TryGetValue(fingerprint.Key, out var data))
+                    {
+                        var updated = data with { CallCount = data.CallCount + 1 };
+                        _accessedCollections.TryUpdate(fingerprint.Key, updated, data);
+                    }
+
+                    if (CollectionInfoChangedEvent != null)
+                    {
+                        var item = await GetInstanceAsync(fingerprint);
+                        if (item != null) CollectionInfoChangedEvent?.Invoke(this, new CollectionInfoChangedEventArgs(item));
+                    }
                 }
-
-                if (CollectionInfoChangedEvent != null)
+                catch (Exception exception)
                 {
-                    var item = await GetInstanceAsync(fingerprint);
-                    if (item != null) CollectionInfoChangedEvent?.Invoke(this, new CollectionInfoChangedEventArgs(item));
+                    _logger.LogError(exception, exception.Message);
                 }
             };
             _mongoDbServiceFactory.ExecuteInfoChangedEvent += (s, e) =>
             {
-                _logger.LogTrace($"{nameof(IMongoDbServiceFactory.ExecuteInfoChangedEvent)}");
+                try
+                {
+                    _logger.LogTrace($"{nameof(IMongoDbServiceFactory.ExecuteInfoChangedEvent)}");
 
-                ExecuteInfoChangedEvent?.Invoke(s, e);
+                    ExecuteInfoChangedEvent?.Invoke(s, e);
+                }
+                catch (Exception exception)
+                {
+                    _logger.LogError(exception, exception.Message);
+                }
             };
         }
         finally
