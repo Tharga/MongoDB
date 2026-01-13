@@ -675,7 +675,7 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
         return (new EntityScope<TEntity, TKey>(result.Before, releaseAction), null, false);
     }
 
-    private async Task<bool> ReleaseAsync(TEntity entity, Lock entityLock, bool commit, Exception exception, Func<CallbackResult<TEntity>, Task> completeAction, Func<TEntity, Lock, Func<CallbackResult<TEntity>, Task>, Lock, Task<EntityChangeResult<TEntity>>> releaseAction)
+    private async Task<bool> ReleaseAsync(TEntity entity, Lock entityLock, bool commit, Exception exception, Func<CallbackResult<TEntity>, Task> completeAction, Func<TEntity, Lock, Func<CallbackResult<TEntity>, Task>, Lock, Task<(EntityChangeResult<TEntity>, LockAction)>> releaseAction)
     {
         if (commit && exception != null) throw new ArgumentException("Cannot commit entity when there is an exception.");
 
@@ -691,9 +691,12 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
 
         EntityChangeResult<TEntity> result;
         TEntity after = null;
+        LockAction lockAction;
         if (commit)
         {
-            result = await releaseAction.Invoke(entity, entityLock, completeAction, lockInfo);
+            var r = await releaseAction.Invoke(entity, entityLock, completeAction, lockInfo);
+            result = r.Item1;
+            lockAction = r.Item2;
             if (result == null) return true;
         }
         else
@@ -702,11 +705,13 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
                 .Set(x => x.Lock, lockInfo);
             result = await Disk.UpdateOneAsync(entity.Id, update);
 
+            lockAction = lockInfo?.ExceptionInfo != null ? LockAction.Exception : LockAction.Abandoned;
+
             if (LockEvent != null)
             {
                 after = await result.GetAfterAsync();
                 var afterCopy = after;
-                FireAndForgetEvent(() => Task.FromResult(afterCopy), lockInfo.ExceptionInfo != null ? LockAction.Exception : LockAction.Abandoned);
+                FireAndForgetEvent(() => Task.FromResult(afterCopy), lockAction);
             }
         }
 
@@ -718,13 +723,13 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
 
         if (completeAction != null && !expired)
         {
-            await completeAction.Invoke(new CallbackResult<TEntity> { Commit = commit, Before = result.Before, After = after });
+            await completeAction.Invoke(new CallbackResult<TEntity> { LockAction = lockAction, Commit = commit, Before = result.Before, After = after });
         }
 
         return after?.Lock == null;
     }
 
-    private async Task<EntityChangeResult<TEntity>> PrepareCommitForUpdateAsync(TEntity entity, Lock entityLock, Func<CallbackResult<TEntity>, Task> completeAction, Lock lockInfo)
+    private async Task<(EntityChangeResult<TEntity>, LockAction)> PrepareCommitForUpdateAsync(TEntity entity, Lock entityLock, Func<CallbackResult<TEntity>, Task> completeAction, Lock lockInfo)
     {
         var updatedEntity = entity with
         {
@@ -741,10 +746,10 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
 
         FireAndForgetEvent(async () => await result.GetAfterAsync(), LockAction.CommitUpdated);
 
-        return result;
+        return (result, LockAction.CommitUpdated);
     }
 
-    private async Task<EntityChangeResult<TEntity>> PerformCommitForDeleteAsync(TEntity entity, Lock entityLock, Func<CallbackResult<TEntity>, Task> completeAction, Lock lockInfo)
+    private async Task<(EntityChangeResult<TEntity>, LockAction)> PerformCommitForDeleteAsync(TEntity entity, Lock entityLock, Func<CallbackResult<TEntity>, Task> completeAction, Lock lockInfo)
     {
         var before = await Disk.DeleteOneAsync(x => x.Id.Equals(entity.Id) && x.Lock != null && x.Lock.LockKey == entityLock.LockKey);
         if (before == null)
@@ -758,10 +763,10 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
 
         if (completeAction != null)
         {
-            await completeAction.Invoke(new CallbackResult<TEntity> { Commit = true, Before = before, After = null });
+            await completeAction.Invoke(new CallbackResult<TEntity> { LockAction = LockAction.CommitDeleted, Commit = true, Before = before, After = null });
         }
 
-        return null;
+        return (null, LockAction.CommitDeleted);
     }
 
     private void FireAndForgetEvent(Func<Task<TEntity>> entityLoader, LockAction lockAction)
