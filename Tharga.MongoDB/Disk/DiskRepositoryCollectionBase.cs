@@ -542,7 +542,6 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                     {
                         var opt = new FindOneAndDeleteOptions<TEntity, TEntity> { Sort = options.Sort };
                         var deletedItem = await collection.FindOneAndDeleteAsync(predicate, opt, ct);
-                        await DropEmptyAsync(collection);
                         return (deletedItem, 1);
                     }
                     break;
@@ -557,7 +556,6 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 
             var itemFilter = new FilterDefinitionBuilder<TEntity>().Eq(x => x.Id, item.Id);
             await collection.FindOneAndDeleteAsync(itemFilter, cancellationToken: ct);
-            await DropEmptyAsync(collection);
             return (item, 1);
         }, Operation.Delete);
     }
@@ -572,7 +570,6 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         return await ExecuteAsync(nameof(DeleteManyAsync), async (collection, ct) =>
         {
             var item = await collection.DeleteManyAsync(predicate, cancellationToken: ct);
-            await DropEmptyAsync(collection);
             return (item.DeletedCount, (int)item.DeletedCount);
         }, Operation.Delete);
     }
