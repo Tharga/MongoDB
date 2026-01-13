@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.DependencyInjection;
+﻿using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Bson;
 using SimpleConsoleDemo;
 using Tharga.MongoDB;
@@ -6,10 +7,10 @@ using Tharga.MongoDB.Configuration;
 using Tharga.MongoDB.Disk;
 
 var services = new ServiceCollection();
-services.AddMongoDB(o =>
+services.AddMongoDB(services.BuildServiceProvider().GetService<IConfiguration>(), o =>
 {
     o.ConnectionStringLoader = (ConfigurationName _, IServiceProvider _) => Task.FromResult<ConnectionString>("mongodb://localhost:27017/SimpleDemo");
-    o.ActionEvent = e => { Console.WriteLine((string?)e.Action.Message); };
+    o.ActionEvent = e => { Console.WriteLine((string)e.Action.Message); };
 });
 
 var serviceProvider = services.BuildServiceProvider();

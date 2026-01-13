@@ -78,6 +78,8 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                 var response = await action.Invoke(collection, ct);
                 steps.Add(new StepResponse { Timestamp = Stopwatch.GetTimestamp(), Step = "Action" });
 
+                if (operation == Operation.Delete) await DropEmptyAsync(collection);
+
                 //TODO: Option to turn on explain mode. This will be the analysis steps.
                 //TODO: Try to get more information about the filter or predicate on the call.
 
@@ -566,7 +568,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                     {
                         var opt = new FindOneAndDeleteOptions<TEntity, TEntity> { Sort = options.Sort };
                         var deletedItem = await collection.FindOneAndDeleteAsync(predicate, opt, ct);
-                        await DropEmpty(collection);
+                        await DropEmptyAsync(collection);
                         return (deletedItem, 1);
                     }
                     break;
@@ -581,7 +583,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 
             var itemFilter = new FilterDefinitionBuilder<TEntity>().Eq(x => x.Id, item.Id);
             await collection.FindOneAndDeleteAsync(itemFilter, cancellationToken: ct);
-            await DropEmpty(collection);
+            await DropEmptyAsync(collection);
             return (item, 1);
         }, Operation.Delete);
     }
@@ -596,7 +598,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         return await ExecuteAsync(nameof(DeleteManyAsync), async (collection, ct) =>
         {
             var item = await collection.DeleteManyAsync(predicate, cancellationToken: ct);
-            await DropEmpty(collection);
+            await DropEmptyAsync(collection);
             return (item.DeletedCount, (int)item.DeletedCount);
         }, Operation.Delete);
     }
@@ -679,7 +681,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                 {
                     await AssureIndex(collection);
                     await CleanAsync(collection);
-                    await DropEmpty(collection);
+                    await DropEmptyAsync(collection);
                 }
                 else if (CreateCollectionStrategy == CreateStrategy.CreateOnGet)
                 {
@@ -816,8 +818,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         throw new NotImplementedException($"{nameof(CleanAsync)} has not been implemented.");
     }
 
-    //TODO: This should be called on delete from the execute method, after the operation has completed.
-    protected virtual async Task DropEmpty(IMongoCollection<TEntity> collection)
+    protected virtual async Task DropEmptyAsync(IMongoCollection<TEntity> collection)
     {
         if (CreateCollectionStrategy != CreateStrategy.DropEmpty) return;
 

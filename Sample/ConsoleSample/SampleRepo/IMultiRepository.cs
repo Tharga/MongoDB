@@ -1,7 +1,6 @@
 ﻿using System.Collections.Generic;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
-using MongoDB.Bson;
 using Tharga.MongoDB;
 using Tharga.MongoDB.Disk;
 
@@ -44,7 +43,6 @@ public record SampleEntity : EntityBase
 
 public interface ISampleRepositoryCollection : IDiskRepositoryCollection<SampleEntity>
 {
-
 }
 
 internal class SampleRepositoryCollection : DiskRepositoryCollectionBase<SampleEntity>, ISampleRepositoryCollection

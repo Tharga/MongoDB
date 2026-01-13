@@ -552,10 +552,10 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
         }
     }
 
-    private string BuildErrorMessage()
-    {
-        return $"Use {nameof(PickForUpdateAsync)} to get an update {nameof(EntityScope<TEntity, TKey>)} that can be used for update.";
-    }
+    //private string BuildErrorMessage()
+    //{
+    //    return $"Use {nameof(PickForUpdateAsync)} to get an update {nameof(EntityScope<TEntity, TKey>)} that can be used for update.";
+    //}
 
     private async Task<(EntityScope<TEntity, TKey> EntityScope, ErrorInfo errorInfo, bool ShouldWait)> CreateLockAsync(FilterDefinition<TEntity> filter, TimeSpan? timeout, string actor, CommitMode commitMode, Func<CallbackResult<TEntity>, Task> completeAction)
     {
@@ -593,43 +593,43 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
         var result = await Disk.UpdateOneAsync(matchFilter, update, OneOption<TEntity>.FirstOrDefault); //Use FirstOrDefault since it is atomic safe.
         if (result.Before == null) //Document is missing or is already locked
         {
-            return (null, null, false); //No document matches the filter.
-            //var docs = await GetAsync(filter).ToArrayAsync();
+            //return (null, null, false); //No document matches the filter.
+            var docs = await GetAsync(filter).ToArrayAsync();
 
-            //if (!docs.Any()) return (null, null, false); //No document matches the filter.
+            if (!docs.Any()) return (null, null, false); //No document matches the filter.
 
-            //if (docs.Length == 1)
-            //{
-            //    var doc = docs.Single();
-            //    if (doc.Lock?.ExceptionInfo == null)
-            //    {
-            //        var timeString = doc.Lock == null ? null : $" for {doc.Lock.ExpireTime - now}";
-            //        var actorString = doc.Lock?.Actor == null ? null : $" by '{doc.Lock.Actor}'";
+            if (docs.Length == 1)
+            {
+                var doc = docs.Single();
+                if (doc.Lock?.ExceptionInfo == null)
+                {
+                    var timeString = doc.Lock == null ? null : $" for {doc.Lock.ExpireTime - now}";
+                    var actorString = doc.Lock?.Actor == null ? null : $" by '{doc.Lock.Actor}'";
 
-            //        return (null, new ErrorInfo
-            //        {
-            //            Message = $"Entity with id '{doc.Id}' is locked{actorString}{timeString}.",
-            //            Type = ErrorInfoType.Locked
-            //        }, true);
-            //    }
+                    return (null, new ErrorInfo
+                    {
+                        Message = $"Entity with id '{doc.Id}' is locked{actorString}{timeString}.",
+                        Type = ErrorInfoType.Locked
+                    }, true);
+                }
 
-            //    if (doc.Lock.ExceptionInfo != null)
-            //    {
-            //        return (null, new ErrorInfo
-            //        {
-            //            Message = $"Entity with id '{doc.Id}' has an exception attached.",
-            //            Type = ErrorInfoType.Error
-            //        }, false);
-            //    }
+                if (doc.Lock.ExceptionInfo != null)
+                {
+                    return (null, new ErrorInfo
+                    {
+                        Message = $"Entity with id '{doc.Id}' has an exception attached.",
+                        Type = ErrorInfoType.Error
+                    }, false);
+                }
 
-            //    return (null, new ErrorInfo
-            //    {
-            //        Message = $"Entity with id '{doc.Id}' has an unknown state.",
-            //        Type = ErrorInfoType.Unknown
-            //    }, false);
-            //}
+                return (null, new ErrorInfo
+                {
+                    Message = $"Entity with id '{doc.Id}' has an unknown state.",
+                    Type = ErrorInfoType.Unknown
+                }, false);
+            }
 
-            ////throw new NotSupportedException("Multiple documents matches with the provided expression.");
+            throw new NotSupportedException("Multiple documents matches with the provided expression.");
             //return (null, null, false); //No document matches the filter.
         }
         else

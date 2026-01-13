@@ -16,7 +16,7 @@ var host = Host.CreateDefaultBuilder(args)
     {
         builder.AddEnvironmentVariables();
     })
-    .ConfigureAppConfiguration((context, builder) =>
+    .ConfigureAppConfiguration((_, builder) =>
     {
         builder
             .SetBasePath(AppContext.BaseDirectory)
@@ -34,7 +34,7 @@ var host = Host.CreateDefaultBuilder(args)
             .Select(services.AddTransient)
             .ToArray();
 
-        services.AddMongoDB(o =>
+        services.AddMongoDB(services.BuildServiceProvider().GetService<IConfiguration>(), o =>
         {
             o.Monitor.Enabled = true;
         });

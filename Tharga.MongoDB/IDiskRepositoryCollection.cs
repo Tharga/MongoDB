@@ -12,6 +12,8 @@ public interface IDiskRepositoryCollection<TEntity, TKey> : IDiskReadOnlyReposit
     where TEntity : EntityBase<TKey>
 {
     //Create
+    Task AddAsync(TEntity entity);
+    Task<bool> TryAddAsync(TEntity entity);
     Task AddManyAsync(IEnumerable<TEntity> entities);
 
     //Update
@@ -31,5 +33,5 @@ public interface IDiskRepositoryCollection<TEntity, TKey> : IDiskReadOnlyReposit
     Task<CollectionScope<TEntity>> GetCollectionScope(Operation operation);
 }
 
-public interface IDiskRepositoryCollection<TEntity> : IRepositoryCollection<TEntity, ObjectId>
+public interface IDiskRepositoryCollection<TEntity> : IDiskRepositoryCollection<TEntity, ObjectId>
     where TEntity : EntityBase<ObjectId>;
