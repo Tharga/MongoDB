@@ -443,7 +443,8 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 
     public virtual async Task<EntityChangeResult<TEntity>> UpdateOneAsync(Expression<Func<TEntity, bool>> predicate, UpdateDefinition<TEntity> update, OneOption<TEntity> options = null)
     {
-        throw new NotImplementedException();
+        var filter = Builders<TEntity>.Filter.Where(predicate);
+        return await UpdateOneAsync(filter, update);
     }
 
     public virtual async Task<EntityChangeResult<TEntity>> UpdateOneAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update, OneOption<TEntity> options = null)
