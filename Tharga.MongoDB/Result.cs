@@ -6,3 +6,9 @@ public record Result<TEntity, TKey>
     public TEntity[] Items { get; init; }
     public int TotalCount { get; init; }
 }
+
+public record Result<TEntity>
+{
+    public TEntity[] Items { get; init; }
+    public int TotalCount { get; init; }
+}

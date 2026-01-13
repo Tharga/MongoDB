@@ -25,7 +25,7 @@ public interface IReadOnlyRepositoryCollection<TEntity, TKey> : IReadOnlyReposit
     IAsyncEnumerable<TEntity> GetAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default);
 
     IAsyncEnumerable<T> GetProjectionAsync<T>(Expression<Func<T, bool>> predicate = null, Options<T> options = null, CancellationToken cancellationToken = default);
-    //IAsyncEnumerable<T> GetProjectionAsync<T>(FilterDefinition<T> filter, Options<T> options = null, CancellationToken cancellationToken = default);
+    IAsyncEnumerable<T> GetProjectionAsync<T>(FilterDefinition<T> filter, Options<T> options = null, CancellationToken cancellationToken = default);
 
     Task<Result<TEntity, TKey>> GetManyAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default);
     Task<Result<TEntity, TKey>> GetManyAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default);
@@ -41,8 +41,8 @@ public interface IReadOnlyRepositoryCollection<TEntity, TKey> : IReadOnlyReposit
 public interface IDiskReadOnlyRepositoryCollection<TEntity, TKey> : IReadOnlyRepositoryCollection<TEntity, TKey>
     where TEntity : EntityBase<TKey>
 {
-    [Obsolete("Projection methods will have to be developed if needed.")]
-    IAsyncEnumerable<T> GetAsync<T>(Expression<Func<T, bool>> predicate = null, Options<T> options = null, CancellationToken cancellationToken = default) where T : TEntity;
+    //[Obsolete("Projection methods will have to be developed if needed.")]
+    //IAsyncEnumerable<T> GetAsync<T>(Expression<Func<T, bool>> predicate = null, Options<T> options = null, CancellationToken cancellationToken = default) where T : TEntity;
 
     [Obsolete($"Use {nameof(GetManyAsync)} instead. This method will be deprecated.")]
     Task<Result<TEntity, TKey>> QueryAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default);
