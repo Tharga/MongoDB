@@ -348,9 +348,21 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         }, Operation.Create);
     }
 
-    public override Task<bool> TryAddAsync(TEntity entity)
+    public override async Task<bool> TryAddAsync(TEntity entity)
     {
-        throw new NotImplementedException();
+        return await ExecuteAsync(nameof(AddAsync), async (collection, ct) =>
+        {
+            try
+            {
+                await collection.InsertOneAsync(entity, cancellationToken: ct);
+                return (true, 1);
+            }
+            catch (MongoWriteException)
+            {
+                return (false, 0);
+            }
+
+        }, Operation.Create);
     }
 
     public virtual async Task AddManyAsync(IEnumerable<TEntity> entities)
