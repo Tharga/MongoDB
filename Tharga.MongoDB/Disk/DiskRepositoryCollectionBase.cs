@@ -219,12 +219,45 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 
     public override IAsyncEnumerable<T> GetProjectionAsync<T>(Expression<Func<T, bool>> predicate = null, Options<T> options = null, CancellationToken cancellationToken = default)
     {
-        throw new NotImplementedException();
+        var filter = predicate != null
+            ? Builders<T>.Filter.Where(predicate)
+            : FilterDefinition<T>.Empty;
+
+        return GetProjectionAsync(filter, options, cancellationToken);
     }
 
-    public override IAsyncEnumerable<T> GetProjectionAsync<T>(FilterDefinition<T> filter, Options<T> options = null, CancellationToken cancellationToken = default)
+    public override async IAsyncEnumerable<T> GetProjectionAsync<T>(FilterDefinition<T> filter, Options<T> options = null, CancellationToken cancellationToken = default)
     {
-        throw new NotImplementedException();
+        options ??= new Options<T>();
+
+        var skip = options.Skip ?? 0;
+        var limit = options.Limit ?? ResultLimit ?? 1000;
+
+        var page = 0;
+        while (true)
+        {
+            var pageOptions = options with { Skip = skip, Limit = limit };
+            var response = await GetManyProjectionAsync<T>(filter, pageOptions, cancellationToken);
+
+            foreach (var item in response.Items)
+            {
+                yield return item;
+            }
+
+            skip += response.Items.Length;
+
+            if (skip >= response.TotalCount || response.Items.Length == 0)
+            {
+                break;
+            }
+
+            page++;
+        }
+
+        if (page >= 5)
+        {
+            _logger?.LogWarning($"Query on collection {{collection}} returned {{pages}} pages with items {{count}} each. Consired using {nameof(GetManyProjectionAsync)}, limit the total response or increase the count for each page.", CollectionName, page, limit);
+        }
     }
 
     [Obsolete($"Use {nameof(GetManyAsync)} instead. This method will be deprecated.")]
@@ -269,6 +302,61 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                 Items = items,
                 TotalCount = totalCount
             }, items.Length);
+        }, Operation.Read, cancellationToken);
+    }
+
+    public override Task<Result<T>> GetManyProjectionAsync<T>(Expression<Func<T, bool>> predicate = null, Options<T> options = null, CancellationToken cancellationToken = default)
+    {
+        var filter = predicate != null
+            ? Builders<T>.Filter.Where(predicate)
+            : Builders<T>.Filter.Empty;
+
+        return GetManyProjectionAsync(filter, options, cancellationToken);
+    }
+
+    public override async Task<Result<T>> GetManyProjectionAsync<T>(FilterDefinition<T> filter, Options<T> options = null, CancellationToken cancellationToken = default)
+    {
+        return await ExecuteAsync<Result<T>>(nameof(GetManyProjectionAsync), async (_, ct) =>
+        {
+            var o = options == null
+                ? new FindOptions<T, T>
+                {
+                    Projection = BuildProjection<T>(),
+                }
+                : new FindOptions<T, T>
+                {
+                    Projection = options.Projection ?? BuildProjection<T>(),
+                    Sort = options.Sort,
+                    Limit = options.Limit,
+                    Skip = options.Skip
+                };
+
+            var items = new List<T>();
+
+            var collection = await GetProjectionCollectionAsync<T>();
+            var cursor = await collection.FindAsync(filter ?? FilterDefinition<T>.Empty, o, ct);
+            var count = 0;
+            while (await cursor.MoveNextAsync(ct))
+            {
+                foreach (var current in cursor.Current)
+                {
+                    count++;
+                    if (ResultLimit != null && count > ResultLimit)
+                    {
+                        throw new ResultLimitException(ResultLimit.Value);
+                    }
+
+                    items.Add(current);
+                }
+            }
+
+            var totalCount = items.Count;
+            if (totalCount <= (options?.Limit ?? ResultLimit ?? 1000))
+            {
+                totalCount = (int)await collection.CountDocumentsAsync(filter, cancellationToken: ct);
+            }
+
+            return (new Result<T> { Items = items.ToArray(), TotalCount = totalCount }, items.Count);
         }, Operation.Read, cancellationToken);
     }
 
@@ -333,9 +421,9 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         }, Operation.Read, cancellationToken);
     }
 
-    public override Task<long> GetSizeAsync()
+    public override async Task<long> GetSizeAsync(CancellationToken cancellationToken = default)
     {
-        throw new NotImplementedException();
+        return await ExecuteAsync(nameof(GetSizeAsync), (_, _) => Task.FromResult((_mongoDbService.GetSize(ProtectedCollectionName), 1)),Operation.Read, cancellationToken);
     }
 
     //Create
@@ -556,7 +644,6 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                         var deletedItem = await collection.FindOneAndDeleteAsync(predicate, opt, ct);
                         return (deletedItem, 1);
                     }
-                    break;
                 case EMode.First:
                     item = await findFluent.FirstAsync(ct);
                     break;
@@ -588,18 +675,35 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 
     public override async Task<long> DeleteManyAsync(FilterDefinition<TEntity> filter)
     {
-        throw new NotImplementedException();
+        return await ExecuteAsync(nameof(DeleteManyAsync), async (collection, ct) =>
+        {
+            var item = await collection.DeleteManyAsync(filter, cancellationToken: ct);
+            return (item.DeletedCount, (int)item.DeletedCount);
+        }, Operation.Delete);
     }
 
     //Other
     [Obsolete($"Use {nameof(GetCollectionScope)} instead. This method will be deprecated.")]
     public virtual IMongoCollection<TEntity> GetCollection()
     {
-        throw new NotImplementedException();
+        var item = FetchCollectionAsync().GetAwaiter().GetResult();
+        return item.Value;
     }
 
     public override Task<CollectionScope<TEntity>> GetCollectionScope(Operation operation)
     {
+        var callKey = Guid.NewGuid();
+        //var functionName = nameof(GetCollectionScope);
+
+        //    await BeforeExecute(functionName, operation, callKey);
+
+        //    return new CollectionScope<TEntity>(Collection, (elapsed, exception) =>
+        //    {
+        //        _logger?.Log(_executeInfoLogLevel, $"Executed {{repositoryType}} for {{CollectionName}} took {{elapsed}} ms. [action: Database, operation: {functionName}]", "DiskRepository", CollectionName, elapsed.TotalMilliseconds);
+        //        InvokeAction(new ActionEventArgs.ActionData { Operation = functionName, Elapsed = elapsed });
+
+        //        ((MongoDbServiceFactory)_mongoDbServiceFactory).OnCallEnd(this, new CallEndEventArgs(callKey, elapsed, exception, 1));
+        //    });
         throw new NotImplementedException();
     }
 
@@ -613,12 +717,20 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         //}, Operation.Delete);
     }
 
-    public override IAsyncEnumerable<TEntity> GetDirtyAsync()
+    public override async IAsyncEnumerable<TEntity> GetDirtyAsync()
     {
-        throw new NotImplementedException();
+        await foreach (var item in GetAsync())
+        {
+            if (item.NeedsCleaning()) yield return item;
+        }
     }
 
     public override IEnumerable<(IndexFailOperation Operation, string Name)> GetFailedIndices()
+    {
+        return _initiationLibrary.GetFailedIndices(ServerName, DatabaseName, ProtectedCollectionName);
+    }
+
+    private async Task<IMongoCollection<T>> GetProjectionCollectionAsync<T>()
     {
         throw new NotImplementedException();
     }
@@ -1150,6 +1262,15 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
     private static TimeSpan GetElapsed(long from, long to)
     {
         return TimeSpan.FromSeconds((to - from) / (double)Stopwatch.Frequency);
+    }
+
+    private static ProjectionDefinition<T> BuildProjection<T>()
+    {
+        var builder = new ProjectionDefinitionBuilder<T>();
+        var props = typeof(T).GetProperties();
+        var projections = props.Select(x => Builders<T>.Projection.Include(x.Name));
+        var projectionDefinition = builder.Combine(projections);
+        return projectionDefinition;
     }
 }
 

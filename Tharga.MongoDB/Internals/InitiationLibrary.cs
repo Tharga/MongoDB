@@ -11,6 +11,7 @@ public interface IInitiationLibrary
     bool ShouldInitiateIndex(string serverName, string databaseName, string collectionName);
     void AddFailedInitiateIndex(string serverName, string databaseName, string collectionName, (IndexFailOperation Drop, string indexName) valueTuple);
     bool RecheckInitiateIndex(string serverName, string databaseName, string collectionName);
+    IEnumerable<(IndexFailOperation Operation, string Name)> GetFailedIndices(string serverName, string databaseName, string collectionName);
 }
 
 internal class InitiationLibrary : IInitiationLibrary

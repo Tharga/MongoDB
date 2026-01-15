@@ -9,7 +9,7 @@ namespace Tharga.MongoDB;
 
 public interface IReadOnlyRepositoryCollection
 {
-    Task<long> GetSizeAsync();
+    Task<long> GetSizeAsync(CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -29,6 +29,9 @@ public interface IReadOnlyRepositoryCollection<TEntity, TKey> : IReadOnlyReposit
 
     Task<Result<TEntity, TKey>> GetManyAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default);
     Task<Result<TEntity, TKey>> GetManyAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default);
+
+    Task<Result<T>> GetManyProjectionAsync<T>(Expression<Func<T, bool>> predicate = null, Options<T> options = null, CancellationToken cancellationToken = default);
+    Task<Result<T>> GetManyProjectionAsync<T>(FilterDefinition<T> filter, Options<T> options = null, CancellationToken cancellationToken = default);
 
     Task<TEntity> GetOneAsync(TKey id, CancellationToken cancellationToken = default);
     Task<TEntity> GetOneAsync(Expression<Func<TEntity, bool>> predicate = null, OneOption<TEntity> options = null, CancellationToken cancellationToken = default);

@@ -76,6 +76,16 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
         return Disk.GetManyAsync(filter, options, cancellationToken);
     }
 
+    public override Task<Result<T>> GetManyProjectionAsync<T>(Expression<Func<T, bool>> predicate = null, Options<T> options = null, CancellationToken cancellationToken = default)
+    {
+        return Disk.GetManyProjectionAsync(predicate, options, cancellationToken);
+    }
+
+    public override Task<Result<T>> GetManyProjectionAsync<T>(FilterDefinition<T> filter, Options<T> options = null, CancellationToken cancellationToken = default)
+    {
+        return Disk.GetManyProjectionAsync(filter, options, cancellationToken);
+    }
+
     public override Task<TEntity> GetOneAsync(TKey id, CancellationToken cancellationToken = default)
     {
         return Disk.GetOneAsync(id, cancellationToken);
@@ -101,9 +111,9 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
         return Disk.CountAsync(filter, cancellationToken);
     }
 
-    public override Task<long> GetSizeAsync()
+    public override Task<long> GetSizeAsync(CancellationToken cancellationToken = default)
     {
-        return Disk.GetSizeAsync();
+        return Disk.GetSizeAsync(cancellationToken);
     }
 
     //Create
