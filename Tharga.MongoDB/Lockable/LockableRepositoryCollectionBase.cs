@@ -56,14 +56,14 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
         return Disk.GetAsync(filter, options, cancellationToken);
     }
 
-    public override IAsyncEnumerable<T> GetProjectionAsync<T>(Expression<Func<T, bool>> predicate = null, Options<T> options = null, CancellationToken cancellationToken = default)
+    public override IAsyncEnumerable<T> GetProjectionAsync<T>(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default)
     {
-        return Disk.GetProjectionAsync(predicate, options, cancellationToken);
+        return Disk.GetProjectionAsync<T>(predicate, options, cancellationToken);
     }
 
-    public override IAsyncEnumerable<T> GetProjectionAsync<T>(FilterDefinition<T> filter, Options<T> options = null, CancellationToken cancellationToken = default)
+    public override IAsyncEnumerable<T> GetProjectionAsync<T>(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default)
     {
-        return Disk.GetProjectionAsync(filter, options, cancellationToken);
+        return Disk.GetProjectionAsync<T>(filter, options, cancellationToken);
     }
 
     public override Task<Result<TEntity, TKey>> GetManyAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default)
@@ -76,14 +76,14 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
         return Disk.GetManyAsync(filter, options, cancellationToken);
     }
 
-    public override Task<Result<T>> GetManyProjectionAsync<T>(Expression<Func<T, bool>> predicate = null, Options<T> options = null, CancellationToken cancellationToken = default)
+    public override Task<Result<T>> GetManyProjectionAsync<T>(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default)
     {
-        return Disk.GetManyProjectionAsync(predicate, options, cancellationToken);
+        return Disk.GetManyProjectionAsync<T>(predicate, options, cancellationToken);
     }
 
-    public override Task<Result<T>> GetManyProjectionAsync<T>(FilterDefinition<T> filter, Options<T> options = null, CancellationToken cancellationToken = default)
+    public override Task<Result<T>> GetManyProjectionAsync<T>(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default)
     {
-        return Disk.GetManyProjectionAsync(filter, options, cancellationToken);
+        return Disk.GetManyProjectionAsync<T>(filter, options, cancellationToken);
     }
 
     public override Task<TEntity> GetOneAsync(TKey id, CancellationToken cancellationToken = default)
