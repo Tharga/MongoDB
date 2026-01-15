@@ -48,8 +48,6 @@ stages:
         command: 'build'
         projects: '**/Tharga.MongoDB*.csproj'
         arguments: '-c Release --no-restore /p:Version=$(Build.BuildNumber)'
-        versioningScheme: 'byBuildNumber'
-        versionEnvVar: 'messagesPackageVersion'
 
     - task: DotNetCoreCLI@2
       displayName: 'Test'
@@ -83,7 +81,8 @@ stages:
       inputs:
         command: 'pack'
         packagesToPack: '**/Tharga.MongoDB.csproj'
-        versioningScheme: 'byBuildNumber'
+        versioningScheme: 'byEnvVar'
+        versionEnvVar: 'BUILD_BUILDNUMBER'
         arguments: '--configuration Release /p:IncludeSymbols=true /p:IncludeSource=true /p:SymbolPackageFormat=snupkg /p:ContinuousIntegrationBuild=true'
 
     - task: DotNetCoreCLI@2
@@ -91,7 +90,8 @@ stages:
       inputs:
         command: 'pack'
         packagesToPack: '**/Tharga.MongoDB.Blazor.csproj'
-        versioningScheme: 'byBuildNumber'
+        versioningScheme: 'byEnvVar'
+        versionEnvVar: 'BUILD_BUILDNUMBER'
         arguments: '--configuration Release /p:IncludeSymbols=true /p:IncludeSource=true /p:SymbolPackageFormat=snupkg /p:ContinuousIntegrationBuild=true'
 
     - task: PublishBuildArtifacts@1
