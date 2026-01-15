@@ -1,6 +1,4 @@
-﻿using System;
-using MongoDB.Driver;
-using Tharga.MongoDB.Configuration;
+﻿using MongoDB.Driver;
 
 namespace Tharga.MongoDB;
 

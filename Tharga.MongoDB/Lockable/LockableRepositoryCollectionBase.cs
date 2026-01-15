@@ -149,7 +149,12 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
 
     public override Task<TEntity> DeleteOneAsync(FilterDefinition<TEntity> filter, OneOption<TEntity> options = null)
     {
-        throw new NotImplementedException();
+        var unlockedOrExpired = Builders<TEntity>.Filter.Where(UnlockedOrExpiredFilter);
+
+        if (filter == null) return Disk.DeleteOneAsync(unlockedOrExpired, options);
+
+        var combined = Builders<TEntity>.Filter.And(unlockedOrExpired, filter);
+        return Disk.DeleteOneAsync(combined, options);
     }
 
     public override Task<long> DeleteManyAsync(Expression<Func<TEntity, bool>> predicate)
@@ -157,9 +162,14 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
         return Disk.DeleteManyAsync(UnlockedOrExpiredFilter.AndAlso(predicate));
     }
 
-    public override async Task<long> DeleteManyAsync(FilterDefinition<TEntity> filter)
+    public override Task<long> DeleteManyAsync(FilterDefinition<TEntity> filter)
     {
-        throw new NotImplementedException();
+        var unlockedOrExpired = Builders<TEntity>.Filter.Where(UnlockedOrExpiredFilter);
+
+        if (filter == null || filter == FilterDefinition<TEntity>.Empty) return Disk.DeleteManyAsync(unlockedOrExpired);
+
+        var combined = Builders<TEntity>.Filter.And(unlockedOrExpired, filter);
+        return Disk.DeleteManyAsync(combined);
     }
 
     public async Task<long> DeleteManyAsync(DeleteMode deleteMode, Expression<Func<TEntity, bool>> predicate = null)
@@ -174,11 +184,6 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
     }
 
     //Other
-    public override Task<CollectionScope<TEntity>> GetCollectionScope(Operation operation)
-    {
-        throw new NotSupportedException();
-    }
-
     public override Task DropCollectionAsync()
     {
         return Disk.DropCollectionAsync();
@@ -644,7 +649,7 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
 
         if (completeAction != null && !expired)
         {
-            await completeAction.Invoke(new CallbackResult<TEntity> { LockAction = lockAction, Commit = commit, Before = result.Before, After = after });
+            await completeAction.Invoke(new CallbackResult<TEntity> { LockAction = lockAction, Before = result.Before, After = after });
         }
 
         return after?.Lock == null;
@@ -684,7 +689,7 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
 
         if (completeAction != null)
         {
-            await completeAction.Invoke(new CallbackResult<TEntity> { LockAction = LockAction.CommitDeleted, Commit = true, Before = before, After = null });
+            await completeAction.Invoke(new CallbackResult<TEntity> { LockAction = LockAction.CommitDeleted, Before = before, After = null });
         }
 
         return (null, LockAction.CommitDeleted);

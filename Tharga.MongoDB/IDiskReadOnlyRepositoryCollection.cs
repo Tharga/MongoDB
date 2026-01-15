@@ -44,26 +44,11 @@ public interface IReadOnlyRepositoryCollection<TEntity, TKey> : IReadOnlyReposit
 public interface IDiskReadOnlyRepositoryCollection<TEntity, TKey> : IReadOnlyRepositoryCollection<TEntity, TKey>
     where TEntity : EntityBase<TKey>
 {
-    //[Obsolete("Projection methods will have to be developed if needed.")]
-    //IAsyncEnumerable<T> GetAsync<T>(Expression<Func<T, bool>> predicate = null, Options<T> options = null, CancellationToken cancellationToken = default) where T : TEntity;
-
     [Obsolete($"Use {nameof(GetManyAsync)} instead. This method will be deprecated.")]
     Task<Result<TEntity, TKey>> QueryAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default);
 
     [Obsolete($"Use {nameof(GetManyAsync)} instead. This method will be deprecated.")]
     Task<Result<TEntity, TKey>> QueryAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default);
-
-    //[Obsolete($"Use {nameof(GetManyAsync)} instead. This method will be deprecated.")]
-    //IAsyncEnumerable<ResultPage<TEntity, TKey>> GetPagesAsync(Expression<Func<TEntity, bool>> predicate, Options<TEntity> options = null, CancellationToken cancellationToken = default);
-
-    //[Obsolete($"Use {nameof(GetManyAsync)} instead. This method will be deprecated.")]
-    //IAsyncEnumerable<ResultPage<TEntity, TKey>> GetPagesAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default);
-
-    //[Obsolete($"Use {nameof(GetManyAsync)} instead. This method will be deprecated.")]
-    //Task<T> GetOneAsync<T>(Expression<Func<T, bool>> predicate = null, OneOption<T> options = null, CancellationToken cancellationToken = default) where T : TEntity;
-
-    //[Obsolete($"Use {nameof(GetManyAsync)} instead. This method will be deprecated.")]
-    //Task<T> GetOneProjectionAsync<T>(Expression<Func<T, bool>> predicate = null, OneOption<T> options = null, CancellationToken cancellationToken = default);
 
     //Other
 

@@ -263,12 +263,12 @@ internal class MongoDbService : IMongoDbService
 
     public IEnumerable<string> GetDatabases()
     {
-        //TODO: This uses a call to the database. Or?
         var dbs = _mongoClient.ListDatabases(CancellationToken.None).ToList();
         return dbs.Select(x => x.AsBsonValue["name"].ToString());
     }
 
     [BsonIgnoreExtraElements]
+    // ReSharper disable once ClassNeverInstantiated.Local
     private record SizeResult
     {
         [BsonElement("size")]

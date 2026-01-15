@@ -1,9 +1,10 @@
-﻿using System;
-using MongoDB.Bson;
+﻿using MongoDB.Bson;
+using MongoDB.Driver;
+using System;
 using System.Collections.Generic;
 using System.Linq.Expressions;
+using System.Threading;
 using System.Threading.Tasks;
-using MongoDB.Driver;
 using Tharga.MongoDB.Disk;
 
 namespace Tharga.MongoDB;
@@ -28,9 +29,10 @@ public interface IDiskRepositoryCollection<TEntity, TKey> : IDiskReadOnlyReposit
     Task<long> UpdateAsync(Expression<Func<TEntity, bool>> predicate, UpdateDefinition<TEntity> update);
 
     //Other
-    [Obsolete($"Use {nameof(GetCollectionScope)} instead. This method will be deprecated.")]
+    [Obsolete($"Use {nameof(ExecuteAsync)} instead. This method will be deprecated.")]
     IMongoCollection<TEntity> GetCollection();
-    Task<CollectionScope<TEntity>> GetCollectionScope(Operation operation);
+    Task<T> ExecuteAsync<T>(Func<IMongoCollection<TEntity>, Task<T>> execute, Operation operation);
+    Task<T> ExecuteAsync<T>(Func<IMongoCollection<TEntity>, CancellationToken, Task<T>> execute, Operation operation, CancellationToken cancellationToken);
 }
 
 public interface IDiskRepositoryCollection<TEntity> : IDiskRepositoryCollection<TEntity, ObjectId>

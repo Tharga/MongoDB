@@ -23,7 +23,7 @@ else
             <RadzenColumn>
                 <RadzenStack Orientation="Orientation.Vertical">
                     <RadzenText TextStyle="TextStyle.Caption" Text="Registration" />
-                    <RadzenSelectBar TValue="IEnumerable<Registration>" @bind-Value="@SelectedRegistrationTypes" Change="@ReloadData" Style="margin-bottom: 6px;" Multiple="true">
+                    <RadzenSelectBar TValue="IEnumerable<Registration>" @bind-Value="@SelectedRegistrationTypes" Change="@ReloadDataAsync" Style="margin-bottom: 6px;" Multiple="true">
                         <Items>
                             <RadzenSelectBarItem Text="Static" Value="Registration.Static" />
                             <RadzenSelectBarItem Text="Dynamic" Value="Registration.Dynamic" />
@@ -35,7 +35,7 @@ else
             <RadzenColumn>
                 <RadzenStack Orientation="Orientation.Vertical">
                     <RadzenText TextStyle="TextStyle.Caption" Text="Databases"/>
-                    <RadzenDropDown Placeholder="Select databases" @bind-Value=@SelectedDatabases Data=@_databases Multiple=true Style="margin-bottom: 6px;" Change="@ReloadData"/>
+                    <RadzenDropDown Placeholder="Select databases" @bind-Value=@SelectedDatabases Data=@_databases Multiple=true Style="margin-bottom: 6px;" Change="@ReloadDataAsync" />
                 </RadzenStack>
             </RadzenColumn>
         </RadzenRow>
@@ -161,10 +161,19 @@ else
                 await InvokeAsync(StateHasChanged);
             }
         };
+        DatabaseMonitor.CollectionDroppedEvent += async (_, e) =>
+        {
+            if (_all == null) return;
+
+            _all = _all.Where(x => x.ToDatabaseContext() != e.DatabaseContext).ToArray();
+            await ReloadDataAsync();
+
+            await InvokeAsync(StateHasChanged);
+        };
 
         _all = await DatabaseMonitor.GetInstancesAsync(FullDatabaseScan, Filter).ToArrayAsync();
         _databases = _all.GroupBy(x => x.DatabaseName).Select(x => x.First()).Select(x => x.DatabaseName).Order().ToArray();
-        await ReloadData();
+        await ReloadDataAsync();
         await base.OnParametersSetAsync();
     }
 
@@ -177,10 +186,10 @@ else
 
         if (result != true) return;
 
-        await ReloadData();
+        await ReloadDataAsync();
     }
 
-    private async Task ReloadData()
+    private async Task ReloadDataAsync()
     {
         _model = _all
             .Where(x => SelectedDatabases == null || !SelectedDatabases.Any() || SelectedDatabases.Contains(x.DatabaseName))

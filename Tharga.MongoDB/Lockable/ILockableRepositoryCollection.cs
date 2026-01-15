@@ -5,30 +5,8 @@ using System.Collections.Generic;
 using System.Linq.Expressions;
 using System.Threading;
 using System.Threading.Tasks;
-using Tharga.MongoDB.Disk;
 
 namespace Tharga.MongoDB.Lockable;
-
-public class LockEventArgs<TEntity> : EventArgs
-{
-    public LockEventArgs(TEntity entity, LockAction lockAction)
-    {
-        Entity = entity;
-        LockAction = lockAction;
-    }
-
-    public TEntity Entity { get; }
-    public LockAction LockAction { get; }
-}
-
-public enum LockAction
-{
-    Locked,
-    Abandoned,
-    CommitUpdated,
-    CommitDeleted,
-    Exception
-}
 
 public interface ILockableRepositoryCollection<TEntity, TKey> : IReadOnlyRepositoryCollection<TEntity, TKey>
     where TEntity : LockableEntityBase<TKey>
@@ -51,7 +29,7 @@ public interface ILockableRepositoryCollection<TEntity, TKey> : IReadOnlyReposit
     Task<long> DeleteManyAsync(DeleteMode deleteMode, Expression<Func<TEntity, bool>> predicate = null);
 
     //Other
-    Task<CollectionScope<TEntity>> GetCollectionScope(Operation operation);
+    //Task<CollectionScope<TEntity>> GetCollectionScope(Operation operation, CancellationToken cancellationToken = default);
     Task DropCollectionAsync();
     IAsyncEnumerable<TEntity> GetDirtyAsync();
     IEnumerable<(IndexFailOperation Operation, string Name)> GetFailedIndices();

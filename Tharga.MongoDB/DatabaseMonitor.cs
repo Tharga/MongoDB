@@ -27,7 +27,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
     private bool _started;
 
     public event EventHandler<CollectionInfoChangedEventArgs> CollectionInfoChangedEvent;
-    public event EventHandler<ExecuteInfoChangedEventArgs> ExecuteInfoChangedEvent;
+    public event EventHandler<CollectionDroppedEventArgs> CollectionDroppedEvent;
 
     public DatabaseMonitor(IMongoDbServiceFactory mongoDbServiceFactory, IMongoDbInstance mongoDbInstance, IServiceProvider serviceProvider, IRepositoryConfiguration repositoryConfiguration, ICollectionProvider collectionProvider, ICallLibrary callLibrary, IOptions<DatabaseOptions> options, ILogger<DatabaseMonitor> logger)
     {
@@ -47,23 +47,6 @@ internal class DatabaseMonitor : IDatabaseMonitor
 
         try
         {
-            _mongoDbServiceFactory.IndexUpdatedEvent += async (_, e) =>
-            {
-                try
-                {
-                    _logger.LogTrace($"{nameof(IMongoDbServiceFactory.IndexUpdatedEvent)}: {e.Fingerprint}");
-
-                    if (CollectionInfoChangedEvent != null)
-                    {
-                        var item = await GetInstanceAsync(e.Fingerprint);
-                        if (item != null) CollectionInfoChangedEvent?.Invoke(this, new CollectionInfoChangedEventArgs(item));
-                    }
-                }
-                catch (Exception exception)
-                {
-                    _logger.LogError(exception, exception.Message);
-                }
-            };
             _mongoDbServiceFactory.CollectionAccessEvent += async (_, e) =>
             {
                 try
@@ -113,6 +96,27 @@ internal class DatabaseMonitor : IDatabaseMonitor
                     _logger.LogError(exception, exception.Message);
                 }
             };
+            _mongoDbServiceFactory.IndexUpdatedEvent += async (_, e) =>
+            {
+                try
+                {
+                    _logger.LogTrace($"{nameof(IMongoDbServiceFactory.IndexUpdatedEvent)}: {e.Fingerprint}");
+
+                    if (CollectionInfoChangedEvent != null)
+                    {
+                        var item = await GetInstanceAsync(e.Fingerprint);
+                        if (item != null) CollectionInfoChangedEvent?.Invoke(this, new CollectionInfoChangedEventArgs(item));
+                    }
+                }
+                catch (Exception exception)
+                {
+                    _logger.LogError(exception, exception.Message);
+                }
+            };
+            _mongoDbServiceFactory.CollectionDroppedEvent += (s, e) =>
+            {
+                CollectionDroppedEvent?.Invoke(s, e);
+            };
             _mongoDbServiceFactory.CallStartEvent += (_, e) =>
             {
                 try
@@ -146,19 +150,6 @@ internal class DatabaseMonitor : IDatabaseMonitor
                         var item = await GetInstanceAsync(fingerprint);
                         if (item != null) CollectionInfoChangedEvent?.Invoke(this, new CollectionInfoChangedEventArgs(item));
                     }
-                }
-                catch (Exception exception)
-                {
-                    _logger.LogError(exception, exception.Message);
-                }
-            };
-            _mongoDbServiceFactory.ExecuteInfoChangedEvent += (s, e) =>
-            {
-                try
-                {
-                    _logger.LogTrace($"{nameof(IMongoDbServiceFactory.ExecuteInfoChangedEvent)}");
-
-                    ExecuteInfoChangedEvent?.Invoke(s, e);
                 }
                 catch (Exception exception)
                 {
@@ -204,7 +195,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
 
         var collectionsFromCode = await GetStaticCollectionsFromCode().ToDictionaryAsync(x => (x.ConfigurationName ?? _options.DefaultConfigurationName, x.CollectionName), x => x);
         var accessedCollections = _accessedCollections;
-        var dynamicCollectionsFromCode = GetDynamicRegistrations().ToDictionary(x => (x.Type), x => x);
+        var dynamicCollectionsFromCode = GetDynamicRegistrations().ToDictionary(x => x.Type, x => x);
 
         var visited = new Dictionary<string, CollectionInfo>();
         foreach (var context in contexts)
@@ -285,14 +276,6 @@ internal class DatabaseMonitor : IDatabaseMonitor
                         };
                         //TODO: Append information about registered indexes (so that we can compare with actual indexes)
                     }
-                    else
-                    {
-                        //TODO:?
-                    }
-                }
-                else
-                {
-                    //TODO: ?
                 }
 
                 yield return item;

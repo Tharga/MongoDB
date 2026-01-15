@@ -12,6 +12,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Tharga.MongoDB.Configuration;
 using Tharga.MongoDB.Internals;
+using Constants = Tharga.MongoDB.Internals.Constants;
 
 namespace Tharga.MongoDB.Disk;
 
@@ -23,6 +24,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
     private readonly IInitiationLibrary _initiationLibrary;
     private readonly SemaphoreSlim _fetchLock = new(1, 1);
 
+    //TODO: Implement GetDerived or GetGeneric that loads T where TEntity is the base class.
     //TODO: Go over NotImplementedException, write unit tests and implement.
 
     /// <summary>
@@ -49,7 +51,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         _initiationLibrary = ((MongoDbService)_mongoDbService).InitiationLibrary;
     }
 
-    protected virtual async Task<T> ExecuteAsync<T>(string functionName, Func<IMongoCollection<TEntity>, CancellationToken, Task<(T Data, int Count)>> action, Operation operation, CancellationToken cancellationToken = default)
+    protected async Task<T> ExecuteAsync<T>(string functionName, Func<IMongoCollection<TEntity>, CancellationToken, Task<(T Data, int Count)>> action, Operation operation, CancellationToken cancellationToken = default)
     {
         var callKey = Guid.NewGuid();
         var startAt = Stopwatch.GetTimestamp();
@@ -226,7 +228,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         return GetProjectionAsync(filter, options, cancellationToken);
     }
 
-    public override async IAsyncEnumerable<T> GetProjectionAsync<T>(FilterDefinition<T> filter, Options<T> options = null, CancellationToken cancellationToken = default)
+    public override async IAsyncEnumerable<T> GetProjectionAsync<T>(FilterDefinition<T> filter, Options<T> options = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         options ??= new Options<T>();
 
@@ -237,7 +239,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         while (true)
         {
             var pageOptions = options with { Skip = skip, Limit = limit };
-            var response = await GetManyProjectionAsync<T>(filter, pageOptions, cancellationToken);
+            var response = await GetManyProjectionAsync(filter, pageOptions, cancellationToken);
 
             foreach (var item in response.Items)
             {
@@ -316,7 +318,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 
     public override async Task<Result<T>> GetManyProjectionAsync<T>(FilterDefinition<T> filter, Options<T> options = null, CancellationToken cancellationToken = default)
     {
-        return await ExecuteAsync<Result<T>>(nameof(GetManyProjectionAsync), async (_, ct) =>
+        return await ExecuteAsync(nameof(GetManyProjectionAsync), async (_, ct) =>
         {
             var o = options == null
                 ? new FindOptions<T, T>
@@ -614,20 +616,29 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
     }
 
     //Delete
-    public override async Task<TEntity> DeleteOneAsync(TKey id)
+    public override Task<TEntity> DeleteOneAsync(TKey id)
     {
-        return await DeleteOneAsync(x => x.Id.Equals(id));
+        var filter = new FilterDefinitionBuilder<TEntity>().Eq(x => x.Id, id);
+        return DeleteOneAsync(filter);
     }
 
-    public override async Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate, OneOption<TEntity> options = null)
+    public override Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate, OneOption<TEntity> options = null)
     {
-        if (predicate == null) throw new ArgumentNullException(nameof(predicate));
-        if (predicate == null) throw new ArgumentException(nameof(predicate));
+        var filter = predicate != null
+            ? Builders<TEntity>.Filter.Where(predicate)
+            : Builders<TEntity>.Filter.Empty;
+
+        return DeleteOneAsync(filter, options);
+    }
+
+    public override async Task<TEntity> DeleteOneAsync(FilterDefinition<TEntity> filter, OneOption<TEntity> options = null)
+    {
+        if (filter == null) throw new ArgumentNullException(nameof(filter));
 
         return await ExecuteAsync(nameof(UpdateOneAsync), async (collection, ct) =>
         {
             var sort = options?.Sort;
-            var findFluent = collection.Find(predicate).Sort(sort).Limit(2);
+            var findFluent = collection.Find(filter).Sort(sort).Limit(2);
             TEntity item;
             switch (options?.Mode)
             {
@@ -639,11 +650,11 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                     item = await findFluent.SingleAsync(ct);
                     break;
                 case EMode.FirstOrDefault:
-                    {
-                        var opt = new FindOneAndDeleteOptions<TEntity, TEntity> { Sort = options.Sort };
-                        var deletedItem = await collection.FindOneAndDeleteAsync(predicate, opt, ct);
-                        return (deletedItem, 1);
-                    }
+                {
+                    var opt = new FindOneAndDeleteOptions<TEntity, TEntity> { Sort = options.Sort };
+                    var deletedItem = await collection.FindOneAndDeleteAsync(filter, opt, ct);
+                    return (deletedItem, 1);
+                }
                 case EMode.First:
                     item = await findFluent.FirstAsync(ct);
                     break;
@@ -657,11 +668,6 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             await collection.FindOneAndDeleteAsync(itemFilter, cancellationToken: ct);
             return (item, 1);
         }, Operation.Delete);
-    }
-
-    public override async Task<TEntity> DeleteOneAsync(FilterDefinition<TEntity> filter, OneOption<TEntity> options = null)
-    {
-        throw new NotImplementedException();
     }
 
     public override async Task<long> DeleteManyAsync(Expression<Func<TEntity, bool>> predicate)
@@ -683,38 +689,39 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
     }
 
     //Other
-    [Obsolete($"Use {nameof(GetCollectionScope)} instead. This method will be deprecated.")]
+    [Obsolete($"Use {nameof(ExecuteAsync)} instead. This method will be deprecated.")]
     public virtual IMongoCollection<TEntity> GetCollection()
     {
         var item = FetchCollectionAsync().GetAwaiter().GetResult();
         return item.Value;
     }
 
-    public override Task<CollectionScope<TEntity>> GetCollectionScope(Operation operation)
+    public async Task<T> ExecuteAsync<T>(Func<IMongoCollection<TEntity>, Task<T>> execute, Operation operation)
     {
-        var callKey = Guid.NewGuid();
-        //var functionName = nameof(GetCollectionScope);
+        var response = await ExecuteAsync(nameof(ExecuteAsync), async (collection, _) =>
+        {
+            var response = await execute.Invoke(collection);
+            return (response, 1);
+        }, operation, CancellationToken.None);
 
-        //    await BeforeExecute(functionName, operation, callKey);
+        return response;
+    }
 
-        //    return new CollectionScope<TEntity>(Collection, (elapsed, exception) =>
-        //    {
-        //        _logger?.Log(_executeInfoLogLevel, $"Executed {{repositoryType}} for {{CollectionName}} took {{elapsed}} ms. [action: Database, operation: {functionName}]", "DiskRepository", CollectionName, elapsed.TotalMilliseconds);
-        //        InvokeAction(new ActionEventArgs.ActionData { Operation = functionName, Elapsed = elapsed });
+    public async Task<T> ExecuteAsync<T>(Func<IMongoCollection<TEntity>, CancellationToken, Task<T>> execute, Operation operation, CancellationToken cancellationToken)
+    {
+        var response = await ExecuteAsync(nameof(ExecuteAsync), async (collection, ct) =>
+        {
+            var response = await execute.Invoke(collection, ct);
+            return (response, 1);
+        }, operation, CancellationToken.None);
 
-        //        ((MongoDbServiceFactory)_mongoDbServiceFactory).OnCallEnd(this, new CallEndEventArgs(callKey, elapsed, exception, 1));
-        //    });
-        throw new NotImplementedException();
+        return response;
     }
 
     public override async Task DropCollectionAsync()
     {
-        //TODO: Tell monitor that the collection has been dropped
-        //await ExecuteAsync(nameof(DropCollectionAsync), async (collection, ct) =>
-        //{
-            await _mongoDbService.DropCollectionAsync(ProtectedCollectionName);
-        //    return (true, 1);
-        //}, Operation.Delete);
+        await _mongoDbService.DropCollectionAsync(ProtectedCollectionName);
+        ((MongoDbServiceFactory)_mongoDbServiceFactory).OnCollectionDropped(this, new CollectionDroppedEventArgs(_databaseContext));
     }
 
     public override async IAsyncEnumerable<TEntity> GetDirtyAsync()

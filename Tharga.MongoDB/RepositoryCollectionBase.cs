@@ -103,8 +103,6 @@ public abstract class RepositoryCollectionBase<TEntity, TKey> : RepositoryCollec
     public abstract Task<long> DeleteManyAsync(FilterDefinition<TEntity> filter);
 
     //Other
-    public abstract Task<CollectionScope<TEntity>> GetCollectionScope(Operation operation);
-
     public abstract Task DropCollectionAsync();
 
     public abstract IAsyncEnumerable<TEntity> GetDirtyAsync();
@@ -114,7 +112,6 @@ public abstract class RepositoryCollectionBase<TEntity, TKey> : RepositoryCollec
     internal abstract Task<bool> AssureIndex(IMongoCollection<TEntity> collection, bool forceAssure = false, bool throwOnException = false);
     internal abstract Task<(int Before, int After)> DropIndex(IMongoCollection<TEntity> collection);
     internal abstract Task CleanAsync(IMongoCollection<TEntity> collection);
-    //protected abstract Task DropEmpty(IMongoCollection<TEntity> collection);
 
     internal void InvokeAction(ActionEventArgs.ActionData actionData)
     {
@@ -138,8 +135,8 @@ public abstract class RepositoryCollectionBase<TEntity, TKey> : RepositoryCollec
         };
     }
 
-    protected async ValueTask AssureFirewallAccessAsync()
-    {
-        await _mongoDbService.AssureFirewallAccessAsync(true);
-    }
+    //protected async ValueTask AssureFirewallAccessAsync()
+    //{
+    //    await _mongoDbService.AssureFirewallAccessAsync(true);
+    //}
 }
