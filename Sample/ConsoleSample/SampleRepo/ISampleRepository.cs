@@ -8,4 +8,5 @@ public interface ISampleRepository : IRepository
 {
     IAsyncEnumerable<SampleEntity> GetAsync();
     Task AddAsync(SampleEntity entity);
+    Task<long> CountAsync();
 }

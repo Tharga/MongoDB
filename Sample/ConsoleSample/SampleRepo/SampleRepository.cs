@@ -21,4 +21,9 @@ internal class SampleRepository : ISampleRepository
     {
         return _collection.AddAsync(entity);
     }
+
+    public Task<long> CountAsync()
+    {
+        return _collection.CountAsync();
+    }
 }

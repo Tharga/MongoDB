@@ -3,6 +3,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using ConsoleSample.SampleRepo;
 using Microsoft.Extensions.Logging;
+using MongoDB.Bson;
 using Tharga.Console.Commands.Base;
 
 namespace ConsoleSample;
@@ -13,6 +14,7 @@ internal class SampleCommands : ContainerCommandBase
         : base("Sample")
     {
         RegisterCommand<AddCommand>();
+        RegisterCommand<CountCommand>();
         RegisterCommand<ListCommand>();
         RegisterCommand<BurstCommand>();
     }
@@ -40,6 +42,7 @@ internal class BurstCommand : AsyncActionCommandBase
         {
             tasks.Add(Task.Run(async () =>
             {
+                await _sampleRepository.AddAsync(new SampleEntity { Id = ObjectId.GenerateNewId() });
                 _ = await _sampleRepository.GetAsync().ToArrayAsync();
                 _logger.LogTrace("Step {step}", ++cnt);
             }));
@@ -48,6 +51,23 @@ internal class BurstCommand : AsyncActionCommandBase
         await Task.WhenAll(tasks);
         //OutputInformation("Complete.");
         _logger.LogInformation("Complete.");
+    }
+}
+
+internal class CountCommand : AsyncActionCommandBase
+{
+    private readonly ISampleRepository _sampleRepository;
+
+    public CountCommand(ISampleRepository sampleRepository)
+        : base("Count")
+    {
+        _sampleRepository = sampleRepository;
+    }
+
+    public override async Task InvokeAsync(string[] param)
+    {
+        var response = await _sampleRepository.CountAsync();
+        OutputInformation($"Count = {response}");
     }
 }
 

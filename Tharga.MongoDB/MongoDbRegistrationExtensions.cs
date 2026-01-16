@@ -44,7 +44,6 @@ public static class MongoDbRegistrationExtensions
             DefaultConfigurationName = c?.DefaultConfigurationName ?? Constants.DefaultConfigurationName,
             AutoRegisterRepositories = c?.AutoRegisterRepositories ?? Constants.AutoRegisterRepositoriesDefault,
             AutoRegisterCollections = c?.AutoRegisterCollections ?? Constants.AutoRegisterCollectionsDefault,
-            UseCollectionProviderCache = c?.UseCollectionProviderCache ?? false,
             ExecuteInfoLogLevel = c?.ExecuteInfoLogLevel ?? LogLevel.Debug,
             AssureIndex = c?.AssureIndex ?? AssureIndexMode.ByName,
             Monitor = new MonitorOptions
@@ -75,6 +74,7 @@ public static class MongoDbRegistrationExtensions
         services.AddSingleton<IExecuteLimiter, ExecuteLimiter>();
         services.AddSingleton<ICollectionPool, CollectionPool>();
         services.AddSingleton<IInitiationLibrary, InitiationLibrary>();
+        services.AddSingleton<ICollectionProviderCache, CollectionProviderCache>();
         services.AddSingleton<IMongoDbServiceFactory>(serviceProvider =>
         {
             var mongoDbClientProvider = serviceProvider.GetService<IMongoDbClientProvider>();
@@ -94,20 +94,12 @@ public static class MongoDbRegistrationExtensions
         });
         services.AddTransient<IMongoUrlBuilderLoader>(serviceProvider => new MongoUrlBuilderLoader(serviceProvider, o));
         services.AddTransient<IRepositoryConfiguration>(serviceProvider => new RepositoryConfiguration(serviceProvider, o));
-
-        //TODO: Is this needed now, when we have the new FetchCollection, it should use the same handling.
-        services.AddSingleton<ICollectionProviderCache>(_ =>
-        {
-            if (o.UseCollectionProviderCache)
-                return new CollectionProviderCache(); //NOTE: Makes dynamic collections singleton.
-            return new CollectionProviderNoCache();
-        });
-
         services.AddTransient<ICollectionProvider, CollectionProvider>(provider =>
         {
+            var collectionPool = provider.GetService<ICollectionPool>();
             var collectionProviderCache = provider.GetService<ICollectionProviderCache>();
             var mongoDbServiceFactory = provider.GetService<IMongoDbServiceFactory>();
-            return new CollectionProvider(collectionProviderCache, mongoDbServiceFactory, type =>
+            return new CollectionProvider(collectionPool, collectionProviderCache, mongoDbServiceFactory, type =>
             {
                 var service = provider.GetService(type);
                 return service;

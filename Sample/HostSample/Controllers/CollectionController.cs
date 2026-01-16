@@ -1,9 +1,5 @@
-using HostSample.Features.DynamicRepo;
-using HostSample.Features.SecondaryRepo;
 using Microsoft.AspNetCore.Mvc;
-using System.Collections;
 using Tharga.MongoDB;
-using Tharga.MongoDB.Configuration;
 
 namespace HostSample.Controllers;
 
@@ -14,16 +10,12 @@ public class CollectionController : ControllerBase
     private readonly IMongoDbServiceFactory _mongoDbServiceFactory;
     private readonly ICollectionTypeService _collectionTypeService;
     private readonly IDatabaseMonitor _databaseMonitor;
-    private readonly IDynRepo _dynRepo;
-    private readonly ISecondaryRepo _secondaryRepo;
 
-    public CollectionController(IMongoDbServiceFactory mongoDbServiceFactory, ICollectionTypeService collectionTypeService, IDatabaseMonitor databaseMonitor, IDynRepo dynRepo, ISecondaryRepo secondaryRepo)
+    public CollectionController(IMongoDbServiceFactory mongoDbServiceFactory, ICollectionTypeService collectionTypeService, IDatabaseMonitor databaseMonitor)
     {
         _mongoDbServiceFactory = mongoDbServiceFactory;
         _collectionTypeService = collectionTypeService;
         _databaseMonitor = databaseMonitor;
-        _dynRepo = dynRepo;
-        _secondaryRepo = secondaryRepo;
     }
 
     [HttpGet]
@@ -63,14 +55,7 @@ public class CollectionController : ControllerBase
     [HttpGet("monitor")]
     public async Task<IActionResult> GetMonitor()
     {
-        //TODO: Use to touch all databases, so information can be loaded.
-        //var t1 = await _dynRepo.GetAsync("NoDefault", "part", "A").ToArrayAsync();
-        //var t11 = await _dynRepo.GetAsync("NoDefault", "part2", "A").ToArrayAsync();
-        //var t2 = await _dynRepo.GetAsync("Secondary", "part", "A").ToArrayAsync();
-        //var t3d = await _secondaryRepo.GetAsync().ToArrayAsync();
-
         var items = await _databaseMonitor.GetInstancesAsync().ToArrayAsync();
-        //return Ok(items);
         return Ok(items.Select(x => new
         {
             Source = $"{x.Source}",
@@ -86,45 +71,4 @@ public class CollectionController : ControllerBase
             x.Index
         }));
     }
-
-    //[HttpDelete("index")]
-    //public async Task<IActionResult> DeleteIndex(string configurationName, string databasePart, string collectionName)
-    //{
-    //    var databaseContext = new DatabaseContext
-    //    {
-    //        ConfigurationName = configurationName,
-    //        CollectionName = collectionName,
-    //        DatabasePart = databasePart
-    //    };
-    //    await _databaseMonitor.DropIndexAsync(databaseContext);
-    //    return Ok();
-    //}
-
-    //[HttpPost("index")]
-    //public async Task<IActionResult> RestoreIndex(string configurationName, string databasePart, string collectionName)
-    //{
-    //    var databaseContext = new DatabaseContext
-    //    {
-    //        ConfigurationName = configurationName,
-    //        CollectionName = collectionName,
-    //        DatabasePart = databasePart
-    //    };
-    //    await _databaseMonitor.RestoreIndexAsync(databaseContext);
-    //    return Ok();
-    //}
-
-    //[HttpGet("index")]
-    //public async Task<IActionResult> GetIndexes()
-    //{
-    //    var factory = _mongoDbServiceFactory.GetMongoDbService(() => new DatabaseContext());
-    //    var collections = await factory.GetIndex().ToArrayAsync();
-    //    return Ok(collections.Select(x => new { x.Name, x.IndexNames }));
-    //}
-
-    //[HttpGet("repo")]
-    //public async Task<IActionResult> GetRepositories()
-    //{
-    //    var collection = _metadataService.GetRepositories().ToArray();
-    //    return Ok(collection);
-    //}
 }

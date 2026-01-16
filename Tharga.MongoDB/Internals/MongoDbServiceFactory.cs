@@ -57,7 +57,7 @@ internal class MongoDbServiceFactory : IMongoDbServiceFactory
         var cacheKey = mongoUrl.Url;
         //ConfigurationAccessEvent?.Invoke(this, new ConfigurationAccessEventArgs(configurationName, mongoUrl));
 
-        //TODO: Can this be done differently
+        //TODO: Should cache be used here or not?
         //var ctx = configuration.GetDatabaseContext();
         //var useCache = string.IsNullOrEmpty((ctx as DatabaseContextWithFingerprint)?.DatabaseName);
         //var useCache = string.IsNullOrEmpty((ctx as ICollectionFingerprint)?.DatabaseName);
