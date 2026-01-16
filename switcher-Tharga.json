@@ -2,7 +2,8 @@
   "solution": "Tharga.MongoDB.sln",
   "solutionFolder": null,
   "mappings": {
-    "Tharga.Blazor": "../Blazor/Tharga.Blazor/Tharga.Blazor.csproj"
+    "Tharga.Blazor": "../Blazor/Tharga.Blazor/Tharga.Blazor.csproj",
+    "Tharga.Console": "../Console/Tharga.Console/Tharga.Console.csproj"
   },
   "removeProjects": true
 }

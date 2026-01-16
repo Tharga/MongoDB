@@ -42,7 +42,7 @@ public class ReleaseUpdateTests : LockableTestBase
         callbackResult.Should().NotBeNull();
         callbackResult.Before.Id.Should().Be(entity.Id);
         callbackResult.After.Id.Should().Be(entity.Id);
-        callbackResult.Commit.Should().Be(release == ReleaseType.Commit);
+        callbackResult.LockAction.Should().Be(release == ReleaseType.Commit ? LockAction.CommitUpdated : release == ReleaseType.SetErrorState ? LockAction.Exception : LockAction.Abandoned);
         var item = await collection.GetOneAsync(sut.Entity.Id);
         item.Should().NotBeNull();
         if (release != ReleaseType.SetErrorState) item.Lock.Should().BeNull(); else item.Lock.Should().NotBeNull();

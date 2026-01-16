@@ -11,10 +11,8 @@ using System.Linq;
 using System.Threading.Tasks;
 using Tharga.MongoDB.Atlas;
 using Tharga.MongoDB.Configuration;
-using Tharga.MongoDB.Disk;
 using Tharga.MongoDB.Internals;
 using Tharga.Runtime;
-using static Tharga.MongoDB.DatabaseMonitor;
 
 namespace Tharga.MongoDB;
 
@@ -22,12 +20,16 @@ public static class MongoDbRegistrationExtensions
 {
     private static Action<ActionEventArgs> _actionEvent;
 
-    public static IServiceCollection AddMongoDB(this IServiceCollection services, Action<DatabaseOptions> options = null)
+    public static IServiceCollection AddMongoDB(this IHostApplicationBuilder builder, Action<DatabaseOptions> options = null)
+    {
+        return AddMongoDB(builder.Services, builder.Configuration, options);
+    }
+
+    public static IServiceCollection AddMongoDB(this IServiceCollection services, IConfiguration configuration, Action<DatabaseOptions> options = null)
     {
         var mongoDbInstance = new MongoDbInstance();
 
-        var config = services.BuildServiceProvider().GetService<IConfiguration>();
-        var c = config.GetSection("MongoDB").Get<DatabaseOptions>();
+        var c = configuration.GetSection("MongoDB").Get<DatabaseOptions>();
 
         //NOTE: Set up default.
         var om = new MonitorOptions()
@@ -42,7 +44,6 @@ public static class MongoDbRegistrationExtensions
             DefaultConfigurationName = c?.DefaultConfigurationName ?? Constants.DefaultConfigurationName,
             AutoRegisterRepositories = c?.AutoRegisterRepositories ?? Constants.AutoRegisterRepositoriesDefault,
             AutoRegisterCollections = c?.AutoRegisterCollections ?? Constants.AutoRegisterCollectionsDefault,
-            UseCollectionProviderCache = c?.UseCollectionProviderCache ?? false,
             ExecuteInfoLogLevel = c?.ExecuteInfoLogLevel ?? LogLevel.Debug,
             AssureIndex = c?.AssureIndex ?? AssureIndexMode.ByName,
             Monitor = new MonitorOptions
@@ -73,6 +74,7 @@ public static class MongoDbRegistrationExtensions
         services.AddSingleton<IExecuteLimiter, ExecuteLimiter>();
         services.AddSingleton<ICollectionPool, CollectionPool>();
         services.AddSingleton<IInitiationLibrary, InitiationLibrary>();
+        services.AddSingleton<ICollectionProviderCache, CollectionProviderCache>();
         services.AddSingleton<IMongoDbServiceFactory>(serviceProvider =>
         {
             var mongoDbClientProvider = serviceProvider.GetService<IMongoDbClientProvider>();
@@ -92,20 +94,12 @@ public static class MongoDbRegistrationExtensions
         });
         services.AddTransient<IMongoUrlBuilderLoader>(serviceProvider => new MongoUrlBuilderLoader(serviceProvider, o));
         services.AddTransient<IRepositoryConfiguration>(serviceProvider => new RepositoryConfiguration(serviceProvider, o));
-
-        //TODO: Is this needed now, when we have the new FetchCollection, it should use the same handling.
-        services.AddSingleton<ICollectionProviderCache>(_ =>
-        {
-            if (o.UseCollectionProviderCache)
-                return new CollectionProviderCache(); //NOTE: Makes dynamic collections singleton.
-            return new CollectionProviderNoCache();
-        });
-
         services.AddTransient<ICollectionProvider, CollectionProvider>(provider =>
         {
+            var collectionPool = provider.GetService<ICollectionPool>();
             var collectionProviderCache = provider.GetService<ICollectionProviderCache>();
             var mongoDbServiceFactory = provider.GetService<IMongoDbServiceFactory>();
-            return new CollectionProvider(collectionProviderCache, mongoDbServiceFactory, type =>
+            return new CollectionProvider(collectionPool, collectionProviderCache, mongoDbServiceFactory, type =>
             {
                 var service = provider.GetService(type);
                 return service;
@@ -303,13 +297,14 @@ public static class MongoDbRegistrationExtensions
         where TRepositoryCollection : IRepositoryCollection
         where TRepositoryCollectionBase : RepositoryCollectionBase
     {
-        var provider = services.BuildServiceProvider();
-        var mongoDbInstance = provider.GetService<IMongoDbInstance>();
-        var implementationType = typeof(TRepositoryCollectionBase);
-        var serviceType = typeof(TRepositoryCollection);
+        //var provider = services.BuildServiceProvider(); //TODO: Not allowed to do this, singletons will be strange.
+        //var mongoDbInstance = provider.GetService<IMongoDbInstance>();
+        //var implementationType = typeof(TRepositoryCollectionBase);
+        //var serviceType = typeof(TRepositoryCollection);
 
-        RegisterCollection(services, mongoDbInstance, serviceType, implementationType, "Direct");
-        return services;
+        //RegisterCollection(services, mongoDbInstance, serviceType, implementationType, "Direct");
+        //return services;
+        throw new NotImplementedException();
     }
 
     internal static void RegisterCollection(this IServiceCollection services, IMongoDbInstance mongoDbInstance, Type serviceType, Type implementationType, string regTypeName)

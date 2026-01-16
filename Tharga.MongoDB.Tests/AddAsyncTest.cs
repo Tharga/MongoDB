@@ -67,4 +67,38 @@ public class AddAsyncTest : GenericRepositoryCollectionBaseTestBase
         (await sut.GetAsync(x => x.Id == InitialData.First().Id).ToArrayAsync()).Should().HaveCount(1);
         await VerifyContentAsync(sut);
     }
+
+    [Fact]
+    [Trait("Category", "Database")]
+    public async Task TryAddAsync()
+    {
+        //Arrange
+        var id = ObjectId.GenerateNewId();
+        var newEntity = new Faker<TestEntity>().RuleFor(x => x.Id, id).Generate();
+        var sut = await GetCollection();
+
+        //Act
+        var response = await sut.TryAddAsync(newEntity);
+
+        //Assert
+        response.Should().BeTrue();
+        (await sut.GetAsync(x => x.Id == id).ToArrayAsync()).Should().HaveCount(1);
+        await VerifyContentAsync(sut);
+    }
+
+    [Fact]
+    [Trait("Category", "Database")]
+    public async Task TryAddFailed()
+    {
+        //Arrange
+        var sut = await GetCollection();
+
+        //Act
+        var response = await sut.TryAddAsync(InitialData.First());
+
+        //Assert
+        response.Should().BeFalse();
+        (await sut.GetAsync(x => x.Id == InitialData.First().Id).ToArrayAsync()).Should().HaveCount(1);
+        await VerifyContentAsync(sut);
+    }
 }

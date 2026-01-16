@@ -7,7 +7,7 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-builder.Services.AddMongoDB(o =>
+builder.AddMongoDB(o =>
 {
     o.AssureIndex = AssureIndexMode.BySchema;
     o.DefaultConfigurationName = "NoDefault";

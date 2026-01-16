@@ -100,7 +100,7 @@ else
     private bool CanTouch => _model != null && _model.Registration != Registration.NotInCode;
     private bool CanDrop => CanTouch && _model.Index.Current.Any();
     private bool CanRestore => CanTouch && _indexModel.Any(x => !x.EqualFields);
-    private bool CanClean => CanTouch && false; //TODO: Implement
+    // private bool CanClean => CanTouch && false;
 
     protected override async Task OnParametersSetAsync()
     {

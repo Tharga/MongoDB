@@ -19,7 +19,6 @@ public abstract class RepositoryCollectionBase
     internal abstract string DatabaseName { get; }
     public abstract string CollectionName { get; }
     public abstract string ConfigurationName { get; }
-    //public abstract long? VirtualCount { get; }
 
     internal void InvokeAction(ActionEventArgs.ActionData actionData, ActionEventArgs.ContextData contextData)
     {
@@ -66,60 +65,53 @@ public abstract class RepositoryCollectionBase<TEntity, TKey> : RepositoryCollec
     internal virtual IEnumerable<CreateIndexModel<TEntity>> CoreIndices => null;
     public virtual IEnumerable<Type> Types => null;
 
+    //Read
     public abstract IAsyncEnumerable<TEntity> GetAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default);
     public abstract IAsyncEnumerable<TEntity> GetAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default);
 
-    [Obsolete("Projection methods will have to be developed if needed.")]
-    public abstract IAsyncEnumerable<T> GetAsync<T>(Expression<Func<T, bool>> predicate = null, Options<T> options = null, CancellationToken cancellationToken = default) where T : TEntity;
+    public abstract IAsyncEnumerable<T> GetProjectionAsync<T>(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default);
+    public abstract IAsyncEnumerable<T> GetProjectionAsync<T>(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default);
 
-    [Obsolete("Projection methods will have to be developed if needed.")]
-    public abstract IAsyncEnumerable<T> GetProjectionAsync<T>(Expression<Func<T, bool>> predicate = null, Options<T> options = null, CancellationToken cancellationToken = default);
-
-    [Obsolete($"Use {nameof(GetManyAsync)} instead. This method will be deprecated.")]
-    public abstract Task<Result<TEntity, TKey>> QueryAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default);
     public abstract Task<Result<TEntity, TKey>> GetManyAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default);
-
-    [Obsolete($"Use {nameof(GetManyAsync)} instead. This method will be deprecated.")]
-    public abstract Task<Result<TEntity, TKey>> QueryAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default);
     public abstract Task<Result<TEntity, TKey>> GetManyAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default);
 
-    [Obsolete($"Use {nameof(GetManyAsync)} instead. This method will be deprecated.")]
-    public abstract IAsyncEnumerable<ResultPage<TEntity, TKey>> GetPagesAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default);
-
-    [Obsolete($"Use {nameof(GetManyAsync)} instead. This method will be deprecated.")]
-    public abstract IAsyncEnumerable<ResultPage<TEntity, TKey>> GetPagesAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default);
+    public abstract Task<Result<T>> GetManyProjectionAsync<T>(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default);
+    public abstract Task<Result<T>> GetManyProjectionAsync<T>(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default);
 
     public abstract Task<TEntity> GetOneAsync(TKey id, CancellationToken cancellationToken = default);
     public abstract Task<TEntity> GetOneAsync(Expression<Func<TEntity, bool>> predicate = null, OneOption<TEntity> options = null, CancellationToken cancellationToken = default);
     public abstract Task<TEntity> GetOneAsync(FilterDefinition<TEntity> filter, OneOption<TEntity> options = null, CancellationToken cancellationToken = default);
-    public abstract Task<T> GetOneAsync<T>(Expression<Func<T, bool>> predicate = null, OneOption<T> options = null, CancellationToken cancellationToken = default) where T : TEntity;
-    public abstract Task<T> GetOneProjectionAsync<T>(Expression<Func<T, bool>> predicate = null, OneOption<T> options = null, CancellationToken cancellationToken = default);
-    public abstract Task AddAsync(TEntity entity);
-    public abstract Task<bool> TryAddAsync(TEntity entity);
-    public abstract Task AddManyAsync(IEnumerable<TEntity> entities);
-    public abstract Task<EntityChangeResult<TEntity>> AddOrReplaceAsync(TEntity entity);
-    public abstract Task<EntityChangeResult<TEntity>> ReplaceOneAsync(TEntity entity, OneOption<TEntity> options = null);
-    public abstract Task<EntityChangeResult<TEntity>> ReplaceOneAsync(TEntity entity, FilterDefinition<TEntity> filter, OneOption<TEntity> options = null);
-    public abstract Task<long> UpdateAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update);
-    public abstract Task<EntityChangeResult<TEntity>> UpdateOneAsync(TKey id, UpdateDefinition<TEntity> update);
-    public abstract Task<EntityChangeResult<TEntity>> UpdateOneAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update, OneOption<TEntity> options = null);
-    public abstract Task<TEntity> DeleteOneAsync(TKey id);
-    public abstract Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate = null, OneOption<TEntity> options = null);
-    public abstract Task<long> DeleteManyAsync(Expression<Func<TEntity, bool>> predicate);
-
-    [Obsolete($"Use {nameof(GetCollectionScope)} instead. This method will be deprecated.")]
-    public abstract IMongoCollection<TEntity> GetCollection();
-    public abstract Task<CollectionScope<TEntity>> GetCollectionScope(Operation operation);
-
-    public abstract Task DropCollectionAsync();
 
     public abstract Task<long> CountAsync(Expression<Func<TEntity, bool>> predicate, CancellationToken cancellationToken = default);
     public abstract Task<long> CountAsync(FilterDefinition<TEntity> filter, CancellationToken cancellationToken = default);
 
-    public abstract Task<long> GetSizeAsync();
+    public abstract Task<long> GetSizeAsync(CancellationToken cancellationToken = default);
+
+    //Create
+    public abstract Task AddAsync(TEntity entity);
+    public abstract Task<bool> TryAddAsync(TEntity entity);
+
+    //Update
+    public abstract Task<long> UpdateAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update);
+
+    //Delete
+    public abstract Task<TEntity> DeleteOneAsync(TKey id);
+    public abstract Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate, OneOption<TEntity> options = null);
+    public abstract Task<TEntity> DeleteOneAsync(FilterDefinition<TEntity> filter, OneOption<TEntity> options = null);
+
+    public abstract Task<long> DeleteManyAsync(Expression<Func<TEntity, bool>> predicate);
+    public abstract Task<long> DeleteManyAsync(FilterDefinition<TEntity> filter);
+
+    //Other
+    public abstract Task DropCollectionAsync();
 
     public abstract IAsyncEnumerable<TEntity> GetDirtyAsync();
     public abstract IEnumerable<(IndexFailOperation Operation, string Name)> GetFailedIndices();
+
+    internal abstract Task<StepResponse<IMongoCollection<TEntity>>> FetchCollectionAsync(bool initiate = true);
+    internal abstract Task<bool> AssureIndex(IMongoCollection<TEntity> collection, bool forceAssure = false, bool throwOnException = false);
+    internal abstract Task<(int Before, int After)> DropIndex(IMongoCollection<TEntity> collection);
+    internal abstract Task CleanAsync(IMongoCollection<TEntity> collection);
 
     internal void InvokeAction(ActionEventArgs.ActionData actionData)
     {
@@ -143,8 +135,8 @@ public abstract class RepositoryCollectionBase<TEntity, TKey> : RepositoryCollec
         };
     }
 
-    protected async ValueTask AssureFirewallAccessAsync()
-    {
-        await _mongoDbService.AssureFirewallAccessAsync(true);
-    }
+    //protected async ValueTask AssureFirewallAccessAsync()
+    //{
+    //    await _mongoDbService.AssureFirewallAccessAsync(true);
+    //}
 }

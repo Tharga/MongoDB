@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
 using MongoDB.Bson;
+using Tharga.MongoDB.Disk;
 
 namespace Tharga.MongoDB.Tests.Support;
 
@@ -15,7 +16,7 @@ public abstract class GenericRepositoryCollectionBaseTestBase : MongoDbTestBase
         Disk,
     }
 
-    private readonly RepositoryCollectionBase<TestEntity, ObjectId> _disk;
+    private readonly DiskRepositoryCollectionBase<TestEntity, ObjectId> _disk;
     private bool _prepared;
     private List<TestEntity> _initialData;
     protected Func<TestEntity>[] InitialDataLoader { get; private set; }
@@ -40,7 +41,7 @@ public abstract class GenericRepositoryCollectionBaseTestBase : MongoDbTestBase
             new object[] { CollectionType.Disk }
         };
 
-    protected async Task<RepositoryCollectionBase<TestEntity, ObjectId>> GetCollection(Func<RepositoryCollectionBase<TestEntity, ObjectId>, Task> action = null)
+    protected async Task<DiskRepositoryCollectionBase<TestEntity, ObjectId>> GetCollection(Func<RepositoryCollectionBase<TestEntity, ObjectId>, Task> action = null)
     {
         if (!_prepared && InitialDataLoader != null && InitialDataLoader.Any())
         {

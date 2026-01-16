@@ -66,14 +66,6 @@ public record DatabaseOptions
     public Func<IServiceProvider, Task<MongoDbConfigurationTree>> ConfigurationLoader { get; set; }
 
     /// <summary>
-    /// Collections provided by CollectionProvider are Cache.
-    /// The cache is keepts for the duration of the application lifetime.
-    /// This cache disabled by default.
-    /// </summary>
-    [Obsolete("Will be deprecated.")]
-    public bool UseCollectionProviderCache { get; set; }
-
-    /// <summary>
     /// Log level for execution information.
     /// </summary>
     public LogLevel? ExecuteInfoLogLevel { get; set; } = LogLevel.Debug;
@@ -83,7 +75,6 @@ public record DatabaseOptions
     /// CSharpLegacy is default.
     /// </summary>
     public GuidRepresentation? GuidRepresentation { get; set; }
-
 
     /// <summary>
     /// Enable or disable the assurance of incexes.

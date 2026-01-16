@@ -33,11 +33,11 @@ internal class MongoDbServiceFactory : IMongoDbServiceFactory
         _logger = logger;
     }
 
-    public event EventHandler<IndexUpdatedEventArgs> IndexUpdatedEvent;
     public event EventHandler<CollectionAccessEventArgs> CollectionAccessEvent;
+    public event EventHandler<IndexUpdatedEventArgs> IndexUpdatedEvent;
+    public event EventHandler<CollectionDroppedEventArgs> CollectionDroppedEvent;
     public event EventHandler<CallStartEventArgs> CallStartEvent;
     public event EventHandler<CallEndEventArgs> CallEndEvent;
-    public event EventHandler<ExecuteInfoChangedEventArgs> ExecuteInfoChangedEvent;
 
     public IMongoDbService GetMongoDbService(Func<DatabaseContext> databaseContextLoader)
     {
@@ -57,7 +57,7 @@ internal class MongoDbServiceFactory : IMongoDbServiceFactory
         var cacheKey = mongoUrl.Url;
         //ConfigurationAccessEvent?.Invoke(this, new ConfigurationAccessEventArgs(configurationName, mongoUrl));
 
-        //TODO: Can this be done differently
+        //TODO: Should cache be used here or not?
         //var ctx = configuration.GetDatabaseContext();
         //var useCache = string.IsNullOrEmpty((ctx as DatabaseContextWithFingerprint)?.DatabaseName);
         //var useCache = string.IsNullOrEmpty((ctx as ICollectionFingerprint)?.DatabaseName);
@@ -84,6 +84,22 @@ internal class MongoDbServiceFactory : IMongoDbServiceFactory
         }
     }
 
+    public void OnIndexUpdatedEvent(object sender, IndexUpdatedEventArgs e)
+    {
+        Task.Run(() =>
+        {
+            IndexUpdatedEvent?.Invoke(sender, e);
+        });
+    }
+
+    public void OnCollectionDropped(object sender, CollectionDroppedEventArgs e)
+    {
+        Task.Run(() =>
+        {
+            CollectionDroppedEvent?.Invoke(sender, e);
+        });
+    }
+
     public void OnCallStart(object sender, CallStartEventArgs e)
     {
         Task.Run(() =>
@@ -97,14 +113,6 @@ internal class MongoDbServiceFactory : IMongoDbServiceFactory
         Task.Run(() =>
         {
             CallEndEvent?.Invoke(sender, e);
-        });
-    }
-
-    public void OnIndexUpdatedEvent(object sender, IndexUpdatedEventArgs e)
-    {
-        Task.Run(() =>
-        {
-            IndexUpdatedEvent?.Invoke(sender, e);
         });
     }
 }

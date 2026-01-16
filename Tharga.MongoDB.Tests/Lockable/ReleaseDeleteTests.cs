@@ -42,7 +42,7 @@ public class ReleaseDeleteTests : LockableTestBase
         eventCount.Should().Be(1);
         callbackResult.Should().NotBeNull();
         callbackResult.Before.Id.Should().Be(entity.Id);
-        callbackResult.Commit.Should().Be(release == ReleaseType.Commit);
+        callbackResult.LockAction.Should().Be(release == ReleaseType.Commit ? LockAction.CommitDeleted : release == ReleaseType.SetErrorState ? LockAction.Exception : LockAction.Abandoned);
         var item = await collection.GetOneAsync(sut.Entity.Id);
         if (release == ReleaseType.Commit)
         {

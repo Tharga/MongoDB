@@ -1,4 +1,5 @@
 ﻿using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using MongoDB.Driver;
@@ -58,6 +59,24 @@ public class GetAsyncTest : GenericRepositoryCollectionBaseTestBase
         //Act
         var filter = Builders<TestEntity>.Filter.Empty;
         var result = await sut.GetAsync(filter).ToArrayAsync();
+
+        //Assert
+        result.Should().NotBeNull();
+        result.Length.Should().Be(3);
+        await VerifyContentAsync(sut);
+    }
+
+    [Fact]
+    [Trait("Category", "Database")]
+    public async Task FindOption()
+    {
+        //Arrange
+        var sut = await GetCollection();
+        var options = new FindOptions<TestEntity>();
+
+        //Act
+        var filter = Builders<TestEntity>.Filter.Empty;
+        var result = await sut.GetAsync(filter, options).ToArrayAsync();
 
         //Assert
         result.Should().NotBeNull();

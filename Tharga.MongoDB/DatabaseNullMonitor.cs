@@ -8,7 +8,7 @@ namespace Tharga.MongoDB;
 internal class DatabaseNullMonitor : IDatabaseMonitor
 {
     public event EventHandler<CollectionInfoChangedEventArgs> CollectionInfoChangedEvent;
-    public event EventHandler<ExecuteInfoChangedEventArgs> ExecuteInfoChangedEvent;
+    public event EventHandler<CollectionDroppedEventArgs> CollectionDroppedEvent;
 
     public IEnumerable<ConfigurationName> GetConfigurations()
     {

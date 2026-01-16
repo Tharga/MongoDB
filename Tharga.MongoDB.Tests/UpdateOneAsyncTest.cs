@@ -39,6 +39,24 @@ public class UpdateOneAsyncTest : GenericRepositoryCollectionBaseTestBase
 
     [Fact]
     [Trait("Category", "Database")]
+    public async Task BasicWithPredicate()
+    {
+        //Arrange
+        var sut = await GetCollection();
+        var updatedValue = new Faker().Random.String2(20);
+        var update = new UpdateDefinitionBuilder<TestEntity>().Set(x => x.Value, updatedValue);
+
+        //Act
+        var result = await sut.UpdateOneAsync(x => x.Id == InitialData.First().Id, update);
+
+        //Assert
+        result.Before.Should().Be(InitialData.First());
+        (await sut.GetAsync(x => x.Id == InitialData.First().Id).ToArrayAsync()).First().Value.Should().Be(updatedValue);
+        await VerifyContentAsync(sut);
+    }
+
+    [Fact]
+    [Trait("Category", "Database")]
     public async Task MissingWithFilter()
     {
         //Arrange

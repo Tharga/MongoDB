@@ -7,6 +7,7 @@ using MongoDB.Bson.Serialization.Attributes;
 
 namespace Tharga.MongoDB;
 
+//TODO: Add clean helpers for sub-objects and sub-collections.
 [BsonIgnoreExtraElements]
 public abstract record PersistableEntityBase : ISupportInitialize
 {

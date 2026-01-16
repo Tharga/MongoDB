@@ -8,7 +8,7 @@ namespace Tharga.MongoDB;
 public interface IDatabaseMonitor
 {
     event EventHandler<CollectionInfoChangedEventArgs> CollectionInfoChangedEvent;
-    event EventHandler<ExecuteInfoChangedEventArgs> ExecuteInfoChangedEvent;
+    event EventHandler<CollectionDroppedEventArgs> CollectionDroppedEvent;
 
     IEnumerable<ConfigurationName> GetConfigurations();
     Task<CollectionInfo> GetInstanceAsync(CollectionFingerprint fingerprint);
