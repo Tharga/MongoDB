@@ -1,11 +1,11 @@
-﻿using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
-using System;
+﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace Tharga.MongoDB;
 
@@ -15,8 +15,8 @@ internal class ExecuteLimiter : IExecuteLimiter
     private const string DefaultKey = "Default";
 
     private readonly int _maxConcurrentPerKey;
-    private readonly ConcurrentDictionary<string, SemaphoreSlim> _semaphores = new();
-    private readonly ConcurrentDictionary<string, int> _queuedCounts = new();
+
+    private readonly ConcurrentDictionary<string, PerKeyState> _states = new();
 
     public ExecuteLimiter(IOptions<ExecuteLimiterOptions> options, ILogger<ExecuteLimiter> logger)
     {
@@ -24,48 +24,70 @@ internal class ExecuteLimiter : IExecuteLimiter
         _maxConcurrentPerKey = options.Value.MaxConcurrent;
     }
 
-    public async Task<(T Result, ExecuteInfo Info)> ExecuteAsync<T>(Func<CancellationToken, Task<T>> action, string key, CancellationToken cancellationToken)
+    public async Task<(T Result, ExecuteInfo Info)> ExecuteAsync<T>(
+        Func<CancellationToken, Task<T>> action,
+        string key,
+        CancellationToken cancellationToken)
     {
         key ??= DefaultKey;
 
-        var semaphore = _semaphores.GetOrAdd(key, _ => new SemaphoreSlim(_maxConcurrentPerKey, _maxConcurrentPerKey));
+        var state = _states.GetOrAdd(key, _ => new PerKeyState(_maxConcurrentPerKey));
 
         var queuedAt = Stopwatch.GetTimestamp();
 
-        var queueCount = _queuedCounts.AddOrUpdate(key, _ => 1, (_, current) => current + 1);
+        // Mark as queued (waiting to acquire a slot)
+        var queuedCount = state.IncrementQueued();
+        LogCount("ExecuteQueue", queuedCount);
 
-        LogCount("ExecuteQueue", queueCount);
-        if (queueCount > 1)
-        {
-            _logger?.LogInformation("Queued {queueCount} executions for {key}.", queueCount, key);
-        }
+        if (queuedCount > 1)
+            _logger?.LogInformation("Queued {queueCount} executions for {key}.", queuedCount, key);
 
-        await semaphore.WaitAsync(cancellationToken);
-
-        var startedAt = Stopwatch.GetTimestamp();
-        var queueElapsed = GetElapsed(queuedAt, startedAt);
-
-        var concurrentCount = _maxConcurrentPerKey - semaphore.CurrentCount;
-
-        LogCount("ExecuteConcurrent", concurrentCount);
-        if (concurrentCount >= _maxConcurrentPerKey)
-        {
-            _logger?.LogWarning("The maximum number of {count} concurrent executions for {key} has been reached.", concurrentCount, key);
-        }
+        var acquired = false;
 
         try
         {
-            var response = await action.Invoke(cancellationToken);
-            return (response, new ExecuteInfo
+            await state.Semaphore.WaitAsync(cancellationToken);
+            acquired = true;
+
+            var startedAt = Stopwatch.GetTimestamp();
+            var queueElapsed = GetElapsed(queuedAt, startedAt);
+
+            // No longer queued once we got a slot
+            state.DecrementQueued();
+
+            // Now executing
+            var executingCount = state.IncrementExecuting();
+            LogCount("ExecuteConcurrent", executingCount);
+
+            if (executingCount >= _maxConcurrentPerKey)
+                _logger?.LogWarning("The maximum number of {count} concurrent executions for {key} has been reached.", executingCount, key);
+
+            try
             {
-                QueueElapsed = queueElapsed,
-                ConcurrentCount = concurrentCount,
-                QueueCount = queueCount
-            });
+                var response = await action(cancellationToken);
+
+                return (response, new ExecuteInfo
+                {
+                    QueueElapsed = queueElapsed,
+                    ConcurrentCount = executingCount,
+                    QueueCount = queuedCount
+                });
+            }
+            finally
+            {
+                state.DecrementExecuting();
+                state.Semaphore.Release();
+            }
         }
-        finally
+        catch
         {
-            semaphore.Release();
+            // If we never acquired, we are still counted as queued -> remove it
+            if (!acquired)
+            {
+                state.DecrementQueued();
+            }
+
+            throw;
         }
     }
 
@@ -77,11 +99,27 @@ internal class ExecuteLimiter : IExecuteLimiter
             { "Method", "Count" }
         };
         var details = System.Text.Json.JsonSerializer.Serialize(data);
-        _logger?.LogInformation("Count {Action} as {Count}. {Details}", action, count, details);
+        _logger?.LogTrace("Count {Action} as {Count}. {Details}", action, count, details);
     }
 
-    private static TimeSpan GetElapsed(long from, long to)
+    private static TimeSpan GetElapsed(long from, long to) => TimeSpan.FromSeconds((to - from) / (double)Stopwatch.Frequency);
+
+    private sealed class PerKeyState
     {
-        return TimeSpan.FromSeconds((to - from) / (double)Stopwatch.Frequency);
+        public SemaphoreSlim Semaphore { get; }
+
+        private int _queued;
+        private int _executing;
+
+        public PerKeyState(int maxConcurrent)
+        {
+            Semaphore = new SemaphoreSlim(maxConcurrent, maxConcurrent);
+        }
+
+        public int IncrementQueued() => Interlocked.Increment(ref _queued);
+        public int DecrementQueued() => Interlocked.Decrement(ref _queued);
+
+        public int IncrementExecuting() => Interlocked.Increment(ref _executing);
+        public int DecrementExecuting() => Interlocked.Decrement(ref _executing);
     }
 }
