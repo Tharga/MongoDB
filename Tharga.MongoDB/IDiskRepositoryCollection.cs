@@ -28,6 +28,13 @@ public interface IDiskRepositoryCollection<TEntity, TKey> : IDiskReadOnlyReposit
 
     Task<long> UpdateAsync(Expression<Func<TEntity, bool>> predicate, UpdateDefinition<TEntity> update);
 
+    //Delete
+    Task<TEntity> DeleteOneAsync(TKey id);
+    Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate, OneOption<TEntity> options = null);
+    Task<TEntity> DeleteOneAsync(FilterDefinition<TEntity> filter, OneOption<TEntity> options = null);
+    Task<long> DeleteManyAsync(Expression<Func<TEntity, bool>> predicate);
+    Task<long> DeleteManyAsync(FilterDefinition<TEntity> filter);
+
     //Other
     [Obsolete($"Use {nameof(ExecuteAsync)} instead. This method will be deprecated.")]
     IMongoCollection<TEntity> GetCollection();
