@@ -27,4 +27,6 @@ internal class GenericDiskRepositoryCollection<TEntity, TKey> : DiskRepositoryCo
     public override IEnumerable<CreateIndexModel<TEntity>> Indices => _proxy?.Indices ?? base.Indices;
     internal override IEnumerable<CreateIndexModel<TEntity>> CoreIndices => _proxy?.CoreIndices ?? base.CoreIndices;
     public override IEnumerable<Type> Types => _proxy?.Types ?? base.Types;
+
+    internal RepositoryCollectionBase<TEntity, TKey> GetProxy() => _proxy;
 }

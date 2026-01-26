@@ -40,7 +40,7 @@ public class GetOneAsyncTest : GenericRepositoryCollectionBaseTestBase
         var sut = await GetCollection();
 
         //Act
-        var result = await sut.GetOneAsync(options: OneOption<TestEntity>.First);
+        var result = await sut.GetOneAsync(x => true, OneOption<TestEntity>.First);
 
         //Assert
         result.Should().NotBeNull();
@@ -119,7 +119,7 @@ public class GetOneAsyncTest : GenericRepositoryCollectionBaseTestBase
         var sut = await GetCollection();
 
         //Act
-        var act = () => sut.GetOneAsync();
+        var act = () => sut.GetOneAsync(x => true);
 
         //Assert
         await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("Sequence contains more than one element");
