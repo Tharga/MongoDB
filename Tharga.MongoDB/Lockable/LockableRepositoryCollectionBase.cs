@@ -91,7 +91,7 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
         return Disk.GetOneAsync(id, cancellationToken);
     }
 
-    public override Task<TEntity> GetOneAsync(Expression<Func<TEntity, bool>> predicate = null, OneOption<TEntity> options = null, CancellationToken cancellationToken = default)
+    public override Task<TEntity> GetOneAsync(Expression<Func<TEntity, bool>> predicate, OneOption<TEntity> options = null, CancellationToken cancellationToken = default)
     {
         return Disk.GetOneAsync(predicate, options, cancellationToken);
     }
@@ -555,8 +555,7 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
                 }, false);
             }
 
-            throw new NotSupportedException("Multiple documents matches with the provided expression.");
-            //return (null, null, false); //No document matches the filter.
+            return (null, null, false); //No document matches the filter.
         }
         else
         {

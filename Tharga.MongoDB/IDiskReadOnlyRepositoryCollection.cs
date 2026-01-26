@@ -34,7 +34,7 @@ public interface IReadOnlyRepositoryCollection<TEntity, TKey> : IReadOnlyReposit
     Task<Result<T>> GetManyProjectionAsync<T>(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default);
 
     Task<TEntity> GetOneAsync(TKey id, CancellationToken cancellationToken = default);
-    Task<TEntity> GetOneAsync(Expression<Func<TEntity, bool>> predicate = null, OneOption<TEntity> options = null, CancellationToken cancellationToken = default);
+    Task<TEntity> GetOneAsync(Expression<Func<TEntity, bool>> predicate, OneOption<TEntity> options = null, CancellationToken cancellationToken = default);
     Task<TEntity> GetOneAsync(FilterDefinition<TEntity> filter, OneOption<TEntity> options = null, CancellationToken cancellationToken = default);
 
     Task<long> CountAsync(Expression<Func<TEntity, bool>> predicate = default, CancellationToken cancellationToken = default);

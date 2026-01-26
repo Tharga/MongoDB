@@ -372,7 +372,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         }, Operation.Read, cancellationToken);
     }
 
-    public override Task<TEntity> GetOneAsync(Expression<Func<TEntity, bool>> predicate = null, OneOption<TEntity> options = null, CancellationToken cancellationToken = default)
+    public override Task<TEntity> GetOneAsync(Expression<Func<TEntity, bool>> predicate, OneOption<TEntity> options = null, CancellationToken cancellationToken = default)
     {
         var filter = predicate == null ? FilterDefinition<TEntity>.Empty : new ExpressionFilterDefinition<TEntity>(predicate);
         return GetOneAsync(filter, options, cancellationToken);
@@ -1255,7 +1255,10 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         if ((typeof(TEntity).IsInterface || typeof(TEntity).IsAbstract) && (Types == null || !Types.Any()))
         {
             var kind = typeof(TEntity).IsInterface ? "an interface" : "an abstract class";
-            throw new InvalidOperationException($"Types needs to be provided since '{typeof(TEntity).Name}' is {kind}. Do this by overriding the the Types property in '{GetType().Name}' and provide the requested type.");
+            var n = this is GenericDiskRepositoryCollection<TEntity, TKey> g
+                ? g.GetProxy().GetType().Name
+                : GetType().Name;
+            throw new InvalidOperationException($"Types has to be provided since '{typeof(TEntity).Name}' it is {kind}. Do this by overriding the the Types property in '{n}' and provide the requested type.");
         }
 
         foreach (var type in Types ?? Array.Empty<Type>())

@@ -32,7 +32,7 @@ public class EntityScopeExtensionsTests : LockableTestBase
 
         //Assert
         result.Should().BeNull();
-        var after = await repository.GetOneAsync();
+        var after = await repository.GetOneAsync(x => true);
         after.Data.Should().Be("initial");
         after.Lock.Should().BeNull();
     }
@@ -53,7 +53,7 @@ public class EntityScopeExtensionsTests : LockableTestBase
         //Assert
         result.Should().NotBeNull();
         result.Data.Should().Be("updated");
-        var after = await repository.GetOneAsync();
+        var after = await repository.GetOneAsync(x => true);
         after.Data.Should().Be("updated");
         after.Lock.Should().BeNull();
     }
@@ -80,7 +80,7 @@ public class EntityScopeExtensionsTests : LockableTestBase
             .ThrowAsync<InvalidOperationException>()
             .WithMessage("Oups");
 
-        var after = await repository.GetOneAsync();
+        var after = await repository.GetOneAsync(x => true);
         after.Data.Should().Be("initial");
         after.Lock.ExceptionInfo.Message.Should().Be("Oups");
     }
@@ -100,7 +100,7 @@ public class EntityScopeExtensionsTests : LockableTestBase
 
         //Assert
         result.Should().BeNull();
-        var after = await repository.GetOneAsync();
+        var after = await repository.GetOneAsync(x => true);
         after.Data.Should().Be("initial");
         after.Lock.Should().BeNull();
     }
@@ -120,7 +120,7 @@ public class EntityScopeExtensionsTests : LockableTestBase
 
         //Assert
         result.Should().NotBeNull();
-        var after = await repository.GetOneAsync();
+        var after = await repository.GetOneAsync(x => true);
         after.Should().BeNull();
     }
 
@@ -142,7 +142,7 @@ public class EntityScopeExtensionsTests : LockableTestBase
             .ThrowAsync<InvalidOperationException>()
             .WithMessage("Oups");
 
-        var after = await repository.GetOneAsync();
+        var after = await repository.GetOneAsync(x => true);
         after.Data.Should().Be("initial");
         after.Lock.ExceptionInfo.Message.Should().Be("Oups");
     }
