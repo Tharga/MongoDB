@@ -555,8 +555,7 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
                 }, false);
             }
 
-            throw new NotSupportedException("Multiple documents matches with the provided expression.");
-            //return (null, null, false); //No document matches the filter.
+            return (null, null, false); //No document matches the filter.
         }
         else
         {
