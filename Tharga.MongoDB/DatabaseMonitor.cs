@@ -337,6 +337,45 @@ internal class DatabaseMonitor : IDatabaseMonitor
         await dropTask!;
     }
 
+    public async Task<IEnumerable<string[]>> GetIndexBlockersAsync(CollectionInfo collectionInfo, string indexName)
+    {
+        if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
+        if (collectionInfo == null) throw new ArgumentNullException(nameof(collectionInfo));
+        if (collectionInfo.Registration == Registration.NotInCode) throw new InvalidOperationException($"{nameof(RestoreIndexAsync)} does not support {nameof(Registration)} {collectionInfo.Registration}.");
+
+        var collection = _collectionProvider.GetCollection(collectionInfo.CollectionType, collectionInfo.Registration == Registration.Dynamic ? collectionInfo.ToDatabaseContext() : null);
+
+        var ct = collection.GetType();
+        var mongoCollection = await FetchMongoCollection(ct, collection, true);
+
+        var getblockerMethod = ct.GetMethod(nameof(DiskRepositoryCollectionBase<EntityBase>.GetIndexBlockers), BindingFlags.Instance | BindingFlags.NonPublic);
+        //var getResult = getblockerMethod?.Invoke(collection, [mongoCollection, indexName]);
+        //var getTask = (Task)getResult;
+        //await getTask!;
+
+        var taskObj = getblockerMethod?.Invoke(collection, [mongoCollection, indexName]);
+
+        if (taskObj is not Task task)
+        {
+            throw new InvalidOperationException($"Invoked method did not return a {nameof(Task)}.");
+        }
+
+        await task.ConfigureAwait(false);
+
+        var resultProperty = task.GetType().GetProperty(nameof(Task<object>.Result));
+        if (resultProperty == null)
+        {
+            throw new InvalidOperationException("Invoked task did not have a Result property.");
+        }
+
+        if (resultProperty.GetValue(task) is not IEnumerable<string[]> result)
+        {
+            throw new InvalidOperationException("Invoked task result was not IEnumerable<string[]>.");
+        }
+
+        return result;
+    }
+
     private static async Task<object> FetchMongoCollection(Type ct, IRepositoryCollection collection, bool initiate)
     {
         var fetchMethod = ct.GetMethod(nameof(DiskRepositoryCollectionBase<EntityBase>.FetchCollectionAsync), BindingFlags.Instance | BindingFlags.NonPublic);

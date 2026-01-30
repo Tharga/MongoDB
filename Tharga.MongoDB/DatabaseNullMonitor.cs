@@ -40,6 +40,11 @@ internal class DatabaseNullMonitor : IDatabaseMonitor
         return Task.CompletedTask;
     }
 
+    public Task<IEnumerable<string[]>> GetIndexBlockersAsync(CollectionInfo collectionInfo, string indexName)
+    {
+        return Task.FromResult<IEnumerable<string[]>>(new List<string[]>());
+    }
+
     public IEnumerable<CallInfo> GetCalls(CallType callType)
     {
         yield break;

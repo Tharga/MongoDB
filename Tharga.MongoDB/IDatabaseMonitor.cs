@@ -16,5 +16,6 @@ public interface IDatabaseMonitor
     Task TouchAsync(CollectionInfo collectionInfo);
     Task<(int Before, int After)> DropIndexAsync(CollectionInfo collectionInfo);
     Task RestoreIndexAsync(CollectionInfo collectionInfo);
+    Task<IEnumerable<string[]>> GetIndexBlockersAsync(CollectionInfo collectionInfo, string indexName);
     IEnumerable<CallInfo> GetCalls(CallType callType);
 }
