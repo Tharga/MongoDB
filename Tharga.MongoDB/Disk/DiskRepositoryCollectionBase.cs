@@ -851,6 +851,117 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         return false;
     }
 
+    //internal async Task<IEnumerable<string[]>> GetIndexBlockers(IMongoCollection<TEntity> collection, string indexName)
+    //{
+    //    BsonDocument index = (await collection.Indexes.ListAsync()).ToList().FirstOrDefault(x => x.GetValue("name").AsString == indexName);
+
+    //    //TODO: Build a list of Ids of documents that blocks the index.
+    //    //Example of returns: [["Id1","Id2","Id3"], ["Id11", "Id12"]]
+
+    //    throw new InvalidOperationException();
+    //}
+    internal async Task<IEnumerable<string[]>> GetIndexBlockers(IMongoCollection<TEntity> collection, string indexName)
+    {
+        //var indices = (CoreIndices?.ToArray() ?? []).Union(Indices?.ToArray() ?? []).ToArray();
+        //CreateIndexModel<TEntity> index = indices.FirstOrDefault(x => x.Options.Name == indexName);
+
+        var indices = (CoreIndices?.ToArray() ?? Array.Empty<CreateIndexModel<TEntity>>())
+            .Union(Indices?.ToArray() ?? Array.Empty<CreateIndexModel<TEntity>>())
+            .ToArray();
+
+        var index = indices.FirstOrDefault(x => x?.Options?.Name == indexName);
+        if (index == null || index.Options?.Unique != true)
+        {
+            return Array.Empty<string[]>();
+        }
+
+        var renderArgs = new RenderArgs<TEntity>(
+            collection.DocumentSerializer,
+            collection.Settings.SerializerRegistry);
+
+        var keysDoc = index.Keys.Render(renderArgs);
+        var keyFields = keysDoc.Names.ToArray();
+
+        if (keyFields.Length == 0)
+        {
+            return Array.Empty<string[]>();
+        }
+
+        var pipeline = new List<BsonDocument>();
+
+        if (index.Options.PartialFilterExpression != null)
+        {
+            var partial = index.Options.PartialFilterExpression.Render(renderArgs);
+            pipeline.Add(new BsonDocument("$match", partial));
+        }
+
+        if (index.Options.Sparse == true)
+        {
+            var sparseMatch = new BsonDocument();
+            foreach (var field in keyFields)
+            {
+                sparseMatch[field] = new BsonDocument("$exists", true);
+            }
+            pipeline.Add(new BsonDocument("$match", sparseMatch));
+        }
+
+        var groupId = new BsonDocument();
+        foreach (var field in keyFields)
+        {
+            groupId[field] = $"${field}";
+        }
+
+        pipeline.Add(new BsonDocument("$group", new BsonDocument
+    {
+        { "_id", groupId },
+        { "count", new BsonDocument("$sum", 1) },
+        { "ids", new BsonDocument("$push", "$_id") }
+    }));
+
+        pipeline.Add(new BsonDocument("$match", new BsonDocument
+    {
+        { "count", new BsonDocument("$gt", 1) }
+    }));
+
+        pipeline.Add(new BsonDocument("$project", new BsonDocument
+    {
+        { "_id", 0 },
+        { "ids", 1 }
+    }));
+
+        var results = await collection.Aggregate<BsonDocument>(pipeline).ToListAsync();
+
+        static string ToIdString(BsonValue id)
+        {
+            if (id == null || id.IsBsonNull) { return string.Empty; }
+            if (id.IsObjectId) { return id.AsObjectId.ToString(); }
+            if (id.IsString) { return id.AsString; }
+            if (id.IsGuid) { return id.AsGuid.ToString(); }
+            return id.ToString();
+        }
+
+        var blockers = new List<string[]>();
+
+        foreach (var doc in results)
+        {
+            if (!doc.TryGetValue("ids", out var idsValue) || !idsValue.IsBsonArray) { continue; }
+
+            var ids = idsValue.AsBsonArray
+                .Select(ToIdString)
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .ToArray();
+
+            if (ids.Length > 0)
+            {
+                blockers.Add(ids);
+            }
+        }
+
+        return blockers;
+
+        //throw new NotImplementedException();
+    }
+
     internal override async Task<(int Before, int After)> DropIndex(IMongoCollection<TEntity> collection)
     {
         var before = (await collection.Indexes.ListAsync())
@@ -1000,7 +1111,6 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                 }
                 catch (Exception e)
                 {
-                    Debugger.Break();
                     _logger?.LogError(e, "Failed to drop index {indexName} in collection {collection}. {message}", indexName, ProtectedCollectionName, e.Message);
                     _initiationLibrary.AddFailedInitiateIndex(ServerName, DatabaseName, ProtectedCollectionName, (IndexFailOperation.Drop, indexName));
                     if (throwOnException) throw;
@@ -1022,7 +1132,6 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                 }
                 catch (Exception e)
                 {
-                    Debugger.Break();
                     _logger?.LogError(e, "Failed to create index {indexName} in collection {collection}. {message}", index.Options.Name, ProtectedCollectionName, e.Message);
                     _initiationLibrary.AddFailedInitiateIndex(ServerName, DatabaseName, ProtectedCollectionName, (IndexFailOperation.Create, index.Options.Name));
                     if (throwOnException) throw;
@@ -1069,7 +1178,6 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                 }
                 catch (Exception e)
                 {
-                    Debugger.Break();
                     _logger?.LogError(e, "Failed to drop index {indexName} in collection {collection}. {message}", indexName, ProtectedCollectionName, e.Message);
                     _initiationLibrary.AddFailedInitiateIndex(ServerName, DatabaseName, ProtectedCollectionName, (IndexFailOperation.Drop, indexName));
                     if (throwOnException) throw;
@@ -1093,7 +1201,6 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                 }
                 catch (Exception e)
                 {
-                    Debugger.Break();
                     _logger?.LogError(e, "Failed to create index {indexName} in collection {collection}. {message}", definedIndexModel.Name, ProtectedCollectionName, e.Message);
                     _initiationLibrary.AddFailedInitiateIndex(ServerName, DatabaseName, ProtectedCollectionName, (IndexFailOperation.Create, definedIndexModel.Name));
                     if (throwOnException) throw;
@@ -1135,7 +1242,6 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             }
             catch (Exception e)
             {
-                Debugger.Break();
                 _logger?.LogError(e, "Failed to drop index {indexName} in collection {collection}. {message}", indexName, ProtectedCollectionName, e.Message);
                 _initiationLibrary.AddFailedInitiateIndex(ServerName, DatabaseName, ProtectedCollectionName, (IndexFailOperation.Drop, indexName));
                 if (throwOnException) throw;
@@ -1153,7 +1259,6 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             }
             catch (Exception e)
             {
-                Debugger.Break();
                 _logger?.LogError(e, "Failed to create index {indexName} in collection {collection}. {message}", index.Options.Name, ProtectedCollectionName, e.Message);
                 _initiationLibrary.AddFailedInitiateIndex(ServerName, DatabaseName, ProtectedCollectionName, (IndexFailOperation.Create, index.Options.Name));
                 if (throwOnException) throw;
