@@ -7,7 +7,10 @@ using MongoDB.Bson;
 using MongoDB.Bson.Serialization;
 using MongoDB.Bson.Serialization.Serializers;
 using System;
+using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Threading.Tasks;
 using Tharga.MongoDB.Atlas;
 using Tharga.MongoDB.Configuration;
@@ -114,14 +117,14 @@ public static class MongoDbRegistrationExtensions
         {
             _actionEvent?.Invoke(new ActionEventArgs(new ActionEventArgs.ActionData
             {
-                Message = $"Looking for assemblies in {string.Join(", ", (o.AutoRegistrationAssemblies ?? AssemblyService.GetAssemblies()).Select(x => x.GetName().Name).ToArray())}.",
+                Message = $"Looking for assemblies in {string.Join(", ", GetAssemblies(o).Select(x => x.GetName().Name).ToArray())}.",
                 Level = LogLevel.Debug
             }, new ActionEventArgs.ContextData()));
         }
 
         if (o.AutoRegisterRepositories)
         {
-            var currentDomainDefinedTypes = AssemblyService.GetTypes<IRepository>(x => !x.IsGenericType && !x.IsInterface, o.AutoRegistrationAssemblies).ToArray();
+            var currentDomainDefinedTypes = AssemblyService.GetTypes<IRepository>(x => !x.IsGenericType && !x.IsInterface, GetAssemblies(o)).ToArray();
             foreach (var repositoryType in currentDomainDefinedTypes)
             {
                 var serviceTypes = repositoryType.ImplementedInterfaces
@@ -169,7 +172,7 @@ public static class MongoDbRegistrationExtensions
 
         if (o.AutoRegisterCollections)
         {
-            var currentDomainDefinedTypes = AssemblyService.GetTypes<IReadOnlyRepositoryCollection>(x => !x.IsGenericType && !x.IsInterface, o.AutoRegistrationAssemblies).ToArray();
+            var currentDomainDefinedTypes = AssemblyService.GetTypes<IReadOnlyRepositoryCollection>(x => !x.IsGenericType && !x.IsInterface, GetAssemblies(o)).ToArray();
             foreach (var collectionType in currentDomainDefinedTypes)
             {
                 var serviceTypes = collectionType.ImplementedInterfaces
@@ -199,6 +202,25 @@ public static class MongoDbRegistrationExtensions
         }
 
         return services;
+    }
+
+    private static IEnumerable<Assembly> GetAssemblies(DatabaseOptions o)
+    {
+        TryLoadCacheAssembly(o);
+        return (o.AutoRegistrationAssemblies ?? AssemblyService.GetAssemblies()).Union(o._extraAssemblies);
+    }
+
+    private static void TryLoadCacheAssembly(DatabaseOptions o)
+    {
+        try
+        {
+            var cacheAssembly = Assembly.Load(new AssemblyName("Tharga.Cache.MongoDB"));
+            o._extraAssemblies.Add(cacheAssembly);
+        }
+        catch
+        {
+            // ignored
+        }
     }
 
     public static void UseMongoDB(this IHost app, Action<UseMongoOptions> options = null)
@@ -293,19 +315,18 @@ public static class MongoDbRegistrationExtensions
         }
     }
 
-    internal static IServiceCollection RegisterMongoDBCollection<TRepositoryCollection, TRepositoryCollectionBase>(this IServiceCollection services)
-        where TRepositoryCollection : IRepositoryCollection
-        where TRepositoryCollectionBase : RepositoryCollectionBase
-    {
-        //var provider = services.BuildServiceProvider(); //TODO: Not allowed to do this, singletons will be strange.
-        //var mongoDbInstance = provider.GetService<IMongoDbInstance>();
-        //var implementationType = typeof(TRepositoryCollectionBase);
-        //var serviceType = typeof(TRepositoryCollection);
+    //internal static IServiceCollection RegisterMongoDBCollection<TRepositoryCollection, TRepositoryCollectionBase>(this IServiceCollection services)
+    //    where TRepositoryCollection : IRepositoryCollection
+    //    where TRepositoryCollectionBase : RepositoryCollectionBase
+    //{
+    //    //var provider = services.BuildServiceProvider(); //TODO: Not allowed to do this, singletons will be strange.
+    //    //var mongoDbInstance = provider.GetService<IMongoDbInstance>();
+    //    var implementationType = typeof(TRepositoryCollectionBase);
+    //    var serviceType = typeof(TRepositoryCollection);
 
-        //RegisterCollection(services, mongoDbInstance, serviceType, implementationType, "Direct");
-        //return services;
-        throw new NotImplementedException();
-    }
+    //    RegisterCollection(services, mongoDbInstance, serviceType, implementationType, "Direct");
+    //    return services;
+    //}
 
     internal static void RegisterCollection(this IServiceCollection services, IMongoDbInstance mongoDbInstance, Type serviceType, Type implementationType, string regTypeName)
     {

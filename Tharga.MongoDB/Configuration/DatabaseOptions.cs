@@ -13,6 +13,8 @@ namespace Tharga.MongoDB.Configuration;
 /// </summary>
 public record DatabaseOptions
 {
+    internal List<Assembly> _extraAssemblies = new ();
+
     /// <summary>
     /// The name of the connection string that will be used to read from appsettings.json or from ConnectionStringLoader.
     /// If not provided 'Default' will be used.
@@ -43,10 +45,20 @@ public record DatabaseOptions
     public IEnumerable<CollectionType> RegisterCollections { get; set; }
 
     /// <summary>
-    /// Assemblies stat starts with the same name are registered automatically. (IE. namespace "[same name].[other parts]")
-    /// Provide a list of assemblies where automatic registration should be done instead of that.
+    /// Assemblies that starts with the same name are registered automatically. (IE. namespace "[same name].[other parts]")
+    /// Classes that implements IRepository and IRepositoryCollection will be registered.
+    /// Override the list of assemblies where automatic registration should be done.
     /// </summary>
     public IEnumerable<Assembly> AutoRegistrationAssemblies { get; set; }
+
+    /// <summary>
+    /// Add additional assemblies for auto registration of IRepository and IRepositoryCollection.
+    /// </summary>
+    /// <param name="assembly"></param>
+    public void AddAutoRegistrationAssembly(Assembly assembly)
+    {
+        _extraAssemblies.Add(assembly);
+    }
 
     /// <summary>
     /// Event triggered on database actions performed on disk.

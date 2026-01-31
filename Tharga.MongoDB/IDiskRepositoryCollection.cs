@@ -9,7 +9,7 @@ using Tharga.MongoDB.Disk;
 
 namespace Tharga.MongoDB;
 
-public interface IDiskRepositoryCollection<TEntity, TKey> : IDiskReadOnlyRepositoryCollection<TEntity, TKey>
+public interface IDiskRepositoryCollection<TEntity, TKey> : IDiskReadOnlyRepositoryCollection<TEntity, TKey>, IRepositoryCollection
     where TEntity : EntityBase<TKey>
 {
     //Create
