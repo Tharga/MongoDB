@@ -13,7 +13,6 @@ public interface IDiskRepositoryCollection<TEntity, TKey> : IRepositoryCollectio
     where TEntity : EntityBase<TKey>
 {
     //Create
-    Task<bool> TryAddAsync(TEntity entity);
     Task AddManyAsync(IEnumerable<TEntity> entities);
 
     //Update

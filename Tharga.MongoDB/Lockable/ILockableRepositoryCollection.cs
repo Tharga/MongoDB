@@ -13,11 +13,9 @@ public interface ILockableRepositoryCollection<TEntity, TKey> : IRepositoryColle
 {
     event EventHandler<LockEventArgs<TEntity>> LockEvent;
 
-    //Create
-    Task<bool> TryAddAsync(TEntity entity);
-
     //Update
-    Task<long> UpdateAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update);
+    Task<long> UpdateUnlockedAsync(Expression<Func<TEntity, bool>> predicate, UpdateDefinition<TEntity> update);
+    Task<long> UpdateUnlockedAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update);
 
     //Delete
     Task<TEntity> DeleteOneAsync(TKey id);

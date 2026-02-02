@@ -14,6 +14,7 @@ public interface IRepositoryCollection<TEntity, TKey> : IReadOnlyRepositoryColle
 {
     //Create
     Task AddAsync(TEntity entity);
+    Task<bool> TryAddAsync(TEntity entity);
 
     //Update
 

@@ -128,7 +128,13 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
     }
 
     //Update
-    public override async Task<long> UpdateAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update)
+    public Task<long> UpdateUnlockedAsync(Expression<Func<TEntity, bool>> predicate, UpdateDefinition<TEntity> update)
+    {
+        var filter = Builders<TEntity>.Filter.Where(predicate);
+        return UpdateUnlockedAsync(filter, update);
+    }
+
+    public async Task<long> UpdateUnlockedAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update)
     {
         var filters = new FilterDefinitionBuilder<TEntity>().And(UnlockedOrExpiredFilter, filter);
         return await Disk.UpdateAsync(filters, update);

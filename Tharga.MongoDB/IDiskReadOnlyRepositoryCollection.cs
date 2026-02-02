@@ -39,16 +39,6 @@ public interface IReadOnlyRepositoryCollection<TEntity, TKey> : IReadOnlyReposit
 
     Task<long> CountAsync(Expression<Func<TEntity, bool>> predicate = default, CancellationToken cancellationToken = default);
     Task<long> CountAsync(FilterDefinition<TEntity> filter, CancellationToken cancellationToken = default);
-}
-
-public interface IDiskReadOnlyRepositoryCollection<TEntity, TKey> : IReadOnlyRepositoryCollection<TEntity, TKey>
-    where TEntity : EntityBase<TKey>
-{
-    [Obsolete($"Use {nameof(GetManyAsync)} instead. This method will be deprecated.")]
-    Task<Result<TEntity, TKey>> QueryAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default);
-
-    [Obsolete($"Use {nameof(GetManyAsync)} instead. This method will be deprecated.")]
-    Task<Result<TEntity, TKey>> QueryAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default);
 
     //Other
 
@@ -63,4 +53,14 @@ public interface IDiskReadOnlyRepositoryCollection<TEntity, TKey> : IReadOnlyRep
     /// </summary>
     /// <returns></returns>
     IEnumerable<(IndexFailOperation Operation, string Name)> GetFailedIndices();
+}
+
+public interface IDiskReadOnlyRepositoryCollection<TEntity, TKey> : IReadOnlyRepositoryCollection<TEntity, TKey>
+    where TEntity : EntityBase<TKey>
+{
+    [Obsolete($"Use {nameof(GetManyAsync)} instead. This method will be deprecated.")]
+    Task<Result<TEntity, TKey>> QueryAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default);
+
+    [Obsolete($"Use {nameof(GetManyAsync)} instead. This method will be deprecated.")]
+    Task<Result<TEntity, TKey>> QueryAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default);
 }

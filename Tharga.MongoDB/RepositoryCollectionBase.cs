@@ -91,9 +91,6 @@ public abstract class RepositoryCollectionBase<TEntity, TKey> : RepositoryCollec
     public abstract Task AddAsync(TEntity entity);
     public abstract Task<bool> TryAddAsync(TEntity entity);
 
-    //Update
-    public abstract Task<long> UpdateAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update);
-
     //Delete
     public abstract Task<TEntity> DeleteOneAsync(TKey id);
     public abstract Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate, OneOption<TEntity> options = null);
