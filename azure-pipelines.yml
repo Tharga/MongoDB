@@ -4,7 +4,8 @@
 name: 2.8.1-pre.$(Rev:r)
 
 pool:
-  vmImage: 'windows-latest'
+  # vmImage: 'windows-latest'
+  name: 'Default'
 
 variables:
   buildPlatform: 'Any CPU'
