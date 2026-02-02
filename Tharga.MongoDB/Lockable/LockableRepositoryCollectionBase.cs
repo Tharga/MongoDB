@@ -127,6 +127,11 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
         return Disk.TryAddAsync(entity);
     }
 
+    public override Task AddManyAsync(IEnumerable<TEntity> entities)
+    {
+        return Disk.AddManyAsync(entities);
+    }
+
     //Update
     public Task<long> UpdateUnlockedAsync(Expression<Func<TEntity, bool>> predicate, UpdateDefinition<TEntity> update)
     {
@@ -137,7 +142,7 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
     public async Task<long> UpdateUnlockedAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update)
     {
         var filters = new FilterDefinitionBuilder<TEntity>().And(UnlockedOrExpiredFilter, filter);
-        return await Disk.UpdateAsync(filters, update);
+        return await Disk.UpdateManyAsync(filters, update);
     }
 
     //Delete
@@ -148,12 +153,12 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
         return item;
     }
 
-    public override Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate, OneOption<TEntity> options = null)
+    public Task<TEntity> DeleteOneUnlockedAsync(Expression<Func<TEntity, bool>> predicate, OneOption<TEntity> options = null)
     {
         return Disk.DeleteOneAsync(UnlockedOrExpiredFilter.AndAlso(predicate), options);
     }
 
-    public override Task<TEntity> DeleteOneAsync(FilterDefinition<TEntity> filter, OneOption<TEntity> options = null)
+    public Task<TEntity> DeleteOneUnlockedAsync(FilterDefinition<TEntity> filter, OneOption<TEntity> options = null)
     {
         var unlockedOrExpired = Builders<TEntity>.Filter.Where(UnlockedOrExpiredFilter);
 
@@ -163,12 +168,12 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
         return Disk.DeleteOneAsync(combined, options);
     }
 
-    public override Task<long> DeleteManyAsync(Expression<Func<TEntity, bool>> predicate)
+    public Task<long> DeleteManyUnlockedAsync(Expression<Func<TEntity, bool>> predicate)
     {
         return Disk.DeleteManyAsync(UnlockedOrExpiredFilter.AndAlso(predicate));
     }
 
-    public override Task<long> DeleteManyAsync(FilterDefinition<TEntity> filter)
+    public Task<long> DeleteManyUnlockedAsync(FilterDefinition<TEntity> filter)
     {
         var unlockedOrExpired = Builders<TEntity>.Filter.Where(UnlockedOrExpiredFilter);
 
@@ -295,42 +300,42 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
 
     public async Task<EntityScope<TEntity, TKey>> PickForUpdateAsync(TKey id, TimeSpan? timeout = null, string actor = null, Func<CallbackResult<TEntity>, Task> completeAction = null)
     {
-        var result = await CreateLockAsync(Builders<TEntity>.Filter.Eq(x => x.Id, id), timeout, actor, CommitMode.Update, completeAction);
+        var result = await CreateLockAsync(Builders<TEntity>.Filter.Eq(x => x.Id, id), timeout, actor, CommitMode.Update, completeAction, true);
         ThrowException(result);
         return result.EntityScope;
     }
 
     public async Task<EntityScope<TEntity, TKey>> PickForUpdateAsync(FilterDefinition<TEntity> filter, TimeSpan? timeout = null, string actor = null, Func<CallbackResult<TEntity>, Task> completeAction = null)
     {
-        var result = await CreateLockAsync(filter, timeout, actor, CommitMode.Update, completeAction);
+        var result = await CreateLockAsync(filter, timeout, actor, CommitMode.Update, completeAction, false);
         ThrowException(result);
         return result.EntityScope;
     }
 
     public async Task<EntityScope<TEntity, TKey>> PickForUpdateAsync(Expression<Func<TEntity, bool>> predicate = null, TimeSpan? timeout = null, string actor = null, Func<CallbackResult<TEntity>, Task> completeAction = null)
     {
-        var result = await CreateLockAsync(predicate ?? (x => true), timeout, actor, CommitMode.Update, completeAction);
+        var result = await CreateLockAsync(predicate ?? (x => true), timeout, actor, CommitMode.Update, completeAction, false);
         ThrowException(result);
         return result.EntityScope;
     }
 
     public async Task<EntityScope<TEntity, TKey>> PickForDeleteAsync(TKey id, TimeSpan? timeout = null, string actor = null, Func<CallbackResult<TEntity>, Task> completeAction = null)
     {
-        var result = await CreateLockAsync(Builders<TEntity>.Filter.Eq(x => x.Id, id), timeout, actor, CommitMode.Delete, completeAction);
+        var result = await CreateLockAsync(Builders<TEntity>.Filter.Eq(x => x.Id, id), timeout, actor, CommitMode.Delete, completeAction, true);
         ThrowException(result);
         return result.EntityScope;
     }
 
     public async Task<EntityScope<TEntity, TKey>> PickForDeleteAsync(FilterDefinition<TEntity> filter, TimeSpan? timeout = null, string actor = null, Func<CallbackResult<TEntity>, Task> completeAction = null)
     {
-        var result = await CreateLockAsync(filter, timeout, actor, CommitMode.Delete, completeAction);
+        var result = await CreateLockAsync(filter, timeout, actor, CommitMode.Delete, completeAction, false);
         ThrowException(result);
         return result.EntityScope;
     }
 
     public async Task<EntityScope<TEntity, TKey>> PickForDeleteAsync(Expression<Func<TEntity, bool>> predicate = null, TimeSpan? timeout = null, string actor = null, Func<CallbackResult<TEntity>, Task> completeAction = null)
     {
-        var result = await CreateLockAsync(predicate ?? (x => true), timeout, actor, CommitMode.Delete, completeAction);
+        var result = await CreateLockAsync(predicate ?? (x => true), timeout, actor, CommitMode.Delete, completeAction, false);
         ThrowException(result);
         return result.EntityScope;
     }
@@ -418,7 +423,7 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
     {
         var filter = BuildReleaseFilter(mode);
         var update = new UpdateDefinitionBuilder<TEntity>().Set(x => x.Lock, null);
-        var result = await Disk.UpdateAsync(filter, update);
+        var result = await Disk.UpdateManyAsync(filter, update);
         return result;
     }
 
@@ -462,14 +467,14 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
 
         while (!linkedCts.Token.IsCancellationRequested)
         {
-            var result = await CreateLockAsync(Builders<TEntity>.Filter.Eq(x => x.Id, id), lockTimeout ?? DefaultTimeout, actor, commitMode, completeAction);
+            var result = await CreateLockAsync(Builders<TEntity>.Filter.Eq(x => x.Id, id), lockTimeout ?? DefaultTimeout, actor, commitMode, completeAction, true);
             if (!result.ShouldWait) return HandleFinalResult(result);
             WaitHandle.WaitAny(waitHandles, recheckTimeInterval);
         }
 
         if (cancellationToken.IsCancellationRequested) throw new OperationCanceledException("The operation was canceled.");
 
-        var finalCheckResult = await CreateLockAsync(Builders<TEntity>.Filter.Eq(x => x.Id, id), lockTimeout ?? DefaultTimeout, actor, commitMode, completeAction);
+        var finalCheckResult = await CreateLockAsync(Builders<TEntity>.Filter.Eq(x => x.Id, id), lockTimeout ?? DefaultTimeout, actor, commitMode, completeAction, true);
         if (!finalCheckResult.ShouldWait)
         {
             return HandleFinalResult(finalCheckResult);
@@ -484,12 +489,7 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
         }
     }
 
-    //private string BuildErrorMessage()
-    //{
-    //    return $"Use {nameof(PickForUpdateAsync)} to get an update {nameof(EntityScope<TEntity, TKey>)} that can be used for update.";
-    //}
-
-    private async Task<(EntityScope<TEntity, TKey> EntityScope, ErrorInfo errorInfo, bool ShouldWait)> CreateLockAsync(FilterDefinition<TEntity> filter, TimeSpan? timeout, string actor, CommitMode commitMode, Func<CallbackResult<TEntity>, Task> completeAction)
+    private async Task<(EntityScope<TEntity, TKey> EntityScope, ErrorInfo errorInfo, bool ShouldWait)> CreateLockAsync(FilterDefinition<TEntity> filter, TimeSpan? timeout, string actor, CommitMode commitMode, Func<CallbackResult<TEntity>, Task> completeAction, bool failIfLocked)
     {
         var timeoutTotUse = timeout ?? DefaultTimeout;
         if (timeoutTotUse.Ticks < 0) throw new ArgumentException($"{nameof(timeout)} cannot be less than zero. Provided or default value is {timeoutTotUse}.");
@@ -525,7 +525,8 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
         var result = await Disk.UpdateOneAsync(matchFilter, update, OneOption<TEntity>.FirstOrDefault); //Use FirstOrDefault since it is atomic safe.
         if (result.Before == null) //Document is missing or is already locked
         {
-            //return (null, null, false); //No document matches the filter.
+            if (!failIfLocked) return (null, null, false); //No document matches the filter.
+
             var docs = await GetAsync(filter).ToArrayAsync();
 
             if (!docs.Any()) return (null, null, false); //No document matches the filter.
@@ -561,7 +562,11 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
                 }, false);
             }
 
-            return (null, null, false); //No document matches the filter.
+            return (null, new ErrorInfo
+            {
+                Message = $"Matched with {docs.Length} documents but no unlocked",
+                Type = ErrorInfoType.Unknown
+            }, false);
         }
         else
         {

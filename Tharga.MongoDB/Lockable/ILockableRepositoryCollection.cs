@@ -18,17 +18,12 @@ public interface ILockableRepositoryCollection<TEntity, TKey> : IRepositoryColle
     Task<long> UpdateUnlockedAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update);
 
     //Delete
-    Task<TEntity> DeleteOneAsync(TKey id);
-    Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate, OneOption<TEntity> options = null);
-    Task<TEntity> DeleteOneAsync(FilterDefinition<TEntity> filter, OneOption<TEntity> options = null);
-    Task<long> DeleteManyAsync(FilterDefinition<TEntity> filter);
-    Task<long> DeleteManyAsync(DeleteMode deleteMode, Expression<Func<TEntity, bool>> predicate = null);
+    Task<TEntity> DeleteOneUnlockedAsync(Expression<Func<TEntity, bool>> predicate, OneOption<TEntity> options = null);
+    Task<TEntity> DeleteOneUnlockedAsync(FilterDefinition<TEntity> filter, OneOption<TEntity> options = null);
 
-    //Other
-    //Task<CollectionScope<TEntity>> GetCollectionScope(Operation operation, CancellationToken cancellationToken = default);
-    //Task DropCollectionAsync();
-    IAsyncEnumerable<TEntity> GetDirtyAsync();
-    IEnumerable<(IndexFailOperation Operation, string Name)> GetFailedIndices();
+    Task<long> DeleteManyUnlockedAsync(FilterDefinition<TEntity> filter);
+    Task<long> DeleteManyUnlockedAsync(Expression<Func<TEntity, bool>> predicate);
+    Task<long> DeleteManyAsync(DeleteMode deleteMode, Expression<Func<TEntity, bool>> predicate = null);
 
     //Lock
     Expression<Func<TEntity, bool>> UnlockedOrExpiredFilter { get; }

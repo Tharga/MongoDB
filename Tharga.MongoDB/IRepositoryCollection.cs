@@ -1,5 +1,4 @@
-﻿using System;
-using System.Linq.Expressions;
+﻿using System.Collections.Generic;
 using System.Threading.Tasks;
 
 namespace Tharga.MongoDB;
@@ -15,9 +14,8 @@ public interface IRepositoryCollection<TEntity, TKey> : IReadOnlyRepositoryColle
     //Create
     Task AddAsync(TEntity entity);
     Task<bool> TryAddAsync(TEntity entity);
-
-    //Update
+    Task AddManyAsync(IEnumerable<TEntity> entities);
 
     //Delete
-    Task<long> DeleteManyAsync(Expression<Func<TEntity, bool>> predicate);
+    Task<TEntity> DeleteOneAsync(TKey id);
 }

@@ -28,7 +28,7 @@ public class DeleteManyTests : LockableTestBase
         }
 
         //Act
-        var result = await sut.DeleteManyAsync(x => true);
+        var result = await sut.DeleteManyUnlockedAsync(x => true);
 
         //Assert
         result.Should().Be(count);
@@ -49,7 +49,7 @@ public class DeleteManyTests : LockableTestBase
         await sut.PickForUpdateAsync(generateNewId);
 
         //Act
-        var result = await sut.DeleteManyAsync(x => true);
+        var result = await sut.DeleteManyUnlockedAsync(x => true);
 
         //Assert
         result.Should().Be(1);
@@ -70,7 +70,7 @@ public class DeleteManyTests : LockableTestBase
         await sut.PickForUpdateAsync(generateNewId, TimeSpan.Zero);
 
         //Act
-        var result = await sut.DeleteManyAsync(x => true);
+        var result = await sut.DeleteManyUnlockedAsync(x => true);
 
         //Assert
         result.Should().Be(2);
@@ -93,7 +93,7 @@ public class DeleteManyTests : LockableTestBase
         await Task.Delay(TimeSpan.FromSeconds(1));
 
         //Act
-        var result = await sut.DeleteManyAsync(x => true);
+        var result = await sut.DeleteManyUnlockedAsync(x => true);
 
         //Assert
         result.Should().Be(1);

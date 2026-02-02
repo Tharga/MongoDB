@@ -455,7 +455,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         }, Operation.Create);
     }
 
-    public virtual async Task AddManyAsync(IEnumerable<TEntity> entities)
+    public override async Task AddManyAsync(IEnumerable<TEntity> entities)
     {
         await ExecuteAsync(nameof(AddManyAsync), async (collection, ct) =>
         {
@@ -597,18 +597,18 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         return response;
     }
 
-    public virtual async Task<long> UpdateAsync(Expression<Func<TEntity, bool>> predicate, UpdateDefinition<TEntity> update)
+    public virtual async Task<long> UpdateManyAsync(Expression<Func<TEntity, bool>> predicate, UpdateDefinition<TEntity> update)
     {
-        return await ExecuteAsync(nameof(UpdateAsync), async (collection, ct) =>
+        return await ExecuteAsync(nameof(UpdateManyAsync), async (collection, ct) =>
         {
             var result = await collection.UpdateManyAsync(predicate, update, cancellationToken: ct);
             return (result.ModifiedCount, (int)result.ModifiedCount);
         }, Operation.Update);
     }
 
-    public async Task<long> UpdateAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update)
+    public async Task<long> UpdateManyAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update)
     {
-        return await ExecuteAsync(nameof(UpdateAsync), async (collection, ct) =>
+        return await ExecuteAsync(nameof(UpdateManyAsync), async (collection, ct) =>
         {
             var result = await collection.UpdateManyAsync(filter, update, cancellationToken: ct);
             return (result.ModifiedCount, (int)result.ModifiedCount);
@@ -622,7 +622,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         return DeleteOneAsync(filter);
     }
 
-    public override Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate, OneOption<TEntity> options = null)
+    public Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate, OneOption<TEntity> options = null)
     {
         var filter = predicate != null
             ? Builders<TEntity>.Filter.Where(predicate)
@@ -631,7 +631,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         return DeleteOneAsync(filter, options);
     }
 
-    public override async Task<TEntity> DeleteOneAsync(FilterDefinition<TEntity> filter, OneOption<TEntity> options = null)
+    public async Task<TEntity> DeleteOneAsync(FilterDefinition<TEntity> filter, OneOption<TEntity> options = null)
     {
         if (filter == null) throw new ArgumentNullException(nameof(filter));
 
@@ -670,7 +670,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         }, Operation.Delete);
     }
 
-    public override async Task<long> DeleteManyAsync(Expression<Func<TEntity, bool>> predicate)
+    public async Task<long> DeleteManyAsync(Expression<Func<TEntity, bool>> predicate)
     {
         return await ExecuteAsync(nameof(DeleteManyAsync), async (collection, ct) =>
         {
@@ -679,7 +679,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         }, Operation.Delete);
     }
 
-    public override async Task<long> DeleteManyAsync(FilterDefinition<TEntity> filter)
+    public async Task<long> DeleteManyAsync(FilterDefinition<TEntity> filter)
     {
         return await ExecuteAsync(nameof(DeleteManyAsync), async (collection, ct) =>
         {
