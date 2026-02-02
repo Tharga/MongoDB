@@ -39,7 +39,7 @@ internal class CollectionProvider : ICollectionProvider
     }
 
     public TCollection GetCollection<TCollection, TEntity, TKey>(DatabaseContext databaseContext)
-        where TCollection : IDiskReadOnlyRepositoryCollection<TEntity, TKey>
+        where TCollection : IRepositoryCollection<TEntity, TKey>
         where TEntity : EntityBase<TKey>
     {
         return _collectionProviderCache.GetCollection(databaseContext, dc =>
@@ -76,7 +76,7 @@ internal class CollectionProvider : ICollectionProvider
     }
 
     public TCollection GetCollection<TCollection, TEntity>(DatabaseContext databaseContext = null)
-        where TCollection : IDiskReadOnlyRepositoryCollection<TEntity, ObjectId>
+        where TCollection : IRepositoryCollection<TEntity, ObjectId>
         where TEntity : EntityBase
     {
         return GetCollection<TCollection, TEntity, ObjectId>(databaseContext);

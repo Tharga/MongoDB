@@ -55,7 +55,7 @@ public class MyLockableRepo : IMyLockableRepo
 
     public Task<long> DeleteAllAsync()
     {
-        return _collection.DeleteManyAsync(x => true);
+        return _collection.DeleteManyUnlockedAsync(x => true);
     }
 
     public IAsyncEnumerable<EntityLock<MyLockableEntity, ObjectId>> GetLockedAsync(LockMode mode)

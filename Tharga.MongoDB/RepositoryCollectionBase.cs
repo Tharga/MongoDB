@@ -90,17 +90,10 @@ public abstract class RepositoryCollectionBase<TEntity, TKey> : RepositoryCollec
     //Create
     public abstract Task AddAsync(TEntity entity);
     public abstract Task<bool> TryAddAsync(TEntity entity);
-
-    //Update
-    public abstract Task<long> UpdateAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update);
+    public abstract Task AddManyAsync(IEnumerable<TEntity> entities);
 
     //Delete
     public abstract Task<TEntity> DeleteOneAsync(TKey id);
-    public abstract Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate, OneOption<TEntity> options = null);
-    public abstract Task<TEntity> DeleteOneAsync(FilterDefinition<TEntity> filter, OneOption<TEntity> options = null);
-
-    public abstract Task<long> DeleteManyAsync(Expression<Func<TEntity, bool>> predicate);
-    public abstract Task<long> DeleteManyAsync(FilterDefinition<TEntity> filter);
 
     //Other
     public abstract Task DropCollectionAsync();

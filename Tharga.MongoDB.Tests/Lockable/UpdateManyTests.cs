@@ -30,7 +30,7 @@ public class UpdateManyTests : LockableTestBase
         var update = new UpdateDefinitionBuilder<LockableTestEntity>().Set(x => x.Count, 1);
 
         //Act
-        var result = await sut.UpdateAsync(filter, update);
+        var result = await sut.UpdateUnlockedAsync(filter, update);
 
         //Assert
         result.Should().Be(count);
@@ -54,7 +54,7 @@ public class UpdateManyTests : LockableTestBase
         var update = new UpdateDefinitionBuilder<LockableTestEntity>().Set(x => x.Count, 1);
 
         //Act
-        var result = await sut.UpdateAsync(filter, update);
+        var result = await sut.UpdateUnlockedAsync(filter, update);
 
         //Assert
         result.Should().Be(2);
@@ -78,7 +78,7 @@ public class UpdateManyTests : LockableTestBase
         var update = new UpdateDefinitionBuilder<LockableTestEntity>().Set(x => x.Count, 1);
 
         //Act
-        var result = await sut.UpdateAsync(filter, update);
+        var result = await sut.UpdateUnlockedAsync(filter, update);
 
         //Assert
         result.Should().Be(3);
@@ -104,7 +104,7 @@ public class UpdateManyTests : LockableTestBase
         var update = new UpdateDefinitionBuilder<LockableTestEntity>().Set(x => x.Count, 1);
 
         //Act
-        var result = await sut.UpdateAsync(filter, update);
+        var result = await sut.UpdateUnlockedAsync(filter, update);
 
         //Assert
         result.Should().Be(2);

@@ -95,13 +95,6 @@ internal class DynRepository : IDynRepository
     }
 }
 
-public record DynEntity : EntityBase
-{
-}
-
-public interface IDynRepositoryCollection : IDiskRepositoryCollection<DynEntity>
-{}
-
 internal class DynRepositoryCollection : DiskRepositoryCollectionBase<DynEntity>, IDynRepositoryCollection
 {
     public DynRepositoryCollection(IMongoDbServiceFactory mongoDbServiceFactory, ILogger<DynRepositoryCollection> logger, DatabaseContext databaseContext)
