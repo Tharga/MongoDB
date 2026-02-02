@@ -8,13 +8,12 @@ using System.Threading.Tasks;
 
 namespace Tharga.MongoDB.Lockable;
 
-public interface ILockableRepositoryCollection<TEntity, TKey> : IReadOnlyRepositoryCollection<TEntity, TKey>
+public interface ILockableRepositoryCollection<TEntity, TKey> : IRepositoryCollection<TEntity, TKey>
     where TEntity : LockableEntityBase<TKey>
 {
     event EventHandler<LockEventArgs<TEntity>> LockEvent;
 
     //Create
-    Task AddAsync(TEntity entity);
     Task<bool> TryAddAsync(TEntity entity);
 
     //Update
@@ -24,13 +23,12 @@ public interface ILockableRepositoryCollection<TEntity, TKey> : IReadOnlyReposit
     Task<TEntity> DeleteOneAsync(TKey id);
     Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate, OneOption<TEntity> options = null);
     Task<TEntity> DeleteOneAsync(FilterDefinition<TEntity> filter, OneOption<TEntity> options = null);
-    Task<long> DeleteManyAsync(Expression<Func<TEntity, bool>> predicate);
     Task<long> DeleteManyAsync(FilterDefinition<TEntity> filter);
     Task<long> DeleteManyAsync(DeleteMode deleteMode, Expression<Func<TEntity, bool>> predicate = null);
 
     //Other
     //Task<CollectionScope<TEntity>> GetCollectionScope(Operation operation, CancellationToken cancellationToken = default);
-    Task DropCollectionAsync();
+    //Task DropCollectionAsync();
     IAsyncEnumerable<TEntity> GetDirtyAsync();
     IEnumerable<(IndexFailOperation Operation, string Name)> GetFailedIndices();
 
@@ -42,7 +40,6 @@ public interface ILockableRepositoryCollection<TEntity, TKey> : IReadOnlyReposit
 
     IAsyncEnumerable<TEntity> GetUnlockedAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default);
     IAsyncEnumerable<TEntity> GetUnlockedAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default);
-
 
     Task<EntityScope<TEntity, TKey>> PickForUpdateAsync(TKey id, TimeSpan? timeout = null, string actor = null, Func<CallbackResult<TEntity>, Task> completeAction = null);
     Task<EntityScope<TEntity, TKey>> PickForUpdateAsync(FilterDefinition<TEntity> filter, TimeSpan? timeout = null, string actor = null, Func<CallbackResult<TEntity>, Task> completeAction = null);

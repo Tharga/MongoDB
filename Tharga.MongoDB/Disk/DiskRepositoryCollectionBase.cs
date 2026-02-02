@@ -22,7 +22,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
     private readonly IExecuteLimiter _databaseExecutor;
     private readonly ICollectionPool _collectionPool;
     private readonly IInitiationLibrary _initiationLibrary;
-    private readonly SemaphoreSlim _fetchLock = new(1, 1);
+    private static readonly SemaphoreSlim _fetchLock = new(1, 1); //TODO: This code makes all having to wait for initiation. This should be locked per "fullName" in "FetchCollectionAsync".
 
     //TODO: Implement GetDerived or GetGeneric that loads T where TEntity is the base class.
 
@@ -763,9 +763,10 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             };
         }
 
-        await _fetchLock.WaitAsync();
         try
         {
+            await _fetchLock.WaitAsync();
+
             if (_collectionPool.TryGetCollection(fullName, out collection))
             {
                 return new StepResponse<IMongoCollection<TEntity>>
