@@ -1,8 +1,18 @@
 ﻿using System;
 using System.Diagnostics;
 using System.Threading.Tasks;
+using MongoDB.Bson;
 
 namespace Tharga.MongoDB.Lockable;
+
+public record EntityScope<T> : EntityScope<T, ObjectId>
+    where T : LockableEntityBase<ObjectId>
+{
+    internal EntityScope(T entity, Func<T, bool, Exception, Task> releaseAction)
+        : base(entity, releaseAction)
+    {
+    }
+}
 
 public record EntityScope<T, TKey> : IAsyncDisposable, IDisposable
     where T : LockableEntityBase<TKey>

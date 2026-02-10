@@ -26,8 +26,8 @@ public interface IDiskRepositoryCollection<TEntity, TKey> : IRepositoryCollectio
     Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate, OneOption<TEntity> options = null);
     Task<TEntity> DeleteOneAsync(FilterDefinition<TEntity> filter, OneOption<TEntity> options = null);
 
+    Task<long> DeleteManyAsync(Expression<Func<TEntity, bool>> predicate = null);
     Task<long> DeleteManyAsync(FilterDefinition<TEntity> filter);
-    Task<long> DeleteManyAsync(Expression<Func<TEntity, bool>> predicate);
 
     //Other
     [Obsolete($"Use {nameof(ExecuteAsync)} instead. This method will be deprecated.")]

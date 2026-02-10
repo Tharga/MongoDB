@@ -21,8 +21,8 @@ public interface ILockableRepositoryCollection<TEntity, TKey> : IRepositoryColle
     Task<TEntity> DeleteOneUnlockedAsync(Expression<Func<TEntity, bool>> predicate, OneOption<TEntity> options = null);
     Task<TEntity> DeleteOneUnlockedAsync(FilterDefinition<TEntity> filter, OneOption<TEntity> options = null);
 
+    Task<long> DeleteManyUnlockedAsync(Expression<Func<TEntity, bool>> predicate = null);
     Task<long> DeleteManyUnlockedAsync(FilterDefinition<TEntity> filter);
-    Task<long> DeleteManyUnlockedAsync(Expression<Func<TEntity, bool>> predicate);
     Task<long> DeleteManyAsync(DeleteMode deleteMode, Expression<Func<TEntity, bool>> predicate = null);
 
     //Lock

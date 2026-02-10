@@ -674,7 +674,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
     {
         return await ExecuteAsync(nameof(DeleteManyAsync), async (collection, ct) =>
         {
-            var item = await collection.DeleteManyAsync(predicate, cancellationToken: ct);
+            var item = await collection.DeleteManyAsync(predicate ?? (_ => true), cancellationToken: ct);
             return (item.DeletedCount, (int)item.DeletedCount);
         }, Operation.Delete);
     }
