@@ -1,0 +1,71 @@
+parameters:
+- name: majorMinor
+  type: string
+
+steps:
+- pwsh: |
+    $branchMaster = "refs/heads/master"
+    $majorMinor = "${{ parameters.majorMinor }}"
+
+    $orgUrl  = $env:SYSTEM_COLLECTIONURI
+    $project = $env:SYSTEM_TEAMPROJECT
+
+    $defId = $env:DEF_ID
+    if ([string]::IsNullOrWhiteSpace($defId) -or $defId -eq "-1") {
+      throw "DEF_ID är tom eller -1 (defId='$defId')."
+    }
+
+    # Hämta flera builds så vi kan välja senaste "release-format" om det finns
+    $uri = "$orgUrl$project/_apis/build/builds?definitions=$defId&branchName=$branchMaster&`$top=50&queryOrder=finishTimeDescending&api-version=7.1"
+
+    $headers = @{
+      Authorization = "Bearer $env:SYSTEM_ACCESSTOKEN"
+    }
+
+    $resp = Invoke-RestMethod -Uri $uri -Headers $headers -Method Get
+    if (-not $resp -or -not $resp.value -or $resp.count -lt 1) {
+      throw "Hittade inga builds på master för definition $defId."
+    }
+
+    $releasePattern = "^$([regex]::Escape($majorMinor))\.(\d+)$"
+    $anyPattern = "^$([regex]::Escape($majorMinor))\.(\d+)(?:-pre\.\d+)?$"
+
+    $latestRelease = $resp.value | Where-Object { $_.buildNumber -match $releasePattern } | Select-Object -First 1
+    $latestAny = $resp.value | Where-Object { $_.buildNumber -match $anyPattern } | Select-Object -First 1
+
+    $picked = $latestRelease
+    if (-not $picked) {
+      $picked = $latestAny
+    }
+
+    if (-not $picked) {
+      $first = $resp.value[0].buildNumber
+      throw "Hittade ingen master buildNumber som matchar '$majorMinor.N' eller '$majorMinor.N-pre.M'. Första jag såg var '$first'."
+    }
+
+    $latestBuildNumber = $picked.buildNumber
+
+    if ($latestBuildNumber -match $releasePattern) {
+      $patch = $Matches[1]
+    }
+    elseif ($latestBuildNumber -match $anyPattern) {
+      $patch = $Matches[1]
+    }
+    else {
+      throw "Intern mismatch: '$latestBuildNumber' borde ha matchat men gjorde inte."
+    }
+
+    if ($env:BUILD_SOURCEBRANCH -eq $branchMaster) {
+      $nextPatch = ([int]$patch) + 1
+      $newBuildNumber = "$majorMinor.$nextPatch"
+    }
+    else {
+      $newBuildNumber = "$majorMinor.$patch-pre.$env:BUILD_BUILDID"
+    }
+
+    Write-Host "Vald master-bas: $latestBuildNumber -> patch=$patch"
+    Write-Host "##vso[build.updatebuildnumber]$newBuildNumber"
+  env:
+    SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+    DEF_ID: $(System.DefinitionId)
+  displayName: "Assign build version"
