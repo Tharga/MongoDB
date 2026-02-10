@@ -7,41 +7,65 @@ steps:
     $branchMaster = "refs/heads/master"
     $majorMinor = "${{ parameters.majorMinor }}"
 
-    $orgUrl  = "$(System.CollectionUri)"
-    $project = "$(System.TeamProject)"
-    $defId   = "$(System.DefinitionId)"
+    $orgUrl  = $env:SYSTEM_COLLECTIONURI
+    $project = $env:SYSTEM_TEAMPROJECT
 
-    $uri = "$orgUrl$project/_apis/build/latest/$defId?branchName=$branchMaster&api-version=7.1-preview.1"
+    $defId = $env:DEF_ID
+    if ([string]::IsNullOrWhiteSpace($defId) -or $defId -eq "-1") {
+      throw "DEF_ID är tom eller -1 (defId='$defId')."
+    }
+
+    # Hämta flera builds så vi kan välja senaste "release-format" om det finns
+    $uri = "$orgUrl$project/_apis/build/builds?definitions=$defId&branchName=$branchMaster&`$top=50&queryOrder=finishTimeDescending&api-version=7.1"
 
     $headers = @{
       Authorization = "Bearer $env:SYSTEM_ACCESSTOKEN"
     }
 
-    $latest = Invoke-RestMethod -Uri $uri -Headers $headers -Method Get
-
-    if (-not $latest -or -not $latest.buildNumber) {
-      throw "Kunde inte läsa senaste master buildNumber."
+    $resp = Invoke-RestMethod -Uri $uri -Headers $headers -Method Get
+    if (-not $resp -or -not $resp.value -or $resp.count -lt 1) {
+      throw "Hittade inga builds på master för definition $defId."
     }
 
-    $latestBuildNumber = $latest.buildNumber
+    $releasePattern = "^$([regex]::Escape($majorMinor))\.(\d+)$"
+    $anyPattern = "^$([regex]::Escape($majorMinor))\.(\d+)(?:-pre\.\d+)?$"
 
-    if ($latestBuildNumber -notmatch "^$([regex]::Escape($majorMinor))\.(\d+)$") {
-      throw "Senaste master buildNumber ('$latestBuildNumber') matchar inte '$majorMinor.N'."
+    $latestRelease = $resp.value | Where-Object { $_.buildNumber -match $releasePattern } | Select-Object -First 1
+    $latestAny = $resp.value | Where-Object { $_.buildNumber -match $anyPattern } | Select-Object -First 1
+
+    $picked = $latestRelease
+    if (-not $picked) {
+      $picked = $latestAny
     }
 
-    $patch = $Matches[1]
+    if (-not $picked) {
+      $first = $resp.value[0].buildNumber
+      throw "Hittade ingen master buildNumber som matchar '$majorMinor.N' eller '$majorMinor.N-pre.M'. Första jag såg var '$first'."
+    }
 
-    if ("$(Build.SourceBranch)" -eq $branchMaster) {
+    $latestBuildNumber = $picked.buildNumber
+
+    if ($latestBuildNumber -match $releasePattern) {
+      $patch = $Matches[1]
+    }
+    elseif ($latestBuildNumber -match $anyPattern) {
+      $patch = $Matches[1]
+    }
+    else {
+      throw "Intern mismatch: '$latestBuildNumber' borde ha matchat men gjorde inte."
+    }
+
+    if ($env:BUILD_SOURCEBRANCH -eq $branchMaster) {
       $nextPatch = ([int]$patch) + 1
       $newBuildNumber = "$majorMinor.$nextPatch"
     }
     else {
-      $newBuildNumber = "$majorMinor.$patch-pre.$(Build.BuildId)"
+      $newBuildNumber = "$majorMinor.$patch-pre.$env:BUILD_BUILDID"
     }
 
-    Write-Host "Senaste master: $latestBuildNumber -> patch=$patch"
-    Write-Host "Sätter build number till: $newBuildNumber"
+    Write-Host "Vald master-bas: $latestBuildNumber -> patch=$patch"
     Write-Host "##vso[build.updatebuildnumber]$newBuildNumber"
   env:
     SYSTEM_ACCESSTOKEN: $(System.AccessToken)
-  displayName: "Sätt buildnummer från senaste master"
+    DEF_ID: $(System.DefinitionId)
+  displayName: "Assign build version"
