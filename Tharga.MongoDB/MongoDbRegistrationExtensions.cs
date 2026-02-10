@@ -35,7 +35,7 @@ public static class MongoDbRegistrationExtensions
         var c = configuration.GetSection("MongoDB").Get<DatabaseOptions>();
 
         //NOTE: Set up default.
-        var om = new MonitorOptions()
+        var om = new MonitorOptions
         {
             Enabled = true,
             LastCallsToKeep = 1000,

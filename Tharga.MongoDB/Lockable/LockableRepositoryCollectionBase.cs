@@ -170,7 +170,7 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
 
     public Task<long> DeleteManyUnlockedAsync(Expression<Func<TEntity, bool>> predicate)
     {
-        return Disk.DeleteManyAsync(UnlockedOrExpiredFilter.AndAlso(predicate));
+        return Disk.DeleteManyAsync(UnlockedOrExpiredFilter.AndAlso(predicate ?? (_ => true)));
     }
 
     public Task<long> DeleteManyUnlockedAsync(FilterDefinition<TEntity> filter)
