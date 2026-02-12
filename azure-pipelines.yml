@@ -108,7 +108,7 @@ stages:
 - stage: Release
   displayName: Release
   dependsOn: Build
-  condition: and(succeeded(), eq(variables['Build.SourceBranchName'], 'master'))
+  #condition: and(succeeded(), eq(variables['Build.SourceBranchName'], 'master'))
   jobs:
 
   - job: Release
@@ -117,6 +117,14 @@ stages:
       clean: resources
 
     steps:
+    - pwsh: |
+        $dropPath = "$(Pipeline.Workspace)/drop"
+        if (Test-Path $dropPath) {
+          Remove-Item -Path $dropPath -Recurse -Force
+          Write-Host "Cleaned: $dropPath"
+        }
+      displayName: 'Clean drop folder'
+
     - download: current
       artifact: drop
     - checkout: self
