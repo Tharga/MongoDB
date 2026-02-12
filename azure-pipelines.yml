@@ -129,9 +129,10 @@ stages:
       displayName: 'Push nuget packages to nuget.org'
       inputs:
         command: 'push'
-        packagesToPush: '$(Pipeline.Workspace)/**/*.symbols.nupkg'
+        packagesToPush: '$(Pipeline.Workspace)/drop/**/*.symbols.nupkg'
         nuGetFeedType: 'external'
         publishFeedCredentials: 'Nuget.org'
+        allowPackageConflicts: true
 
     - script: |
          git tag $(Build.BuildNumber)

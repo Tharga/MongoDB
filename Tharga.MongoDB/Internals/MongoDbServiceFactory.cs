@@ -3,9 +3,6 @@ using System.Collections.Concurrent;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
-using MongoDB.Bson;
-using MongoDB.Bson.Serialization.Serializers;
-using MongoDB.Bson.Serialization;
 using Tharga.MongoDB.Atlas;
 
 namespace Tharga.MongoDB.Internals;
@@ -41,15 +38,6 @@ internal class MongoDbServiceFactory : IMongoDbServiceFactory
 
     public IMongoDbService GetMongoDbService(Func<DatabaseContext> databaseContextLoader)
     {
-        try
-        {
-            //TODO: There is an option for this, is it used at all?
-            BsonSerializer.TryRegisterSerializer(new GuidSerializer(GuidRepresentation.CSharpLegacy));
-        }
-        catch (BsonSerializationException)
-        {
-        }
-
         var configuration = _repositoryConfigurationLoader.GetConfiguration(databaseContextLoader);
 
         //var configurationName = configuration.GetConfigurationName();

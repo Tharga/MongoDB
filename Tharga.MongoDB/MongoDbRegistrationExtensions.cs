@@ -3,12 +3,9 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using MongoDB.Bson;
 using MongoDB.Bson.Serialization;
-using MongoDB.Bson.Serialization.Serializers;
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
@@ -34,13 +31,8 @@ public static class MongoDbRegistrationExtensions
 
         var c = configuration.GetSection("MongoDB").Get<DatabaseOptions>();
 
-        //NOTE: Set up default.
-        var om = new MonitorOptions
-        {
-            Enabled = true,
-            LastCallsToKeep = 1000,
-            SlowCallsToKeep = 200,
-        };
+        var mo = new MonitorOptions();
+        var lo = new ExecuteLimiterOptions();
 
         var o = new DatabaseOptions
         {
@@ -48,18 +40,25 @@ public static class MongoDbRegistrationExtensions
             AutoRegisterRepositories = c?.AutoRegisterRepositories ?? Constants.AutoRegisterRepositoriesDefault,
             AutoRegisterCollections = c?.AutoRegisterCollections ?? Constants.AutoRegisterCollectionsDefault,
             ExecuteInfoLogLevel = c?.ExecuteInfoLogLevel ?? LogLevel.Debug,
+            GuidStorageFormat = c?.GuidStorageFormat ?? new DatabaseOptions().GuidStorageFormat,
             AssureIndex = c?.AssureIndex ?? AssureIndexMode.ByName,
             Monitor = new MonitorOptions
             {
-                Enabled = c?.Monitor?.Enabled ?? om.Enabled,
-                LastCallsToKeep = c?.Monitor?.LastCallsToKeep ?? om.LastCallsToKeep,
-                SlowCallsToKeep = c?.Monitor?.SlowCallsToKeep ?? om.SlowCallsToKeep,
+                Enabled = c?.Monitor?.Enabled ?? mo.Enabled,
+                LastCallsToKeep = c?.Monitor?.LastCallsToKeep ?? mo.LastCallsToKeep,
+                SlowCallsToKeep = c?.Monitor?.SlowCallsToKeep ?? mo.SlowCallsToKeep,
+            },
+            Limiter = new ExecuteLimiterOptions
+            {
+                Enabled = c?.Limiter?.Enabled ?? lo.Enabled,
+                MaxConcurrent = c?.Limiter?.MaxConcurrent ?? lo.MaxConcurrent,
             }
         };
         options?.Invoke(o);
         services.AddSingleton(Options.Create(o));
+        services.AddSingleton(Options.Create(o.Limiter));
 
-        BsonSerializer.TryRegisterSerializer(new GuidSerializer(o.GuidRepresentation ?? GuidRepresentation.CSharpLegacy));
+        BsonSerializer.TryRegisterSerializer(new FlexibleGuidSerializer(o.GuidStorageFormat));
 
         _actionEvent = o.ActionEvent;
         _actionEvent?.Invoke(new ActionEventArgs(new ActionEventArgs.ActionData { Message = $"Entering {nameof(AddMongoDB)}.", Level = LogLevel.Debug }, new ActionEventArgs.ContextData()));

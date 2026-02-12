@@ -14,6 +14,7 @@ internal class ExecuteLimiter : IExecuteLimiter
     private readonly ILogger<ExecuteLimiter> _logger;
     private const string DefaultKey = "Default";
 
+    private readonly bool _enabled;
     private readonly int _maxConcurrentPerKey;
 
     private readonly ConcurrentDictionary<string, PerKeyState> _states = new();
@@ -21,6 +22,7 @@ internal class ExecuteLimiter : IExecuteLimiter
     public ExecuteLimiter(IOptions<ExecuteLimiterOptions> options, ILogger<ExecuteLimiter> logger)
     {
         _logger = logger;
+        _enabled = options.Value.Enabled;
         _maxConcurrentPerKey = options.Value.MaxConcurrent;
     }
 
@@ -29,6 +31,12 @@ internal class ExecuteLimiter : IExecuteLimiter
         string key,
         CancellationToken cancellationToken)
     {
+        if (!_enabled)
+        {
+            var result = await action(cancellationToken);
+            return (result, new ExecuteInfo { QueueElapsed = TimeSpan.Zero, ConcurrentCount = 0, QueueCount = 0 });
+        }
+
         key ??= DefaultKey;
 
         var state = _states.GetOrAdd(key, _ => new PerKeyState(_maxConcurrentPerKey));

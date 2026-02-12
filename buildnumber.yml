@@ -12,10 +12,9 @@ steps:
 
     $defId = $env:DEF_ID
     if ([string]::IsNullOrWhiteSpace($defId) -or $defId -eq "-1") {
-      throw "DEF_ID är tom eller -1 (defId='$defId')."
+      throw "DEF_ID Is empty or -1 (defId='$defId')."
     }
 
-    # Hämta flera builds så vi kan välja senaste "release-format" om det finns
     $uri = "$orgUrl$project/_apis/build/builds?definitions=$defId&branchName=$branchMaster&`$top=50&queryOrder=finishTimeDescending&api-version=7.1"
 
     $headers = @{
@@ -24,7 +23,7 @@ steps:
 
     $resp = Invoke-RestMethod -Uri $uri -Headers $headers -Method Get
     if (-not $resp -or -not $resp.value -or $resp.count -lt 1) {
-      throw "Hittade inga builds på master för definition $defId."
+      throw "Found no builds on master for definition $defId."
     }
 
     $releasePattern = "^$([regex]::Escape($majorMinor))\.(\d+)$"
@@ -40,7 +39,7 @@ steps:
 
     if (-not $picked) {
       $first = $resp.value[0].buildNumber
-      throw "Hittade ingen master buildNumber som matchar '$majorMinor.N' eller '$majorMinor.N-pre.M'. Första jag såg var '$first'."
+      throw "Hittade ingen master buildNumber som matchar '$majorMinor.N' eller '$majorMinor.N-pre.M'. Fï¿½rsta jag sï¿½g var '$first'."
     }
 
     $latestBuildNumber = $picked.buildNumber
