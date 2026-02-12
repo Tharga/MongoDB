@@ -54,12 +54,26 @@ steps:
       throw "Intern mismatch: '$latestBuildNumber' borde ha matchat men gjorde inte."
     }
 
+    $nextPatch = ([int]$patch) + 1
+
     if ($env:BUILD_SOURCEBRANCH -eq $branchMaster) {
-      $nextPatch = ([int]$patch) + 1
       $newBuildNumber = "$majorMinor.$nextPatch"
     }
     else {
-      $newBuildNumber = "$majorMinor.$patch-pre.$env:BUILD_BUILDID"
+      $preBase = "$majorMinor.$nextPatch-pre"
+      $prePattern = "^$([regex]::Escape($preBase))\.(\d+)$"
+
+      $allUri = "$orgUrl$project/_apis/build/builds?definitions=$defId&`$top=100&queryOrder=finishTimeDescending&api-version=7.1"
+      $allResp = Invoke-RestMethod -Uri $allUri -Headers $headers -Method Get
+
+      $maxCounter = $allResp.value |
+        Where-Object { $_.buildNumber -match $prePattern } |
+        ForEach-Object { [int]$Matches[1] } |
+        Measure-Object -Maximum |
+        Select-Object -ExpandProperty Maximum
+
+      $preCounter = if ($maxCounter) { $maxCounter + 1 } else { 1 }
+      $newBuildNumber = "$preBase.$preCounter"
     }
 
     Write-Host "Vald master-bas: $latestBuildNumber -> patch=$patch"
