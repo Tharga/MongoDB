@@ -98,4 +98,9 @@ public record DatabaseOptions
     /// Configuration for monitor. This is by default enabled.
     /// </summary>
     public MonitorOptions Monitor { get; set; } = new();
+
+    /// <summary>
+    /// Configure database execution limiter.
+    /// </summary>
+    public ExecuteLimiterOptions Limiter { get; set; } = new();
 }

@@ -11,6 +11,8 @@ builder.AddMongoDB(o =>
 {
     o.AssureIndex = AssureIndexMode.BySchema;
     o.DefaultConfigurationName = "NoDefault";
+    o.Limiter.MaxConcurrent = 1;
+    o.Monitor.SlowCallsToKeep = 1;
 });
 
 var app = builder.Build();

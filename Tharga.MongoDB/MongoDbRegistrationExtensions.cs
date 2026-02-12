@@ -8,7 +8,6 @@ using MongoDB.Bson.Serialization;
 using MongoDB.Bson.Serialization.Serializers;
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
@@ -42,22 +41,33 @@ public static class MongoDbRegistrationExtensions
             SlowCallsToKeep = 200,
         };
 
+        var lo = new ExecuteLimiterOptions
+        {
+            MaxConcurrent = 20
+        };
+
         var o = new DatabaseOptions
         {
             DefaultConfigurationName = c?.DefaultConfigurationName ?? Constants.DefaultConfigurationName,
             AutoRegisterRepositories = c?.AutoRegisterRepositories ?? Constants.AutoRegisterRepositoriesDefault,
             AutoRegisterCollections = c?.AutoRegisterCollections ?? Constants.AutoRegisterCollectionsDefault,
             ExecuteInfoLogLevel = c?.ExecuteInfoLogLevel ?? LogLevel.Debug,
+            GuidRepresentation = c?.GuidRepresentation,
             AssureIndex = c?.AssureIndex ?? AssureIndexMode.ByName,
             Monitor = new MonitorOptions
             {
                 Enabled = c?.Monitor?.Enabled ?? om.Enabled,
                 LastCallsToKeep = c?.Monitor?.LastCallsToKeep ?? om.LastCallsToKeep,
                 SlowCallsToKeep = c?.Monitor?.SlowCallsToKeep ?? om.SlowCallsToKeep,
+            },
+            Limiter = new ExecuteLimiterOptions
+            {
+                MaxConcurrent = c?.Limiter?.MaxConcurrent ?? lo.MaxConcurrent,
             }
         };
         options?.Invoke(o);
         services.AddSingleton(Options.Create(o));
+        services.AddSingleton(Options.Create(o.Limiter));
 
         BsonSerializer.TryRegisterSerializer(new GuidSerializer(o.GuidRepresentation ?? GuidRepresentation.CSharpLegacy));
 
