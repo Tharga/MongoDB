@@ -189,7 +189,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         options ??= new Options<TEntity>();
 
         var skip = options.Skip ?? 0;
-        var limit = options.Limit ?? ResultLimit ?? 1000;
+        var limit = options.Limit ?? FetchSize ?? 1000;
 
         var page = 0;
         while (true)
@@ -212,10 +212,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             page++;
         }
 
-        if (page >= 5)
-        {
-            _logger?.LogWarning($"Query on collection {{collection}} returned {{pages}} pages with items {{count}} each. Consired using {nameof(GetManyAsync)}, limit the total response or increase the count for each page.", CollectionName, page, limit);
-        }
+        _logger?.LogDebug("Query on collection {collection} returned {pages} pages with items {count} each.", CollectionName, page, limit);
     }
 
     public override IAsyncEnumerable<T> GetProjectionAsync<T>(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default)
@@ -232,7 +229,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         options ??= new Options<TEntity>();
 
         var skip = options.Skip ?? 0;
-        var limit = options.Limit ?? ResultLimit ?? 1000;
+        var limit = options.Limit ?? FetchSize ?? 1000;
 
         var page = 0;
         while (true)
@@ -293,7 +290,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             var items = await BuildList(collection, cursor, ct).ToArrayAsync(ct);
 
             var totalCount = items.Length;
-            if (totalCount <= (options?.Limit ?? ResultLimit ?? 1000))
+            if (totalCount <= (options?.Limit ?? FetchSize ?? 1000))
             {
                 totalCount = (int)await collection.CountDocumentsAsync(filter, cancellationToken: ct);
             }
@@ -343,9 +340,9 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                 foreach (var current in cursor.Current)
                 {
                     count++;
-                    if (ResultLimit != null && count > ResultLimit)
+                    if (FetchSize != null && count > FetchSize)
                     {
-                        throw new ResultLimitException(ResultLimit.Value);
+                        throw new ResultLimitException(FetchSize.Value);
                     }
 
                     items.Add(current);
@@ -353,7 +350,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             }
 
             var totalCount = items.Count;
-            if (totalCount <= (options?.Limit ?? ResultLimit ?? 1000))
+            if (totalCount <= (options?.Limit ?? FetchSize ?? 1000))
             {
                 totalCount = (int)await collection.CountDocumentsAsync(usedFilter, cancellationToken: ct);
             }
@@ -1279,17 +1276,10 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 
     private async IAsyncEnumerable<TEntity> BuildList(IMongoCollection<TEntity> collection, IAsyncCursor<TEntity> cursor, [EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        var index = 0;
         while (await cursor.MoveNextAsync(cancellationToken))
         {
             foreach (var current in cursor.Current)
             {
-                index++;
-                if (ResultLimit != null && index > ResultLimit)
-                {
-                    throw new ResultLimitException(ResultLimit.Value);
-                }
-
                 yield return await CleanEntityAsync(collection, current);
             }
         }

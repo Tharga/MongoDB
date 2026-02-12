@@ -230,9 +230,9 @@ internal class MongoDbService : IMongoDbService
         }
     }
 
-    public int? GetResultLimit()
+    public int? GetFetchSize()
     {
-        return _configuration.GetConfiguration().ResultLimit;
+        return _configuration.GetConfiguration().FetchSize;
     }
 
     public bool GetAutoClean()

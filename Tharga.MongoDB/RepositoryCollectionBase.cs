@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using MongoDB.Driver;
 using System;
 using System.Collections.Generic;
@@ -60,7 +60,7 @@ public abstract class RepositoryCollectionBase<TEntity, TKey> : RepositoryCollec
     public virtual bool AutoClean => _mongoDbService.GetAutoClean();
     public virtual bool CleanOnStartup => _mongoDbService.GetCleanOnStartup();
     public virtual CreateStrategy CreateCollectionStrategy => _mongoDbService.CreateCollectionStrategy();
-    public virtual int? ResultLimit => _mongoDbService.GetResultLimit();
+    public virtual int? FetchSize => _mongoDbService.GetFetchSize();
     public virtual IEnumerable<CreateIndexModel<TEntity>> Indices => null;
     internal virtual IEnumerable<CreateIndexModel<TEntity>> CoreIndices => null;
     public virtual IEnumerable<Type> Types => null;
