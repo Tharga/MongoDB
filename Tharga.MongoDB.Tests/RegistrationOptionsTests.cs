@@ -205,13 +205,13 @@ public class RegistrationOptionsTests
     // --- GuidRepresentation ---
 
     [Fact]
-    public void GuidRepresentation_NoConfiguration_IsNull()
+    public void GuidRepresentation_NoConfiguration_DefaultsToStandard()
     {
         var provider = RegisterForGuidRepresentation(BuildConfig());
 
         var result = provider.GetRequiredService<IOptions<DatabaseOptions>>().Value.GuidRepresentation;
 
-        result.Should().BeNull();
+        result.Should().Be(GuidRepresentation.Standard);
     }
 
     [Fact]

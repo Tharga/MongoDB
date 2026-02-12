@@ -3,7 +3,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using MongoDB.Bson;
 using MongoDB.Bson.Serialization;
 using MongoDB.Bson.Serialization.Serializers;
 using System;
@@ -42,7 +41,7 @@ public static class MongoDbRegistrationExtensions
             AutoRegisterRepositories = c?.AutoRegisterRepositories ?? Constants.AutoRegisterRepositoriesDefault,
             AutoRegisterCollections = c?.AutoRegisterCollections ?? Constants.AutoRegisterCollectionsDefault,
             ExecuteInfoLogLevel = c?.ExecuteInfoLogLevel ?? LogLevel.Debug,
-            GuidRepresentation = c?.GuidRepresentation,
+            GuidRepresentation = c?.GuidRepresentation ?? new DatabaseOptions().GuidRepresentation,
             AssureIndex = c?.AssureIndex ?? AssureIndexMode.ByName,
             Monitor = new MonitorOptions
             {
@@ -52,6 +51,7 @@ public static class MongoDbRegistrationExtensions
             },
             Limiter = new ExecuteLimiterOptions
             {
+                Enabled = c?.Limiter?.Enabled ?? lo.Enabled,
                 MaxConcurrent = c?.Limiter?.MaxConcurrent ?? lo.MaxConcurrent,
             }
         };
@@ -59,7 +59,7 @@ public static class MongoDbRegistrationExtensions
         services.AddSingleton(Options.Create(o));
         services.AddSingleton(Options.Create(o.Limiter));
 
-        BsonSerializer.TryRegisterSerializer(new GuidSerializer(o.GuidRepresentation ?? GuidRepresentation.CSharpLegacy));
+        BsonSerializer.TryRegisterSerializer(new GuidSerializer(o.GuidRepresentation!.Value));
 
         _actionEvent = o.ActionEvent;
         _actionEvent?.Invoke(new ActionEventArgs(new ActionEventArgs.ActionData { Message = $"Entering {nameof(AddMongoDB)}.", Level = LogLevel.Debug }, new ActionEventArgs.ContextData()));

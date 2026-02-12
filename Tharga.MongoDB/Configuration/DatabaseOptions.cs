@@ -84,9 +84,10 @@ public record DatabaseOptions
 
     /// <summary>
     /// Set the Guid Representation in the database.
-    /// CSharpLegacy is default.
+    /// Standard (RFC 4122) is the default. Use CSharpLegacy only when migrating existing data stored with the old C# driver format.
+    /// Individual properties can override this with [BsonGuidRepresentation(GuidRepresentation.X)].
     /// </summary>
-    public GuidRepresentation? GuidRepresentation { get; set; }
+    public GuidRepresentation? GuidRepresentation { get; set; } = global::MongoDB.Bson.GuidRepresentation.Standard;
 
     /// <summary>
     /// Enable or disable the assurance of incexes.
