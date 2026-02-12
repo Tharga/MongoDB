@@ -113,6 +113,8 @@ stages:
 
   - job: Release
     displayName: Release
+    workspace:
+      clean: resources
 
     steps:
     - download: current
