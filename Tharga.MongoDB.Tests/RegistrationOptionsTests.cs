@@ -62,6 +62,41 @@ public class RegistrationOptionsTests
     // --- Limiter ---
 
     [Fact]
+    public void Limiter_NoConfiguration_EnabledIsTrue()
+    {
+        var provider = Register(BuildConfig());
+
+        var result = provider.GetRequiredService<IOptions<ExecuteLimiterOptions>>().Value;
+
+        result.Enabled.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Limiter_DisabledViaCode_EnabledIsFalse()
+    {
+        var provider = Register(BuildConfig(), o => o.Limiter.Enabled = false);
+
+        var result = provider.GetRequiredService<IOptions<ExecuteLimiterOptions>>().Value;
+
+        result.Enabled.Should().BeFalse();
+    }
+
+    [Fact]
+    public void Limiter_DisabledViaAppSettings_EnabledIsFalse()
+    {
+        var config = BuildConfig(new Dictionary<string, string>
+        {
+            { "MongoDB:Limiter:Enabled", "false" }
+        });
+
+        var provider = Register(config);
+
+        var result = provider.GetRequiredService<IOptions<ExecuteLimiterOptions>>().Value;
+
+        result.Enabled.Should().BeFalse();
+    }
+
+    [Fact]
     public void Limiter_NoConfiguration_DefaultsTo20()
     {
         var provider = Register(BuildConfig());
