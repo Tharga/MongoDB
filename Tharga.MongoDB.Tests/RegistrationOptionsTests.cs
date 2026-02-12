@@ -4,7 +4,6 @@ using FluentAssertions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
-using MongoDB.Bson;
 using Tharga.MongoDB.Configuration;
 using Xunit;
 
@@ -35,11 +34,11 @@ public class RegistrationOptionsTests
     }
 
     /// <summary>
-    /// BsonSerializer has global static state: registering a different GuidSerializer after the first
+    /// BsonSerializer has global static state: registering a different serializer for Guid after the first
     /// call throws BsonSerializationException. Since Options.Create(o) is registered before that call,
     /// we catch the exception so we can still verify the DatabaseOptions value.
     /// </summary>
-    private static IServiceProvider RegisterForGuidRepresentation(IConfiguration config, Action<DatabaseOptions> options = null)
+    private static IServiceProvider RegisterForGuidStorageFormat(IConfiguration config, Action<DatabaseOptions> options = null)
     {
         var services = CreateServices();
         try
@@ -202,55 +201,55 @@ public class RegistrationOptionsTests
         result.SlowCallsToKeep.Should().Be(1);
     }
 
-    // --- GuidRepresentation ---
+    // --- GuidStorageFormat ---
 
     [Fact]
-    public void GuidRepresentation_NoConfiguration_DefaultsToStandard()
+    public void GuidStorageFormat_NoConfiguration_DefaultsToStandard()
     {
-        var provider = RegisterForGuidRepresentation(BuildConfig());
+        var provider = RegisterForGuidStorageFormat(BuildConfig());
 
-        var result = provider.GetRequiredService<IOptions<DatabaseOptions>>().Value.GuidRepresentation;
+        var result = provider.GetRequiredService<IOptions<DatabaseOptions>>().Value.GuidStorageFormat;
 
-        result.Should().Be(GuidRepresentation.Standard);
+        result.Should().Be(GuidStorageFormat.Standard);
     }
 
     [Fact]
-    public void GuidRepresentation_CodeConfigured_UsesCodeValue()
+    public void GuidStorageFormat_CodeConfigured_UsesCodeValue()
     {
-        var provider = RegisterForGuidRepresentation(BuildConfig(), o => o.GuidRepresentation = GuidRepresentation.Standard);
+        var provider = RegisterForGuidStorageFormat(BuildConfig(), o => o.GuidStorageFormat = GuidStorageFormat.CSharpLegacy);
 
-        var result = provider.GetRequiredService<IOptions<DatabaseOptions>>().Value.GuidRepresentation;
+        var result = provider.GetRequiredService<IOptions<DatabaseOptions>>().Value.GuidStorageFormat;
 
-        result.Should().Be(GuidRepresentation.Standard);
+        result.Should().Be(GuidStorageFormat.CSharpLegacy);
     }
 
     [Fact]
-    public void GuidRepresentation_AppSettingsConfigured_UsesAppSettingsValue()
+    public void GuidStorageFormat_AppSettingsConfigured_UsesAppSettingsValue()
     {
         var config = BuildConfig(new Dictionary<string, string>
         {
-            { "MongoDB:GuidRepresentation", "Standard" }
+            { "MongoDB:GuidStorageFormat", "CSharpLegacy" }
         });
 
-        var provider = RegisterForGuidRepresentation(config);
+        var provider = RegisterForGuidStorageFormat(config);
 
-        var result = provider.GetRequiredService<IOptions<DatabaseOptions>>().Value.GuidRepresentation;
+        var result = provider.GetRequiredService<IOptions<DatabaseOptions>>().Value.GuidStorageFormat;
 
-        result.Should().Be(GuidRepresentation.Standard);
+        result.Should().Be(GuidStorageFormat.CSharpLegacy);
     }
 
     [Fact]
-    public void GuidRepresentation_BothCodeAndAppSettings_CodeWins()
+    public void GuidStorageFormat_BothCodeAndAppSettings_CodeWins()
     {
         var config = BuildConfig(new Dictionary<string, string>
         {
-            { "MongoDB:GuidRepresentation", "Standard" }
+            { "MongoDB:GuidStorageFormat", "CSharpLegacy" }
         });
 
-        var provider = RegisterForGuidRepresentation(config, o => o.GuidRepresentation = GuidRepresentation.JavaLegacy);
+        var provider = RegisterForGuidStorageFormat(config, o => o.GuidStorageFormat = GuidStorageFormat.String);
 
-        var result = provider.GetRequiredService<IOptions<DatabaseOptions>>().Value.GuidRepresentation;
+        var result = provider.GetRequiredService<IOptions<DatabaseOptions>>().Value.GuidStorageFormat;
 
-        result.Should().Be(GuidRepresentation.JavaLegacy);
+        result.Should().Be(GuidStorageFormat.String);
     }
 }

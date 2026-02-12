@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Reflection;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
-using MongoDB.Bson;
 using Tharga.MongoDB.Internals;
 
 namespace Tharga.MongoDB.Configuration;
@@ -83,11 +82,11 @@ public record DatabaseOptions
     public LogLevel? ExecuteInfoLogLevel { get; set; } = LogLevel.Debug;
 
     /// <summary>
-    /// Set the Guid Representation in the database.
-    /// Standard (RFC 4122) is the default. Use CSharpLegacy only when migrating existing data stored with the old C# driver format.
-    /// Individual properties can override this with [BsonGuidRepresentation(GuidRepresentation.X)].
+    /// Controls how Guid values are stored in MongoDB.
+    /// Standard (RFC 4122) is the default. Use CSharpLegacy only when working with existing legacy data.
+    /// Individual properties can override this with [FlexibleGuid(GuidStorageFormat.X)].
     /// </summary>
-    public GuidRepresentation? GuidRepresentation { get; set; } = global::MongoDB.Bson.GuidRepresentation.Standard;
+    public GuidStorageFormat GuidStorageFormat { get; set; } = GuidStorageFormat.Standard;
 
     /// <summary>
     /// Enable or disable the assurance of incexes.

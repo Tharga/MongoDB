@@ -4,7 +4,6 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using MongoDB.Bson.Serialization;
-using MongoDB.Bson.Serialization.Serializers;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -41,7 +40,7 @@ public static class MongoDbRegistrationExtensions
             AutoRegisterRepositories = c?.AutoRegisterRepositories ?? Constants.AutoRegisterRepositoriesDefault,
             AutoRegisterCollections = c?.AutoRegisterCollections ?? Constants.AutoRegisterCollectionsDefault,
             ExecuteInfoLogLevel = c?.ExecuteInfoLogLevel ?? LogLevel.Debug,
-            GuidRepresentation = c?.GuidRepresentation ?? new DatabaseOptions().GuidRepresentation,
+            GuidStorageFormat = c?.GuidStorageFormat ?? new DatabaseOptions().GuidStorageFormat,
             AssureIndex = c?.AssureIndex ?? AssureIndexMode.ByName,
             Monitor = new MonitorOptions
             {
@@ -59,7 +58,7 @@ public static class MongoDbRegistrationExtensions
         services.AddSingleton(Options.Create(o));
         services.AddSingleton(Options.Create(o.Limiter));
 
-        BsonSerializer.TryRegisterSerializer(new GuidSerializer(o.GuidRepresentation!.Value));
+        BsonSerializer.TryRegisterSerializer(new FlexibleGuidSerializer(o.GuidStorageFormat));
 
         _actionEvent = o.ActionEvent;
         _actionEvent?.Invoke(new ActionEventArgs(new ActionEventArgs.ActionData { Message = $"Entering {nameof(AddMongoDB)}.", Level = LogLevel.Debug }, new ActionEventArgs.ContextData()));
