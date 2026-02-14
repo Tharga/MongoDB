@@ -3,6 +3,7 @@ using MongoDB.Bson;
 using MongoDB.Bson.Serialization;
 using MongoDB.Driver;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -19,10 +20,14 @@ namespace Tharga.MongoDB.Disk;
 public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCollectionBase<TEntity, TKey>, IDiskRepositoryCollection<TEntity, TKey>
     where TEntity : EntityBase<TKey>
 {
+    private const int AutoFetchTargetBytes = 4 * 1024 * 1024;
+    private const int AutoFetchMinimum = 100;
+    private static readonly ConcurrentDictionary<string, int> _autoFetchSizeCache = new();
     private readonly IExecuteLimiter _databaseExecutor;
     private readonly ICollectionPool _collectionPool;
     private readonly IInitiationLibrary _initiationLibrary;
     private static readonly SemaphoreSlim _fetchLock = new(1, 1); //TODO: This code makes all having to wait for initiation. This should be locked per "fullName" in "FetchCollectionAsync".
+    private int? _autoFetchSize;
 
     //TODO: Implement GetDerived or GetGeneric that loads T where TEntity is the base class.
 
@@ -49,6 +54,8 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         _collectionPool = ((MongoDbService)_mongoDbService).CollectionPool;
         _initiationLibrary = ((MongoDbService)_mongoDbService).InitiationLibrary;
     }
+
+    public override int? FetchSize => base.FetchSize ?? _autoFetchSize;
 
     protected async Task<T> ExecuteAsync<T>(string functionName, Func<IMongoCollection<TEntity>, CancellationToken, Task<(T Data, int Count)>> action, Operation operation, CancellationToken cancellationToken = default)
     {
@@ -188,13 +195,18 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
     {
         options ??= new Options<TEntity>();
 
+        await EnsureAutoFetchSizeAsync();
+
         var skip = options.Skip ?? 0;
-        var limit = options.Limit ?? FetchSize ?? 1000;
+        var totalLimit = options.Limit;
+        var batchSize = totalLimit ?? FetchSize ?? 1000;
+        var remaining = totalLimit;
 
         var page = 0;
         while (true)
         {
-            var pageOptions = options with { Skip = skip, Limit = limit };
+            var pageLimit = remaining.HasValue ? Math.Min(remaining.Value, batchSize) : batchSize;
+            var pageOptions = options with { Skip = skip, Limit = pageLimit };
             var response = await GetManyAsync(filter, pageOptions, cancellationToken);
 
             foreach (var item in response.Items)
@@ -204,7 +216,15 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 
             skip += response.Items.Length;
 
-            if (skip >= response.TotalCount || response.Items.Length == 0)
+            if (remaining.HasValue)
+            {
+                remaining -= response.Items.Length;
+                if (remaining.Value <= 0 || response.Items.Length == 0)
+                {
+                    break;
+                }
+            }
+            else if (skip >= response.TotalCount || response.Items.Length == 0)
             {
                 break;
             }
@@ -212,7 +232,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             page++;
         }
 
-        _logger?.LogDebug("Query on collection {collection} returned {pages} pages with items {count} each.", CollectionName, page, limit);
+        _logger?.LogDebug("Query on collection {collection} returned {pages} pages with items {count} each.", CollectionName, page, batchSize);
     }
 
     public override IAsyncEnumerable<T> GetProjectionAsync<T>(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default)
@@ -228,13 +248,18 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
     {
         options ??= new Options<TEntity>();
 
+        await EnsureAutoFetchSizeAsync();
+
         var skip = options.Skip ?? 0;
-        var limit = options.Limit ?? FetchSize ?? 1000;
+        var totalLimit = options.Limit;
+        var batchSize = totalLimit ?? FetchSize ?? 1000;
+        var remaining = totalLimit;
 
         var page = 0;
         while (true)
         {
-            var pageOptions = options with { Skip = skip, Limit = limit };
+            var pageLimit = remaining.HasValue ? Math.Min(remaining.Value, batchSize) : batchSize;
+            var pageOptions = options with { Skip = skip, Limit = pageLimit };
             var response = await GetManyProjectionAsync<T>(filter, pageOptions, cancellationToken);
 
             foreach (var item in response.Items)
@@ -244,7 +269,15 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 
             skip += response.Items.Length;
 
-            if (skip >= response.TotalCount || response.Items.Length == 0)
+            if (remaining.HasValue)
+            {
+                remaining -= response.Items.Length;
+                if (remaining.Value <= 0 || response.Items.Length == 0)
+                {
+                    break;
+                }
+            }
+            else if (skip >= response.TotalCount || response.Items.Length == 0)
             {
                 break;
             }
@@ -254,7 +287,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 
         if (page >= 5)
         {
-            _logger?.LogWarning($"Query on collection {{collection}} returned {{pages}} pages with items {{count}} each. Consired using {nameof(GetManyProjectionAsync)}, limit the total response or increase the count for each page.", CollectionName, page, limit);
+            _logger?.LogWarning($"Query on collection {{collection}} returned {{pages}} pages with items {{count}} each. Consired using {nameof(GetManyProjectionAsync)}, limit the total response or increase the count for each page.", CollectionName, page, batchSize);
         }
     }
 
@@ -282,6 +315,16 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
     public override async Task<Result<TEntity, TKey>> GetManyAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default)
     {
         filter ??= new FilterDefinitionBuilder<TEntity>().Empty;
+        options ??= new Options<TEntity>();
+
+        await EnsureAutoFetchSizeAsync();
+
+        if (options.Limit == null)
+        {
+            var defaultLimit = options.FetchSize ?? FetchSize ?? 1000;
+            options = options with { Limit = defaultLimit };
+            _logger?.LogWarning("GetManyAsync called without limit. Defaulting to {limit} for collection {collection}.", defaultLimit, ProtectedCollectionName);
+        }
 
         return await ExecuteAsync(nameof(GetManyAsync), async (collection, ct) =>
         {
@@ -290,7 +333,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             var items = await BuildList(collection, cursor, ct).ToArrayAsync(ct);
 
             var totalCount = items.Length;
-            if (totalCount <= (options?.Limit ?? FetchSize ?? 1000))
+            if (options?.Limit != null && items.Length >= options.Limit)
             {
                 totalCount = (int)await collection.CountDocumentsAsync(filter, cancellationToken: ct);
             }
@@ -314,6 +357,17 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 
     public override async Task<Result<T>> GetManyProjectionAsync<T>(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default)
     {
+        options ??= new Options<TEntity>();
+
+        await EnsureAutoFetchSizeAsync();
+
+        if (options.Limit == null)
+        {
+            var defaultLimit = options.FetchSize ?? FetchSize ?? 1000;
+            options = options with { Limit = defaultLimit };
+            _logger?.LogWarning("GetManyProjectionAsync called without limit. Defaulting to {limit} for collection {collection}.", defaultLimit, ProtectedCollectionName);
+        }
+
         return await ExecuteAsync(nameof(GetManyProjectionAsync), async (collection, ct) =>
         {
             var findOptions = options == null
@@ -350,7 +404,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             }
 
             var totalCount = items.Count;
-            if (totalCount <= (options?.Limit ?? FetchSize ?? 1000))
+            if (options?.Limit != null && items.Count >= options.Limit)
             {
                 totalCount = (int)await collection.CountDocumentsAsync(usedFilter, cancellationToken: ct);
             }
@@ -752,6 +806,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 
         if (_collectionPool.TryGetCollection<TEntity>(fullName, out var collection))
         {
+            await SetAutoFetchSizeIfNeededAsync(collection, fullName);
             return new StepResponse<IMongoCollection<TEntity>>
             {
                 Timestamp = Stopwatch.GetTimestamp(),
@@ -812,6 +867,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             }
 
             _collectionPool.AddCollection(fullName, collection);
+            await SetAutoFetchSizeIfNeededAsync(collection, fullName);
             return new StepResponse<IMongoCollection<TEntity>>
             {
                 Timestamp = Stopwatch.GetTimestamp(),
@@ -824,6 +880,59 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         {
             _fetchLock.Release();
         }
+    }
+
+    private async Task EnsureAutoFetchSizeAsync()
+    {
+        if (base.FetchSize != null || _autoFetchSize != null) return;
+
+        var fullName = $"{ConfigurationName ?? Constants.DefaultConfigurationName}.{DatabaseName}.{CollectionName}";
+        if (_autoFetchSizeCache.TryGetValue(fullName, out var cached))
+        {
+            _autoFetchSize = cached;
+            return;
+        }
+
+        var response = await FetchCollectionAsync(false);
+        await SetAutoFetchSizeIfNeededAsync(response.Value, fullName);
+    }
+
+    private async Task SetAutoFetchSizeIfNeededAsync(IMongoCollection<TEntity> collection, string fullName)
+    {
+        if (base.FetchSize != null || _autoFetchSize != null) return;
+
+        if (_autoFetchSizeCache.TryGetValue(fullName, out var cached))
+        {
+            _autoFetchSize = cached;
+            return;
+        }
+
+        int computed;
+        try
+        {
+            var count = await collection.EstimatedDocumentCountAsync();
+            if (count <= 0)
+            {
+                computed = AutoFetchMinimum;
+            }
+            else
+            {
+                var size = _mongoDbService.GetSize(ProtectedCollectionName, collection.Database);
+                var avg = size / (double)count;
+                if (avg <= 0) avg = 1;
+                computed = (int)Math.Floor(AutoFetchTargetBytes / avg);
+                if (computed < AutoFetchMinimum) computed = AutoFetchMinimum;
+            }
+        }
+        catch (Exception e)
+        {
+            _logger?.LogDebug(e, "Failed to auto-calculate fetch size for {collection}.", ProtectedCollectionName);
+            computed = AutoFetchMinimum;
+        }
+
+        _autoFetchSize = computed;
+        _logger?.LogDebug("Default fetch size for {collection} is calculated to {count}.", ProtectedCollectionName, computed);
+        _autoFetchSizeCache.TryAdd(fullName, computed);
     }
 
     internal override async Task<bool> AssureIndex(IMongoCollection<TEntity> collection, bool forceAssure = false, bool throwOnException = false)
