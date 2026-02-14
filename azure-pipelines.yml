@@ -108,7 +108,7 @@ stages:
   - job: Push
     displayName: Push locally
     dependsOn: Build
-    condition: and(succeeded(), ne(variables['Build.SourceBranchName'], 'master')) #Do not push master packages locally
+    condition: and(succeeded(), ne(variables['Build.SourceBranchName'], 'master')) #Only push prereleases to local artifacts.
     steps:
     - download: current
       artifact: drop
@@ -123,7 +123,7 @@ stages:
 - stage: Release
   displayName: Release
   dependsOn: Build
-  #condition: and(succeeded(), eq(variables['Build.SourceBranchName'], 'master'))
+  condition: and(succeeded(), eq(variables['Build.SourceBranchName'], 'master')) #Exclude this line to push prereleases to github.
   jobs:
 
   - job: Release
