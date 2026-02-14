@@ -12,7 +12,7 @@ steps:
 
     $defId = $env:DEF_ID
     if ([string]::IsNullOrWhiteSpace($defId) -or $defId -eq "-1") {
-      throw "DEF_ID Is empty or -1 (defId='$defId')."
+      throw "DEF_ID is empty or -1 (defId='$defId')."
     }
 
     $uri = "$orgUrl$project/_apis/build/builds?definitions=$defId&branchName=$branchMaster&`$top=50&queryOrder=finishTimeDescending&api-version=7.1"
@@ -23,7 +23,7 @@ steps:
 
     $resp = Invoke-RestMethod -Uri $uri -Headers $headers -Method Get
     if (-not $resp -or -not $resp.value -or $resp.count -lt 1) {
-      throw "Found no builds on master for definition $defId."
+      throw "No builds found on master for definition $defId."
     }
 
     $releasePattern = "^$([regex]::Escape($majorMinor))\.(\d+)$"
@@ -39,19 +39,21 @@ steps:
 
     if (-not $picked) {
       $first = $resp.value[0].buildNumber
-      throw "Hittade ingen master buildNumber som matchar '$majorMinor.N' eller '$majorMinor.N-pre.M'. F�rsta jag s�g var '$first'."
-    }
-
-    $latestBuildNumber = $picked.buildNumber
-
-    if ($latestBuildNumber -match $releasePattern) {
-      $patch = $Matches[1]
-    }
-    elseif ($latestBuildNumber -match $anyPattern) {
-      $patch = $Matches[1]
+      Write-Host "No master build found matching '$majorMinor.N' or '$majorMinor.N-pre.M'. First seen was '$first'. Starting fresh at $majorMinor.1."
+      $patch = 0
     }
     else {
-      throw "Intern mismatch: '$latestBuildNumber' borde ha matchat men gjorde inte."
+      $latestBuildNumber = $picked.buildNumber
+
+      if ($latestBuildNumber -match $releasePattern) {
+        $patch = $Matches[1]
+      }
+      elseif ($latestBuildNumber -match $anyPattern) {
+        $patch = $Matches[1]
+      }
+      else {
+        throw "Internal mismatch: '$latestBuildNumber' should have matched but did not."
+      }
     }
 
     $nextPatch = ([int]$patch) + 1
@@ -76,7 +78,7 @@ steps:
       $newBuildNumber = "$preBase.$preCounter"
     }
 
-    Write-Host "Vald master-bas: $latestBuildNumber -> patch=$patch"
+    if ($patch -ne 0) { Write-Host "Selected master base: $latestBuildNumber -> patch=$patch" }
     Write-Host "##vso[build.updatebuildnumber]$newBuildNumber"
   env:
     SYSTEM_ACCESSTOKEN: $(System.AccessToken)
