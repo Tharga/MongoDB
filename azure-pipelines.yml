@@ -105,6 +105,21 @@ stages:
         PathtoPublish: '$(Build.ArtifactStagingDirectory)'
         ArtifactName: 'drop'
 
+  - job: Push
+    displayName: Push locally
+    dependsOn: Build
+    condition: and(succeeded(), ne(variables['Build.SourceBranchName'], 'master')) #Do not push master packages locally
+    steps:
+    - download: current
+      artifact: drop
+    - task: DotNetCoreCLI@2
+      displayName: 'Push nuget packages locally'
+      inputs:
+        command: 'push'
+        packagesToPush: '$(Pipeline.Workspace)/drop/*.symbols.nupkg'
+        nuGetFeedType: 'internal'
+        publishVstsFeed: 'eda8985f-7491-4ceb-b57f-a6ce8a0c96d4'
+
 - stage: Release
   displayName: Release
   dependsOn: Build
