@@ -8,6 +8,7 @@ public record Options<TEntity>
     public SortDefinition<TEntity> Sort { get; init; }
     public int? Limit { get; init; }
     public int? Skip { get; init; }
+    public int? FetchSize { get; init; }
 
     public static implicit operator Options<TEntity>(FindOptions<TEntity> item)
     {

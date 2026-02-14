@@ -105,10 +105,25 @@ stages:
         PathtoPublish: '$(Build.ArtifactStagingDirectory)'
         ArtifactName: 'drop'
 
+  - job: Push
+    displayName: Push locally
+    dependsOn: Build
+    condition: and(succeeded(), ne(variables['Build.SourceBranchName'], 'master')) #Only push prereleases to local artifacts.
+    steps:
+    - download: current
+      artifact: drop
+    - task: DotNetCoreCLI@2
+      displayName: 'Push nuget packages locally'
+      inputs:
+        command: 'push'
+        packagesToPush: '$(Pipeline.Workspace)/drop/*.symbols.nupkg'
+        nuGetFeedType: 'internal'
+        publishVstsFeed: 'eda8985f-7491-4ceb-b57f-a6ce8a0c96d4'
+
 - stage: Release
   displayName: Release
   dependsOn: Build
-  condition: and(succeeded(), eq(variables['Build.SourceBranchName'], 'master'))
+  condition: and(succeeded(), eq(variables['Build.SourceBranchName'], 'master')) #Exclude this line to push prereleases to github.
   jobs:
 
   - job: Release
@@ -117,6 +132,14 @@ stages:
       clean: resources
 
     steps:
+    - pwsh: |
+        $dropPath = "$(Pipeline.Workspace)/drop"
+        if (Test-Path $dropPath) {
+          Remove-Item -Path $dropPath -Recurse -Force
+          Write-Host "Cleaned: $dropPath"
+        }
+      displayName: 'Clean drop folder'
+
     - download: current
       artifact: drop
     - checkout: self
@@ -137,7 +160,7 @@ stages:
         allowPackageConflicts: true
 
     - script: |
-         git tag $(Build.BuildNumber)
+         git tag $(Build.BuildNumber) $(Build.SourceVersion)
          git push origin $(Build.BuildNumber)
       workingDirectory: $(Build.SourcesDirectory)
       displayName: Tag

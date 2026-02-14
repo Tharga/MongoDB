@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using MongoDB.Driver;
 using System.Collections.Generic;
 using System.Threading.Tasks;
@@ -23,7 +23,7 @@ public interface IMongoDbService
     IEnumerable<string> GetDatabases();
     long GetSize(string collectionName, IMongoDatabase mongoDatabase = null);
     Task<DatabaseInfo> GetInfoAsync(bool assureFirewall = true);
-    int? GetResultLimit();
+    int? GetFetchSize();
     bool GetAutoClean();
     bool GetCleanOnStartup();
     CreateStrategy CreateCollectionStrategy();
