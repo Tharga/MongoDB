@@ -160,7 +160,7 @@ stages:
         allowPackageConflicts: true
 
     - script: |
-         git tag $(Build.BuildNumber)
+         git tag $(Build.BuildNumber) $(Build.SourceVersion)
          git push origin $(Build.BuildNumber)
       workingDirectory: $(Build.SourcesDirectory)
       displayName: Tag
