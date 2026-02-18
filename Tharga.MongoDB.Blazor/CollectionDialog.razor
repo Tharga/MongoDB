@@ -1,4 +1,4 @@
-﻿@using Tharga.Blazor.Framework.Buttons
+@using Tharga.Blazor.Framework.Buttons
 @using Tharga.Toolkit
 @inject IDatabaseMonitor DatabaseMonitor
 @inject NotificationService NotificationService
@@ -50,6 +50,25 @@ else
             </RadzenColumn>
         </RadzenRow>
 
+        @if (_model.Clean != null)
+        {
+            <RadzenRow>
+                <RadzenColumn>
+                    <RadzenText TextStyle="TextStyle.Caption" Text="Last Cleaned"/>
+                    <RadzenText Text="@($"{_model.Clean.CleanedAt:yyyy-MM-dd HH:mm:ss} UTC")" />
+                </RadzenColumn>
+                <RadzenColumn>
+                    <RadzenText TextStyle="TextStyle.Caption" Text="Documents Cleaned"/>
+                    <RadzenText Text="@($"{_model.Clean.DocumentsCleaned:N0}")" />
+                </RadzenColumn>
+                <RadzenColumn>
+                    <RadzenText TextStyle="TextStyle.Caption" Text="Fingerprint Match"/>
+                    <RadzenText Text="@(FingerprintMatch ? "Current" : "Outdated")"
+                                Style="@(FingerprintMatch ? "" : "color: orange; font-weight: bold;")" />
+                </RadzenColumn>
+            </RadzenRow>
+        }
+
         <RadzenDataGrid Data="_indexModel" TItem="IndexModel"
                         CellRender="@OnCellRender">
             <Columns>
@@ -66,7 +85,7 @@ else
                 </RadzenDataGridColumn>
                 <RadzenDataGridColumn>
                     <Template>
-                        <RadzenButton Text="X" Click="@(() => Show(context))" />
+                        <RadzenButton Text="Duplicates" Click="@(() => Show(context))" />
                     </Template>
                 </RadzenDataGridColumn>
             </Columns>
@@ -76,7 +95,7 @@ else
             <ActionButton Text="Touch" Icon="touch_app" Click="TouchCollection" Enabled="@CanTouch" />
             <ActionButton Text="Drop index" Icon="delete" Click="DropIndex" Enabled="@CanDrop" />
             <ActionButton Text="Restore Index" Icon="construction" Click="RestoreIndex" Enabled="@CanRestore" />
-            @* <ActionButton Text="Clean" Icon="cleaning_services" Click="CleanCollection" Enabled="@CanClean" /> *@
+            <ActionButton Text="Clean" Icon="cleaning_services" Click="CleanCollection" Enabled="@CanClean" />
         </RadzenStack>
 
     </RadzenStack>
@@ -92,7 +111,8 @@ else
     private bool CanTouch => _model != null && _model.Registration != Registration.NotInCode;
     private bool CanDrop => CanTouch && _model.Index.Current.Any();
     private bool CanRestore => CanTouch && _indexModel.Any(x => !x.EqualFields);
-    // private bool CanClean => CanTouch && false;
+    private bool CanClean => CanTouch;
+    private bool FingerprintMatch => _model?.Clean != null && _model.Clean.SchemaFingerprint == _model.CurrentSchemaFingerprint;
 
     protected override async Task OnParametersSetAsync()
     {
@@ -159,13 +179,13 @@ else
     {
         try
         {
-            var result = await DialogService.Confirm($"All {_model.DocumentCount} documents in the collection will be cleaned. This might take time to perform.", "Confirm clean collection");
+            var result = await DialogService.Confirm($"All {_model.DocumentCount.Count:N0} documents in the collection will be cleaned (including GUID format). This might take time to perform.", "Confirm clean collection");
             if (result != true) return;
 
-            throw new NotImplementedException();
+            var cleanInfo = await DatabaseMonitor.CleanAsync(_model, cleanGuids: true);
 
             await ReloadData();
-            NotificationService.Notify(new NotificationMessage { Summary = "Collection has been cleaned." });
+            NotificationService.Notify(new NotificationMessage { Summary = "Collection has been cleaned.", Detail = $"{cleanInfo.DocumentsCleaned} documents cleaned." });
         }
         catch (Exception e)
         {
@@ -229,53 +249,10 @@ else
         }
     }
 
-    //private void BuildModel()
-    //{
-    //    var names = CollectionInfo.Index.Current.Select(x => x.Name)
-    //        .Union(CollectionInfo.Index.Defined.Select(x => x.Name));
-    //    _model = names.Select(x =>
-    //    {
-    //        var current = CollectionInfo.Index.Current.SingleOrDefault(y => y.Name == x);
-    //        var defined = CollectionInfo.Index.Defined.SingleOrDefault(y => y.Name == x);
-    //
-    //        var equalFields = (current?.Fields.Order().ToArray() ?? []).SequenceEqual(defined?.Fields.Order().ToArray() ?? []);
-    //
-    //        return new IndexModel
-    //        {
-    //            Name = x,
-    //            Current = current,
-    //            Defined = defined,
-    //            EqualFields = equalFields
-    //        };
-    //    }).ToArray();
-    //}
-
-    // private DatabaseContext BuildDatabaseContext()
-    // {
-    //     DatabaseContext context;
-    //     switch (CollectionInfo.Registration)
-    //     {
-    //         case Registration.NotInCode:
-    //             throw new NotSupportedException();
-    //         case Registration.Static:
-    //             context = new DatabaseContext { CollectionName = CollectionInfo.CollectionName, ConfigurationName = CollectionInfo.ConfigurationName };
-    //             break;
-    //         case Registration.Dynamic:
-    //             context = CollectionInfo.Context;
-    //             break;
-    //         default:
-    //             throw new ArgumentOutOfRangeException(nameof(CollectionInfo.Registration), $"Unknown {nameof(CollectionInfo.Registration)} {CollectionInfo.Registration}.");
-    //     }
-
-    //     return context;
-    // }
-
     private async Task Show(IndexModel context)
     {
-        // var defined = System.Text.Json.JsonSerializer.Serialize(context.Defined);
-        // var current = System.Text.Json.JsonSerializer.Serialize(context.Current);
         var items = await DatabaseMonitor.GetIndexBlockersAsync(_model, context.Name);
-        throw new NotImplementedException();
+        await DialogService.Alert($"{string.Join('\n', items)}", "Duplicates");
     }
 
 }

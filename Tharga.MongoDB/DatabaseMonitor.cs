@@ -175,7 +175,56 @@ internal class DatabaseMonitor : IDatabaseMonitor
 
     public async Task<CollectionInfo> GetInstanceAsync(CollectionFingerprint databaseContext)
     {
-        return await GetInstancesAsync(false, default).SingleOrDefaultAsync(x => x.ConfigurationName == databaseContext.ConfigurationName && x.DatabaseName == databaseContext.DatabaseName && x.CollectionName == databaseContext.CollectionName);
+        var item = await GetInstancesAsync(false, default).SingleOrDefaultAsync(x => x.ConfigurationName == databaseContext.ConfigurationName && x.DatabaseName == databaseContext.DatabaseName && x.CollectionName == databaseContext.CollectionName);
+        if (item is { Registration: not Registration.NotInCode })
+        {
+            try
+            {
+                var collection = _collectionProvider.GetCollection(item.CollectionType, item.Registration == Registration.Dynamic ? item.ToDatabaseContext() : null);
+                var ct = collection.GetType();
+                var method = ct.GetMethod(nameof(DiskRepositoryCollectionBase<EntityBase>.GetCleanInfoAsync), BindingFlags.Instance | BindingFlags.NonPublic);
+                if (method?.Invoke(collection, []) is Task task)
+                {
+                    await task.ConfigureAwait(false);
+                    var resultProperty = task.GetType().GetProperty(nameof(Task<object>.Result));
+                    if (resultProperty?.GetValue(task) is CleanInfo cleanInfo)
+                    {
+                        item = item with { Clean = cleanInfo };
+                    }
+                }
+
+                var entityType = ResolveEntityType(ct);
+                if (entityType != null)
+                {
+                    item = item with { CurrentSchemaFingerprint = SchemaFingerprint.Generate(entityType) };
+                }
+            }
+            catch
+            {
+                // Clean info is supplementary; don't fail the entire request
+            }
+        }
+
+        return item;
+    }
+
+    private static Type ResolveEntityType(Type collectionType)
+    {
+        var type = collectionType;
+        while (type != null)
+        {
+            if (type.IsGenericType)
+            {
+                var genericDef = type.GetGenericTypeDefinition();
+                if (genericDef == typeof(RepositoryCollectionBase<,>)
+                    || genericDef == typeof(DiskRepositoryCollectionBase<,>))
+                {
+                    return type.GetGenericArguments()[0];
+                }
+            }
+            type = type.BaseType;
+        }
+        return null;
     }
 
     //TODO: Should return information about database clean.
@@ -371,6 +420,36 @@ internal class DatabaseMonitor : IDatabaseMonitor
         if (resultProperty.GetValue(task) is not IEnumerable<string[]> result)
         {
             throw new InvalidOperationException("Invoked task result was not IEnumerable<string[]>.");
+        }
+
+        return result;
+    }
+
+    public async Task<CleanInfo> CleanAsync(CollectionInfo collectionInfo, bool cleanGuids)
+    {
+        if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
+        if (collectionInfo == null) throw new ArgumentNullException(nameof(collectionInfo));
+        if (collectionInfo.Registration == Registration.NotInCode) throw new InvalidOperationException($"{nameof(CleanAsync)} does not support {nameof(Registration)} {collectionInfo.Registration}.");
+
+        var collection = _collectionProvider.GetCollection(collectionInfo.CollectionType, collectionInfo.Registration == Registration.Dynamic ? collectionInfo.ToDatabaseContext() : null);
+
+        var ct = collection.GetType();
+        var mongoCollection = await FetchMongoCollection(ct, collection, true);
+
+        var cleanMethod = ct.GetMethod(nameof(DiskRepositoryCollectionBase<EntityBase>.CleanCollectionAsync), BindingFlags.Instance | BindingFlags.NonPublic);
+        var taskObj = cleanMethod?.Invoke(collection, [mongoCollection, cleanGuids]);
+
+        if (taskObj is not Task task)
+        {
+            throw new InvalidOperationException($"Invoked method did not return a {nameof(Task)}.");
+        }
+
+        await task.ConfigureAwait(false);
+
+        var resultProperty = task.GetType().GetProperty(nameof(Task<object>.Result));
+        if (resultProperty?.GetValue(task) is not CleanInfo result)
+        {
+            throw new InvalidOperationException("Invoked task result was not CleanInfo.");
         }
 
         return result;

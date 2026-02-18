@@ -105,6 +105,8 @@ public abstract class RepositoryCollectionBase<TEntity, TKey> : RepositoryCollec
     internal abstract Task<bool> AssureIndex(IMongoCollection<TEntity> collection, bool forceAssure = false, bool throwOnException = false);
     internal abstract Task<(int Before, int After)> DropIndex(IMongoCollection<TEntity> collection);
     internal abstract Task CleanAsync(IMongoCollection<TEntity> collection);
+    internal abstract Task<CleanInfo> CleanCollectionAsync(IMongoCollection<TEntity> collection, bool cleanGuids);
+    internal abstract Task<CleanInfo> GetCleanInfoAsync();
 
     internal void InvokeAction(ActionEventArgs.ActionData actionData)
     {

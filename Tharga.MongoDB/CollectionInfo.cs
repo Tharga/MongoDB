@@ -15,4 +15,6 @@ public record CollectionInfo : CollectionFingerprint
     public DocumentCount DocumentCount { get; set; }
     public long Size { get; set; }
     public IndexInfo Index { get; set; }
+    public CleanInfo Clean { get; set; }
+    public string CurrentSchemaFingerprint { get; set; }
 }

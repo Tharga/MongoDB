@@ -1146,6 +1146,84 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         }
     }
 
+    internal override async Task<CleanInfo> CleanCollectionAsync(IMongoCollection<TEntity> collection, bool cleanGuids)
+    {
+        var sw = Stopwatch.StartNew();
+        var filter = Builders<TEntity>.Filter.Empty;
+
+        _logger?.LogInformation($"Starting collection clean (cleanGuids: {{cleanGuids}}) in collection {{collection}}. [action: Database, operation: {nameof(CleanCollectionAsync)}]", cleanGuids, ProtectedCollectionName);
+
+        using var cursor = await FindAsync(collection, filter, CancellationToken.None, null);
+        var allItems = await cursor.ToListAsync();
+        var count = 0;
+
+        foreach (var item in allItems)
+        {
+            if (cleanGuids || item.NeedsCleaning())
+            {
+                var replaceFilter = Builders<TEntity>.Filter.Eq(x => x.Id, item.Id);
+                await collection.FindOneAndReplaceAsync(replaceFilter, item);
+                count++;
+            }
+        }
+
+        sw.Stop();
+
+        var fingerprint = SchemaFingerprint.Generate(typeof(TEntity));
+        var cleanInfo = new CleanInfo
+        {
+            SchemaFingerprint = fingerprint,
+            CleanedAt = DateTime.UtcNow,
+            DocumentsCleaned = count
+        };
+
+        await StoreCleanMarkerAsync(collection, cleanInfo);
+
+        _logger?.LogInformation($"Collection clean completed: {{count}} of {{totalCount}} documents cleaned in {{elapsed}} ms in collection {{collection}}. [action: Database, operation: {nameof(CleanCollectionAsync)}]", count, allItems.Count, sw.Elapsed.TotalMilliseconds, ProtectedCollectionName);
+        InvokeAction(new ActionEventArgs.ActionData { Operation = nameof(CleanCollectionAsync), Message = "Collection clean completed.", ItemCount = count, Elapsed = sw.Elapsed });
+
+        return cleanInfo;
+    }
+
+    internal override async Task<CleanInfo> GetCleanInfoAsync()
+    {
+        var fetchCollectionStep = await FetchCollectionAsync();
+        var collection = fetchCollectionStep.Value;
+        return await ReadCleanMarkerAsync(collection);
+    }
+
+    private async Task StoreCleanMarkerAsync(IMongoCollection<TEntity> collection, CleanInfo cleanInfo)
+    {
+        var cleanCollection = collection.Database.GetCollection<BsonDocument>("_clean");
+        var collectionName = collection.CollectionNamespace.CollectionName;
+        var marker = new BsonDocument
+        {
+            { "_id", collectionName },
+            { "SchemaFingerprint", cleanInfo.SchemaFingerprint },
+            { "CleanedAt", cleanInfo.CleanedAt },
+            { "DocumentsCleaned", cleanInfo.DocumentsCleaned }
+        };
+
+        var filter = new BsonDocument("_id", collectionName);
+        await cleanCollection.ReplaceOneAsync(filter, marker, new ReplaceOptions { IsUpsert = true });
+    }
+
+    private static async Task<CleanInfo> ReadCleanMarkerAsync(IMongoCollection<TEntity> collection)
+    {
+        var cleanCollection = collection.Database.GetCollection<BsonDocument>("_clean");
+        var collectionName = collection.CollectionNamespace.CollectionName;
+        var filter = new BsonDocument("_id", collectionName);
+        var doc = await cleanCollection.Find(filter).SingleOrDefaultAsync();
+        if (doc == null) return null;
+
+        return new CleanInfo
+        {
+            SchemaFingerprint = doc.GetValue("SchemaFingerprint", "").AsString,
+            CleanedAt = doc.GetValue("CleanedAt", DateTime.MinValue).ToUniversalTime(),
+            DocumentsCleaned = doc.GetValue("DocumentsCleaned", 0).AsInt32
+        };
+    }
+
     protected virtual async Task DropEmptyAsync(IMongoCollection<TEntity> collection)
     {
         if (CreateCollectionStrategy != CreateStrategy.DropEmpty) return;
