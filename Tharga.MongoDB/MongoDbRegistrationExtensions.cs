@@ -226,6 +226,8 @@ public static class MongoDbRegistrationExtensions
     {
         _actionEvent?.Invoke(new ActionEventArgs(new ActionEventArgs.ActionData { Message = $"Entering {nameof(UseMongoDB)}.", Level = LogLevel.Debug }, new ActionEventArgs.ContextData()));
 
+        FlexibleGuidSerializer.Logger = app.Services.GetService<ILoggerFactory>()?.CreateLogger<FlexibleGuidSerializer>();
+
         var databaseOptions = app.Services.GetService<IOptions<DatabaseOptions>>();
 
         var mongoDbInstance = app.Services.GetService<IMongoDbInstance>();

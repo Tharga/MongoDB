@@ -82,6 +82,9 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                 //NOTE: Handle index depending on operation
                 steps.Add(await OperationIndexManagement(operation, collection));
 
+                //NOTE: Set collection context for FlexibleGuidSerializer warnings
+                FlexibleGuidSerializer.CollectionContext = ProtectedCollectionName;
+
                 //NOTE: Perform action
                 var response = await action.Invoke(collection, ct);
                 steps.Add(new StepResponse { Timestamp = Stopwatch.GetTimestamp(), Step = "Action" });
