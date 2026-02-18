@@ -17,6 +17,8 @@ stages:
 
   - job: Build
     displayName: Build and Test
+    workspace:
+      clean: outputs
     steps:
     - checkout: self
 
@@ -110,6 +112,13 @@ stages:
     dependsOn: Build
     condition: and(succeeded(), ne(variables['Build.SourceBranchName'], 'master')) #Only push prereleases to local artifacts.
     steps:
+    - pwsh: |
+        $dropPath = "$(Pipeline.Workspace)/drop"
+        if (Test-Path $dropPath) {
+          Remove-Item -Path $dropPath -Recurse -Force
+          Write-Host "Cleaned: $dropPath"
+        }
+      displayName: 'Clean drop folder'
     - download: current
       artifact: drop
     - task: DotNetCoreCLI@2
