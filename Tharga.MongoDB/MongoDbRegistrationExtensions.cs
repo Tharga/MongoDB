@@ -309,6 +309,7 @@ public static class MongoDbRegistrationExtensions
                 await foreach (var collectionInfo in monitor.GetInstancesAsync().Where(x => x.Registration == Registration.Static))
                 {
                     await monitor.RestoreIndexAsync(collectionInfo);
+                    o.Logger?.LogInformation("Restore index for configuration {Configuration}, database {DatabaseName}, collection {CollectionName}.", collectionInfo.ConfigurationName, collectionInfo.DatabaseName, collectionInfo.CollectionName);
                 }
             });
 

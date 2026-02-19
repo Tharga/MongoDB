@@ -17,7 +17,7 @@ public interface IMongoDbService
     int GetMaxConnectionPoolSize();
     Task DropCollectionAsync(string name);
     IEnumerable<string> GetCollections();
-    IAsyncEnumerable<CollectionMeta> GetCollectionsWithMetaAsync(string databaseName = null);
+    IAsyncEnumerable<CollectionMeta> GetCollectionsWithMetaAsync(string databaseName = null, string collectionNameFilter = null, bool includeDetails = true);
     Task<bool> DoesCollectionExist(string name);
     void DropDatabase(string name);
     IEnumerable<string> GetDatabases();

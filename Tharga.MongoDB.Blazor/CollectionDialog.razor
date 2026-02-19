@@ -85,7 +85,7 @@ else
                 </RadzenDataGridColumn>
                 <RadzenDataGridColumn>
                     <Template>
-                        <RadzenButton Text="Duplicates" Click="@(() => Show(context))" />
+                        <RadzenButton Text="Duplicates" Click="@(() => Show(context))" Disabled="@(!CanTouch)" />
                     </Template>
                 </RadzenDataGridColumn>
             </Columns>

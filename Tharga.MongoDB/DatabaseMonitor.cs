@@ -173,9 +173,38 @@ internal class DatabaseMonitor : IDatabaseMonitor
         }
     }
 
-    public async Task<CollectionInfo> GetInstanceAsync(CollectionFingerprint databaseContext)
+    public async Task<CollectionInfo> GetInstanceAsync(CollectionFingerprint fingerprint)
     {
-        var item = await GetInstancesAsync(false, default).SingleOrDefaultAsync(x => x.ConfigurationName == databaseContext.ConfigurationName && x.DatabaseName == databaseContext.DatabaseName && x.CollectionName == databaseContext.CollectionName);
+        if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
+
+        var configuredContexts = GetConfigurations()
+            .Where(x => (x.Value ?? _options.DefaultConfigurationName) == fingerprint.ConfigurationName.Value)
+            .Select(x => new DatabaseContext { ConfigurationName = x.Value ?? _options.DefaultConfigurationName });
+        var accessedDatabaseContexts = _accessedCollections
+            .Where(x => (x.Value.ConfigurationName?.Value ?? _options.DefaultConfigurationName) == fingerprint.ConfigurationName.Value)
+            .Select(x => new DatabaseContext
+            {
+                ConfigurationName = x.Value.ConfigurationName?.Value ?? _options.DefaultConfigurationName,
+                DatabasePart = x.Value.DatabasePart.NullIfEmpty()
+            });
+        var contexts = configuredContexts.Union(accessedDatabaseContexts).Distinct().ToArray();
+
+        var collectionsFromCode = await GetStaticCollectionsFromCode().ToDictionaryAsync(x => (x.ConfigurationName ?? _options.DefaultConfigurationName, x.CollectionName), x => x);
+        var accessedCollections = _accessedCollections;
+        var dynamicCollectionsFromCode = GetDynamicRegistrations().ToDictionary(x => x.Type, x => x);
+
+        CollectionInfo item = null;
+        foreach (var context in contexts)
+        {
+            await foreach (var inDatabase in GetCollectionsInDatabase(context, false, null, fingerprint.CollectionName))
+            {
+                if (inDatabase.DatabaseName != fingerprint.DatabaseName) continue;
+                item = ApplyMappings(inDatabase, collectionsFromCode, accessedCollections, dynamicCollectionsFromCode);
+                break;
+            }
+            if (item != null) break;
+        }
+
         if (item is { Registration: not Registration.NotInCode })
         {
             try
@@ -227,7 +256,6 @@ internal class DatabaseMonitor : IDatabaseMonitor
         return null;
     }
 
-    //TODO: Should return information about database clean.
     public async IAsyncEnumerable<CollectionInfo> GetInstancesAsync(bool fullDatabaseScan, string filter)
     {
         if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
@@ -246,90 +274,88 @@ internal class DatabaseMonitor : IDatabaseMonitor
         var accessedCollections = _accessedCollections;
         var dynamicCollectionsFromCode = GetDynamicRegistrations().ToDictionary(x => x.Type, x => x);
 
+        var sw = new Stopwatch();
+        sw.Start();
+
         var visited = new Dictionary<string, CollectionInfo>();
+        var index = 0;
+        var total = contexts.Length;
         foreach (var context in contexts)
         {
-            await foreach (var inDatabase in GetCollectionsInDatabase(context, fullDatabaseScan, filter))
+            Console.WriteLine($"Context {++index} of {total} {context.ConfigurationName}.{context.DatabasePart}.{context.CollectionName} [{sw.Elapsed.TotalSeconds:N0}s]");
+            await foreach (var inDatabase in GetCollectionsInDatabase(context, fullDatabaseScan, filter, includeDetails: false))
             {
-                var item = inDatabase;
-                if (!visited.TryAdd($"{item.ConfigurationName}.{item.DatabaseName}.{item.CollectionName}", item)) continue;
+                if (!visited.TryAdd($"{inDatabase.ConfigurationName}.{inDatabase.DatabaseName}.{inDatabase.CollectionName}", inDatabase)) continue;
 
-                //Map Static registrations
-                if (collectionsFromCode.TryGetValue((item.ConfigurationName, item.CollectionName), out var reg))
-                {
-                    AssureNotDifferent(item.CollectionType?.Name, reg.CollectionType?.Name);
+                Console.WriteLine($"- Got {inDatabase.CollectionName} [{sw.Elapsed.TotalSeconds:N0}s]");
 
-                    item = item with
-                    {
-                        Source = item.Source | reg.Source,
-                        Registration = reg.Registration,
-                        Types = item.Types.Union(reg.Types).ToArray(),
-                        CollectionType = item.CollectionType ?? reg.CollectionType,
-                        //DocumentCount = new DocumentCount { Count = item.DocumentCount, Virtual = reg.VirtualCount },
-                        DocumentCount = new DocumentCount { Count = item.DocumentCount },
-                        Index = item.Index with
-                        {
-                            Current = item.Index.Current,
-                            Defined = reg.DefinedIndices.ToArray()
-                        },
-                    };
-                }
-                else
-                {
-                    //NOTE: This collection exists but is not statically defined in code. (Perhaps it is dynamic or there is no code for it.)
-                }
-
-                //Map Accessed collections
-                if (accessedCollections.TryGetValue(inDatabase.Key, out var t))
-                {
-                    //var cnt = InitiationLibrary.GetVirtualCount(inDatabase.Server, inDatabase.DatabaseName, inDatabase.CollectionName);
-
-                    AssureNotDifferent(item.DatabasePart, t.DatabasePart);
-
-                    item = item with
-                    {
-                        DatabasePart = item.DatabasePart ?? t.DatabasePart,
-                        Source = item.Source | Source.Monitor,
-                        Types = item.Types.Union(t.EntityTypes.Select(x => x.Name)).ToArray(),
-                        AccessCount = t.AccessCount,
-                        CallCount = t.CallCount,
-                        //DocumentCount = new DocumentCount { Count = item.DocumentCount, Virtual = cnt },
-                        DocumentCount = new DocumentCount { Count = item.DocumentCount },
-                    };
-                }
-                else
-                {
-                    //NOTE: Collection has never been accessed.
-                }
-
-                //Map Dynamic registrations
-                if (inDatabase.Types.Length == 1)
-                {
-                    if (dynamicCollectionsFromCode.TryGetValue(inDatabase.Types.Single(), out var dyn))
-                    {
-                        //TODO: Check if this is from the same configuration (server)
-                        //TODO: Can a dynamic DatabaseContext-part be found here?
-
-                        AssureNotDifferent(item.CollectionType?.Name, dyn.CollectionType?.Name);
-
-                        item = item with
-                        {
-                            Source = item.Source | dyn.Source,
-                            Registration = Registration.Dynamic,
-                            CollectionType = item.CollectionType ?? dyn.CollectionType,
-                            Index = item.Index with
-                            {
-                                Current = item.Index.Current,
-                                Defined = dyn.DefinedIndices.ToArray()
-                            },
-                        };
-                        //TODO: Append information about registered indexes (so that we can compare with actual indexes)
-                    }
-                }
-
-                yield return item;
+                yield return ApplyMappings(inDatabase, collectionsFromCode, accessedCollections, dynamicCollectionsFromCode);
             }
         }
+    }
+
+    private CollectionInfo ApplyMappings(CollectionInfo raw, Dictionary<(string, string), StatColInfo> collectionsFromCode, ConcurrentDictionary<string, CollectionAccessData> accessedCollections, Dictionary<string, DynColInfo> dynamicCollectionsFromCode)
+    {
+        var item = raw;
+
+        //Map Static registrations
+        if (collectionsFromCode.TryGetValue((item.ConfigurationName, item.CollectionName), out var reg))
+        {
+            AssureNotDifferent(item.CollectionType?.Name, reg.CollectionType?.Name);
+
+            item = item with
+            {
+                Source = item.Source | reg.Source,
+                Registration = reg.Registration,
+                Types = item.Types.Union(reg.Types).ToArray(),
+                CollectionType = item.CollectionType ?? reg.CollectionType,
+                DocumentCount = new DocumentCount { Count = item.DocumentCount },
+                Index = item.Index with
+                {
+                    Current = item.Index.Current,
+                    Defined = reg.DefinedIndices.ToArray()
+                },
+            };
+        }
+
+        //Map Accessed collections
+        if (accessedCollections.TryGetValue(raw.Key, out var t))
+        {
+            AssureNotDifferent(item.DatabasePart, t.DatabasePart);
+
+            item = item with
+            {
+                DatabasePart = item.DatabasePart ?? t.DatabasePart,
+                Source = item.Source | Source.Monitor,
+                Types = item.Types.Union(t.EntityTypes.Select(x => x.Name)).ToArray(),
+                AccessCount = t.AccessCount,
+                CallCount = t.CallCount,
+                DocumentCount = new DocumentCount { Count = item.DocumentCount },
+            };
+        }
+
+        //Map Dynamic registrations
+        if (raw.Types.Length == 1)
+        {
+            if (dynamicCollectionsFromCode.TryGetValue(raw.Types.Single(), out var dyn))
+            {
+                AssureNotDifferent(item.CollectionType?.Name, dyn.CollectionType?.Name);
+
+                item = item with
+                {
+                    Source = item.Source | dyn.Source,
+                    Registration = Registration.Dynamic,
+                    CollectionType = item.CollectionType ?? dyn.CollectionType,
+                    Index = item.Index with
+                    {
+                        Current = item.Index.Current,
+                        Defined = dyn.DefinedIndices.ToArray()
+                    },
+                };
+            }
+        }
+
+        return item;
     }
 
     private void AssureNotDifferent(string item, string other)
@@ -565,7 +591,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
         }
     }
 
-    private async IAsyncEnumerable<CollectionInfo> GetCollectionsInDatabase(DatabaseContext databaseContext, bool fullDatabaseScan, string filter)
+    private async IAsyncEnumerable<CollectionInfo> GetCollectionsInDatabase(DatabaseContext databaseContext, bool fullDatabaseScan, string filter, string collectionNameFilter = null, bool includeDetails = true)
     {
         var mongoDbService = _mongoDbServiceFactory.GetMongoDbService(() => databaseContext);
 
@@ -576,7 +602,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
             {
                 if (filter == null || database.ProtectCollectionName().Contains(filter))
                 {
-                    var collections = await mongoDbService.GetCollectionsWithMetaAsync(database).ToArrayAsync();
+                    var collections = await mongoDbService.GetCollectionsWithMetaAsync(database, collectionNameFilter, includeDetails).ToArrayAsync();
                     foreach (var collection in collections)
                     {
                         yield return BuildCollectionInfo(collection);
@@ -586,7 +612,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
         }
         else
         {
-            var collections = await mongoDbService.GetCollectionsWithMetaAsync().ToArrayAsync();
+            var collections = await mongoDbService.GetCollectionsWithMetaAsync(collectionNameFilter: collectionNameFilter, includeDetails: includeDetails).ToArrayAsync();
             foreach (var collection in collections)
             {
                 yield return BuildCollectionInfo(collection);

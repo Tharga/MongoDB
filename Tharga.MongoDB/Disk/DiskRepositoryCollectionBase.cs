@@ -869,7 +869,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                 //initiateAction = InitiateAction.NoAction;
             }
 
-            _collectionPool.AddCollection(fullName, collection);
+            if (initiate) _collectionPool.AddCollection(fullName, collection);
             await SetAutoFetchSizeIfNeededAsync(collection, fullName);
             return new StepResponse<IMongoCollection<TEntity>>
             {
