@@ -169,7 +169,8 @@ stages:
         allowPackageConflicts: true
 
     - script: |
-         git tag $(Build.BuildNumber) $(Build.SourceVersion)
-         git push origin $(Build.BuildNumber)
+         git fetch origin $(Build.SourceBranchName)
+         git tag $(Build.BuildNumber) FETCH_HEAD
+         git push origin refs/tags/$(Build.BuildNumber)
       workingDirectory: $(Build.SourcesDirectory)
       displayName: Tag
