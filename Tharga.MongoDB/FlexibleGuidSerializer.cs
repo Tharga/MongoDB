@@ -1,7 +1,9 @@
+using Microsoft.Extensions.Logging;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization;
 using MongoDB.Bson.Serialization.Serializers;
 using System;
+using System.Threading;
 
 namespace Tharga.MongoDB;
 
@@ -11,7 +13,21 @@ namespace Tharga.MongoDB;
 /// </summary>
 public class FlexibleGuidSerializer : SerializerBase<Guid>
 {
+    private static readonly AsyncLocal<string> _collectionContext = new();
+
     private readonly GuidStorageFormat _writeFormat;
+
+    internal static ILogger Logger { get; set; }
+
+    /// <summary>
+    /// Sets the collection name for the current async flow so that
+    /// deserialization warnings can include it in log messages.
+    /// </summary>
+    internal static string CollectionContext
+    {
+        get => _collectionContext.Value;
+        set => _collectionContext.Value = value;
+    }
 
     public FlexibleGuidSerializer() : this(GuidStorageFormat.Standard) { }
 
@@ -25,20 +41,56 @@ public class FlexibleGuidSerializer : SerializerBase<Guid>
         var bsonType = context.Reader.CurrentBsonType;
         return bsonType switch
         {
-            BsonType.String => Guid.Parse(context.Reader.ReadString()),
+            BsonType.String => DeserializeString(context.Reader.ReadString()),
             BsonType.Binary => DeserializeBinary(context.Reader.ReadBinaryData()),
             _ => throw new BsonSerializationException($"Cannot deserialize Guid from BsonType.{bsonType}.")
         };
     }
 
-    private static Guid DeserializeBinary(BsonBinaryData binary)
+    private Guid DeserializeString(string value)
+    {
+        var guid = Guid.Parse(value);
+
+        if (_writeFormat != GuidStorageFormat.String)
+        {
+            Logger?.LogWarning("Guid {Guid} was read as String but the configured write format is {WriteFormat} in collection {Collection}. Query filters may not match this document.", guid, _writeFormat, CollectionContext ?? "unknown");
+        }
+
+        return guid;
+    }
+
+    private Guid DeserializeBinary(BsonBinaryData binary)
     {
         return binary.SubType switch
         {
-            BsonBinarySubType.UuidLegacy   => binary.ToGuid(GuidRepresentation.CSharpLegacy),
-            BsonBinarySubType.UuidStandard => binary.ToGuid(GuidRepresentation.Standard),
+            BsonBinarySubType.UuidLegacy => DeserializeLegacy(binary),
+            BsonBinarySubType.UuidStandard => DeserializeStandard(binary),
             _ => throw new BsonSerializationException($"Cannot deserialize Guid from binary subtype {binary.SubType}.")
         };
+    }
+
+    private Guid DeserializeLegacy(BsonBinaryData binary)
+    {
+        var guid = binary.ToGuid(GuidRepresentation.CSharpLegacy);
+
+        if (_writeFormat != GuidStorageFormat.CSharpLegacy)
+        {
+            Logger?.LogWarning("Guid {Guid} was read as CSharpLegacy (BSON subtype 3) but the configured write format is {WriteFormat} in collection {Collection}. Query filters may not match this document.", guid, _writeFormat, CollectionContext ?? "unknown");
+        }
+
+        return guid;
+    }
+
+    private Guid DeserializeStandard(BsonBinaryData binary)
+    {
+        var guid = binary.ToGuid(GuidRepresentation.Standard);
+
+        if (_writeFormat != GuidStorageFormat.Standard)
+        {
+            Logger?.LogWarning("Guid {Guid} was read as Standard (BSON subtype 4) but the configured write format is {WriteFormat} in collection {Collection}. Query filters may not match this document.", guid, _writeFormat, CollectionContext ?? "unknown");
+        }
+
+        return guid;
     }
 
     public override void Serialize(BsonSerializationContext context, BsonSerializationArgs args, Guid value)

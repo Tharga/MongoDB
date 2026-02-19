@@ -230,6 +230,16 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
         return Disk.CleanAsync(collection);
     }
 
+    internal override Task<CleanInfo> CleanCollectionAsync(IMongoCollection<TEntity> collection, bool cleanGuids)
+    {
+        return Disk.CleanCollectionAsync(collection, cleanGuids);
+    }
+
+    internal override Task<CleanInfo> GetCleanInfoAsync()
+    {
+        return Disk.GetCleanInfoAsync();
+    }
+
     //Lock
     public Expression<Func<TEntity, bool>> UnlockedOrExpiredFilter
     {

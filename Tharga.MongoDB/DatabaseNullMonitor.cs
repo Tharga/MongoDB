@@ -45,6 +45,11 @@ internal class DatabaseNullMonitor : IDatabaseMonitor
         return Task.FromResult<IEnumerable<string[]>>(new List<string[]>());
     }
 
+    public Task<CleanInfo> CleanAsync(CollectionInfo collectionInfo, bool cleanGuids)
+    {
+        return Task.FromResult<CleanInfo>(null);
+    }
+
     public IEnumerable<CallInfo> GetCalls(CallType callType)
     {
         yield break;

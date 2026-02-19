@@ -54,7 +54,11 @@ else
                 <RadzenDataGridColumn Title="Registration" Property="@nameof(CollectionModel.Registration)" Filterable="false" Width="120px" />
                 <RadzenDataGridColumn Title="Access" Property="@nameof(CollectionModel.Accessed)" TextAlign="TextAlign.Right" CssClass="css-access" Width="120px">
                     <Template>
-                        @if (context.AccessCount == 0)
+                        @if (context.Registration == Registration.NotInCode)
+                        {
+                            <span></span>
+                        }
+                        else if (context.AccessCount == 0)
                         {
                             <span title="Never accessed."><RadzenText Text="@($"{context.AccessCount:N0}")"/></span>
                         }
@@ -64,9 +68,16 @@ else
                         }
                     </Template>
                 </RadzenDataGridColumn>
-                <RadzenDataGridColumn Title=Calls Property="@nameof(CollectionModel.CallCount)" Filterable="false" TextAlign="TextAlign.Right" Width="120px">
+                <RadzenDataGridColumn Title=Calls Property="@nameof(CollectionModel.CallCount)" Filterable="false" TextAlign="TextAlign.Right" CssClass="css-calls" Width="120px">
                     <Template>
-                        <RadzenText Text="@($"{context.CallCount:N0}")" />
+                        @if (context.Registration == Registration.NotInCode)
+                        {
+                            <span></span>
+                        }
+                        else
+                        {
+                            <RadzenText Text="@($"{context.CallCount:N0}")" />
+                        }
                     </Template>
                 </RadzenDataGridColumn>
                 <RadzenDataGridColumn Title="Documents" Property="@($"{nameof(CollectionModel.DocumentCount)}.{nameof(CollectionModel.DocumentCount.Count)}")" TextAlign="TextAlign.Right" CssClass="css-count" Width="120px">
@@ -89,7 +100,7 @@ else
                 </RadzenDataGridColumn>
                 <RadzenDataGridColumn Title="Indices" Property="@nameof(CollectionModel.IndexEqualFields)" CssClass="css-indices" Width="120px">
                     <Template>
-                        <span title="@context.Indices.Diff()">@context.IndexEqualFields</span>
+                        <span title="@context.Indices.Diff()">@(context.IndexEqualFields?.ToString() ?? "")</span>
                     </Template>
                 </RadzenDataGridColumn>
                 <RadzenDataGridColumn Title="" Sortable="false" Width="60px;" Filterable="false">
@@ -155,7 +166,7 @@ else
                     m.DocumentCount = e.CollectionInfo.DocumentCount;
                     m.Size = e.CollectionInfo.Size;
                     m.Indices = indexModels;
-                    m.IndexEqualFields = indexModels.All(x => x.EqualFields);
+                    m.IndexEqualFields = e.CollectionInfo.Index == null ? null : (bool?)indexModels.All(x => x.EqualFields);
                 }
 
                 await InvokeAsync(StateHasChanged);
@@ -210,7 +221,9 @@ else
                     CallCount = x.CallCount,
                     Size = x.Size,
                     Indices = indexModels,
-                    IndexEqualFields = indexModels.All(y => y.EqualFields)
+                    IndexEqualFields = (x.Registration == Registration.NotInCode || x.Index == null || x.Index.Current.Length == 0)
+                        ? null
+                        : (bool?)indexModels.All(y => y.EqualFields)
                 };
             })
             .ToArray();
@@ -226,7 +239,17 @@ else
         if (cssClass.StartsWith("css-access"))
         {
             string color = null;
-            if (args.Data.AccessCount == 0)
+            if (args.Data.Registration == Registration.NotInCode || args.Data.AccessCount == 0)
+            {
+                color = "lightyellow";
+            }
+
+            SetColor(args, color);
+        }
+        else if (cssClass.StartsWith("css-calls"))
+        {
+            string color = null;
+            if (args.Data.Registration == Registration.NotInCode)
             {
                 color = "lightyellow";
             }
@@ -250,7 +273,11 @@ else
         else if (cssClass.StartsWith("css-indices"))
         {
             string color = null;
-            if (!args.Data.IndexEqualFields)
+            if (args.Data.IndexEqualFields == null)
+            {
+                color = "lightyellow";
+            }
+            else if (args.Data.IndexEqualFields == false)
             {
                 color = "pink";
             }

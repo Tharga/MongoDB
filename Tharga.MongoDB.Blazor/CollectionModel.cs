@@ -10,5 +10,5 @@ public record CollectionModel : CollectionFingerprint
     public required int CallCount { get; set; }
     public required long Size { get; set; }
     public required IndexModel[] Indices { get; set; }
-    public required bool IndexEqualFields { get; set; }
+    public required bool? IndexEqualFields { get; set; }
 }

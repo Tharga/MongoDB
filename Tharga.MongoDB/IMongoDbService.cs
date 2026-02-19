@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using MongoDB.Driver;
 using System.Collections.Generic;
 using System.Threading.Tasks;
@@ -17,13 +17,13 @@ public interface IMongoDbService
     int GetMaxConnectionPoolSize();
     Task DropCollectionAsync(string name);
     IEnumerable<string> GetCollections();
-    IAsyncEnumerable<CollectionMeta> GetCollectionsWithMetaAsync(string databaseName = null);
+    IAsyncEnumerable<CollectionMeta> GetCollectionsWithMetaAsync(string databaseName = null, string collectionNameFilter = null, bool includeDetails = true);
     Task<bool> DoesCollectionExist(string name);
     void DropDatabase(string name);
     IEnumerable<string> GetDatabases();
     long GetSize(string collectionName, IMongoDatabase mongoDatabase = null);
     Task<DatabaseInfo> GetInfoAsync(bool assureFirewall = true);
-    int? GetResultLimit();
+    int? GetFetchSize();
     bool GetAutoClean();
     bool GetCleanOnStartup();
     CreateStrategy CreateCollectionStrategy();
