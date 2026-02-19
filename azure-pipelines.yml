@@ -132,7 +132,7 @@ stages:
 - stage: Release
   displayName: Release
   dependsOn: Build
-  condition: and(succeeded(), eq(variables['Build.SourceBranchName'], 'master')) #Exclude this line to push prereleases to github.
+  #condition: and(succeeded(), eq(variables['Build.SourceBranchName'], 'master')) #Exclude this line to push prereleases to github.
   jobs:
 
   - job: Release
