@@ -631,7 +631,12 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                             IsUpsert = false
                         };
                         item = await collection.FindOneAndUpdateAsync(filter, update, opt, ct);
-                        return (new EntityChangeResult<TEntity>(item, async () => { return await collection.Find(x => x.Id.Equals(item.Id)).SingleAsync(ct); }), 1);
+                        return (new EntityChangeResult<TEntity>(item, async () =>
+                        {
+                            if (item == null) return null;
+                            var after = await collection.Find(x => x.Id.Equals(item.Id)).SingleAsync(ct);
+                            return after;
+                        }), 1);
                     }
                 case EMode.First:
                     item = await findFluent.FirstAsync(ct);
