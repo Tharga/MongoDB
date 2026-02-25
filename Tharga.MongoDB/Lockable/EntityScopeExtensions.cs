@@ -16,7 +16,7 @@ public static class EntityScopeExtensions
     /// <param name="errorHandler">Provide an error handler instead of an exception beeing thrown.</param>
     /// <returns></returns>
     /// <exception cref="ArgumentNullException"></exception>
-    public static async Task<T> ExecuteAsync<T, TKey>(this EntityScope<T, TKey> item, Func<T, Task<T>> func, Func<T, Exception, Task<T>> errorHandler = null)
+    public static async Task<T> ExecuteAsync<T, TKey>(this EntityScope<T, TKey> item, Func<T, Task<T>> func, Action<Exception> errorHandler = null)
         where T : LockableEntityBase<TKey>
     {
         if (item == null) return null;
@@ -38,11 +38,12 @@ public static class EntityScopeExtensions
             await item.SetErrorStateAsync(e);
             if (errorHandler != null)
             {
-                var result = await errorHandler.Invoke(entity, e);
-                return result;
+                errorHandler.Invoke(e);
             }
-
-            throw;
+            else
+            {
+                throw;
+            }
         }
 
         return await item.CommitAsync(entity);
