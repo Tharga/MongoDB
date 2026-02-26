@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using System;
 using System.Collections.Concurrent;
@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
+using System.Threading;
 using System.Threading.Tasks;
 using Tharga.MongoDB.Configuration;
 using Tharga.MongoDB.Disk;
@@ -23,7 +24,10 @@ internal class DatabaseMonitor : IDatabaseMonitor
     private readonly ICallLibrary _callLibrary;
     private readonly ILogger<DatabaseMonitor> _logger;
     private readonly DatabaseOptions _options;
-    private readonly ConcurrentDictionary<string, CollectionAccessData> _accessedCollections = new();
+    private readonly ConcurrentDictionary<string, CollectionInfo> _cache = new();
+    private Dictionary<(string, string), StatColInfo> _staticLookup;
+    private Dictionary<string, DynColInfo> _dynamicLookup;
+    private readonly SemaphoreSlim _lookupLock = new(1, 1);
     private bool _started;
 
     public event EventHandler<CollectionInfoChangedEventArgs> CollectionInfoChangedEvent;
@@ -47,82 +51,100 @@ internal class DatabaseMonitor : IDatabaseMonitor
 
         try
         {
-            _mongoDbServiceFactory.CollectionAccessEvent += async (_, e) =>
+            _mongoDbServiceFactory.CollectionAccessEvent += (_, e) =>
             {
                 try
                 {
                     _logger.LogTrace($"{nameof(IMongoDbServiceFactory.CollectionAccessEvent)}: {e.Fingerprint}");
 
-                    var now = DateTime.UtcNow;
-                    _accessedCollections.AddOrUpdate(e.Fingerprint.Key, new CollectionAccessData
-                    {
-                        ConfigurationName = e.Fingerprint.ConfigurationName,
-                        DatabaseName = e.Fingerprint.DatabaseName,
-                        CollectionName = e.Fingerprint.CollectionName,
-                        Server = e.Server,
-                        DatabasePart = e.DatabasePart.NullIfEmpty(),
-
-                        FirstAccessed = now,
-                        LastAccessed = now,
-                        AccessCount = 1,
-                        EntityTypes = [e.EntityType],
-                    }, (_, item) =>
-                    {
-                        item.LastAccessed = now;
-                        item.AccessCount++;
-                        item.EntityTypes = item.EntityTypes.Union([e.EntityType]).ToArray();
-                        return item;
-                    });
-
-                    if (Debugger.IsAttached)
-                    {
-                        if (_accessedCollections.TryGetValue(e.Fingerprint.Key, out var item))
+                    _cache.AddOrUpdate(e.Fingerprint.Key,
+                        addValueFactory: _ =>
                         {
-                            if (item.AccessCount > 1)
+                            var entry = BuildInitialEntry(e.Fingerprint, e.Server, e.DatabasePart, e.EntityType.Name);
+                            return entry with
                             {
-                                //TODO: Check why this collection was "accessed" more than once.
-                            }
-                        }
-                    }
+                                AccessCount = 1,
+                                Types = entry.Types.Union([e.EntityType.Name]).ToArray()
+                            };
+                        },
+                        updateValueFactory: (_, existing) => existing with
+                        {
+                            AccessCount = existing.AccessCount + 1,
+                            Types = existing.Types.Union([e.EntityType.Name]).ToArray(),
+                            DatabasePart = existing.DatabasePart ?? e.DatabasePart.NullIfEmpty(),
+                        });
 
-                    if (CollectionInfoChangedEvent != null)
-                    {
-                        var item = await GetInstanceAsync(e.Fingerprint);
-                        if (item != null) CollectionInfoChangedEvent?.Invoke(this, new CollectionInfoChangedEventArgs(item));
-                    }
+                    if (CollectionInfoChangedEvent != null && _cache.TryGetValue(e.Fingerprint.Key, out var item))
+                        CollectionInfoChangedEvent?.Invoke(this, new CollectionInfoChangedEventArgs(item));
                 }
                 catch (Exception exception)
                 {
                     _logger.LogError(exception, exception.Message);
                 }
             };
-            _mongoDbServiceFactory.IndexUpdatedEvent += async (_, e) =>
+
+            _mongoDbServiceFactory.IndexUpdatedEvent += (_, e) =>
             {
                 try
                 {
                     _logger.LogTrace($"{nameof(IMongoDbServiceFactory.IndexUpdatedEvent)}: {e.Fingerprint}");
 
-                    if (CollectionInfoChangedEvent != null)
+                    _ = Task.Run(async () =>
                     {
-                        var item = await GetInstanceAsync(e.Fingerprint);
-                        if (item != null) CollectionInfoChangedEvent?.Invoke(this, new CollectionInfoChangedEventArgs(item));
-                    }
+                        try
+                        {
+                            var mongoDbService = GetMongoDbService(e.Fingerprint);
+                            var meta = await mongoDbService
+                                .GetCollectionsWithMetaAsync(collectionNameFilter: e.Fingerprint.CollectionName, includeDetails: true)
+                                .FirstOrDefaultAsync();
+
+                            if (meta == null) return;
+
+                            _cache.AddOrUpdate(e.Fingerprint.Key,
+                                addValueFactory: _ =>
+                                {
+                                    var entry = BuildInitialEntry(e.Fingerprint, meta.Server, null, null);
+                                    return entry with { Index = BuildIndexInfo(entry, meta.Indexes) };
+                                },
+                                updateValueFactory: (_, existing) => existing with
+                                {
+                                    Index = BuildIndexInfo(existing, meta.Indexes)
+                                });
+
+                            if (CollectionInfoChangedEvent != null && _cache.TryGetValue(e.Fingerprint.Key, out var item))
+                                CollectionInfoChangedEvent?.Invoke(this, new CollectionInfoChangedEventArgs(item));
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError(ex, ex.Message);
+                        }
+                    });
                 }
                 catch (Exception exception)
                 {
                     _logger.LogError(exception, exception.Message);
                 }
             };
+
             _mongoDbServiceFactory.CollectionDroppedEvent += (s, e) =>
             {
+                var configName = e.DatabaseContext.ConfigurationName ?? _options.DefaultConfigurationName;
+                var keysToRemove = _cache
+                    .Where(kv => (kv.Value.ConfigurationName?.Value ?? _options.DefaultConfigurationName) == configName
+                                 && kv.Value.CollectionName == e.DatabaseContext.CollectionName)
+                    .Select(kv => kv.Key)
+                    .ToList();
+                foreach (var key in keysToRemove)
+                    _cache.TryRemove(key, out _);
+
                 CollectionDroppedEvent?.Invoke(s, e);
             };
+
             _mongoDbServiceFactory.CallStartEvent += (_, e) =>
             {
                 try
                 {
                     _logger.LogTrace($"{nameof(IMongoDbServiceFactory.CallStartEvent)}: {e.Fingerprint.CollectionName}");
-
                     _callLibrary.StartCall(e);
                 }
                 catch (Exception exception)
@@ -130,6 +152,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
                     _logger.LogError(exception, exception.Message);
                 }
             };
+
             _mongoDbServiceFactory.CallEndEvent += async (_, e) =>
             {
                 try
@@ -139,17 +162,12 @@ internal class DatabaseMonitor : IDatabaseMonitor
                     var fingerprint = await _callLibrary.EndCallAsync(e);
                     if (fingerprint == null) return;
 
-                    if (_accessedCollections.TryGetValue(fingerprint.Key, out var data))
-                    {
-                        var updated = data with { CallCount = data.CallCount + 1 };
-                        _accessedCollections.TryUpdate(fingerprint.Key, updated, data);
-                    }
+                    _cache.AddOrUpdate(fingerprint.Key,
+                        addValueFactory: _ => BuildInitialEntry(fingerprint, null, null, null) with { CallCount = 1 },
+                        updateValueFactory: (_, existing) => existing with { CallCount = existing.CallCount + 1 });
 
-                    if (CollectionInfoChangedEvent != null)
-                    {
-                        var item = await GetInstanceAsync(fingerprint);
-                        if (item != null) CollectionInfoChangedEvent?.Invoke(this, new CollectionInfoChangedEventArgs(item));
-                    }
+                    if (CollectionInfoChangedEvent != null && _cache.TryGetValue(fingerprint.Key, out var item))
+                        CollectionInfoChangedEvent?.Invoke(this, new CollectionInfoChangedEventArgs(item));
                 }
                 catch (Exception exception)
                 {
@@ -177,64 +195,387 @@ internal class DatabaseMonitor : IDatabaseMonitor
     {
         if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
 
+        if (_cache.TryGetValue(fingerprint.Key, out var cached))
+        {
+            var mongoDbService = GetMongoDbService(fingerprint);
+            if (await mongoDbService.DoesCollectionExist(fingerprint.CollectionName))
+                return cached;
+
+            _cache.TryRemove(fingerprint.Key, out _);
+            return null;
+        }
+
+        return await LoadAndCacheAsync(fingerprint);
+    }
+
+    public async IAsyncEnumerable<CollectionInfo> GetInstancesAsync(bool fullDatabaseScan, string filter)
+    {
+        if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
+
         var configuredContexts = GetConfigurations()
-            .Where(x => (x.Value ?? _options.DefaultConfigurationName) == fingerprint.ConfigurationName.Value)
-            .Select(x => new DatabaseContext { ConfigurationName = x.Value ?? _options.DefaultConfigurationName });
-        var accessedDatabaseContexts = _accessedCollections
-            .Where(x => (x.Value.ConfigurationName?.Value ?? _options.DefaultConfigurationName) == fingerprint.ConfigurationName.Value)
-            .Select(x => new DatabaseContext
-            {
-                ConfigurationName = x.Value.ConfigurationName?.Value ?? _options.DefaultConfigurationName,
-                DatabasePart = x.Value.DatabasePart.NullIfEmpty()
-            });
-        var contexts = configuredContexts.Union(accessedDatabaseContexts).Distinct().ToArray();
+            .Select(x => new DatabaseContext { ConfigurationName = x.Value ?? _options.DefaultConfigurationName })
+            .ToArray();
+        var cachedContexts = _cache.Values.Select(x => new DatabaseContext
+        {
+            ConfigurationName = x.ConfigurationName?.Value ?? _options.DefaultConfigurationName,
+            DatabasePart = x.DatabasePart.NullIfEmpty()
+        });
+        var contexts = configuredContexts.Union(cachedContexts).Distinct().ToArray();
 
-        var collectionsFromCode = await GetStaticCollectionsFromCode().ToDictionaryAsync(x => (x.ConfigurationName ?? _options.DefaultConfigurationName, x.CollectionName), x => x);
-        var accessedCollections = _accessedCollections;
-        var dynamicCollectionsFromCode = GetDynamicRegistrations().ToDictionary(x => x.Type, x => x);
+        var sw = new Stopwatch();
+        sw.Start();
 
-        CollectionInfo item = null;
+        var currentDbKeys = new HashSet<string>();
+        var visited = new HashSet<string>();
+        var index = 0;
+        var total = contexts.Length;
+
         foreach (var context in contexts)
         {
-            await foreach (var inDatabase in GetCollectionsInDatabase(context, false, null, fingerprint.CollectionName))
+            Console.WriteLine($"Context {++index} of {total} {context.ConfigurationName}.{context.DatabasePart}.{context.CollectionName} [{sw.Elapsed.TotalSeconds:N0}s]");
+            var mongoDbService = _mongoDbServiceFactory.GetMongoDbService(() => context);
+
+            if (fullDatabaseScan)
             {
-                if (inDatabase.DatabaseName != fingerprint.DatabaseName) continue;
-                item = ApplyMappings(inDatabase, collectionsFromCode, accessedCollections, dynamicCollectionsFromCode);
-                break;
+                foreach (var database in mongoDbService.GetDatabases())
+                {
+                    if (filter != null && !database.ProtectCollectionName().Contains(filter)) continue;
+                    await foreach (var info in GetCollectionsFromDb(mongoDbService, database, filter, currentDbKeys, visited, sw))
+                        yield return info;
+                }
             }
-            if (item != null) break;
+            else
+            {
+                await foreach (var info in GetCollectionsFromDb(mongoDbService, null, filter, currentDbKeys, visited, sw))
+                    yield return info;
+            }
         }
 
-        if (item is { Registration: not Registration.NotInCode })
+        // Remove stale cache entries for collections no longer in DB
+        foreach (var key in _cache.Keys.Where(k => !currentDbKeys.Contains(k)).ToList())
+            _cache.TryRemove(key, out _);
+    }
+
+    public async Task TouchAsync(CollectionInfo collectionInfo)
+    {
+        if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
+        if (collectionInfo == null) throw new ArgumentNullException(nameof(collectionInfo));
+        if (collectionInfo.Registration == Registration.NotInCode) throw new InvalidOperationException($"{nameof(RestoreIndexAsync)} does not support {nameof(Registration)} {collectionInfo.Registration}.");
+
+        var collection = _collectionProvider.GetCollection(collectionInfo.CollectionType, collectionInfo.Registration == Registration.Dynamic ? collectionInfo.ToDatabaseContext() : null);
+
+        _ = await FetchMongoCollection(collection.GetType(), collection, true);
+
+        var mongoDbService = GetMongoDbService(collectionInfo);
+        var meta = await mongoDbService
+            .GetCollectionsWithMetaAsync(collectionNameFilter: collectionInfo.CollectionName, includeDetails: true)
+            .FirstOrDefaultAsync();
+
+        if (meta == null) return;
+
+        _cache.AddOrUpdate(collectionInfo.Key,
+            addValueFactory: _ => collectionInfo with
+            {
+                DocumentCount = new DocumentCount { Count = meta.DocumentCount },
+                Size = meta.Size,
+                Index = BuildIndexInfo(collectionInfo, meta.Indexes)
+            },
+            updateValueFactory: (_, existing) => existing with
+            {
+                DocumentCount = new DocumentCount { Count = meta.DocumentCount },
+                Size = meta.Size,
+                Index = BuildIndexInfo(existing, meta.Indexes)
+            });
+
+        if (_cache.TryGetValue(collectionInfo.Key, out var updated))
+            CollectionInfoChangedEvent?.Invoke(this, new CollectionInfoChangedEventArgs(updated));
+    }
+
+    public async Task<(int Before, int After)> DropIndexAsync(CollectionInfo collectionInfo)
+    {
+        if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
+        if (collectionInfo == null) throw new ArgumentNullException(nameof(collectionInfo));
+        if (collectionInfo.Registration == Registration.NotInCode) throw new InvalidOperationException($"{nameof(RestoreIndexAsync)} does not support {nameof(Registration)} {collectionInfo.Registration}.");
+
+        var collection = _collectionProvider.GetCollection(collectionInfo.CollectionType, collectionInfo.Registration == Registration.Dynamic ? collectionInfo.ToDatabaseContext() : null);
+
+        var ct = collection.GetType();
+        var mongoCollection = await FetchMongoCollection(ct, collection, false);
+
+        var dropMethod = ct.GetMethod(nameof(DiskRepositoryCollectionBase<EntityBase>.DropIndex), BindingFlags.Instance | BindingFlags.NonPublic);
+        var dropResult = dropMethod?.Invoke(collection, [mongoCollection]);
+        var dropTask = (Task<(int Before, int After)>)dropResult;
+        await dropTask!;
+
+        await UpdateIndexCacheAsync(collectionInfo);
+
+        return dropTask.Result;
+    }
+
+    public async Task RestoreIndexAsync(CollectionInfo collectionInfo)
+    {
+        if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
+        if (collectionInfo == null) throw new ArgumentNullException(nameof(collectionInfo));
+        if (collectionInfo.Registration == Registration.NotInCode) throw new InvalidOperationException($"{nameof(RestoreIndexAsync)} does not support {nameof(Registration)} {collectionInfo.Registration}.");
+
+        var collection = _collectionProvider.GetCollection(collectionInfo.CollectionType, collectionInfo.Registration == Registration.Dynamic ? collectionInfo.ToDatabaseContext() : null);
+
+        var ct = collection.GetType();
+        var mongoCollection = await FetchMongoCollection(ct, collection, true);
+
+        var restoreMethod = ct.GetMethod(nameof(DiskRepositoryCollectionBase<EntityBase>.AssureIndex), BindingFlags.Instance | BindingFlags.NonPublic);
+        var restoreResult = restoreMethod?.Invoke(collection, [mongoCollection, true, true]);
+        var restoreTask = (Task)restoreResult;
+        await restoreTask!;
+
+        await UpdateIndexCacheAsync(collectionInfo);
+    }
+
+    public async Task<IEnumerable<string[]>> GetIndexBlockersAsync(CollectionInfo collectionInfo, string indexName)
+    {
+        if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
+        if (collectionInfo == null) throw new ArgumentNullException(nameof(collectionInfo));
+        if (collectionInfo.Registration == Registration.NotInCode) throw new InvalidOperationException($"{nameof(RestoreIndexAsync)} does not support {nameof(Registration)} {collectionInfo.Registration}.");
+
+        var collection = _collectionProvider.GetCollection(collectionInfo.CollectionType, collectionInfo.Registration == Registration.Dynamic ? collectionInfo.ToDatabaseContext() : null);
+
+        var ct = collection.GetType();
+        var mongoCollection = await FetchMongoCollection(ct, collection, true);
+
+        var getblockerMethod = ct.GetMethod(nameof(DiskRepositoryCollectionBase<EntityBase>.GetIndexBlockers), BindingFlags.Instance | BindingFlags.NonPublic);
+        var taskObj = getblockerMethod?.Invoke(collection, [mongoCollection, indexName]);
+
+        if (taskObj is not Task task)
+            throw new InvalidOperationException($"Invoked method did not return a {nameof(Task)}.");
+
+        await task.ConfigureAwait(false);
+
+        var resultProperty = task.GetType().GetProperty(nameof(Task<object>.Result));
+        if (resultProperty == null)
+            throw new InvalidOperationException("Invoked task did not have a Result property.");
+
+        if (resultProperty.GetValue(task) is not IEnumerable<string[]> result)
+            throw new InvalidOperationException("Invoked task result was not IEnumerable<string[]>.");
+
+        return result;
+    }
+
+    public async Task<CleanInfo> CleanAsync(CollectionInfo collectionInfo, bool cleanGuids)
+    {
+        if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
+        if (collectionInfo == null) throw new ArgumentNullException(nameof(collectionInfo));
+        if (collectionInfo.Registration == Registration.NotInCode) throw new InvalidOperationException($"{nameof(CleanAsync)} does not support {nameof(Registration)} {collectionInfo.Registration}.");
+
+        var collection = _collectionProvider.GetCollection(collectionInfo.CollectionType, collectionInfo.Registration == Registration.Dynamic ? collectionInfo.ToDatabaseContext() : null);
+
+        var ct = collection.GetType();
+        var mongoCollection = await FetchMongoCollection(ct, collection, true);
+
+        var cleanMethod = ct.GetMethod(nameof(DiskRepositoryCollectionBase<EntityBase>.CleanCollectionAsync), BindingFlags.Instance | BindingFlags.NonPublic);
+        var taskObj = cleanMethod?.Invoke(collection, [mongoCollection, cleanGuids]);
+
+        if (taskObj is not Task task)
+            throw new InvalidOperationException($"Invoked method did not return a {nameof(Task)}.");
+
+        await task.ConfigureAwait(false);
+
+        var resultProperty = task.GetType().GetProperty(nameof(Task<object>.Result));
+        if (resultProperty?.GetValue(task) is not CleanInfo result)
+            throw new InvalidOperationException("Invoked task result was not CleanInfo.");
+
+        _cache.AddOrUpdate(collectionInfo.Key,
+            addValueFactory: _ => collectionInfo with { Clean = result },
+            updateValueFactory: (_, existing) => existing with { Clean = result });
+
+        if (_cache.TryGetValue(collectionInfo.Key, out var updated))
+            CollectionInfoChangedEvent?.Invoke(this, new CollectionInfoChangedEventArgs(updated));
+
+        return result;
+    }
+
+    public IEnumerable<CallInfo> GetCalls(CallType callType)
+    {
+        if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
+
+        return callType switch
         {
-            try
-            {
-                var collection = _collectionProvider.GetCollection(item.CollectionType, item.Registration == Registration.Dynamic ? item.ToDatabaseContext() : null);
-                var ct = collection.GetType();
-                var method = ct.GetMethod(nameof(DiskRepositoryCollectionBase<EntityBase>.GetCleanInfoAsync), BindingFlags.Instance | BindingFlags.NonPublic);
-                if (method?.Invoke(collection, []) is Task task)
-                {
-                    await task.ConfigureAwait(false);
-                    var resultProperty = task.GetType().GetProperty(nameof(Task<object>.Result));
-                    if (resultProperty?.GetValue(task) is CleanInfo cleanInfo)
-                    {
-                        item = item with { Clean = cleanInfo };
-                    }
-                }
+            CallType.Last => _callLibrary.GetLastCalls(),
+            CallType.Slow => _callLibrary.GetSlowCalls(),
+            CallType.Ongoing => _callLibrary.GetOngoingCalls(),
+            _ => throw new ArgumentOutOfRangeException(nameof(callType), callType, null)
+        };
+    }
 
-                var entityType = ResolveEntityType(ct);
-                if (entityType != null)
-                {
-                    item = item with { CurrentSchemaFingerprint = SchemaFingerprint.Generate(entityType) };
-                }
-            }
-            catch
+    // --- Private helpers ---
+
+    private async Task<CollectionInfo> LoadAndCacheAsync(CollectionFingerprint fingerprint)
+    {
+        var mongoDbService = GetMongoDbService(fingerprint);
+        var meta = await mongoDbService
+            .GetCollectionsWithMetaAsync(collectionNameFilter: fingerprint.CollectionName, includeDetails: false)
+            .FirstOrDefaultAsync();
+
+        if (meta == null) return null;
+
+        var entry = BuildInitialEntry(fingerprint, meta.Server, null, null);
+        _cache[fingerprint.Key] = entry;
+        return entry;
+    }
+
+    private CollectionInfo BuildInitialEntry(CollectionFingerprint fingerprint, string server, string databasePart, string entityTypeName)
+    {
+        var (staticLookup, dynamicLookup) = GetLookups();
+        var configName = fingerprint.ConfigurationName?.Value ?? _options.DefaultConfigurationName;
+
+        if (staticLookup.TryGetValue((configName, fingerprint.CollectionName), out var reg))
+        {
+            var entityType = ResolveEntityType(reg.CollectionType);
+            return new CollectionInfo
             {
-                // Clean info is supplementary; don't fail the entire request
-            }
+                ConfigurationName = fingerprint.ConfigurationName,
+                DatabaseName = fingerprint.DatabaseName,
+                CollectionName = fingerprint.CollectionName,
+                Server = server ?? string.Empty,
+                DatabasePart = databasePart.NullIfEmpty(),
+                Source = reg.Source | Source.Database,
+                Registration = reg.Registration,
+                Types = reg.Types,
+                CollectionType = reg.CollectionType,
+                Index = new IndexInfo { Current = null, Defined = reg.DefinedIndices },
+                CurrentSchemaFingerprint = entityType != null ? SchemaFingerprint.Generate(entityType) : null,
+            };
         }
 
-        return item;
+        if (entityTypeName != null && dynamicLookup.TryGetValue(entityTypeName, out var dyn))
+        {
+            var entityType = ResolveEntityType(dyn.CollectionType);
+            return new CollectionInfo
+            {
+                ConfigurationName = fingerprint.ConfigurationName,
+                DatabaseName = fingerprint.DatabaseName,
+                CollectionName = fingerprint.CollectionName,
+                Server = server ?? string.Empty,
+                DatabasePart = databasePart.NullIfEmpty(),
+                Source = dyn.Source | Source.Database,
+                Registration = Registration.Dynamic,
+                Types = [entityTypeName],
+                CollectionType = dyn.CollectionType,
+                Index = new IndexInfo { Current = null, Defined = dyn.DefinedIndices },
+                CurrentSchemaFingerprint = entityType != null ? SchemaFingerprint.Generate(entityType) : null,
+            };
+        }
+
+        return new CollectionInfo
+        {
+            ConfigurationName = fingerprint.ConfigurationName,
+            DatabaseName = fingerprint.DatabaseName,
+            CollectionName = fingerprint.CollectionName,
+            Server = server ?? string.Empty,
+            DatabasePart = databasePart.NullIfEmpty(),
+            Source = Source.Database,
+            Registration = Registration.NotInCode,
+            Types = entityTypeName != null ? [entityTypeName] : [],
+            CollectionType = null,
+            Index = null,
+        };
+    }
+
+    private (Dictionary<(string, string), StatColInfo> staticLookup, Dictionary<string, DynColInfo> dynamicLookup) GetLookups()
+    {
+        if (_staticLookup != null) return (_staticLookup, _dynamicLookup);
+
+        _lookupLock.Wait();
+        try
+        {
+            if (_staticLookup != null) return (_staticLookup, _dynamicLookup);
+
+            _staticLookup = GetStaticCollectionsFromCodeCore()
+                .ToDictionary(x => (x.ConfigurationName ?? _options.DefaultConfigurationName, x.CollectionName), x => x);
+            _dynamicLookup = GetDynamicRegistrations()
+                .ToDictionary(x => x.Type, x => x);
+
+            return (_staticLookup, _dynamicLookup);
+        }
+        finally
+        {
+            _lookupLock.Release();
+        }
+    }
+
+    private static IndexInfo BuildIndexInfo(CollectionInfo existing, IndexMeta[] currentIndexes)
+    {
+        var defined = existing.Index?.Defined ?? [];
+        return new IndexInfo { Current = currentIndexes, Defined = defined };
+    }
+
+    private async Task UpdateIndexCacheAsync(CollectionInfo collectionInfo)
+    {
+        var mongoDbService = GetMongoDbService(collectionInfo);
+        var meta = await mongoDbService
+            .GetCollectionsWithMetaAsync(collectionNameFilter: collectionInfo.CollectionName, includeDetails: true)
+            .FirstOrDefaultAsync();
+
+        if (meta == null) return;
+
+        _cache.AddOrUpdate(collectionInfo.Key,
+            addValueFactory: _ => collectionInfo with { Index = BuildIndexInfo(collectionInfo, meta.Indexes) },
+            updateValueFactory: (_, existing) => existing with { Index = BuildIndexInfo(existing, meta.Indexes) });
+
+        if (_cache.TryGetValue(collectionInfo.Key, out var updated))
+            CollectionInfoChangedEvent?.Invoke(this, new CollectionInfoChangedEventArgs(updated));
+    }
+
+    private IMongoDbService GetMongoDbService(CollectionFingerprint fingerprint)
+    {
+        return _mongoDbServiceFactory.GetMongoDbService(() => new DatabaseContext
+        {
+            ConfigurationName = fingerprint.ConfigurationName?.Value
+        });
+    }
+
+    private async IAsyncEnumerable<CollectionInfo> GetCollectionsFromDb(IMongoDbService mongoDbService, string databaseName, string filter, HashSet<string> currentDbKeys, HashSet<string> visited, Stopwatch sw)
+    {
+        await foreach (var meta in mongoDbService.GetCollectionsWithMetaAsync(databaseName, includeDetails: false))
+        {
+            if (filter != null && !meta.CollectionName.ProtectCollectionName().Contains(filter)) continue;
+
+            var key = $"{meta.ConfigurationName}.{meta.DatabaseName}.{meta.CollectionName}";
+            currentDbKeys.Add(key);
+
+            if (!visited.Add(key)) continue;
+
+            Console.WriteLine($"- Got {meta.CollectionName} [{sw.Elapsed.TotalSeconds:N0}s]");
+
+            if (_cache.TryGetValue(key, out var cached))
+            {
+                yield return cached;
+            }
+            else
+            {
+                var fp = new CollectionFingerprint
+                {
+                    ConfigurationName = meta.ConfigurationName,
+                    DatabaseName = meta.DatabaseName,
+                    CollectionName = meta.CollectionName
+                };
+                var entry = BuildInitialEntry(fp, meta.Server, null, null);
+                _cache[key] = entry;
+                yield return entry;
+            }
+        }
+    }
+
+    private static async Task<object> FetchMongoCollection(Type ct, IRepositoryCollection collection, bool initiate)
+    {
+        var fetchMethod = ct.GetMethod(nameof(DiskRepositoryCollectionBase<EntityBase>.FetchCollectionAsync), BindingFlags.Instance | BindingFlags.NonPublic);
+        var fetchResult = fetchMethod?.Invoke(collection, [initiate]);
+        var fetchTask = (Task)fetchResult;
+        await fetchTask!;
+        var resultProperty = fetchTask.GetType().GetProperty("Result");
+        var result = resultProperty!.GetValue(fetchTask);
+        var valueProperty = result!.GetType().GetProperty("Value");
+        var mongoDbCollection = valueProperty!.GetValue(result);
+        return mongoDbCollection;
     }
 
     private static Type ResolveEntityType(Type collectionType)
@@ -256,262 +597,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
         return null;
     }
 
-    public async IAsyncEnumerable<CollectionInfo> GetInstancesAsync(bool fullDatabaseScan, string filter)
-    {
-        if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
-
-        var configuredContexts = GetConfigurations().Select(x => new DatabaseContext { ConfigurationName = x.Value ?? _options.DefaultConfigurationName }).ToArray();
-        var accessedDatabaseContexts = _accessedCollections.Select(x => new DatabaseContext
-        {
-            ConfigurationName = x.Value.ConfigurationName?.Value ?? _options.DefaultConfigurationName,
-            DatabasePart = x.Value.DatabasePart.NullIfEmpty()
-        });
-        var contexts = configuredContexts.Union(accessedDatabaseContexts)
-            .Distinct()
-            .ToArray();
-
-        var collectionsFromCode = await GetStaticCollectionsFromCode().ToDictionaryAsync(x => (x.ConfigurationName ?? _options.DefaultConfigurationName, x.CollectionName), x => x);
-        var accessedCollections = _accessedCollections;
-        var dynamicCollectionsFromCode = GetDynamicRegistrations().ToDictionary(x => x.Type, x => x);
-
-        var sw = new Stopwatch();
-        sw.Start();
-
-        var visited = new Dictionary<string, CollectionInfo>();
-        var index = 0;
-        var total = contexts.Length;
-        foreach (var context in contexts)
-        {
-            Console.WriteLine($"Context {++index} of {total} {context.ConfigurationName}.{context.DatabasePart}.{context.CollectionName} [{sw.Elapsed.TotalSeconds:N0}s]");
-            await foreach (var inDatabase in GetCollectionsInDatabase(context, fullDatabaseScan, filter, includeDetails: false))
-            {
-                if (!visited.TryAdd($"{inDatabase.ConfigurationName}.{inDatabase.DatabaseName}.{inDatabase.CollectionName}", inDatabase)) continue;
-
-                Console.WriteLine($"- Got {inDatabase.CollectionName} [{sw.Elapsed.TotalSeconds:N0}s]");
-
-                yield return ApplyMappings(inDatabase, collectionsFromCode, accessedCollections, dynamicCollectionsFromCode);
-            }
-        }
-    }
-
-    private CollectionInfo ApplyMappings(CollectionInfo raw, Dictionary<(string, string), StatColInfo> collectionsFromCode, ConcurrentDictionary<string, CollectionAccessData> accessedCollections, Dictionary<string, DynColInfo> dynamicCollectionsFromCode)
-    {
-        var item = raw;
-
-        //Map Static registrations
-        if (collectionsFromCode.TryGetValue((item.ConfigurationName, item.CollectionName), out var reg))
-        {
-            AssureNotDifferent(item.CollectionType?.Name, reg.CollectionType?.Name);
-
-            item = item with
-            {
-                Source = item.Source | reg.Source,
-                Registration = reg.Registration,
-                Types = item.Types.Union(reg.Types).ToArray(),
-                CollectionType = item.CollectionType ?? reg.CollectionType,
-                DocumentCount = new DocumentCount { Count = item.DocumentCount },
-                Index = item.Index with
-                {
-                    Current = item.Index.Current,
-                    Defined = reg.DefinedIndices.ToArray()
-                },
-            };
-        }
-
-        //Map Accessed collections
-        if (accessedCollections.TryGetValue(raw.Key, out var t))
-        {
-            AssureNotDifferent(item.DatabasePart, t.DatabasePart);
-
-            item = item with
-            {
-                DatabasePart = item.DatabasePart ?? t.DatabasePart,
-                Source = item.Source | Source.Monitor,
-                Types = item.Types.Union(t.EntityTypes.Select(x => x.Name)).ToArray(),
-                AccessCount = t.AccessCount,
-                CallCount = t.CallCount,
-                DocumentCount = new DocumentCount { Count = item.DocumentCount },
-            };
-        }
-
-        //Map Dynamic registrations
-        if (raw.Types.Length == 1)
-        {
-            if (dynamicCollectionsFromCode.TryGetValue(raw.Types.Single(), out var dyn))
-            {
-                AssureNotDifferent(item.CollectionType?.Name, dyn.CollectionType?.Name);
-
-                item = item with
-                {
-                    Source = item.Source | dyn.Source,
-                    Registration = Registration.Dynamic,
-                    CollectionType = item.CollectionType ?? dyn.CollectionType,
-                    Index = item.Index with
-                    {
-                        Current = item.Index.Current,
-                        Defined = dyn.DefinedIndices.ToArray()
-                    },
-                };
-            }
-        }
-
-        return item;
-    }
-
-    private void AssureNotDifferent(string item, string other)
-    {
-        if (item.IsNullOrEmpty()) return;
-        if (other.IsNullOrEmpty()) return;
-
-        if (item != other) throw new InvalidOperationException($"'{item}' and '{other}' differs.");
-    }
-
-    public async Task TouchAsync(CollectionInfo collectionInfo)
-    {
-        if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
-        if (collectionInfo == null) throw new ArgumentNullException(nameof(collectionInfo));
-        if (collectionInfo.Registration == Registration.NotInCode) throw new InvalidOperationException($"{nameof(RestoreIndexAsync)} does not support {nameof(Registration)} {collectionInfo.Registration}.");
-
-        var collection = _collectionProvider.GetCollection(collectionInfo.CollectionType, collectionInfo.Registration == Registration.Dynamic ? collectionInfo.ToDatabaseContext() : null);
-
-        _ = await FetchMongoCollection(collection.GetType(), collection, true);
-    }
-
-    public async Task<(int Before, int After)> DropIndexAsync(CollectionInfo collectionInfo)
-    {
-        if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
-        if (collectionInfo == null) throw new ArgumentNullException(nameof(collectionInfo));
-        if (collectionInfo.Registration == Registration.NotInCode) throw new InvalidOperationException($"{nameof(RestoreIndexAsync)} does not support {nameof(Registration)} {collectionInfo.Registration}.");
-
-        var collection = _collectionProvider.GetCollection(collectionInfo.CollectionType, collectionInfo.Registration == Registration.Dynamic ? collectionInfo.ToDatabaseContext() : null);
-
-        var ct = collection.GetType();
-        var mongoCollection = await FetchMongoCollection(ct, collection, false);
-
-        var dropMethod = ct.GetMethod(nameof(DiskRepositoryCollectionBase<EntityBase>.DropIndex), BindingFlags.Instance | BindingFlags.NonPublic);
-        var dropResult = dropMethod?.Invoke(collection, [mongoCollection]);
-        var dropTask = (Task<(int Before, int After)>)dropResult;
-        await dropTask!;
-        return dropTask.Result;
-    }
-
-    public async Task RestoreIndexAsync(CollectionInfo collectionInfo)
-    {
-        if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
-        if (collectionInfo == null) throw new ArgumentNullException(nameof(collectionInfo));
-        if (collectionInfo.Registration == Registration.NotInCode) throw new InvalidOperationException($"{nameof(RestoreIndexAsync)} does not support {nameof(Registration)} {collectionInfo.Registration}.");
-
-        var collection = _collectionProvider.GetCollection(collectionInfo.CollectionType, collectionInfo.Registration == Registration.Dynamic ? collectionInfo.ToDatabaseContext() : null);
-
-        var ct = collection.GetType();
-        var mongoCollection = await FetchMongoCollection(ct, collection, true);
-
-        var dropMethod = ct.GetMethod(nameof(DiskRepositoryCollectionBase<EntityBase>.AssureIndex), BindingFlags.Instance | BindingFlags.NonPublic);
-        var dropResult = dropMethod?.Invoke(collection, [mongoCollection, true, true]);
-        var dropTask = (Task)dropResult;
-        await dropTask!;
-    }
-
-    public async Task<IEnumerable<string[]>> GetIndexBlockersAsync(CollectionInfo collectionInfo, string indexName)
-    {
-        if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
-        if (collectionInfo == null) throw new ArgumentNullException(nameof(collectionInfo));
-        if (collectionInfo.Registration == Registration.NotInCode) throw new InvalidOperationException($"{nameof(RestoreIndexAsync)} does not support {nameof(Registration)} {collectionInfo.Registration}.");
-
-        var collection = _collectionProvider.GetCollection(collectionInfo.CollectionType, collectionInfo.Registration == Registration.Dynamic ? collectionInfo.ToDatabaseContext() : null);
-
-        var ct = collection.GetType();
-        var mongoCollection = await FetchMongoCollection(ct, collection, true);
-
-        var getblockerMethod = ct.GetMethod(nameof(DiskRepositoryCollectionBase<EntityBase>.GetIndexBlockers), BindingFlags.Instance | BindingFlags.NonPublic);
-        //var getResult = getblockerMethod?.Invoke(collection, [mongoCollection, indexName]);
-        //var getTask = (Task)getResult;
-        //await getTask!;
-
-        var taskObj = getblockerMethod?.Invoke(collection, [mongoCollection, indexName]);
-
-        if (taskObj is not Task task)
-        {
-            throw new InvalidOperationException($"Invoked method did not return a {nameof(Task)}.");
-        }
-
-        await task.ConfigureAwait(false);
-
-        var resultProperty = task.GetType().GetProperty(nameof(Task<object>.Result));
-        if (resultProperty == null)
-        {
-            throw new InvalidOperationException("Invoked task did not have a Result property.");
-        }
-
-        if (resultProperty.GetValue(task) is not IEnumerable<string[]> result)
-        {
-            throw new InvalidOperationException("Invoked task result was not IEnumerable<string[]>.");
-        }
-
-        return result;
-    }
-
-    public async Task<CleanInfo> CleanAsync(CollectionInfo collectionInfo, bool cleanGuids)
-    {
-        if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
-        if (collectionInfo == null) throw new ArgumentNullException(nameof(collectionInfo));
-        if (collectionInfo.Registration == Registration.NotInCode) throw new InvalidOperationException($"{nameof(CleanAsync)} does not support {nameof(Registration)} {collectionInfo.Registration}.");
-
-        var collection = _collectionProvider.GetCollection(collectionInfo.CollectionType, collectionInfo.Registration == Registration.Dynamic ? collectionInfo.ToDatabaseContext() : null);
-
-        var ct = collection.GetType();
-        var mongoCollection = await FetchMongoCollection(ct, collection, true);
-
-        var cleanMethod = ct.GetMethod(nameof(DiskRepositoryCollectionBase<EntityBase>.CleanCollectionAsync), BindingFlags.Instance | BindingFlags.NonPublic);
-        var taskObj = cleanMethod?.Invoke(collection, [mongoCollection, cleanGuids]);
-
-        if (taskObj is not Task task)
-        {
-            throw new InvalidOperationException($"Invoked method did not return a {nameof(Task)}.");
-        }
-
-        await task.ConfigureAwait(false);
-
-        var resultProperty = task.GetType().GetProperty(nameof(Task<object>.Result));
-        if (resultProperty?.GetValue(task) is not CleanInfo result)
-        {
-            throw new InvalidOperationException("Invoked task result was not CleanInfo.");
-        }
-
-        return result;
-    }
-
-    private static async Task<object> FetchMongoCollection(Type ct, IRepositoryCollection collection, bool initiate)
-    {
-        var fetchMethod = ct.GetMethod(nameof(DiskRepositoryCollectionBase<EntityBase>.FetchCollectionAsync), BindingFlags.Instance | BindingFlags.NonPublic);
-        var fetchResult = fetchMethod?.Invoke(collection, [initiate]);
-        var fetchTask = (Task)fetchResult;
-        await fetchTask!;
-        var resultProperty = fetchTask.GetType().GetProperty("Result");
-        var result = resultProperty!.GetValue(fetchTask);
-        var valueProperty = result!.GetType().GetProperty("Value");
-        var mongoDbCollection = valueProperty!.GetValue(result);
-        return mongoDbCollection;
-    }
-
-    public IEnumerable<CallInfo> GetCalls(CallType callType)
-    {
-        if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
-
-        switch (callType)
-        {
-            case CallType.Last:
-                return _callLibrary.GetLastCalls();
-            case CallType.Slow:
-                return _callLibrary.GetSlowCalls();
-            case CallType.Ongoing:
-                return _callLibrary.GetOngoingCalls();
-            default:
-                throw new ArgumentOutOfRangeException(nameof(callType), callType, null);
-        }
-    }
-
-    private async IAsyncEnumerable<StatColInfo> GetStaticCollectionsFromCode()
+    private IEnumerable<StatColInfo> GetStaticCollectionsFromCodeCore()
     {
         foreach (var registeredCollection in _mongoDbInstance.RegisteredCollections)
         {
@@ -523,16 +609,15 @@ internal class DatabaseMonitor : IDatabaseMonitor
             if (!isDynamic)
             {
                 var genericParam = registeredCollection.Key
-                    .GetInterfaces() // get all implemented interfaces
+                    .GetInterfaces()
                     .Where(i => i.IsGenericType)
                     .Select(i => i.GetGenericArguments().FirstOrDefault())
                     .FirstOrDefault();
 
-                //NOTE: Create an instance and find the collection name.
                 var instance = _serviceProvider.GetService(registeredCollection.Key) as RepositoryCollectionBase;
                 if (instance == null) throw new InvalidOperationException($"Cannot create instance of '{registeredCollection.Key}'.");
 
-                var item = new StatColInfo
+                yield return new StatColInfo
                 {
                     Source = Source.Registration,
                     ConfigurationName = instance.ConfigurationName,
@@ -541,10 +626,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
                     CollectionType = registeredCollection.Key,
                     Registration = Registration.Static,
                     DefinedIndices = instance.BuildIndexMetas().ToArray(),
-                    //VirtualCount = instance.VirtualCount
                 };
-
-                yield return item;
             }
         }
     }
@@ -566,22 +648,18 @@ internal class DatabaseMonitor : IDatabaseMonitor
                     .Select(i => i.GetGenericArguments().FirstOrDefault())
                     .FirstOrDefault();
 
-                //NOTE: Create an instance and find the collection name.
                 var colType = _mongoDbInstance.RegisteredCollections.FirstOrDefault(x => x.Key.Name == registeredCollection.Key.Name).Key;
                 var collection = _collectionProvider.GetCollection(colType, new DatabaseContext()) as RepositoryCollectionBase;
 
                 if (genericParam?.Name != null)
                 {
-                    var item = new DynColInfo
+                    yield return new DynColInfo
                     {
                         Source = Source.Registration,
                         Type = genericParam.Name,
                         CollectionType = registeredCollection.Key,
                         DefinedIndices = collection.BuildIndexMetas().ToArray(),
-                        //VirtualCount = collection?.VirtualCount
                     };
-
-                    yield return item;
                 }
                 else
                 {
@@ -591,70 +669,11 @@ internal class DatabaseMonitor : IDatabaseMonitor
         }
     }
 
-    private async IAsyncEnumerable<CollectionInfo> GetCollectionsInDatabase(DatabaseContext databaseContext, bool fullDatabaseScan, string filter, string collectionNameFilter = null, bool includeDetails = true)
-    {
-        var mongoDbService = _mongoDbServiceFactory.GetMongoDbService(() => databaseContext);
-
-        if (fullDatabaseScan)
-        {
-            var databases = mongoDbService.GetDatabases().ToArray();
-            foreach (var database in databases)
-            {
-                if (filter == null || database.ProtectCollectionName().Contains(filter))
-                {
-                    var collections = await mongoDbService.GetCollectionsWithMetaAsync(database, collectionNameFilter, includeDetails).ToArrayAsync();
-                    foreach (var collection in collections)
-                    {
-                        yield return BuildCollectionInfo(collection);
-                    }
-                }
-            }
-        }
-        else
-        {
-            var collections = await mongoDbService.GetCollectionsWithMetaAsync(collectionNameFilter: collectionNameFilter, includeDetails: includeDetails).ToArrayAsync();
-            foreach (var collection in collections)
-            {
-                yield return BuildCollectionInfo(collection);
-            }
-        }
-    }
-
-    private static CollectionInfo BuildCollectionInfo(CollectionMeta collection)
-    {
-        return new CollectionInfo
-        {
-            ConfigurationName = collection.ConfigurationName,
-            DatabaseName = collection.DatabaseName,
-            CollectionName = collection.CollectionName,
-            Server = collection.Server,
-            DatabasePart = null,
-            Source = Source.Database,
-            Types = collection.Types,
-            DocumentCount = new DocumentCount
-            {
-                Count = collection.DocumentCount
-            },
-            Size = collection.Size,
-            Index = new IndexInfo
-            {
-                Current =
-                [
-                    ..collection.Indexes
-                ],
-                Defined = null
-            },
-            Registration = Registration.NotInCode,
-            CollectionType = null
-        };
-    }
-
     internal abstract record ColInfo
     {
         public required Source Source { get; init; }
         public required Type CollectionType { get; init; }
         public required IndexMeta[] DefinedIndices { get; init; }
-        //public required long? VirtualCount { get; init; }
     }
 
     internal record StatColInfo : ColInfo

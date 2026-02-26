@@ -32,6 +32,8 @@ public static class IndexModelExtensions
     {
         if (collectionInfo == null) yield break;
 
+        if (collectionInfo.Index == null) yield break;
+
         var names = (collectionInfo.Index.Current?.Select(x => x.Name) ?? [])
             .Union(collectionInfo.Index.Defined?.Select(x => x.Name) ?? []);
 

@@ -80,17 +80,9 @@ else
                         }
                     </Template>
                 </RadzenDataGridColumn>
-                <RadzenDataGridColumn Title="Documents" Property="@($"{nameof(CollectionModel.DocumentCount)}.{nameof(CollectionModel.DocumentCount.Count)}")" TextAlign="TextAlign.Right" CssClass="css-count" Width="120px">
+                @* <RadzenDataGridColumn Title="Documents" Property="@($"{nameof(CollectionModel.DocumentCount)}.{nameof(CollectionModel.DocumentCount.Count)}")" TextAlign="TextAlign.Right" CssClass="css-count" Width="120px">
                     <Template>
                         <RadzenText Text="@($"{context.DocumentCount.Count:N0}")" />
-                        @* @if (context.DocumentCount.IsValid)
-                        {
-                            <RadzenText Text="@($"{context.DocumentCount.Count:N0}")"/>
-                        }
-                        else
-                        {
-                            <span title="@($"Virtual count is {context.DocumentCount.Virtual:N0}.")"><RadzenText Text="@($"{context.DocumentCount.Count:N0}")"/></span>
-                        } *@
                     </Template>
                 </RadzenDataGridColumn>
                 <RadzenDataGridColumn Title="Size" Property="@nameof(CollectionModel.Size)" TextAlign="TextAlign.Right" Filterable="false" Width="120px">
@@ -102,20 +94,10 @@ else
                     <Template>
                         <span title="@context.Indices.Diff()">@(context.IndexEqualFields?.ToString() ?? "")</span>
                     </Template>
-                </RadzenDataGridColumn>
+                </RadzenDataGridColumn> *@
                 <RadzenDataGridColumn Title="" Sortable="false" Width="60px;" Filterable="false">
                     <Template>
-                        @* @if (context.Index.Defined != null)
-                        {
-                            IndexInfo ii = context.Index;
-
-                            <StandardButton Icon="format_list_numbered" ButtonStyle="@(context.Index.Defined.SequenceEqual(context.Index.Current) ? ButtonStyle.Base : ButtonStyle.Warning)" Click="@(() => ShowIndexDialog(context))" Style="margin-right: 3px;"/>
-                        } *@
                         <StandardButton Icon="format_list_numbered" Click="@(() => ShowIndexDialog(context))" Style="margin-right: 3px;" />
-                        @* @if (context.Registration != Registration.NotInCode && context.AccessCount == 0)
-                        {
-                            <StandardButton Icon="touch_app" Click="@(() => TouchCollection(context))"/>
-                        } *@
                     </Template>
                 </RadzenDataGridColumn>
             </Columns>
@@ -166,7 +148,7 @@ else
                     m.DocumentCount = e.CollectionInfo.DocumentCount;
                     m.Size = e.CollectionInfo.Size;
                     m.Indices = indexModels;
-                    m.IndexEqualFields = e.CollectionInfo.Index == null ? null : (bool?)indexModels.All(x => x.EqualFields);
+                    m.IndexEqualFields = e.CollectionInfo.Index == null ? null : indexModels.All(x => x.EqualFields);
                 }
 
                 await InvokeAsync(StateHasChanged);
@@ -221,9 +203,9 @@ else
                     CallCount = x.CallCount,
                     Size = x.Size,
                     Indices = indexModels,
-                    IndexEqualFields = (x.Registration == Registration.NotInCode || x.Index == null || x.Index.Current.Length == 0)
+                    IndexEqualFields = x.Registration == Registration.NotInCode || x.Index == null || x.Index.Current.Length == 0
                         ? null
-                        : (bool?)indexModels.All(y => y.EqualFields)
+                        : indexModels.All(y => y.EqualFields)
                 };
             })
             .ToArray();

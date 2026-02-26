@@ -12,7 +12,9 @@
       "Bash(cmd /c \"powershell -NoProfile -Command \"\"[System.IO.File]::WriteAllText\\(''C:\\\\temp\\\\patch.ps1'', ''Write-Host hello'', [System.Text.Encoding]::UTF8\\)\"\" && type C:\\\\temp\\\\patch.ps1\")",
       "Bash(node --version:*)",
       "Bash(node -e \"require\\(''fs''\\).writeFileSync\\(''C:/temp/write_ps.js'', ''console.log\\(42\\)''\\)\")",
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "Bash(dotnet build Tharga.MongoDB/Tharga.MongoDB.csproj --no-restore)",
+      "Bash(dotnet build Tharga.MongoDB.Blazor/Tharga.MongoDB.Blazor.csproj --no-restore)"
     ]
   }
 }

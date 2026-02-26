@@ -42,7 +42,7 @@ else
             </RadzenColumn>
             <RadzenColumn>
                 <RadzenText TextStyle="TextStyle.Caption" Text="Document Count"/>
-                <RadzenText Text="@($"{_model.DocumentCount.Count:N0}")" />
+                <RadzenText Text="@(_model.DocumentCount != null ? $"{_model.DocumentCount.Count:N0}" : "—")" />
             </RadzenColumn>
             <RadzenColumn>
                 <RadzenText TextStyle="TextStyle.Caption" Text="Size"/>
@@ -109,7 +109,7 @@ else
     public CollectionFingerprint Fingerprint { get; set; }
 
     private bool CanTouch => _model != null && _model.Registration != Registration.NotInCode;
-    private bool CanDrop => CanTouch && _model.Index.Current.Any();
+    private bool CanDrop => CanTouch && (_model.Index?.Current?.Any() ?? false);
     private bool CanRestore => CanTouch && _indexModel.Any(x => !x.EqualFields);
     private bool CanClean => CanTouch;
     private bool FingerprintMatch => _model?.Clean != null && _model.Clean.SchemaFingerprint == _model.CurrentSchemaFingerprint;
@@ -179,7 +179,7 @@ else
     {
         try
         {
-            var result = await DialogService.Confirm($"All {_model.DocumentCount.Count:N0} documents in the collection will be cleaned (including GUID format). This might take time to perform.", "Confirm clean collection");
+            var result = await DialogService.Confirm($"All {(_model.DocumentCount != null ? $"{_model.DocumentCount.Count:N0}" : "unknown number of")} documents in the collection will be cleaned (including GUID format). This might take time to perform.", "Confirm clean collection");
             if (result != true) return;
 
             var cleanInfo = await DatabaseMonitor.CleanAsync(_model, cleanGuids: true);
