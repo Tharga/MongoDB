@@ -2,10 +2,12 @@
 
 namespace Tharga.MongoDB.Lockable;
 
-public class LockExpiredException : InvalidOperationException
+public sealed class LockExpiredException : InvalidOperationException
 {
-    public LockExpiredException(string message)
+    public LockExpiredException(string message, TimeSpan timeout, TimeSpan lockTime)
         : base(message)
     {
+        Data["timeout"] = timeout;
+        Data["lockTime"] = lockTime;
     }
 }

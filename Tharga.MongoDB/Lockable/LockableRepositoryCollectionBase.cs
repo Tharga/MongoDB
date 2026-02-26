@@ -632,7 +632,7 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
 
         if ((commit || exception != null) && expired)
         {
-            throw new LockExpiredException($"Entity of type {typeof(TEntity).Name} was locked for {lockTime} instead of {timeout}.");
+            throw new LockExpiredException($"Too late to release entity of type {typeof(TEntity).Name} locked by {lockInfo.Actor}.", timeout, lockTime);
         }
 
         EntityChangeResult<TEntity> result;

@@ -169,7 +169,12 @@ stages:
         allowPackageConflicts: true
 
     - script: |
-         git tag $(Build.BuildNumber) $(Build.SourceVersion)
-         git push origin refs/tags/$(Build.BuildNumber)
+         if [ -n "$SYSTEM_PULLREQUEST_SOURCECOMMITID" ]; then
+           COMMIT=$SYSTEM_PULLREQUEST_SOURCECOMMITID
+         else
+           COMMIT=$BUILD_SOURCEVERSION
+         fi
+         git tag $BUILD_BUILDNUMBER $COMMIT
+         git push origin refs/tags/$BUILD_BUILDNUMBER
       workingDirectory: $(Build.SourcesDirectory)
       displayName: Tag
