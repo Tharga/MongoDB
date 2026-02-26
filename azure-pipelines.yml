@@ -168,13 +168,9 @@ stages:
         publishFeedCredentials: 'Nuget.org'
         allowPackageConflicts: true
 
-    - script: |
-         if [ -n "$SYSTEM_PULLREQUEST_SOURCECOMMITID" ]; then
-           COMMIT=$SYSTEM_PULLREQUEST_SOURCECOMMITID
-         else
-           COMMIT=$BUILD_SOURCEVERSION
-         fi
-         git tag $BUILD_BUILDNUMBER $COMMIT
-         git push origin refs/tags/$BUILD_BUILDNUMBER
+    - pwsh: |
+         $commit = if ($env:SYSTEM_PULLREQUEST_SOURCECOMMITID) { $env:SYSTEM_PULLREQUEST_SOURCECOMMITID } else { $env:BUILD_SOURCEVERSION }
+         git tag $env:BUILD_BUILDNUMBER $commit
+         git push origin "refs/tags/$env:BUILD_BUILDNUMBER"
       workingDirectory: $(Build.SourcesDirectory)
       displayName: Tag
