@@ -107,6 +107,16 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             InvokeAction(new ActionEventArgs.ActionData { Operation = functionName, Exception = e });
             throw;
         }
+        catch (MongoWaitQueueFullException e)
+        {
+            exception = e;
+            e.Data["Configuration"] = ConfigurationName ?? Constants.DefaultConfigurationName;
+            e.Data["Database"] = DatabaseName;
+            e.Data["Collection"] = CollectionName;
+            _logger?.LogError(e, $"{e.GetType().Name} {{repositoryType}}. [action: Database, operation: {functionName}]", "DiskRepository");
+            InvokeAction(new ActionEventArgs.ActionData { Operation = functionName, Exception = e });
+            throw;
+        }
         catch (Exception e)
         {
             exception = e;

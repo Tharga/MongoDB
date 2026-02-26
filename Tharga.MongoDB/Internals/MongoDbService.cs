@@ -123,7 +123,18 @@ internal class MongoDbService : IMongoDbService
         ListCollectionsOptions options = null;
         if (!string.IsNullOrEmpty(collectionNameFilter))
             options = new ListCollectionsOptions { Filter = Builders<BsonDocument>.Filter.Eq("name", collectionNameFilter) };
-        var collections = (await mongoDatabase.ListCollectionsAsync(options)).ToEnumerable();
+        IAsyncCursor<BsonDocument> collectionsCursor;
+        try
+        {
+            collectionsCursor = await mongoDatabase.ListCollectionsAsync(options);
+        }
+        catch (MongoWaitQueueFullException e)
+        {
+            e.Data["Configuration"] = _configuration.GetConfigurationName();
+            e.Data["Database"] = mongoDatabase.DatabaseNamespace.DatabaseName;
+            throw;
+        }
+        var collections = collectionsCursor.ToEnumerable();
 
         var dbName = mongoDatabase.DatabaseNamespace.DatabaseName;
         var server = ToServerName(dbName);
