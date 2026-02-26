@@ -169,7 +169,12 @@ stages:
         allowPackageConflicts: true
 
     - pwsh: |
-         $commit = if ($env:SYSTEM_PULLREQUEST_SOURCECOMMITID) { $env:SYSTEM_PULLREQUEST_SOURCECOMMITID } else { $env:BUILD_SOURCEVERSION }
+         if ($env:SYSTEM_PULLREQUEST_SOURCECOMMITID) {
+           git fetch origin $env:SYSTEM_PULLREQUEST_SOURCEBRANCH
+           $commit = $env:SYSTEM_PULLREQUEST_SOURCECOMMITID
+         } else {
+           $commit = $env:BUILD_SOURCEVERSION
+         }
          git tag $env:BUILD_BUILDNUMBER $commit
          git push origin "refs/tags/$env:BUILD_BUILDNUMBER"
       workingDirectory: $(Build.SourcesDirectory)
