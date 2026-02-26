@@ -25,6 +25,11 @@ internal class DatabaseNullMonitor : IDatabaseMonitor
         yield break;
     }
 
+    public Task RefreshStatsAsync(CollectionFingerprint fingerprint)
+    {
+        return Task.CompletedTask;
+    }
+
     public Task TouchAsync(CollectionInfo collectionInfo)
     {
         return Task.CompletedTask;

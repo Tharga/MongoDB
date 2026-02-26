@@ -80,21 +80,21 @@ else
                         }
                     </Template>
                 </RadzenDataGridColumn>
-                @* <RadzenDataGridColumn Title="Documents" Property="@($"{nameof(CollectionModel.DocumentCount)}.{nameof(CollectionModel.DocumentCount.Count)}")" TextAlign="TextAlign.Right" CssClass="css-count" Width="120px">
+                <RadzenDataGridColumn Title="Documents" TextAlign="TextAlign.Right" CssClass="css-count" Sortable="false" Filterable="false" Width="120px">
                     <Template>
-                        <RadzenText Text="@($"{context.DocumentCount.Count:N0}")" />
+                        <RadzenText Text="@(context.DocumentCount != null ? $"{context.DocumentCount.Count:N0}" : "")" />
                     </Template>
                 </RadzenDataGridColumn>
-                <RadzenDataGridColumn Title="Size" Property="@nameof(CollectionModel.Size)" TextAlign="TextAlign.Right" Filterable="false" Width="120px">
+                <RadzenDataGridColumn Title="Size" TextAlign="TextAlign.Right" Filterable="false" CssClass="css-size" Sortable="false" Width="120px">
                     <Template>
-                        @context.Size.ToReadableByteSize()
+                        @(context.DocumentCount != null ? context.Size.ToReadableByteSize() : "")
                     </Template>
                 </RadzenDataGridColumn>
                 <RadzenDataGridColumn Title="Indices" Property="@nameof(CollectionModel.IndexEqualFields)" CssClass="css-indices" Width="120px">
                     <Template>
                         <span title="@context.Indices.Diff()">@(context.IndexEqualFields?.ToString() ?? "")</span>
                     </Template>
-                </RadzenDataGridColumn> *@
+                </RadzenDataGridColumn>
                 <RadzenDataGridColumn Title="" Sortable="false" Width="60px;" Filterable="false">
                     <Template>
                         <StandardButton Icon="format_list_numbered" Click="@(() => ShowIndexDialog(context))" Style="margin-right: 3px;" />
@@ -203,7 +203,7 @@ else
                     CallCount = x.CallCount,
                     Size = x.Size,
                     Indices = indexModels,
-                    IndexEqualFields = x.Registration == Registration.NotInCode || x.Index == null || x.Index.Current.Length == 0
+                    IndexEqualFields = x.Registration == Registration.NotInCode || x.Index == null || x.Index.Current == null || x.Index.Current.Length == 0
                         ? null
                         : indexModels.All(y => y.EqualFields)
                 };
@@ -240,16 +240,12 @@ else
         }
         else if (cssClass.StartsWith("css-count"))
         {
-            string color = null;
-            // if (!args.Data.DocumentCount.IsValid)
-            // {
-            //     color = "pink";
-            // }
-            //else if (args.Data.DocumentCount.Virtual == null)
-            //{
-            //    color = "lightyellow";
-            //}
-
+            string color = args.Data.DocumentCount == null ? "lightyellow" : null;
+            SetColor(args, color);
+        }
+        else if (cssClass.StartsWith("css-size"))
+        {
+            string color = args.Data.DocumentCount == null ? "lightyellow" : null;
             SetColor(args, color);
         }
         else if (cssClass.StartsWith("css-indices"))

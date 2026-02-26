@@ -13,6 +13,7 @@ public interface IDatabaseMonitor
     IEnumerable<ConfigurationName> GetConfigurations();
     Task<CollectionInfo> GetInstanceAsync(CollectionFingerprint fingerprint);
     IAsyncEnumerable<CollectionInfo> GetInstancesAsync(bool fullDatabaseScan = false, string filter = default);
+    Task RefreshStatsAsync(CollectionFingerprint fingerprint);
     Task TouchAsync(CollectionInfo collectionInfo);
     Task<(int Before, int After)> DropIndexAsync(CollectionInfo collectionInfo);
     Task RestoreIndexAsync(CollectionInfo collectionInfo);

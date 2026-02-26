@@ -116,8 +116,18 @@ else
 
     protected override async Task OnParametersSetAsync()
     {
+        DatabaseMonitor.CollectionInfoChangedEvent += OnCollectionInfoChanged;
         await ReloadData();
+        _ = Task.Run(() => DatabaseMonitor.RefreshStatsAsync(Fingerprint));
         await base.OnParametersSetAsync();
+    }
+
+    private async void OnCollectionInfoChanged(object sender, CollectionInfoChangedEventArgs e)
+    {
+        if (e.CollectionInfo.Key != Fingerprint?.Key) return;
+        _model = e.CollectionInfo;
+        _indexModel = _model.ToIndexModel().ToArray();
+        await InvokeAsync(StateHasChanged);
     }
 
     private async Task TouchCollection()

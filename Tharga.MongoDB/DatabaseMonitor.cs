@@ -256,6 +256,40 @@ internal class DatabaseMonitor : IDatabaseMonitor
             _cache.TryRemove(key, out _);
     }
 
+    public async Task RefreshStatsAsync(CollectionFingerprint fingerprint)
+    {
+        if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
+        if (fingerprint == null) throw new ArgumentNullException(nameof(fingerprint));
+
+        var mongoDbService = GetMongoDbService(fingerprint);
+        var meta = await mongoDbService
+            .GetCollectionsWithMetaAsync(collectionNameFilter: fingerprint.CollectionName, includeDetails: true)
+            .FirstOrDefaultAsync();
+
+        if (meta == null) return;
+
+        _cache.AddOrUpdate(fingerprint.Key,
+            addValueFactory: _ =>
+            {
+                var entry = BuildInitialEntry(fingerprint, meta.Server, null, null);
+                return entry with
+                {
+                    DocumentCount = new DocumentCount { Count = meta.DocumentCount },
+                    Size = meta.Size,
+                    Index = BuildIndexInfo(entry, meta.Indexes)
+                };
+            },
+            updateValueFactory: (_, existing) => existing with
+            {
+                DocumentCount = new DocumentCount { Count = meta.DocumentCount },
+                Size = meta.Size,
+                Index = BuildIndexInfo(existing, meta.Indexes)
+            });
+
+        if (_cache.TryGetValue(fingerprint.Key, out var updated))
+            CollectionInfoChangedEvent?.Invoke(this, new CollectionInfoChangedEventArgs(updated));
+    }
+
     public async Task TouchAsync(CollectionInfo collectionInfo)
     {
         if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");

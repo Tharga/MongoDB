@@ -14,7 +14,8 @@
       "Bash(node -e \"require\\(''fs''\\).writeFileSync\\(''C:/temp/write_ps.js'', ''console.log\\(42\\)''\\)\")",
       "Bash(node:*)",
       "Bash(dotnet build Tharga.MongoDB/Tharga.MongoDB.csproj --no-restore)",
-      "Bash(dotnet build Tharga.MongoDB.Blazor/Tharga.MongoDB.Blazor.csproj --no-restore)"
+      "Bash(dotnet build Tharga.MongoDB.Blazor/Tharga.MongoDB.Blazor.csproj --no-restore)",
+      "Bash(dotnet build Tharga.MongoDB/Tharga.MongoDB.csproj Tharga.MongoDB.Blazor/Tharga.MongoDB.Blazor.csproj --no-restore)"
     ]
   }
 }
