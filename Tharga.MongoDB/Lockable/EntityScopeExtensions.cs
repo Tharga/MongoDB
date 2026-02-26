@@ -39,11 +39,10 @@ public static class EntityScopeExtensions
             if (errorHandler != null)
             {
                 errorHandler.Invoke(e);
+                return entity ?? item.Entity;
             }
-            else
-            {
-                throw;
-            }
+
+            throw;
         }
 
         return await item.CommitAsync(entity);
