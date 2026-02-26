@@ -5,8 +5,8 @@ namespace Tharga.TemplateBlazor.Web.Features.Weather;
 
 public interface IWeatherRepository : IRepository
 {
-    IAsyncEnumerable<WeatherEntity> GetAsync();
     Task AddMany(WeatherEntity[] forecasts);
+    IAsyncEnumerable<WeatherEntity> GetAsync();
 }
 
 public class WeatherRepository : IWeatherRepository
@@ -39,7 +39,6 @@ public record WeatherEntity : EntityBase
 
 public interface IWeatherRepositoryCollection : IDiskRepositoryCollection<WeatherEntity>
 {
-
 }
 
 public class WeatherRepositoryCollection : DiskRepositoryCollectionBase<WeatherEntity>, IWeatherRepositoryCollection

@@ -57,21 +57,39 @@ internal class DatabaseMonitor : IDatabaseMonitor
                 {
                     _logger.LogTrace($"{nameof(IMongoDbServiceFactory.CollectionAccessEvent)}: {e.Fingerprint}");
 
+                    var entry = BuildInitialEntry(e.Fingerprint, e.Server, e.DatabasePart, e.EntityType.Name);
+
                     _cache.AddOrUpdate(e.Fingerprint.Key,
-                        addValueFactory: _ =>
+                        addValueFactory: _ => entry with
                         {
-                            var entry = BuildInitialEntry(e.Fingerprint, e.Server, e.DatabasePart, e.EntityType.Name);
-                            return entry with
-                            {
-                                AccessCount = 1,
-                                Types = entry.Types.Union([e.EntityType.Name]).ToArray()
-                            };
+                            AccessCount = 1,
+                            Types = entry.Types.Union([e.EntityType.Name]).ToArray()
                         },
-                        updateValueFactory: (_, existing) => existing with
+                        updateValueFactory: (_, existing) =>
                         {
-                            AccessCount = existing.AccessCount + 1,
-                            Types = existing.Types.Union([e.EntityType.Name]).ToArray(),
-                            DatabasePart = existing.DatabasePart ?? e.DatabasePart.NullIfEmpty(),
+                            // If previously unclassified, use the freshly-built entry as base
+                            // (it may now be correctly classified as Dynamic via entityTypeName)
+                            if (existing.Registration == Registration.NotInCode)
+                            {
+                                return entry with
+                                {
+                                    AccessCount = existing.AccessCount + 1,
+                                    Types = entry.Types.Union([e.EntityType.Name]).ToArray(),
+                                    DatabasePart = entry.DatabasePart ?? e.DatabasePart.NullIfEmpty(),
+                                    DocumentCount = existing.DocumentCount,
+                                    Size = existing.Size,
+                                    Index = entry.Index != null
+                                        ? new IndexInfo { Current = existing.Index?.Current, Defined = entry.Index.Defined }
+                                        : existing.Index,
+                                    Clean = existing.Clean,
+                                };
+                            }
+                            return existing with
+                            {
+                                AccessCount = existing.AccessCount + 1,
+                                Types = existing.Types.Union([e.EntityType.Name]).ToArray(),
+                                DatabasePart = existing.DatabasePart ?? e.DatabasePart.NullIfEmpty(),
+                            };
                         });
 
                     if (CollectionInfoChangedEvent != null && _cache.TryGetValue(e.Fingerprint.Key, out var item))
@@ -89,7 +107,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
                 {
                     _logger.LogTrace($"{nameof(IMongoDbServiceFactory.IndexUpdatedEvent)}: {e.Fingerprint}");
 
-                    _ = Task.Run(async () =>
+                    Task.Run(async () =>
                     {
                         try
                         {
@@ -106,9 +124,13 @@ internal class DatabaseMonitor : IDatabaseMonitor
                                     var entry = BuildInitialEntry(e.Fingerprint, meta.Server, null, null);
                                     return entry with { Index = BuildIndexInfo(entry, meta.Indexes) };
                                 },
-                                updateValueFactory: (_, existing) => existing with
+                                updateValueFactory: (_, existing) =>
                                 {
-                                    Index = BuildIndexInfo(existing, meta.Indexes)
+                                    // Reclassify NotInCode entries when type information is now available
+                                    var b = existing.Registration == Registration.NotInCode && meta.Types?.Length > 0
+                                        ? BuildInitialEntry(e.Fingerprint, meta.Server ?? existing.Server, existing.DatabasePart, null)
+                                        : existing;
+                                    return b with { Index = BuildIndexInfo(b, meta.Indexes) };
                                 });
 
                             if (CollectionInfoChangedEvent != null && _cache.TryGetValue(e.Fingerprint.Key, out var item))
@@ -279,11 +301,18 @@ internal class DatabaseMonitor : IDatabaseMonitor
                     Index = BuildIndexInfo(entry, meta.Indexes)
                 };
             },
-            updateValueFactory: (_, existing) => existing with
+            updateValueFactory: (_, existing) =>
             {
-                DocumentCount = new DocumentCount { Count = meta.DocumentCount },
-                Size = meta.Size,
-                Index = BuildIndexInfo(existing, meta.Indexes)
+                // Reclassify NotInCode entries when type information is now available
+                var b = existing.Registration == Registration.NotInCode && meta.Types?.Length > 0
+                    ? BuildInitialEntry(fingerprint, meta.Server ?? existing.Server, existing.DatabasePart, null)
+                    : existing;
+                return b with
+                {
+                    DocumentCount = new DocumentCount { Count = meta.DocumentCount },
+                    Size = meta.Size,
+                    Index = BuildIndexInfo(b, meta.Indexes)
+                };
             });
 
         if (_cache.TryGetValue(fingerprint.Key, out var updated))
@@ -310,12 +339,14 @@ internal class DatabaseMonitor : IDatabaseMonitor
         _cache.AddOrUpdate(collectionInfo.Key,
             addValueFactory: _ => collectionInfo with
             {
+                AccessCount = collectionInfo.AccessCount + 1,
                 DocumentCount = new DocumentCount { Count = meta.DocumentCount },
                 Size = meta.Size,
                 Index = BuildIndexInfo(collectionInfo, meta.Indexes)
             },
             updateValueFactory: (_, existing) => existing with
             {
+                AccessCount = existing.AccessCount + 1,
                 DocumentCount = new DocumentCount { Count = meta.DocumentCount },
                 Size = meta.Size,
                 Index = BuildIndexInfo(existing, meta.Indexes)
@@ -446,12 +477,18 @@ internal class DatabaseMonitor : IDatabaseMonitor
     {
         var mongoDbService = GetMongoDbService(fingerprint);
         var meta = await mongoDbService
-            .GetCollectionsWithMetaAsync(collectionNameFilter: fingerprint.CollectionName, includeDetails: false)
+            .GetCollectionsWithMetaAsync(collectionNameFilter: fingerprint.CollectionName, includeDetails: true)
             .FirstOrDefaultAsync();
 
         if (meta == null) return null;
 
         var entry = BuildInitialEntry(fingerprint, meta.Server, null, null);
+        entry = entry with
+        {
+            DocumentCount = new DocumentCount { Count = meta.DocumentCount },
+            Size = meta.Size,
+            Index = BuildIndexInfo(entry, meta.Indexes)
+        };
         _cache[fingerprint.Key] = entry;
         return entry;
     }

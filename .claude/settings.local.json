@@ -15,7 +15,9 @@
       "Bash(node:*)",
       "Bash(dotnet build Tharga.MongoDB/Tharga.MongoDB.csproj --no-restore)",
       "Bash(dotnet build Tharga.MongoDB.Blazor/Tharga.MongoDB.Blazor.csproj --no-restore)",
-      "Bash(dotnet build Tharga.MongoDB/Tharga.MongoDB.csproj Tharga.MongoDB.Blazor/Tharga.MongoDB.Blazor.csproj --no-restore)"
+      "Bash(dotnet build Tharga.MongoDB/Tharga.MongoDB.csproj Tharga.MongoDB.Blazor/Tharga.MongoDB.Blazor.csproj --no-restore)",
+      "Bash(xargs grep -l \"includeDetails\")",
+      "Bash(dotnet build Tharga.MongoDB/Tharga.MongoDB.csproj --no-restore -v quiet)"
     ]
   }
 }
