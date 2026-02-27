@@ -969,7 +969,10 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             //Not sure why this index should be created like this. Trying to disable.
             //await collection.Indexes.CreateOneAsync(new CreateIndexModel<TEntity>(Builders<TEntity>.IndexKeys.Ascending(x => x.Id).Ascending("_t"), new CreateIndexOptions()));
 
-            await UpdateIndicesAsync(collection, assureIndexMode, throwOnException);
+            // When mode is Disabled but a forced restore is requested, fall back to BySchema
+            // so indexes are created/restored without requiring configured names.
+            var effectiveMode = assureIndexMode == AssureIndexMode.Disabled ? AssureIndexMode.BySchema : assureIndexMode;
+            await UpdateIndicesAsync(collection, effectiveMode, throwOnException);
             return true;
         }
 
@@ -1363,12 +1366,19 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             .ToArray();
         var definedIndiceModel = this.BuildIndexMetas().ToArray();
 
+        // Pair each CreateIndexModel with its IndexMeta so we can locate the model by schema
+        var indexPairs = indices.Zip(definedIndiceModel, (idx, meta) => (idx, meta)).ToArray();
+
+        // Schema-only equality: ignore name, compare fields (ordered) and uniqueness
+        static bool SameSchema(IndexMeta a, IndexMeta b) =>
+            a.IsUnique == b.IsUnique && a.Fields.SequenceEqual(b.Fields);
+
         var hasChanged = false;
 
         //NOTE: Drop indexes not in list
         foreach (var collectionIndexModel in existingIndiceModel)
         {
-            if (definedIndiceModel.All(x => x != collectionIndexModel))
+            if (definedIndiceModel.All(x => !SameSchema(x, collectionIndexModel)))
             {
                 var indexName = collectionIndexModel.Name;
 
@@ -1389,23 +1399,21 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         }
 
         //NOTE: Create indexes in the list
-        foreach (var definedIndexModel in definedIndiceModel)
+        foreach (var (indexModel, definedMeta) in indexPairs)
         {
-            if (existingIndiceModel.All(x => x != definedIndexModel))
+            if (existingIndiceModel.All(x => !SameSchema(x, definedMeta)))
             {
                 try
                 {
-                    var index = indices.Single(x => x.Options.Name == definedIndexModel.Name);
-
-                    _logger?.LogDebug("Index {indexName} will be created in collection {collection}.", definedIndexModel.Name, ProtectedCollectionName);
-                    var message = await collection.Indexes.CreateOneAsync(index);
-                    _logger?.LogInformation("Index {indexName} was created in collection {collection}. {message}", definedIndexModel.Name, ProtectedCollectionName, message);
+                    _logger?.LogDebug("Index {indexName} will be created in collection {collection}.", definedMeta.Name, ProtectedCollectionName);
+                    var message = await collection.Indexes.CreateOneAsync(indexModel);
+                    _logger?.LogInformation("Index {indexName} was created in collection {collection}. {message}", definedMeta.Name, ProtectedCollectionName, message);
                     hasChanged = true;
                 }
                 catch (Exception e)
                 {
-                    _logger?.LogError(e, "Failed to create index {indexName} in collection {collection}. {message}", definedIndexModel.Name, ProtectedCollectionName, e.Message);
-                    _initiationLibrary.AddFailedInitiateIndex(ServerName, DatabaseName, ProtectedCollectionName, (IndexFailOperation.Create, definedIndexModel.Name));
+                    _logger?.LogError(e, "Failed to create index {indexName} in collection {collection}. {message}", definedMeta.Name, ProtectedCollectionName, e.Message);
+                    _initiationLibrary.AddFailedInitiateIndex(ServerName, DatabaseName, ProtectedCollectionName, (IndexFailOperation.Create, definedMeta.Name));
                     if (throwOnException) throw;
                 }
             }

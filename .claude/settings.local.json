@@ -19,7 +19,8 @@
       "Bash(xargs grep -l \"includeDetails\")",
       "Bash(dotnet build Tharga.MongoDB/Tharga.MongoDB.csproj --no-restore -v quiet)",
       "Bash(dotnet build --no-restore -v q)",
-      "Bash(dotnet build Tharga.MongoDB/Tharga.MongoDB.csproj --no-restore -v q)"
+      "Bash(dotnet build Tharga.MongoDB/Tharga.MongoDB.csproj --no-restore -v q)",
+      "Bash(dotnet build Tharga.MongoDB/Tharga.MongoDB.csproj -v q)"
     ]
   }
 }

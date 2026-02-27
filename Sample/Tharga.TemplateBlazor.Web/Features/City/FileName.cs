@@ -39,6 +39,7 @@ public class CityRepository : ICityRepository
 public record CityEntity : EntityBase
 {
     public required string Name { get; init; }
+    public string Country { get; init; }
 }
 
 public interface ICityRepositoryCollection : IDiskRepositoryCollection<CityEntity>
@@ -54,6 +55,9 @@ public class CityRepositoryCollection : DiskRepositoryCollectionBase<CityEntity>
 
     public override IEnumerable<CreateIndexModel<CityEntity>> Indices =>
     [
-        new(Builders<CityEntity>.IndexKeys.Ascending(f => f.Name), new CreateIndexOptions { Unique = true, Name = nameof(CityEntity.Name)})
+        new(Builders<CityEntity>.IndexKeys.Ascending(f => f.Name), new CreateIndexOptions { Unique = true }),
+        new(Builders<CityEntity>.IndexKeys.Ascending(f => f.Country), new CreateIndexOptions { Unique = false }),
+        new(Builders<CityEntity>.IndexKeys.Descending(f => f.Country), new CreateIndexOptions { Unique = false }),
+        new(Builders<CityEntity>.IndexKeys.Ascending(f => f.Country).Ascending(f => f.Name), new CreateIndexOptions { Unique = false })
     ];
 }

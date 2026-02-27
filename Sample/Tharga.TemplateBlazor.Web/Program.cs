@@ -27,7 +27,9 @@ builder.Services.AddThargaBlazor(o =>
 
 builder.AddMongoDB(o =>
 {
-    o.AssureIndex = AssureIndexMode.BySchema; //TODO: Cannot turn this on when there is an index without name.
+    o.AssureIndex = AssureIndexMode.BySchema;
+    //o.Monitor.StorageMode = MonitorStorageMode.Memory;
+    //o.AssureIndex = AssureIndexMode.Disabled;
 });
 
 var app = builder.Build();
