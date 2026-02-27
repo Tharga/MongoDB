@@ -197,7 +197,7 @@ internal class MongoDbService : IMongoDbServiceInternal
             var isUnique = indexDoc.TryGetValue("unique", out var uniqueVal) && uniqueVal.AsBoolean;
             var keyDoc = indexDoc["key"].AsBsonDocument;
 
-            var fields = keyDoc.Names.ToArray();
+            var fields = keyDoc.Elements.Select(e => $"{e.Name}_{e.Value}").ToArray();
 
             indexModels.Add(new IndexMeta
             {
