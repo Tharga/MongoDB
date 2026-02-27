@@ -28,6 +28,7 @@ internal class CallLibrary : ICallLibrary
     {
         var info = new CallInfo
         {
+            Key = e.CallKey,
             StartTime = DateTime.UtcNow,
             Fingerprint = e.Fingerprint,
             FunctionName = e.FunctionName,
@@ -102,5 +103,10 @@ internal class CallLibrary : ICallLibrary
     public IEnumerable<CallInfo> GetOngoingCalls()
     {
         return _calls.Values.Where(x => !x.Final);
+    }
+
+    public CallInfo GetCall(Guid key)
+    {
+        return _calls[key];
     }
 }

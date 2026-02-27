@@ -98,7 +98,7 @@ else
                 </RadzenDataGridColumn>
                 <RadzenDataGridColumn Title="" Sortable="false" Width="60px;" Filterable="false">
                     <Template>
-                        <StandardButton Icon="format_list_numbered" Click="@(() => ShowIndexDialog(context))" Style="margin-right: 3px;" />
+                        <StandardButton Icon="format_list_numbered" Click="@(() => ShowCollectionDialog(context))" Style="margin-right: 3px;" />
                     </Template>
                 </RadzenDataGridColumn>
             </Columns>
@@ -185,13 +185,11 @@ else
         await base.OnParametersSetAsync();
     }
 
-    private async Task ShowIndexDialog(CollectionModel context)
+    private async Task ShowCollectionDialog(CollectionModel context)
     {
-        var result = await DialogService.OpenAsync<CollectionDialog>(context.CollectionName, new Dictionary<string, object>
-        {
-            { "Fingerprint", context }
-        }, new DialogOptions { Resizable = true, Draggable = true });
-
+        var parameters = new Dictionary<string, object> { { "Fingerprint", context } };
+        var dialogOptions = new DialogOptions { Resizable = true, Draggable = true };
+        var result = await DialogService.OpenAsync<CollectionDialog>(context.CollectionName, parameters, dialogOptions);
         if (result != true) return;
 
         await ReloadDataAsync();

@@ -1,8 +1,10 @@
 ﻿@using Microsoft.Extensions.Options
 @using Tharga.Blazor
+@using Tharga.Blazor.Framework.Buttons
 @using Tharga.MongoDB.Configuration
 @inject IDatabaseMonitor DatabaseMonitor;
 @inject IOptions<DatabaseOptions> DatabaseOptions
+@inject DialogService DialogService
 
 @if (!DatabaseOptions.Value.Monitor.Enabled)
 {
@@ -20,7 +22,7 @@ else
             <RadzenColumn>
                 <RadzenStack Orientation="Orientation.Vertical">
                     <RadzenText TextStyle="TextStyle.Caption" Text="Type"/>
-                    <RadzenSelectBar TValue="CallType" @bind-Value="@SelectedCallType" Change="@ReloadData" Style="margin-bottom: 6px;">
+                    <RadzenSelectBar TValue="CallType" @bind-Value="@SelectedCallType" Change="@ReloadDataAsync" Style="margin-bottom: 6px;">
                         <Items>
                             <RadzenSelectBarItem Text="Last" Value="CallType.Last"/>
                             <RadzenSelectBarItem Text="Slow" Value="CallType.Slow"/>
@@ -32,7 +34,7 @@ else
             <RadzenColumn>
                 <RadzenStack Orientation="Orientation.Vertical">
                     <RadzenText TextStyle="TextStyle.Caption" Text="Databases"/>
-                    <RadzenDropDown Placeholder="Select databases" @bind-Value=@SelectedDatabases Data=@_databases Multiple=true Style="margin-bottom: 6px;" Change="@ReloadData"/>
+                    <RadzenDropDown Placeholder="Select databases" @bind-Value=@SelectedDatabases Data=@_databases Multiple=true Style="margin-bottom: 6px;" Change="@ReloadDataAsync" />
                 </RadzenStack>
             </RadzenColumn>
         </RadzenRow>
@@ -65,6 +67,11 @@ else
                         @context.Exception?.Message
                     </Template>
                 </RadzenDataGridColumn>
+                <RadzenDataGridColumn Title="" Sortable="false" Width="60px;" Filterable="false">
+                    <Template>
+                        <StandardButton Icon="format_list_numbered" Click="@(() => ShowCallDialog(context))" Style="margin-right: 3px;" />
+                    </Template>
+                </RadzenDataGridColumn>
             </Columns>
         </RadzenDataGrid>
     </RadzenStack>
@@ -86,7 +93,7 @@ else
         _all = DatabaseMonitor.GetCalls(CallType.Last).Union(DatabaseMonitor.GetCalls(CallType.Slow)).ToArray();
         _databases = _all.GroupBy(x => x.Fingerprint.DatabaseName).Select(x => x.First()).Select(x => x.Fingerprint.DatabaseName).Order().ToArray();
 
-        ReloadData();
+        await ReloadDataAsync();
         await base.OnParametersSetAsync();
     }
 
@@ -113,13 +120,23 @@ else
         }
     }
 
-    private void ReloadData()
+    private async Task ReloadDataAsync()
     {
         _all = DatabaseMonitor.GetCalls(SelectedCallType).ToArray();
         // _databases = _all.GroupBy(x => x.DatabaseName).Select(x => x.First()).Select(x => x.DatabaseName).Order().ToArray();
         _model = _all.Where(x => SelectedDatabases == null || !SelectedDatabases.Any() || SelectedDatabases.Contains(x.Fingerprint.DatabaseName)).ToArray();
         _showConfiguration = _model.GroupBy(x => x.Fingerprint.ConfigurationName).Count() > 1;
         StateHasChanged();
+    }
+
+    private async Task ShowCallDialog(CallInfo context)
+    {
+        var parameters = new Dictionary<string, object> { { "Key", context.Key } };
+        var dialogOptions = new DialogOptions { Resizable = true, Draggable = true };
+        var result = await DialogService.OpenAsync<CallDialog>($"{context.FunctionName} {context.Fingerprint.CollectionName}", parameters, dialogOptions);
+        if (result != true) return;
+
+        await ReloadDataAsync();
     }
 
 }

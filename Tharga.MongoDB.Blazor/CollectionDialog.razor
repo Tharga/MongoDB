@@ -82,17 +82,18 @@ else
                     <RadzenDataGridColumn Title="Name" Property="@nameof(IndexModel.Name)"/>
                     <RadzenDataGridColumn Title="Defined" CssClass="css-defined">
                         <Template>
-                            <RadzenText Text="@($"{(context.Defined?.IsUnique ?? false ? "Unique " : "")}{string.Join(", ", context.Defined?.Fields ?? [])}")"/>
+                            <RadzenText Text="@($"{(context.Defined?.IsUnique ?? false ? "[Unique] " : "")}{string.Join(", ", context.Defined?.Fields ?? [])}")"/>
                         </Template>
                     </RadzenDataGridColumn>
                     <RadzenDataGridColumn Title="Current" CssClass="css-current">
                         <Template>
-                            <RadzenText Text="@($"{(context.Current?.IsUnique ?? false ? "Unique " : "")}{string.Join(", ", context.Current?.Fields ?? [])}")"/>
+                            <RadzenText Text="@($"{(context.Current?.IsUnique ?? false ? "[Unique] " : "")}{string.Join(", ", context.Current?.Fields ?? [])}")" />
                         </Template>
                     </RadzenDataGridColumn>
                     <RadzenDataGridColumn>
                         <Template>
-                            <RadzenButton Text="Duplicates" Click="@(() => Show(context))" Disabled="@(!CanTouch)"/>
+                            @* <RadzenButton Icon="compare_arrows" Text="Duplicates" Click="@(() => Show(context))" Disabled="@(!CanTouch)" Visible="@(context.Current?.IsUnique == true && context.Differs())" /> *@
+                            <RadzenButton Icon="compare_arrows" Text="Duplicates" Click="@(() => Show(context))" Disabled="@(!CanTouch)" Visible="@(context.Current?.IsUnique == true)" />
                         </Template>
                     </RadzenDataGridColumn>
                 </Columns>
@@ -135,7 +136,7 @@ else
 
     protected override async Task OnParametersSetAsync()
     {
-        await ReloadData();
+        await ReloadDataAsync();
         _ = Task.Run(() => DatabaseMonitor.RefreshStatsAsync(Fingerprint));
         await base.OnParametersSetAsync();
     }
@@ -154,12 +155,12 @@ else
         {
             await DatabaseMonitor.TouchAsync(_model);
 
-            await ReloadData();
+            await ReloadDataAsync();
             NotificationService.Notify(new NotificationMessage { Summary = "Collection has been touched." });
         }
         catch (Exception e)
         {
-            await ReloadData();
+            await ReloadDataAsync();
             NotificationService.Notify(new NotificationMessage { Summary = e.Message, Detail = $"{e.StackTrace}", Severity = NotificationSeverity.Error });
         }
     }
@@ -174,12 +175,12 @@ else
             var response = await DatabaseMonitor.DropIndexAsync(_model);
             var dropCount = response.Before - response.After;
 
-            await ReloadData();
+            await ReloadDataAsync();
             NotificationService.Notify(new NotificationMessage { Summary = "Indices has been dropped.", Detail = $"Dropped {dropCount} indices. There are {response.After} indices left." });
         }
         catch (Exception e)
         {
-            await ReloadData();
+            await ReloadDataAsync();
             NotificationService.Notify(new NotificationMessage { Summary = e.Message, Detail = $"{e.StackTrace}", Severity = NotificationSeverity.Error });
         }
     }
@@ -193,12 +194,12 @@ else
 
             await DatabaseMonitor.RestoreIndexAsync(_model);
 
-            await ReloadData();
+            await ReloadDataAsync();
             NotificationService.Notify(new NotificationMessage { Summary = "Indices has been restored." });
         }
         catch (Exception e)
         {
-            await ReloadData();
+            await ReloadDataAsync();
             NotificationService.Notify(new NotificationMessage { Summary = e.Message, Detail = $"{e.StackTrace}", Severity = NotificationSeverity.Error });
         }
     }
@@ -212,17 +213,17 @@ else
 
             var cleanInfo = await DatabaseMonitor.CleanAsync(_model, cleanGuids: true);
 
-            await ReloadData();
+            await ReloadDataAsync();
             NotificationService.Notify(new NotificationMessage { Summary = "Collection has been cleaned.", Detail = $"{cleanInfo.DocumentsCleaned} documents cleaned." });
         }
         catch (Exception e)
         {
-            await ReloadData();
+            await ReloadDataAsync();
             NotificationService.Notify(new NotificationMessage { Summary = e.Message, Detail = $"{e.StackTrace}", Severity = NotificationSeverity.Error });
         }
     }
 
-    private async Task ReloadData()
+    private async Task ReloadDataAsync()
     {
         var response = await DatabaseMonitor.GetInstanceAsync(Fingerprint);
 
@@ -279,8 +280,11 @@ else
 
     private async Task Show(IndexModel context)
     {
-        var items = await DatabaseMonitor.GetIndexBlockersAsync(_model, context.Name);
-        await DialogService.Alert($"{string.Join('\n', items)}", "Duplicates");
+        var items = (await DatabaseMonitor.GetIndexBlockersAsync(_model, context.Name)).ToArray();
+        if (items.Any())
+            await DialogService.Alert($"{string.Join('\n', items.Select(x => $"{x.First()} == {x.Last()}"))}", "Duplicates");
+        else
+            await DialogService.Alert($"No duplicate documents by index '{context.Name}' found.", "Duplicates");
     }
 
 }

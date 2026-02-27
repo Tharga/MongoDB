@@ -1,0 +1,58 @@
+﻿@inject ICallLibrary CallLibrary
+
+@if (_model == null)
+{
+    <Tharga.Blazor.Loading />
+}
+else
+{
+    <RadzenStack Orientation="Orientation.Vertical" Gap="1rem">
+        <RadzenRow>
+            <RadzenColumn>
+                <RadzenText TextStyle="TextStyle.Caption" Text="Configuration"/>
+                <RadzenText Text="@_model.Fingerprint.ConfigurationName"/>
+            </RadzenColumn>
+            <RadzenColumn>
+                <RadzenText TextStyle="TextStyle.Caption" Text="Database"/>
+                <RadzenText Text="@_model.Fingerprint.DatabaseName" />
+            </RadzenColumn>
+            <RadzenColumn>
+                <RadzenText TextStyle="TextStyle.Caption" Text="Collection"/>
+                <RadzenText Text="@_model.Fingerprint.CollectionName" />
+            </RadzenColumn>
+        </RadzenRow>
+        <RadzenRow>
+            <RadzenColumn>
+                <RadzenText TextStyle="TextStyle.Caption" Text="FunctionName" />
+                <RadzenText Text="@_model.FunctionName"/>
+            </RadzenColumn>
+            <RadzenColumn>
+                <RadzenText TextStyle="TextStyle.Caption" Text="Operation" />
+                <RadzenText Text="@($"{_model.Operation}")"/>
+            </RadzenColumn>
+            <RadzenColumn>
+                <RadzenText TextStyle="TextStyle.Caption" Text="Count" />
+                <RadzenText Text="@($"{_model.Count}")" />
+            </RadzenColumn>
+        </RadzenRow>
+    </RadzenStack>
+}
+
+@code {
+    private CallInfo _model;
+
+    [Parameter]
+    public Guid Key { get; set; }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await ReloadDataAsync();
+        await base.OnParametersSetAsync();
+    }
+
+    private async Task ReloadDataAsync()
+    {
+        _model = CallLibrary.GetCall(Key);
+        StateHasChanged();
+    }
+}
