@@ -6,6 +6,7 @@
 @attribute [StreamRendering]
 @inject ILocalWeatherRepository LocalWeatherRepository
 @inject ICityRepository CityRepository
+@inject DialogService DialogService
 
 <h1>Local Weather</h1>
 
@@ -20,6 +21,7 @@ else
     <RadzenStack Orientation="Orientation.Horizontal" Gap="1rem" Style="margin-bottom: 6px;">
         <RadzenDropDown Data="@_cities" TValue="CityEntity" Value="@_selectedCity" Change="@(a => Change(a))" TextProperty="Name" />
         <StandardButton Icon="delete" Click="DeleteCity" />
+        <StandardButton Icon="add" Click="CreateCity" />
     </RadzenStack>
 
     <table class="table">
@@ -99,14 +101,26 @@ else
         StateHasChanged();
     }
 
+    private async Task CreateCity()
+    {
+        await CityRepository.Add(new CityEntity { Name = Guid.NewGuid().ToString() });
+        _cities = await CityRepository.GetAsync().ToArrayAsync();
+        StateHasChanged();
+    }
+
     private async Task DeleteCity()
     {
         if (_selectedCity == null) return;
 
+        var response = await DialogService.Confirm($"Confirm delete '{_selectedCity.Name}'.", "Confirm delete");
+        if (response != true) return;
+
         await LocalWeatherRepository.DropAsync(_selectedCity.Name);
         await CityRepository.DeleteAsync(_selectedCity.Name);
-        _selectedCity = null;
-        StateHasChanged();
+
+        _cities = await CityRepository.GetAsync().ToArrayAsync();
+        _selectedCity = _cities.FirstOrDefault();
+        await ReloadData();
     }
 
 }

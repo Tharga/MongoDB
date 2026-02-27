@@ -1,4 +1,5 @@
 ﻿using Tharga.MongoDB;
+using Tharga.MongoDB.Configuration;
 using Tharga.MongoDB.Disk;
 
 namespace Tharga.TemplateBlazor.Web.Features.Weather;
@@ -61,4 +62,6 @@ public class LocalWeatherRepositoryCollection : DiskRepositoryCollectionBase<Loc
         : base(mongoDbServiceFactory, logger, databaseContext)
     {
     }
+
+    public override CreateStrategy CreateCollectionStrategy => CreateStrategy.CreateOnGet;
 }
