@@ -2,6 +2,7 @@ using Blazored.LocalStorage;
 using Radzen;
 using Tharga.Blazor.Framework;
 using Tharga.MongoDB;
+using Tharga.MongoDB.Configuration;
 using Tharga.TemplateBlazor.Web.Components;
 using Tharga.TemplateBlazor.Web.Framework;
 
@@ -24,7 +25,11 @@ builder.Services.AddThargaBlazor(o =>
     o.Title = "Tharga Template Site";
 });
 
-builder.AddMongoDB();
+builder.AddMongoDB(o =>
+{
+    o.AssureIndex = AssureIndexMode.Disabled;
+    //o.AssureIndex = AssureIndexMode.BySchema; //TODO: Cannot turn this on when there is an index without name.
+});
 
 var app = builder.Build();
 

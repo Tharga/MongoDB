@@ -1,8 +1,8 @@
-﻿using Tharga.MongoDB;
+﻿using MongoDB.Driver;
+using Tharga.MongoDB;
 using Tharga.MongoDB.Disk;
 
 namespace Tharga.TemplateBlazor.Web.Features.City;
-
 
 public interface ICityRepository : IRepository
 {
@@ -45,4 +45,9 @@ public class CityRepositoryCollection : DiskRepositoryCollectionBase<CityEntity>
         : base(mongoDbServiceFactory, logger)
     {
     }
+
+    public override IEnumerable<CreateIndexModel<CityEntity>> Indices =>
+    [
+        new(Builders<CityEntity>.IndexKeys.Ascending(f => f.Name), new CreateIndexOptions { Unique = true })
+    ];
 }

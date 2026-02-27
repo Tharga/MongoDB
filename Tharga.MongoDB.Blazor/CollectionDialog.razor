@@ -35,6 +35,10 @@ else
                 <RadzenText TextStyle="TextStyle.Caption" Text="Registration"/>
                 <RadzenText Text="@($"{_model.Registration}")" />
             </RadzenColumn>
+            <RadzenColumn>
+                <RadzenText TextStyle="TextStyle.Caption" Text="Types" />
+                <RadzenText Text="@($"{string.Join(", ", _model.Types)}")" />
+            </RadzenColumn>
         </RadzenRow>
         <RadzenRow>
             <RadzenColumn>
@@ -56,7 +60,7 @@ else
             <RadzenRow>
                 <RadzenColumn>
                     <RadzenText TextStyle="TextStyle.Caption" Text="Last Cleaned"/>
-                    <RadzenText Text="@($"{_model.Clean.CleanedAt:yyyy-MM-dd HH:mm:ss} UTC")" />
+                    <RadzenText Text="@_model.Clean.CleanedAt.ToLocalDurationString()" title="@_model.Clean.CleanedAt.ToLocalDateTimeString()" />
                 </RadzenColumn>
                 <RadzenColumn>
                     <RadzenText TextStyle="TextStyle.Caption" Text="Documents Cleaned"/>
@@ -64,33 +68,36 @@ else
                 </RadzenColumn>
                 <RadzenColumn>
                     <RadzenText TextStyle="TextStyle.Caption" Text="Fingerprint Match"/>
-                    <RadzenText Text="@(FingerprintMatch ? "Current" : "Outdated")"
-                                Style="@(FingerprintMatch ? "" : "color: orange; font-weight: bold;")" />
+                    <RadzenText Text="@(FingerprintMatch ? "Current" : "Outdated")" Style="@(FingerprintMatch ? "" : "color: orange; font-weight: bold;")" />
                 </RadzenColumn>
             </RadzenRow>
         }
 
-        <RadzenDataGrid Data="_indexModel" TItem="IndexModel"
-                        CellRender="@OnCellRender">
-            <Columns>
-                <RadzenDataGridColumn Title="Name" Property="@nameof(IndexModel.Name)"/>
-                <RadzenDataGridColumn Title="Defined" CssClass="css-defined">
-                    <Template>
-                        <RadzenText Text="@($"{((context.Defined?.IsUnique ?? false) ? "Unique " : "")}{string.Join(", ", context.Defined?.Fields ?? [])}")" />
-                    </Template>
-                </RadzenDataGridColumn>
-                <RadzenDataGridColumn Title="Current" CssClass="css-current">
-                    <Template>
-                        <RadzenText Text="@($"{((context.Current?.IsUnique ?? false) ? "Unique " : "")}{string.Join(", ", context.Current?.Fields ?? [])}")" />
-                    </Template>
-                </RadzenDataGridColumn>
-                <RadzenDataGridColumn>
-                    <Template>
-                        <RadzenButton Text="Duplicates" Click="@(() => Show(context))" Disabled="@(!CanTouch)" />
-                    </Template>
-                </RadzenDataGridColumn>
-            </Columns>
-        </RadzenDataGrid>
+        @if (_indexModel.Any())
+        {
+            <RadzenText TextStyle="TextStyle.Caption" Text="Indices"/>
+            <RadzenDataGrid Data="_indexModel" TItem="IndexModel"
+                            CellRender="@OnCellRender">
+                <Columns>
+                    <RadzenDataGridColumn Title="Name" Property="@nameof(IndexModel.Name)"/>
+                    <RadzenDataGridColumn Title="Defined" CssClass="css-defined">
+                        <Template>
+                            <RadzenText Text="@($"{(context.Defined?.IsUnique ?? false ? "Unique " : "")}{string.Join(", ", context.Defined?.Fields ?? [])}")"/>
+                        </Template>
+                    </RadzenDataGridColumn>
+                    <RadzenDataGridColumn Title="Current" CssClass="css-current">
+                        <Template>
+                            <RadzenText Text="@($"{(context.Current?.IsUnique ?? false ? "Unique " : "")}{string.Join(", ", context.Current?.Fields ?? [])}")"/>
+                        </Template>
+                    </RadzenDataGridColumn>
+                    <RadzenDataGridColumn>
+                        <Template>
+                            <RadzenButton Text="Duplicates" Click="@(() => Show(context))" Disabled="@(!CanTouch)"/>
+                        </Template>
+                    </RadzenDataGridColumn>
+                </Columns>
+            </RadzenDataGrid>
+        }
 
         <RadzenStack Orientation="Orientation.Horizontal" Gap="1rem">
             <ActionButton Text="Touch" Icon="touch_app" Click="TouchCollection" Enabled="@CanTouch" />

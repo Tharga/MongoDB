@@ -278,11 +278,17 @@ internal class DatabaseMonitor : IDatabaseMonitor
         if (fingerprint == null) throw new ArgumentNullException(nameof(fingerprint));
 
         var mongoDbService = GetMongoDbService(fingerprint);
-        var meta = await mongoDbService
+        var metaTask = mongoDbService
             .GetCollectionsWithMetaAsync(fingerprint.DatabaseName, collectionNameFilter: fingerprint.CollectionName, includeDetails: true)
-            .FirstOrDefaultAsync();
+            .FirstOrDefaultAsync().AsTask();
+        var cleanTask = mongoDbService.ReadCleanInfoAsync(fingerprint.DatabaseName, fingerprint.CollectionName);
 
+        await Task.WhenAll(metaTask, cleanTask);
+
+        var meta = metaTask.Result;
         if (meta == null) return;
+
+        var cleanInfo = cleanTask.Result;
 
         _cache.AddOrUpdate(fingerprint.Key,
             addValueFactory: _ =>
@@ -292,14 +298,16 @@ internal class DatabaseMonitor : IDatabaseMonitor
                 {
                     DocumentCount = new DocumentCount { Count = meta.DocumentCount },
                     Size = meta.Size,
-                    Index = BuildIndexInfo(entry, meta.Indexes)
+                    Index = BuildIndexInfo(entry, meta.Indexes),
+                    Clean = cleanInfo
                 };
             },
             updateValueFactory: (_, existing) => existing with
             {
                 DocumentCount = new DocumentCount { Count = meta.DocumentCount },
                 Size = meta.Size,
-                Index = BuildIndexInfo(existing, meta.Indexes)
+                Index = BuildIndexInfo(existing, meta.Indexes),
+                Clean = cleanInfo
             });
 
         if (_cache.TryGetValue(fingerprint.Key, out var updated))
@@ -463,10 +471,14 @@ internal class DatabaseMonitor : IDatabaseMonitor
     private async Task<CollectionInfo> LoadAndCacheAsync(CollectionFingerprint fingerprint)
     {
         var mongoDbService = GetMongoDbService(fingerprint);
-        var meta = await mongoDbService
+        var metaTask = mongoDbService
             .GetCollectionsWithMetaAsync(fingerprint.DatabaseName, collectionNameFilter: fingerprint.CollectionName, includeDetails: true)
-            .FirstOrDefaultAsync();
+            .FirstOrDefaultAsync().AsTask();
+        var cleanTask = mongoDbService.ReadCleanInfoAsync(fingerprint.DatabaseName, fingerprint.CollectionName);
 
+        await Task.WhenAll(metaTask, cleanTask);
+
+        var meta = metaTask.Result;
         if (meta == null) return null;
 
         var entry = BuildInitialEntry(fingerprint, meta.Server, null, null);
@@ -474,7 +486,8 @@ internal class DatabaseMonitor : IDatabaseMonitor
         {
             DocumentCount = new DocumentCount { Count = meta.DocumentCount },
             Size = meta.Size,
-            Index = BuildIndexInfo(entry, meta.Indexes)
+            Index = BuildIndexInfo(entry, meta.Indexes),
+            Clean = cleanTask.Result
         };
         _cache[fingerprint.Key] = entry;
         return entry;
@@ -487,7 +500,6 @@ internal class DatabaseMonitor : IDatabaseMonitor
 
         if (staticLookup.TryGetValue((configName, fingerprint.CollectionName), out var reg))
         {
-            var entityType = ResolveEntityType(reg.CollectionType);
             return new CollectionInfo
             {
                 ConfigurationName = fingerprint.ConfigurationName,
@@ -500,13 +512,12 @@ internal class DatabaseMonitor : IDatabaseMonitor
                 Types = reg.Types,
                 CollectionType = reg.CollectionType,
                 Index = new IndexInfo { Current = null, Defined = reg.DefinedIndices },
-                CurrentSchemaFingerprint = entityType != null ? SchemaFingerprint.Generate(entityType) : null,
+                CurrentSchemaFingerprint = reg.EntityType != null ? SchemaFingerprint.Generate(reg.EntityType) : null,
             };
         }
 
         if (entityTypeName != null && dynamicLookup.TryGetValue(entityTypeName, out var dyn))
         {
-            var entityType = ResolveEntityType(dyn.CollectionType);
             return new CollectionInfo
             {
                 ConfigurationName = fingerprint.ConfigurationName,
@@ -519,7 +530,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
                 Types = [entityTypeName],
                 CollectionType = dyn.CollectionType,
                 Index = new IndexInfo { Current = null, Defined = dyn.DefinedIndices },
-                CurrentSchemaFingerprint = entityType != null ? SchemaFingerprint.Generate(entityType) : null,
+                CurrentSchemaFingerprint = dyn.EntityType != null ? SchemaFingerprint.Generate(dyn.EntityType) : null,
             };
         }
 
@@ -684,6 +695,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
                     CollectionType = registeredCollection.Key,
                     Registration = Registration.Static,
                     DefinedIndices = instance.BuildIndexMetas().ToArray(),
+                    EntityType = genericParam,
                 };
             }
         }
@@ -717,6 +729,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
                         Type = genericParam.Name,
                         CollectionType = registeredCollection.Key,
                         DefinedIndices = collection.BuildIndexMetas().ToArray(),
+                        EntityType = genericParam,
                     };
                 }
                 else
@@ -732,6 +745,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
         public required Source Source { get; init; }
         public required Type CollectionType { get; init; }
         public required IndexMeta[] DefinedIndices { get; init; }
+        public Type EntityType { get; init; }
     }
 
     internal record StatColInfo : ColInfo
