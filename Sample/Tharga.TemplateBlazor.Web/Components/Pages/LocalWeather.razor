@@ -17,7 +17,10 @@
 }
 else
 {
-    <RadzenDropDown Data="@_cities" TValue="CityEntity" Value="@_selectedCity" Change="@(a => Change(a))" TextProperty="Name" />
+    <RadzenStack Orientation="Orientation.Horizontal" Gap="1rem" Style="margin-bottom: 6px;">
+        <RadzenDropDown Data="@_cities" TValue="CityEntity" Value="@_selectedCity" Change="@(a => Change(a))" TextProperty="Name" />
+        <StandardButton Icon="delete" Click="DeleteCity" />
+    </RadzenStack>
 
     <table class="table">
         <thead>
@@ -52,10 +55,6 @@ else
     protected override async Task OnInitializedAsync()
     {
         await Task.Delay(500);
-
-        // await CityRepository.Add(new CityEntity { Name = Guid.NewGuid().ToString() });
-        // StateHasChanged();
-
         _cities = await CityRepository.GetAsync().ToArrayAsync();
         if (_cities.Length == 0)
         {
@@ -97,6 +96,16 @@ else
     {
         _selectedCity = (CityEntity)o;
         await ReloadData();
+        StateHasChanged();
+    }
+
+    private async Task DeleteCity()
+    {
+        if (_selectedCity == null) return;
+
+        await LocalWeatherRepository.DropAsync(_selectedCity.Name);
+        await CityRepository.DeleteAsync(_selectedCity.Name);
+        _selectedCity = null;
         StateHasChanged();
     }
 

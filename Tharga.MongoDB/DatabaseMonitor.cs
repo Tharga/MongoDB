@@ -30,6 +30,9 @@ internal class DatabaseMonitor : IDatabaseMonitor
     private readonly SemaphoreSlim _lookupLock = new(1, 1);
     private bool _started;
 
+    private bool UsesDatabaseStorage => _options.Monitor?.StorageMode == MonitorStorageMode.Database;
+    private static IMongoDbServiceInternal AsInternal(IMongoDbService svc) => svc as IMongoDbServiceInternal;
+
     public event EventHandler<CollectionInfoChangedEventArgs> CollectionInfoChangedEvent;
     public event EventHandler<CollectionDroppedEventArgs> CollectionDroppedEvent;
 
@@ -58,6 +61,9 @@ internal class DatabaseMonitor : IDatabaseMonitor
                     _logger.LogTrace($"{nameof(IMongoDbServiceFactory.CollectionAccessEvent)}: {e.Fingerprint}");
 
                     var entry = BuildInitialEntry(e.Fingerprint, e.Server, e.DatabasePart, e.EntityType.Name);
+
+                    // Track previous registration so we can detect reclassification
+                    var previousRegistration = _cache.TryGetValue(e.Fingerprint.Key, out var prev) ? (Registration?)prev.Registration : null;
 
                     _cache.AddOrUpdate(e.Fingerprint.Key,
                         addValueFactory: _ => entry with
@@ -92,8 +98,15 @@ internal class DatabaseMonitor : IDatabaseMonitor
                             };
                         });
 
-                    if (CollectionInfoChangedEvent != null && _cache.TryGetValue(e.Fingerprint.Key, out var item))
-                        CollectionInfoChangedEvent?.Invoke(this, new CollectionInfoChangedEventArgs(item));
+                    if (_cache.TryGetValue(e.Fingerprint.Key, out var item))
+                    {
+                        if (CollectionInfoChangedEvent != null)
+                            CollectionInfoChangedEvent.Invoke(this, new CollectionInfoChangedEventArgs(item));
+
+                        // Persist when a Dynamic collection is first seen or reclassified from NotInCode
+                        if (UsesDatabaseStorage && item.Registration == Registration.Dynamic && previousRegistration != Registration.Dynamic)
+                            Task.Run(async () => await SaveToMonitorAsync(e.Fingerprint, item));
+                    }
                 }
                 catch (Exception exception)
                 {
@@ -128,7 +141,10 @@ internal class DatabaseMonitor : IDatabaseMonitor
                                     existing with { Index = BuildIndexInfo(existing, meta.Indexes) });
 
                             if (CollectionInfoChangedEvent != null && _cache.TryGetValue(e.Fingerprint.Key, out var item))
+                            {
                                 CollectionInfoChangedEvent?.Invoke(this, new CollectionInfoChangedEventArgs(item));
+                                await SaveToMonitorAsync(e.Fingerprint, item);
+                            }
                         }
                         catch (Exception ex)
                         {
@@ -150,8 +166,19 @@ internal class DatabaseMonitor : IDatabaseMonitor
                                  && kv.Value.CollectionName == e.DatabaseContext.CollectionName)
                     .Select(kv => kv.Key)
                     .ToList();
+
+                var removedEntries = new List<CollectionInfo>();
                 foreach (var key in keysToRemove)
-                    _cache.TryRemove(key, out _);
+                    if (_cache.TryRemove(key, out var removed))
+                        removedEntries.Add(removed);
+
+                if (UsesDatabaseStorage && removedEntries.Count > 0)
+                    Task.Run(async () =>
+                    {
+                        foreach (var removed in removedEntries)
+                            if (AsInternal(GetMongoDbService(removed)) is { } svc)
+                                await svc.RemoveMonitorRecordAsync(removed.DatabaseName, removed.CollectionName);
+                    });
 
                 CollectionDroppedEvent?.Invoke(s, e);
             };
@@ -311,7 +338,10 @@ internal class DatabaseMonitor : IDatabaseMonitor
             });
 
         if (_cache.TryGetValue(fingerprint.Key, out var updated))
+        {
             CollectionInfoChangedEvent?.Invoke(this, new CollectionInfoChangedEventArgs(updated));
+            await SaveToMonitorAsync(fingerprint, updated);
+        }
     }
 
     public async Task TouchAsync(CollectionInfo collectionInfo)
@@ -348,7 +378,10 @@ internal class DatabaseMonitor : IDatabaseMonitor
             });
 
         if (_cache.TryGetValue(collectionInfo.Key, out var updated))
+        {
             CollectionInfoChangedEvent?.Invoke(this, new CollectionInfoChangedEventArgs(updated));
+            await SaveToMonitorAsync(collectionInfo, updated);
+        }
     }
 
     public async Task<(int Before, int After)> DropIndexAsync(CollectionInfo collectionInfo)
@@ -475,13 +508,22 @@ internal class DatabaseMonitor : IDatabaseMonitor
             .GetCollectionsWithMetaAsync(fingerprint.DatabaseName, collectionNameFilter: fingerprint.CollectionName, includeDetails: true)
             .FirstOrDefaultAsync().AsTask();
         var cleanTask = mongoDbService.ReadCleanInfoAsync(fingerprint.DatabaseName, fingerprint.CollectionName);
+        var monitorTask = UsesDatabaseStorage && AsInternal(mongoDbService) is { } internalSvc
+            ? internalSvc.ReadMonitorRecordAsync(fingerprint.DatabaseName, fingerprint.CollectionName)
+            : Task.FromResult<MonitorRecord>(null);
 
-        await Task.WhenAll(metaTask, cleanTask);
+        await Task.WhenAll(metaTask, cleanTask, monitorTask);
 
         var meta = metaTask.Result;
         if (meta == null) return null;
 
-        var entry = BuildInitialEntry(fingerprint, meta.Server, null, null);
+        // Use stored entity type name so Dynamic collections are correctly recognised on reload
+        var persisted = monitorTask.Result;
+        var entityTypeName = persisted != null && persisted.Registration != (int)Registration.NotInCode
+            ? persisted.Types?.FirstOrDefault()
+            : null;
+
+        var entry = BuildInitialEntry(fingerprint, meta.Server, persisted?.DatabasePart, entityTypeName);
         entry = entry with
         {
             DocumentCount = new DocumentCount { Count = meta.DocumentCount },
@@ -490,6 +532,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
             Clean = cleanTask.Result
         };
         _cache[fingerprint.Key] = entry;
+        await SaveToMonitorAsync(fingerprint, entry);
         return entry;
     }
 
@@ -571,6 +614,49 @@ internal class DatabaseMonitor : IDatabaseMonitor
         }
     }
 
+    private async Task SaveToMonitorAsync(CollectionFingerprint fingerprint, CollectionInfo info)
+    {
+        if (!UsesDatabaseStorage) return;
+        if (AsInternal(GetMongoDbService(fingerprint)) is not { } svc) return;
+        await svc.SaveMonitorRecordAsync(info.DatabaseName, ToMonitorRecord(info));
+    }
+
+    private static MonitorRecord ToMonitorRecord(CollectionInfo info)
+    {
+        return new MonitorRecord
+        {
+            CollectionName = info.CollectionName,
+            ConfigurationName = info.ConfigurationName?.Value,
+            DatabaseName = info.DatabaseName,
+            Server = info.Server,
+            DatabasePart = info.DatabasePart,
+            Source = (int)info.Source,
+            Registration = (int)info.Registration,
+            Types = info.Types,
+            CollectionTypeName = info.CollectionType?.AssemblyQualifiedName,
+            DocumentCount = info.DocumentCount?.Count ?? 0,
+            Size = info.Size,
+            AccessCount = info.AccessCount,
+            CallCount = info.CallCount,
+            CurrentIndexes = info.Index?.Current
+        };
+    }
+
+    private static CollectionInfo MergeWithMonitorRecord(CollectionInfo entry, MonitorRecord record)
+    {
+        if (record == null) return entry;
+        return entry with
+        {
+            DocumentCount = record.DocumentCount > 0 ? new DocumentCount { Count = record.DocumentCount } : entry.DocumentCount,
+            Size = record.Size > 0 ? record.Size : entry.Size,
+            AccessCount = record.AccessCount > 0 ? record.AccessCount : entry.AccessCount,
+            CallCount = record.CallCount > 0 ? record.CallCount : entry.CallCount,
+            Index = entry.Index == null
+                ? null
+                : new IndexInfo { Current = record.CurrentIndexes, Defined = entry.Index.Defined ?? [] }
+        };
+    }
+
     private static IndexInfo BuildIndexInfo(CollectionInfo existing, IndexMeta[] currentIndexes)
     {
         var defined = existing.Index?.Defined ?? [];
@@ -591,7 +677,10 @@ internal class DatabaseMonitor : IDatabaseMonitor
             updateValueFactory: (_, existing) => existing with { Index = BuildIndexInfo(existing, meta.Indexes) });
 
         if (_cache.TryGetValue(collectionInfo.Key, out var updated))
+        {
             CollectionInfoChangedEvent?.Invoke(this, new CollectionInfoChangedEventArgs(updated));
+            await SaveToMonitorAsync(collectionInfo, updated);
+        }
     }
 
     private IMongoDbService GetMongoDbService(CollectionFingerprint fingerprint)
@@ -604,8 +693,16 @@ internal class DatabaseMonitor : IDatabaseMonitor
 
     private async IAsyncEnumerable<CollectionInfo> GetCollectionsFromDb(IMongoDbService mongoDbService, string databaseName, string filter, HashSet<string> currentDbKeys, HashSet<string> visited, Stopwatch sw)
     {
+        Dictionary<string, MonitorRecord> persistedRecords = null;
+        if (UsesDatabaseStorage && AsInternal(mongoDbService) is { } internalSvc)
+        {
+            var records = await internalSvc.GetAllMonitorRecordsAsync(databaseName);
+            persistedRecords = records.ToDictionary(r => r.CollectionName);
+        }
+
         await foreach (var meta in mongoDbService.GetCollectionsWithMetaAsync(databaseName, includeDetails: false))
         {
+            if (meta.CollectionName.StartsWith("_")) continue;
             if (filter != null && !meta.CollectionName.ProtectCollectionName().Contains(filter)) continue;
 
             var key = $"{meta.ConfigurationName}.{meta.DatabaseName}.{meta.CollectionName}";
@@ -628,6 +725,14 @@ internal class DatabaseMonitor : IDatabaseMonitor
                     CollectionName = meta.CollectionName
                 };
                 var entry = BuildInitialEntry(fp, meta.Server, null, null);
+                if (persistedRecords != null && persistedRecords.TryGetValue(meta.CollectionName, out var persisted))
+                {
+                    // If unclassified but persisted record has registration info, rebuild with the
+                    // stored entity type name so Dynamic collections are correctly recognised on reload
+                    if (entry.Registration == Registration.NotInCode && persisted.Registration != (int)Registration.NotInCode)
+                        entry = BuildInitialEntry(fp, persisted.Server ?? meta.Server, persisted.DatabasePart, persisted.Types?.FirstOrDefault());
+                    entry = MergeWithMonitorRecord(entry, persisted);
+                }
                 _cache[key] = entry;
                 yield return entry;
             }

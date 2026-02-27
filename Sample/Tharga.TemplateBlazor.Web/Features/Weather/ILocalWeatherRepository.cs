@@ -7,6 +7,7 @@ public interface ILocalWeatherRepository : IRepository
 {
     Task AddMany(string city, LocalWeatherEntity[] forecasts);
     IAsyncEnumerable<LocalWeatherEntity> GetAsync(string city);
+    Task DropAsync(string city);
 }
 
 public class LocalWeatherRepository : ILocalWeatherRepository
@@ -22,6 +23,12 @@ public class LocalWeatherRepository : ILocalWeatherRepository
     {
         var collection = GetCollection(city);
         return collection.GetAsync();
+    }
+
+    public Task DropAsync(string city)
+    {
+        var collection = GetCollection(city);
+        return collection.DropCollectionAsync();
     }
 
     public Task AddMany(string city, LocalWeatherEntity[] forecasts)

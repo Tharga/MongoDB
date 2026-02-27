@@ -12,7 +12,7 @@ using Tharga.MongoDB.Configuration;
 
 namespace Tharga.MongoDB.Internals;
 
-internal class MongoDbService : IMongoDbService
+internal class MongoDbService : IMongoDbServiceInternal
 {
     private readonly IRepositoryConfigurationInternal _configuration;
     private readonly IMongoDbFirewallStateService _mongoDbFirewallStateService;
@@ -311,6 +311,107 @@ internal class MongoDbService : IMongoDbService
     {
         var dbs = _mongoClient.ListDatabases(CancellationToken.None).ToList();
         return dbs.Select(x => x.AsBsonValue["name"].ToString());
+    }
+
+    public async Task<MonitorRecord> ReadMonitorRecordAsync(string databaseName, string collectionName)
+    {
+        var mongoDatabase = string.IsNullOrEmpty(databaseName) ? _mongoDatabase : _mongoClient.GetDatabase(databaseName);
+        var col = mongoDatabase.GetCollection<BsonDocument>("_monitor");
+        var doc = await col.Find(new BsonDocument("_id", collectionName)).SingleOrDefaultAsync();
+        return doc == null ? null : BsonToMonitorRecord(doc);
+    }
+
+    public async Task<IEnumerable<MonitorRecord>> GetAllMonitorRecordsAsync(string databaseName)
+    {
+        var mongoDatabase = string.IsNullOrEmpty(databaseName) ? _mongoDatabase : _mongoClient.GetDatabase(databaseName);
+        var col = mongoDatabase.GetCollection<BsonDocument>("_monitor");
+        var docs = await col.Find(FilterDefinition<BsonDocument>.Empty).ToListAsync();
+        return docs.Select(BsonToMonitorRecord).ToArray();
+    }
+
+    public async Task SaveMonitorRecordAsync(string databaseName, MonitorRecord record)
+    {
+        var mongoDatabase = string.IsNullOrEmpty(databaseName) ? _mongoDatabase : _mongoClient.GetDatabase(databaseName);
+        var col = mongoDatabase.GetCollection<BsonDocument>("_monitor");
+        var doc = MonitorRecordToBson(record);
+        await col.ReplaceOneAsync(new BsonDocument("_id", record.CollectionName), doc, new ReplaceOptions { IsUpsert = true });
+    }
+
+    public async Task RemoveMonitorRecordAsync(string databaseName, string collectionName)
+    {
+        var mongoDatabase = string.IsNullOrEmpty(databaseName) ? _mongoDatabase : _mongoClient.GetDatabase(databaseName);
+        var col = mongoDatabase.GetCollection<BsonDocument>("_monitor");
+        await col.DeleteOneAsync(new BsonDocument("_id", collectionName));
+    }
+
+    private static BsonValue ToBson(string value) => value != null ? (BsonValue)value : BsonNull.Value;
+
+    private static string BsonStr(BsonValue value) => value == null || value.IsBsonNull ? null : value.AsString;
+
+    private static BsonArray IndexesToBson(IndexMeta[] indexes)
+    {
+        var arr = new BsonArray();
+        if (indexes == null) return arr;
+        foreach (var idx in indexes)
+            arr.Add(new BsonDocument { { "Name", idx.Name }, { "Fields", new BsonArray(idx.Fields) }, { "IsUnique", idx.IsUnique } });
+        return arr;
+    }
+
+    private static IndexMeta[] BsonToIndexes(BsonValue val)
+    {
+        if (val == null || val.IsBsonNull || val is not BsonArray arr) return null;
+        return arr.Select(item =>
+        {
+            var d = item.AsBsonDocument;
+            return new IndexMeta
+            {
+                Name = BsonStr(d.GetValue("Name", BsonNull.Value)),
+                Fields = d["Fields"].AsBsonArray.Select(f => f.AsString).ToArray(),
+                IsUnique = d.GetValue("IsUnique", false).AsBoolean
+            };
+        }).ToArray();
+    }
+
+    private static BsonDocument MonitorRecordToBson(MonitorRecord r)
+    {
+        return new BsonDocument
+        {
+            { "_id", r.CollectionName },
+            { "ConfigurationName", ToBson(r.ConfigurationName) },
+            { "DatabaseName", ToBson(r.DatabaseName) },
+            { "Server", ToBson(r.Server) },
+            { "DatabasePart", ToBson(r.DatabasePart) },
+            { "Source", r.Source },
+            { "Registration", r.Registration },
+            { "Types", new BsonArray(r.Types ?? []) },
+            { "CollectionTypeName", ToBson(r.CollectionTypeName) },
+            { "DocumentCount", r.DocumentCount },
+            { "Size", r.Size },
+            { "AccessCount", r.AccessCount },
+            { "CallCount", r.CallCount },
+            { "CurrentIndexes", IndexesToBson(r.CurrentIndexes) }
+        };
+    }
+
+    private static MonitorRecord BsonToMonitorRecord(BsonDocument doc)
+    {
+        return new MonitorRecord
+        {
+            CollectionName = doc["_id"].AsString,
+            ConfigurationName = BsonStr(doc.GetValue("ConfigurationName", BsonNull.Value)),
+            DatabaseName = BsonStr(doc.GetValue("DatabaseName", BsonNull.Value)),
+            Server = BsonStr(doc.GetValue("Server", BsonNull.Value)),
+            DatabasePart = BsonStr(doc.GetValue("DatabasePart", BsonNull.Value)),
+            Source = doc.GetValue("Source", 0).ToInt32(),
+            Registration = doc.GetValue("Registration", 0).ToInt32(),
+            Types = doc.GetValue("Types", new BsonArray()) is BsonArray ta ? ta.Select(x => x.AsString).ToArray() : [],
+            CollectionTypeName = BsonStr(doc.GetValue("CollectionTypeName", BsonNull.Value)),
+            DocumentCount = doc.GetValue("DocumentCount", 0L).ToInt64(),
+            Size = doc.GetValue("Size", 0L).ToInt64(),
+            AccessCount = doc.GetValue("AccessCount", 0).ToInt32(),
+            CallCount = doc.GetValue("CallCount", 0).ToInt32(),
+            CurrentIndexes = BsonToIndexes(doc.GetValue("CurrentIndexes", BsonNull.Value))
+        };
     }
 
     [BsonIgnoreExtraElements]

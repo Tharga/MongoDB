@@ -8,6 +8,7 @@ public interface ICityRepository : IRepository
 {
     Task Add(CityEntity item);
     IAsyncEnumerable<CityEntity> GetAsync();
+    Task DeleteAsync(string city);
 }
 
 public class CityRepository : ICityRepository
@@ -22,6 +23,11 @@ public class CityRepository : ICityRepository
     public IAsyncEnumerable<CityEntity> GetAsync()
     {
         return _cityRepositoryCollection.GetAsync();
+    }
+
+    public Task DeleteAsync(string city)
+    {
+        return _cityRepositoryCollection.DeleteOneAsync(x => x.Name == city);
     }
 
     public Task Add(CityEntity item)
@@ -48,6 +54,6 @@ public class CityRepositoryCollection : DiskRepositoryCollectionBase<CityEntity>
 
     public override IEnumerable<CreateIndexModel<CityEntity>> Indices =>
     [
-        new(Builders<CityEntity>.IndexKeys.Ascending(f => f.Name), new CreateIndexOptions { Unique = true })
+        new(Builders<CityEntity>.IndexKeys.Ascending(f => f.Name), new CreateIndexOptions { Unique = true, Name = nameof(CityEntity.Name)})
     ];
 }
