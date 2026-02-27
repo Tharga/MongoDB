@@ -1,5 +1,6 @@
 @using Tharga.Blazor.Framework.Buttons
 @using Tharga.Toolkit
+@implements IDisposable
 @inject IDatabaseMonitor DatabaseMonitor
 @inject NotificationService NotificationService
 @inject DialogService DialogService
@@ -114,9 +115,19 @@ else
     private bool CanClean => CanTouch;
     private bool FingerprintMatch => _model?.Clean != null && _model.Clean.SchemaFingerprint == _model.CurrentSchemaFingerprint;
 
-    protected override async Task OnParametersSetAsync()
+    protected override async Task OnInitializedAsync()
     {
         DatabaseMonitor.CollectionInfoChangedEvent += OnCollectionInfoChanged;
+        await base.OnInitializedAsync();
+    }
+
+    public void Dispose()
+    {
+        DatabaseMonitor.CollectionInfoChangedEvent -= OnCollectionInfoChanged;
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
         await ReloadData();
         _ = Task.Run(() => DatabaseMonitor.RefreshStatsAsync(Fingerprint));
         await base.OnParametersSetAsync();

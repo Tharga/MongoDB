@@ -113,7 +113,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
                         {
                             var mongoDbService = GetMongoDbService(e.Fingerprint);
                             var meta = await mongoDbService
-                                .GetCollectionsWithMetaAsync(collectionNameFilter: e.Fingerprint.CollectionName, includeDetails: true)
+                                .GetCollectionsWithMetaAsync(e.Fingerprint.DatabaseName, collectionNameFilter: e.Fingerprint.CollectionName, includeDetails: true)
                                 .FirstOrDefaultAsync();
 
                             if (meta == null) return;
@@ -125,13 +125,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
                                     return entry with { Index = BuildIndexInfo(entry, meta.Indexes) };
                                 },
                                 updateValueFactory: (_, existing) =>
-                                {
-                                    // Reclassify NotInCode entries when type information is now available
-                                    var b = existing.Registration == Registration.NotInCode && meta.Types?.Length > 0
-                                        ? BuildInitialEntry(e.Fingerprint, meta.Server ?? existing.Server, existing.DatabasePart, null)
-                                        : existing;
-                                    return b with { Index = BuildIndexInfo(b, meta.Indexes) };
-                                });
+                                    existing with { Index = BuildIndexInfo(existing, meta.Indexes) });
 
                             if (CollectionInfoChangedEvent != null && _cache.TryGetValue(e.Fingerprint.Key, out var item))
                                 CollectionInfoChangedEvent?.Invoke(this, new CollectionInfoChangedEventArgs(item));
@@ -285,7 +279,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
 
         var mongoDbService = GetMongoDbService(fingerprint);
         var meta = await mongoDbService
-            .GetCollectionsWithMetaAsync(collectionNameFilter: fingerprint.CollectionName, includeDetails: true)
+            .GetCollectionsWithMetaAsync(fingerprint.DatabaseName, collectionNameFilter: fingerprint.CollectionName, includeDetails: true)
             .FirstOrDefaultAsync();
 
         if (meta == null) return;
@@ -301,18 +295,11 @@ internal class DatabaseMonitor : IDatabaseMonitor
                     Index = BuildIndexInfo(entry, meta.Indexes)
                 };
             },
-            updateValueFactory: (_, existing) =>
+            updateValueFactory: (_, existing) => existing with
             {
-                // Reclassify NotInCode entries when type information is now available
-                var b = existing.Registration == Registration.NotInCode && meta.Types?.Length > 0
-                    ? BuildInitialEntry(fingerprint, meta.Server ?? existing.Server, existing.DatabasePart, null)
-                    : existing;
-                return b with
-                {
-                    DocumentCount = new DocumentCount { Count = meta.DocumentCount },
-                    Size = meta.Size,
-                    Index = BuildIndexInfo(b, meta.Indexes)
-                };
+                DocumentCount = new DocumentCount { Count = meta.DocumentCount },
+                Size = meta.Size,
+                Index = BuildIndexInfo(existing, meta.Indexes)
             });
 
         if (_cache.TryGetValue(fingerprint.Key, out var updated))
@@ -331,7 +318,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
 
         var mongoDbService = GetMongoDbService(collectionInfo);
         var meta = await mongoDbService
-            .GetCollectionsWithMetaAsync(collectionNameFilter: collectionInfo.CollectionName, includeDetails: true)
+            .GetCollectionsWithMetaAsync(collectionInfo.DatabaseName, collectionNameFilter: collectionInfo.CollectionName, includeDetails: true)
             .FirstOrDefaultAsync();
 
         if (meta == null) return;
@@ -477,7 +464,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
     {
         var mongoDbService = GetMongoDbService(fingerprint);
         var meta = await mongoDbService
-            .GetCollectionsWithMetaAsync(collectionNameFilter: fingerprint.CollectionName, includeDetails: true)
+            .GetCollectionsWithMetaAsync(fingerprint.DatabaseName, collectionNameFilter: fingerprint.CollectionName, includeDetails: true)
             .FirstOrDefaultAsync();
 
         if (meta == null) return null;
@@ -583,7 +570,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
     {
         var mongoDbService = GetMongoDbService(collectionInfo);
         var meta = await mongoDbService
-            .GetCollectionsWithMetaAsync(collectionNameFilter: collectionInfo.CollectionName, includeDetails: true)
+            .GetCollectionsWithMetaAsync(collectionInfo.DatabaseName, collectionNameFilter: collectionInfo.CollectionName, includeDetails: true)
             .FirstOrDefaultAsync();
 
         if (meta == null) return;

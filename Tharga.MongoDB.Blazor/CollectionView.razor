@@ -4,6 +4,7 @@
 @using Tharga.MongoDB
 @using Tharga.MongoDB.Configuration
 @using Tharga.Toolkit
+@implements IDisposable
 @inject IDatabaseMonitor DatabaseMonitor;
 @inject DialogService DialogService
 @inject IOptions<DatabaseOptions> DatabaseOptions
@@ -120,50 +121,64 @@ else
     [Parameter]
     public string Filter { get; set; }
 
-    protected override async Task OnParametersSetAsync()
+    protected override async Task OnInitializedAsync()
     {
-        DatabaseMonitor.CollectionInfoChangedEvent += async (_, e) =>
+        DatabaseMonitor.CollectionInfoChangedEvent += OnCollectionInfoChanged;
+        DatabaseMonitor.CollectionDroppedEvent += OnCollectionDropped;
+        await base.OnInitializedAsync();
+    }
+
+    public void Dispose()
+    {
+        DatabaseMonitor.CollectionInfoChangedEvent -= OnCollectionInfoChanged;
+        DatabaseMonitor.CollectionDroppedEvent -= OnCollectionDropped;
+    }
+
+    private async void OnCollectionInfoChanged(object sender, CollectionInfoChangedEventArgs e)
+    {
+        if (_all == null) return;
+
+        var item = _all.SingleOrDefault(x => x.Key == e.CollectionInfo.Key);
+
+        if (item != null)
         {
-            if (_all == null) return;
+            item.Source = e.CollectionInfo.Source;
+            item.AccessCount = e.CollectionInfo.AccessCount;
+            item.CallCount = e.CollectionInfo.CallCount;
+            item.DocumentCount = e.CollectionInfo.DocumentCount;
+            item.Size = e.CollectionInfo.Size;
+            item.Index = e.CollectionInfo.Index;
 
-            var item = _all.SingleOrDefault(x => x.Key == e.CollectionInfo.Key);
-
-            if (item != null)
+            var m = _model?.SingleOrDefault(x => x.ConfigurationName == item.ConfigurationName && x.DatabaseName == item.DatabaseName && x.CollectionName == item.CollectionName);
+            if (m != null)
             {
-                item.Source = e.CollectionInfo.Source;
-                item.AccessCount = e.CollectionInfo.AccessCount;
-                item.CallCount = e.CollectionInfo.CallCount;
-                item.DocumentCount = e.CollectionInfo.DocumentCount;
-                item.Size = e.CollectionInfo.Size;
-                item.Index = e.CollectionInfo.Index;
+                var indexModels = e.CollectionInfo.ToIndexModel().ToArray();
 
-                var m = _model.SingleOrDefault(x => x.ConfigurationName == item.ConfigurationName && x.DatabaseName == item.DatabaseName && x.CollectionName == item.CollectionName);
-                if (m != null)
-                {
-                    var indexModels = e.CollectionInfo.ToIndexModel().ToArray();
-
-                    m.Source = e.CollectionInfo.Source;
-                    m.AccessCount = e.CollectionInfo.AccessCount;
-                    m.CallCount = e.CollectionInfo.CallCount;
-                    m.DocumentCount = e.CollectionInfo.DocumentCount;
-                    m.Size = e.CollectionInfo.Size;
-                    m.Indices = indexModels;
-                    m.IndexEqualFields = e.CollectionInfo.Index == null ? null : indexModels.All(x => x.EqualFields);
-                }
-
-                await InvokeAsync(StateHasChanged);
+                m.Source = e.CollectionInfo.Source;
+                m.AccessCount = e.CollectionInfo.AccessCount;
+                m.CallCount = e.CollectionInfo.CallCount;
+                m.DocumentCount = e.CollectionInfo.DocumentCount;
+                m.Size = e.CollectionInfo.Size;
+                m.Indices = indexModels;
+                m.IndexEqualFields = e.CollectionInfo.Index == null || e.CollectionInfo.Index.Current == null ? null : indexModels.All(x => x.EqualFields);
             }
-        };
-        DatabaseMonitor.CollectionDroppedEvent += async (_, e) =>
-        {
-            if (_all == null) return;
-
-            _all = _all.Where(x => x.ToDatabaseContext() != e.DatabaseContext).ToArray();
-            await ReloadDataAsync();
 
             await InvokeAsync(StateHasChanged);
-        };
+        }
+    }
 
+    private async void OnCollectionDropped(object sender, CollectionDroppedEventArgs e)
+    {
+        if (_all == null) return;
+
+        _all = _all.Where(x => x.ToDatabaseContext() != e.DatabaseContext).ToArray();
+        await ReloadDataAsync();
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
         _all = await DatabaseMonitor.GetInstancesAsync(FullDatabaseScan, Filter).ToArrayAsync();
         _databases = _all.GroupBy(x => x.DatabaseName).Select(x => x.First()).Select(x => x.DatabaseName).Order().ToArray();
         await ReloadDataAsync();
@@ -203,7 +218,7 @@ else
                     CallCount = x.CallCount,
                     Size = x.Size,
                     Indices = indexModels,
-                    IndexEqualFields = x.Registration == Registration.NotInCode || x.Index == null || x.Index.Current == null || x.Index.Current.Length == 0
+                    IndexEqualFields = x.Index == null || x.Index.Current == null
                         ? null
                         : indexModels.All(y => y.EqualFields)
                 };
