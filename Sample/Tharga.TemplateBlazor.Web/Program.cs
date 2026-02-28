@@ -27,7 +27,7 @@ builder.Services.AddThargaBlazor(o =>
 
 builder.AddMongoDB(o =>
 {
-    o.AssureIndex = AssureIndexMode.Disabled;
+    o.AssureIndex = AssureIndexMode.BySchema;
     //o.Monitor.StorageMode = MonitorStorageMode.Memory;
     //o.AssureIndex = AssureIndexMode.Disabled;
 });

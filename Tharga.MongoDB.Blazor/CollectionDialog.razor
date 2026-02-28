@@ -92,7 +92,7 @@ else
                     </RadzenDataGridColumn>
                     <RadzenDataGridColumn>
                         <Template>
-                            <RadzenButton Icon="compare_arrows" Text="Duplicates" Click="@(() => Show(context))" Disabled="@(!CanTouch)" Visible="@(context.Current?.IsUnique == true && context.Differs())" />
+                            <RadzenButton Icon="compare_arrows" Text="Duplicates" Click="@(() => Show(context))" Disabled="@(!CanTouch)" Visible="@(context.Defined?.IsUnique == true && context.Differs())" />
                         </Template>
                     </RadzenDataGridColumn>
                 </Columns>
