@@ -405,7 +405,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
         return dropTask.Result;
     }
 
-    public async Task RestoreIndexAsync(CollectionInfo collectionInfo)
+    public async Task RestoreIndexAsync(CollectionInfo collectionInfo, bool force)
     {
         if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
         if (collectionInfo == null) throw new ArgumentNullException(nameof(collectionInfo));
@@ -417,7 +417,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
         var mongoCollection = await FetchMongoCollection(ct, collection, true);
 
         var restoreMethod = ct.GetMethod(nameof(DiskRepositoryCollectionBase<EntityBase>.AssureIndex), BindingFlags.Instance | BindingFlags.NonPublic);
-        var restoreResult = restoreMethod?.Invoke(collection, [mongoCollection, true, true]);
+        var restoreResult = restoreMethod?.Invoke(collection, [mongoCollection, force, true]);
         var restoreTask = (Task)restoreResult;
         await restoreTask!;
 

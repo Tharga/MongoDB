@@ -191,7 +191,7 @@ else
             var result = await DialogService.Confirm("Indicies will be restored.", "Confirm restore indicies");
             if (result != true) return;
 
-            await DatabaseMonitor.RestoreIndexAsync(_model);
+            await DatabaseMonitor.RestoreIndexAsync(_model, true);
 
             await ReloadDataAsync();
             NotificationService.Notify(new NotificationMessage { Summary = "Indices has been restored." });

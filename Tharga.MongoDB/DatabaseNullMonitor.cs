@@ -40,7 +40,7 @@ internal class DatabaseNullMonitor : IDatabaseMonitor
         return Task.FromResult((0, 0));
     }
 
-    public Task RestoreIndexAsync(CollectionInfo collectionInfo)
+    public Task RestoreIndexAsync(CollectionInfo collectionInfo, bool force)
     {
         return Task.CompletedTask;
     }
