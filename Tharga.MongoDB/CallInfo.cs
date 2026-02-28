@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using Tharga.MongoDB.Disk;
 
 namespace Tharga.MongoDB;
@@ -14,4 +15,5 @@ public record CallInfo
     public int? Count { get; set; }
     public Exception Exception { get; set; }
     public bool Final { get; set; }
+    public IReadOnlyList<CallStepInfo> Steps { get; set; }
 }

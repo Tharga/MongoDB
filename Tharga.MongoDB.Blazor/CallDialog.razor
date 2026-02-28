@@ -35,6 +35,21 @@ else
                 <RadzenText Text="@($"{_model.Count}")" />
             </RadzenColumn>
         </RadzenRow>
+        @if (_model.Steps != null && _model.Steps.Count > 0)
+        {
+            <RadzenText TextStyle="TextStyle.Caption" Text="Steps" />
+            <RadzenDataGrid Data="_model.Steps" TItem="CallStepInfo" AllowSorting="false" AllowPaging="false" AllowFiltering="false" Density="Density.Compact">
+                <Columns>
+                    <RadzenDataGridColumn TItem="CallStepInfo" Property="Step" Title="Step" />
+                    <RadzenDataGridColumn TItem="CallStepInfo" Title="Duration (ms)">
+                        <Template Context="step">
+                            @($"{step.Delta.TotalMilliseconds:F2}")
+                        </Template>
+                    </RadzenDataGridColumn>
+                    <RadzenDataGridColumn TItem="CallStepInfo" Property="Message" Title="Message" />
+                </Columns>
+            </RadzenDataGrid>
+        }
     </RadzenStack>
 }
 

@@ -130,16 +130,16 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             var elapsed = GetElapsed(startAt, Stopwatch.GetTimestamp());
 
             var total = TimeSpan.Zero;
-            var info = steps.Select((x, index) =>
+            var callSteps = steps.Select<StepResponse, CallStepInfo>((x, index) =>
             {
                 var from = index == 0 ? startAt : steps[index - 1].Timestamp;
                 var delta = GetElapsed(from, x.Timestamp);
                 total = total.Add(delta);
-                return $"{x.Step}: {delta.TotalMilliseconds}";
-            });
-            var ss = string.Join(", ", info);
+                return new CallStepInfo { Step = x.Step, Delta = delta, Message = x.Message };
+            }).ToList();
+            var ss = string.Join(", ", callSteps.Select(x => $"{x.Step}: {x.Delta.TotalMilliseconds}"));
 
-            ((MongoDbServiceFactory)_mongoDbServiceFactory).OnCallEnd(this, new CallEndEventArgs(callKey, elapsed, exception, count));
+            ((MongoDbServiceFactory)_mongoDbServiceFactory).OnCallEnd(this, new CallEndEventArgs(callKey, elapsed, exception, count, callSteps));
             //_logger?.LogInformation("Executed {method} on {collection} took {elapsed} ms. [{steps}, overhead: {overhead}]", functionName, CollectionName, elapsed.TotalMilliseconds, ss, (elapsed - total).TotalMilliseconds);
             var data = new Dictionary<string, object>
             {
