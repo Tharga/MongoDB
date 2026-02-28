@@ -16,5 +16,11 @@ public record CallInfo
     public Exception Exception { get; set; }
     public bool Final { get; set; }
     public IReadOnlyList<CallStepInfo> Steps { get; set; }
-    public string FilterJson { get; set; }
+
+    private Lazy<string> _filterJson;
+    public string FilterJson => _filterJson?.Value;
+    public Func<string> FilterJsonProvider
+    {
+        set => _filterJson = value != null ? new Lazy<string>(value) : null;
+    }
 }

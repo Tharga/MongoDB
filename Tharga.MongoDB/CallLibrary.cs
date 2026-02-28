@@ -56,7 +56,7 @@ internal class CallLibrary : ICallLibrary
         item.Exception = e.Exception;
         item.Final = e.Final;
         item.Steps = e.Steps;
-        item.FilterJson = e.FilterJson;
+        item.FilterJsonProvider = e.FilterJsonProvider;
 
         var elapsedMs = e.Elapsed.TotalMilliseconds;
 

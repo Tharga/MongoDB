@@ -63,7 +63,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         var startAt = Stopwatch.GetTimestamp();
         var steps = new List<StepResponse>();
         var count = -1;
-        string filterJson = null;
+        Func<string> filterJsonProvider = null;
 
         //NOTE: Register call started, in monitor
         steps.Add(FireCallStartEvent(functionName, operation, callKey));
@@ -80,15 +80,16 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                 steps.Add(fetchCollectionStep);
                 var collection = fetchCollectionStep.Value;
 
-                //NOTE: Render filter to JSON
+                //NOTE: Capture filter render as a lazy delegate — no allocation until the value is read
                 if (filter != null)
                 {
-                    try
+                    var serializer = collection.DocumentSerializer;
+                    var registry = collection.Settings.SerializerRegistry;
+                    filterJsonProvider = () =>
                     {
-                        var renderArgs = new RenderArgs<TEntity>(collection.DocumentSerializer, collection.Settings.SerializerRegistry);
-                        filterJson = filter.Render(renderArgs).ToJson();
-                    }
-                    catch { /* ignore render failures */ }
+                        try { return filter.Render(new RenderArgs<TEntity>(serializer, registry)).ToJson(); }
+                        catch { return null; }
+                    };
                 }
 
                 //NOTE: Handle index depending on operation
@@ -151,7 +152,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             }).ToList();
             var ss = string.Join(", ", callSteps.Select(x => $"{x.Step}: {x.Delta.TotalMilliseconds}"));
 
-            ((MongoDbServiceFactory)_mongoDbServiceFactory).OnCallEnd(this, new CallEndEventArgs(callKey, elapsed, exception, count, callSteps, filterJson));
+            ((MongoDbServiceFactory)_mongoDbServiceFactory).OnCallEnd(this, new CallEndEventArgs(callKey, elapsed, exception, count, callSteps, filterJsonProvider));
             //_logger?.LogInformation("Executed {method} on {collection} took {elapsed} ms. [{steps}, overhead: {overhead}]", functionName, CollectionName, elapsed.TotalMilliseconds, ss, (elapsed - total).TotalMilliseconds);
             var data = new Dictionary<string, object>
             {
