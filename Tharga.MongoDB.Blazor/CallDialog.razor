@@ -1,4 +1,5 @@
-﻿@inject ICallLibrary CallLibrary
+﻿@using Tharga.Blazor
+@inject ICallLibrary CallLibrary
 
 @if (_model == null)
 {
@@ -31,8 +32,22 @@ else
                 <RadzenText Text="@($"{_model.Operation}")"/>
             </RadzenColumn>
             <RadzenColumn>
+                <RadzenText TextStyle="TextStyle.Caption" Text="Exception" />
+                <RadzenText Text="@($"{_model.Exception?.Message}")" />
+            </RadzenColumn>
+        </RadzenRow>
+        <RadzenRow>
+            <RadzenColumn>
+                <RadzenText TextStyle="TextStyle.Caption" Text="Time" />
+                <DateTimeView Date="@_model.StartTime" />
+            </RadzenColumn>
+            <RadzenColumn>
                 <RadzenText TextStyle="TextStyle.Caption" Text="Count" />
                 <RadzenText Text="@($"{_model.Count}")" />
+            </RadzenColumn>
+            <RadzenColumn>
+                <RadzenText TextStyle="TextStyle.Caption" Text="Elapsed" />
+                <RadzenText Text="@($"{_model.Elapsed?.Milliseconds:F2} ms")" />
             </RadzenColumn>
         </RadzenRow>
         @if (_model.Steps != null && _model.Steps.Count > 0)
@@ -41,12 +56,12 @@ else
             <RadzenDataGrid Data="_model.Steps" TItem="CallStepInfo" AllowSorting="false" AllowPaging="false" AllowFiltering="false" Density="Density.Compact">
                 <Columns>
                     <RadzenDataGridColumn TItem="CallStepInfo" Property="Step" Title="Step" />
-                    <RadzenDataGridColumn TItem="CallStepInfo" Title="Duration (ms)">
+                    <RadzenDataGridColumn TItem="CallStepInfo" Title="Duration (ms)" TextAlign="TextAlign.Right">
                         <Template Context="step">
                             @($"{step.Delta.TotalMilliseconds:F2}")
                         </Template>
                     </RadzenDataGridColumn>
-                    <RadzenDataGridColumn TItem="CallStepInfo" Property="Message" Title="Message" />
+                    <RadzenDataGridColumn TItem="CallStepInfo" Property="Message" Title="Message" Visible="@(_model.Steps.Any(x => !string.IsNullOrEmpty(x.Message)))" />
                 </Columns>
             </RadzenDataGrid>
         }

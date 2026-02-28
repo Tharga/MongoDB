@@ -55,10 +55,10 @@ public class CityRepositoryCollection : DiskRepositoryCollectionBase<CityEntity>
 
     public override IEnumerable<CreateIndexModel<CityEntity>> Indices =>
     [
-        //new(Builders<CityEntity>.IndexKeys.Ascending(f => f.Name), new CreateIndexOptions { Unique = true }),
-        //new(Builders<CityEntity>.IndexKeys.Ascending(f => f.Country), new CreateIndexOptions { Unique = false }),
-        //new(Builders<CityEntity>.IndexKeys.Descending(f => f.Country), new CreateIndexOptions { Unique = false }),
-        //new(Builders<CityEntity>.IndexKeys.Ascending(f => f.Country).Ascending(f => f.Name), new CreateIndexOptions { Unique = false }),
-        //new(Builders<CityEntity>.IndexKeys.Hashed(f => f.Country), new CreateIndexOptions { Unique = false, Name = "Yee" })
+        new(Builders<CityEntity>.IndexKeys.Ascending(f => f.Name), new CreateIndexOptions { Unique = true }),
+        new(Builders<CityEntity>.IndexKeys.Ascending(f => f.Country), new CreateIndexOptions { Unique = false }),
+        new(Builders<CityEntity>.IndexKeys.Descending(f => f.Country), new CreateIndexOptions { Unique = false }),
+        new(Builders<CityEntity>.IndexKeys.Ascending(f => f.Country).Ascending(f => f.Name), new CreateIndexOptions { Unique = false }),
+        new(Builders<CityEntity>.IndexKeys.Hashed(f => f.Country), new CreateIndexOptions { Unique = false, Name = "Yee" })
     ];
 }

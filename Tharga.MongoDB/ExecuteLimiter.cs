@@ -26,10 +26,7 @@ internal class ExecuteLimiter : IExecuteLimiter
         _maxConcurrentPerKey = options.Value.MaxConcurrent;
     }
 
-    public async Task<(T Result, ExecuteInfo Info)> ExecuteAsync<T>(
-        Func<CancellationToken, Task<T>> action,
-        string key,
-        CancellationToken cancellationToken)
+    public async Task<(T Result, ExecuteInfo Info)> ExecuteAsync<T>(Func<CancellationToken, Task<T>> action, string key, CancellationToken cancellationToken)
     {
         if (!_enabled)
         {
@@ -48,7 +45,9 @@ internal class ExecuteLimiter : IExecuteLimiter
         LogCount("ExecuteQueue", queuedCount);
 
         if (queuedCount > 1)
+        {
             _logger?.LogInformation("Queued {queueCount} executions for {key}.", queuedCount, key);
+        }
 
         var acquired = false;
 
@@ -68,7 +67,9 @@ internal class ExecuteLimiter : IExecuteLimiter
             LogCount("ExecuteConcurrent", executingCount);
 
             if (executingCount >= _maxConcurrentPerKey)
+            {
                 _logger?.LogWarning("The maximum number of {count} concurrent executions for {key} has been reached.", executingCount, key);
+            }
 
             try
             {

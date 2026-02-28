@@ -130,7 +130,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             var elapsed = GetElapsed(startAt, Stopwatch.GetTimestamp());
 
             var total = TimeSpan.Zero;
-            var callSteps = steps.Select<StepResponse, CallStepInfo>((x, index) =>
+            var callSteps = steps.Select((x, index) =>
             {
                 var from = index == 0 ? startAt : steps[index - 1].Timestamp;
                 var delta = GetElapsed(from, x.Timestamp);
