@@ -1,5 +1,6 @@
 ﻿using Microsoft.Extensions.Logging;
 using MongoDB.Bson;
+using MongoDB.Bson.IO;
 using MongoDB.Bson.Serialization;
 using MongoDB.Driver;
 using System;
@@ -64,6 +65,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         var steps = new List<StepResponse>();
         var count = -1;
         Func<string> filterJsonProvider = null;
+        Func<CancellationToken, Task<string>> explainProvider = null;
 
         //NOTE: Register call started, in monitor
         steps.Add(FireCallStartEvent(functionName, operation, callKey));
@@ -80,7 +82,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                 steps.Add(fetchCollectionStep);
                 var collection = fetchCollectionStep.Value;
 
-                //NOTE: Capture filter render as a lazy delegate — no allocation until the value is read
+                //NOTE: Capture filter render and explain as lazy delegates — no allocation until the value is read
                 if (filter != null)
                 {
                     var serializer = collection.DocumentSerializer;
@@ -88,6 +90,25 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                     filterJsonProvider = () =>
                     {
                         try { return filter.Render(new RenderArgs<TEntity>(serializer, registry)).ToJson(); }
+                        catch { return null; }
+                    };
+                    explainProvider = async ct =>
+                    {
+                        try
+                        {
+                            var command = new BsonDocument
+                            {
+                                { "explain", new BsonDocument
+                                    {
+                                        { "find", collection.CollectionNamespace.CollectionName },
+                                        { "filter", filter.Render(new RenderArgs<TEntity>(serializer, registry)) }
+                                    }
+                                },
+                                { "verbosity", "executionStats" }
+                            };
+                            var explanation = await collection.Database.RunCommandAsync<BsonDocument>(command, cancellationToken: ct);
+                            return explanation.ToJson(new JsonWriterSettings { Indent = true });
+                        }
                         catch { return null; }
                     };
                 }
@@ -152,7 +173,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             }).ToList();
             var ss = string.Join(", ", callSteps.Select(x => $"{x.Step}: {x.Delta.TotalMilliseconds}"));
 
-            ((MongoDbServiceFactory)_mongoDbServiceFactory).OnCallEnd(this, new CallEndEventArgs(callKey, elapsed, exception, count, callSteps, filterJsonProvider));
+            ((MongoDbServiceFactory)_mongoDbServiceFactory).OnCallEnd(this, new CallEndEventArgs(callKey, elapsed, exception, count, callSteps, filterJsonProvider, explainProvider));
             //_logger?.LogInformation("Executed {method} on {collection} took {elapsed} ms. [{steps}, overhead: {overhead}]", functionName, CollectionName, elapsed.TotalMilliseconds, ss, (elapsed - total).TotalMilliseconds);
             var data = new Dictionary<string, object>
             {

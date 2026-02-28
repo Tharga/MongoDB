@@ -1,5 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 using Tharga.MongoDB.Disk;
 
 namespace Tharga.MongoDB;
@@ -23,4 +25,6 @@ public record CallInfo
     {
         set => _filterJson = value != null ? new Lazy<string>(value) : null;
     }
+
+    public Func<CancellationToken, Task<string>> ExplainProvider { get; set; }
 }

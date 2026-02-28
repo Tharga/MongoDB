@@ -7,80 +7,109 @@
 }
 else
 {
-    <RadzenStack Orientation="Orientation.Vertical" Gap="1rem">
-        <RadzenRow>
-            <RadzenColumn>
-                <RadzenText TextStyle="TextStyle.Caption" Text="Configuration"/>
-                <RadzenText Text="@_model.Fingerprint.ConfigurationName"/>
-            </RadzenColumn>
-            <RadzenColumn>
-                <RadzenText TextStyle="TextStyle.Caption" Text="Database"/>
-                <RadzenText Text="@_model.Fingerprint.DatabaseName" />
-            </RadzenColumn>
-            <RadzenColumn>
-                <RadzenText TextStyle="TextStyle.Caption" Text="Collection"/>
-                <RadzenText Text="@_model.Fingerprint.CollectionName" />
-            </RadzenColumn>
-        </RadzenRow>
-        <RadzenRow>
-            <RadzenColumn>
-                <RadzenText TextStyle="TextStyle.Caption" Text="FunctionName" />
-                <RadzenText Text="@_model.FunctionName"/>
-            </RadzenColumn>
-            <RadzenColumn>
-                <RadzenText TextStyle="TextStyle.Caption" Text="Operation" />
-                <RadzenText Text="@($"{_model.Operation}")"/>
-            </RadzenColumn>
-            <RadzenColumn>
-                <RadzenText TextStyle="TextStyle.Caption" Text="Exception" />
-                <RadzenText Text="@($"{_model.Exception?.Message}")" />
-            </RadzenColumn>
-        </RadzenRow>
-        <RadzenRow>
-            <RadzenColumn>
-                <RadzenText TextStyle="TextStyle.Caption" Text="Time" />
-                <DateTimeView Date="@_model.StartTime" />
-            </RadzenColumn>
-            <RadzenColumn>
-                <RadzenText TextStyle="TextStyle.Caption" Text="Count" />
-                <RadzenText Text="@($"{_model.Count}")" />
-            </RadzenColumn>
-            <RadzenColumn>
-                <RadzenText TextStyle="TextStyle.Caption" Text="Elapsed" />
-                <RadzenText Text="@($"{_model.Elapsed?.Milliseconds:F2} ms")" />
-            </RadzenColumn>
-        </RadzenRow>
-        @if (_model.Steps != null && _model.Steps.Count > 0)
-        {
-            <RadzenText TextStyle="TextStyle.Caption" Text="Steps" />
-            <RadzenDataGrid Data="_model.Steps" TItem="CallStepInfo" AllowSorting="false" AllowPaging="false" AllowFiltering="false" Density="Density.Compact">
-                <Columns>
-                    <RadzenDataGridColumn TItem="CallStepInfo" Property="Step" Title="Step" />
-                    <RadzenDataGridColumn TItem="CallStepInfo" Title="Duration (ms)" TextAlign="TextAlign.Right">
-                        <Template Context="step">
-                            @($"{step.Delta.TotalMilliseconds:F2}")
-                        </Template>
-                    </RadzenDataGridColumn>
-                    <RadzenDataGridColumn TItem="CallStepInfo" Property="Message" Title="Message" Visible="@(_model.Steps.Any(x => !string.IsNullOrEmpty(x.Message)))" />
-                </Columns>
-            </RadzenDataGrid>
-        }
-        @if (!string.IsNullOrEmpty(_model.FilterJson))
-        {
-            <RadzenText TextStyle="TextStyle.Caption" Text="Filter" />
-            <pre style="background:#f5f5f5;padding:0.5rem;border-radius:4px;overflow-x:auto;font-size:0.8rem;white-space:pre-wrap;word-break:break-all;">@_model.FilterJson</pre>
-        }
-    </RadzenStack>
+    <RadzenTabs>
+        <Tabs>
+            <RadzenTabsItem Text="Info">
+                <RadzenStack Orientation="Orientation.Vertical" Gap="1rem">
+                    <RadzenRow>
+                        <RadzenColumn>
+                            <RadzenText TextStyle="TextStyle.Caption" Text="Configuration" />
+                            <RadzenText Text="@_model.Fingerprint.ConfigurationName" />
+                        </RadzenColumn>
+                        <RadzenColumn>
+                            <RadzenText TextStyle="TextStyle.Caption" Text="Database" />
+                            <RadzenText Text="@_model.Fingerprint.DatabaseName" />
+                        </RadzenColumn>
+                        <RadzenColumn>
+                            <RadzenText TextStyle="TextStyle.Caption" Text="Collection" />
+                            <RadzenText Text="@_model.Fingerprint.CollectionName" />
+                        </RadzenColumn>
+                    </RadzenRow>
+                    <RadzenRow>
+                        <RadzenColumn>
+                            <RadzenText TextStyle="TextStyle.Caption" Text="FunctionName" />
+                            <RadzenText Text="@_model.FunctionName" />
+                        </RadzenColumn>
+                        <RadzenColumn>
+                            <RadzenText TextStyle="TextStyle.Caption" Text="Operation" />
+                            <RadzenText Text="@($"{_model.Operation}")" />
+                        </RadzenColumn>
+                        <RadzenColumn>
+                            <RadzenText TextStyle="TextStyle.Caption" Text="Exception" />
+                            <RadzenText Text="@($"{_model.Exception?.Message}")" />
+                        </RadzenColumn>
+                    </RadzenRow>
+                    <RadzenRow>
+                        <RadzenColumn>
+                            <RadzenText TextStyle="TextStyle.Caption" Text="Time" />
+                            <div><DateTimeView Date="@_model.StartTime" /></div>
+                        </RadzenColumn>
+                        <RadzenColumn>
+                            <RadzenText TextStyle="TextStyle.Caption" Text="Count" />
+                            <RadzenText Text="@($"{_model.Count}")" />
+                        </RadzenColumn>
+                        <RadzenColumn>
+                            <RadzenText TextStyle="TextStyle.Caption" Text="Elapsed" />
+                            <RadzenText Text="@($"{_model.Elapsed?.Milliseconds:F2} ms")" />
+                        </RadzenColumn>
+                    </RadzenRow>
+                    @if (_model.Steps != null && _model.Steps.Count > 0)
+                    {
+                        <RadzenText TextStyle="TextStyle.Caption" Text="Steps" />
+                        <RadzenDataGrid Data="_model.Steps" TItem="CallStepInfo" AllowSorting="false" AllowPaging="false" AllowFiltering="false" Density="Density.Compact">
+                            <Columns>
+                                <RadzenDataGridColumn TItem="CallStepInfo" Property="Step" Title="Step" />
+                                <RadzenDataGridColumn TItem="CallStepInfo" Title="Duration (ms)" TextAlign="TextAlign.Right">
+                                    <Template Context="step">
+                                        @($"{step.Delta.TotalMilliseconds:F2}")
+                                    </Template>
+                                </RadzenDataGridColumn>
+                                <RadzenDataGridColumn TItem="CallStepInfo" Property="Message" Title="Message" Visible="@(_model.Steps.Any(x => !string.IsNullOrEmpty(x.Message)))" />
+                            </Columns>
+                        </RadzenDataGrid>
+                    }
+                </RadzenStack>
+            </RadzenTabsItem>
+            <RadzenTabsItem Text="Filter" Visible="@(!string.IsNullOrEmpty(_model.FilterJson))">
+                <RadzenText TextStyle="TextStyle.Caption" Text="Filter" />
+                <pre style="background:#f5f5f5;padding:0.5rem;border-radius:4px;overflow-x:auto;font-size:0.8rem;white-space:pre-wrap;word-break:break-all;">@_model.FilterJson</pre>
+            </RadzenTabsItem>
+            <RadzenTabsItem Text="Explain" Visible="@(_model.ExplainProvider != null)">
+                <RadzenRow AlignItems="AlignItems.Center" Gap="0.5rem">
+                    <RadzenColumn>
+                        <RadzenText TextStyle="TextStyle.Caption" Text="Explain" />
+                    </RadzenColumn>
+                    <RadzenColumn>
+                        <RadzenButton Text="Load" Size="ButtonSize.ExtraSmall"
+                                      Visible="@(_explainJson == null)"
+                                      ButtonStyle="ButtonStyle.Light"
+                                      Click="LoadExplainAsync" Disabled="_loadingExplain"/>
+                    </RadzenColumn>
+                </RadzenRow>
+                @if (_loadingExplain)
+                {
+                    <Loading />
+                }
+                else if (_explainJson != null)
+                {
+                    <pre style="background:#f5f5f5;padding:0.5rem;border-radius:4px;overflow-x:auto;font-size:0.75rem;white-space:pre-wrap;word-break:break-all;max-height:400px;">@_explainJson</pre>
+                }
+            </RadzenTabsItem>
+        </Tabs>
+    </RadzenTabs>
 }
 
 @code {
     private CallInfo _model;
+    private string _explainJson;
+    private bool _loadingExplain;
 
     [Parameter]
     public Guid Key { get; set; }
 
     protected override async Task OnParametersSetAsync()
     {
+        _explainJson = null;
         await ReloadDataAsync();
         await base.OnParametersSetAsync();
     }
@@ -88,6 +117,15 @@ else
     private async Task ReloadDataAsync()
     {
         _model = CallLibrary.GetCall(Key);
+        StateHasChanged();
+    }
+
+    private async Task LoadExplainAsync()
+    {
+        _loadingExplain = true;
+        StateHasChanged();
+        _explainJson = await _model.ExplainProvider(CancellationToken.None);
+        _loadingExplain = false;
         StateHasChanged();
     }
 }
