@@ -21,8 +21,10 @@ else
     <RadzenStack Orientation="Orientation.Horizontal" Gap="1rem" Style="margin-bottom: 6px;">
         <RadzenDropDown Data="@_cities" TValue="CityEntity" Value="@_selectedCity" Change="@(a => Change(a))" TextProperty="Name" />
         <StandardButton Icon="delete" Click="DeleteCity" />
-        <StandardButton Icon="add" Click="CreateCity" />
+        <StandardButton Icon="add" Click="@(() => CreateCity())" />
+        <StandardButton Icon="add" Text="Add 'Stockholm'" Click="@(() => CreateCity("Stockholm"))" />
     </RadzenStack>
+    <RadzenCheckBox TValue="bool?" @bind-Value="_positive" Change="@ReloadData" />
 
     <table class="table">
         <thead>
@@ -53,6 +55,7 @@ else
     private CityEntity[] _cities;
     private CityEntity _selectedCity;
     private LocalWeatherEntity[] _forecasts = [];
+    private bool? _positive;
 
     protected override async Task OnInitializedAsync()
     {
@@ -72,7 +75,7 @@ else
     {
         if (_selectedCity == null) return;
 
-        _forecasts = await LocalWeatherRepository.GetAsync(_selectedCity.Name).ToArrayAsync();
+        _forecasts = await LocalWeatherRepository.GetAsync(_selectedCity.Name, x => _positive == null || (x.TemperatureC >= 0 && _positive == true) || (x.TemperatureC < 0 && _positive == false)).ToArrayAsync();
         StateHasChanged();
     }
 
@@ -101,9 +104,9 @@ else
         StateHasChanged();
     }
 
-    private async Task CreateCity()
+    private async Task CreateCity(string city = null)
     {
-        await CityRepository.Add(new CityEntity { Name = Guid.NewGuid().ToString() });
+        await CityRepository.Add(new CityEntity { Name = city ?? Guid.NewGuid().ToString() });
         _cities = await CityRepository.GetAsync().ToArrayAsync();
         StateHasChanged();
     }

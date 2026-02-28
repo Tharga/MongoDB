@@ -1,4 +1,5 @@
-﻿using Tharga.MongoDB;
+﻿using System.Linq.Expressions;
+using Tharga.MongoDB;
 using Tharga.MongoDB.Configuration;
 using Tharga.MongoDB.Disk;
 
@@ -7,7 +8,7 @@ namespace Tharga.TemplateBlazor.Web.Features.Weather;
 public interface ILocalWeatherRepository : IRepository
 {
     Task AddMany(string city, LocalWeatherEntity[] forecasts);
-    IAsyncEnumerable<LocalWeatherEntity> GetAsync(string city);
+    IAsyncEnumerable<LocalWeatherEntity> GetAsync(string city, Expression<Func<LocalWeatherEntity, bool>> filter);
     Task DropAsync(string city);
 }
 
@@ -20,10 +21,10 @@ public class LocalWeatherRepository : ILocalWeatherRepository
         _collectionProvider = collectionProvider;
     }
 
-    public IAsyncEnumerable<LocalWeatherEntity> GetAsync(string city)
+    public IAsyncEnumerable<LocalWeatherEntity> GetAsync(string city, Expression<Func<LocalWeatherEntity, bool>> expression)
     {
         var collection = GetCollection(city);
-        return collection.GetAsync();
+        return collection.GetAsync(expression);
     }
 
     public Task DropAsync(string city)

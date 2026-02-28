@@ -16,4 +16,5 @@ public record CallInfo
     public Exception Exception { get; set; }
     public bool Final { get; set; }
     public IReadOnlyList<CallStepInfo> Steps { get; set; }
+    public string FilterJson { get; set; }
 }

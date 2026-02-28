@@ -65,6 +65,11 @@ else
                 </Columns>
             </RadzenDataGrid>
         }
+        @if (!string.IsNullOrEmpty(_model.FilterJson))
+        {
+            <RadzenText TextStyle="TextStyle.Caption" Text="Filter" />
+            <pre style="background:#f5f5f5;padding:0.5rem;border-radius:4px;overflow-x:auto;font-size:0.8rem;white-space:pre-wrap;word-break:break-all;">@_model.FilterJson</pre>
+        }
     </RadzenStack>
 }
 
