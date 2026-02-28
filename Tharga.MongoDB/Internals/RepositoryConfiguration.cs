@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Microsoft.Extensions.Configuration;
@@ -47,7 +47,7 @@ internal class RepositoryConfiguration : IRepositoryConfiguration
         var configuration = new MongoDbConfig
         {
             AccessInfo = c1?.AccessInfo ?? c2?.AccessInfo ?? c3.Value?.AccessInfo ?? c4.Value?.AccessInfo,
-            ResultLimit = c1?.ResultLimit ?? c2?.ResultLimit ?? c3.Value?.ResultLimit ?? c4.Value?.ResultLimit,
+            FetchSize = c1?.FetchSize ?? c2?.FetchSize ?? c3.Value?.FetchSize ?? c4.Value?.FetchSize,
             AutoClean = c1?.AutoClean ?? c2?.AutoClean ?? c3.Value?.AutoClean ?? c4.Value?.AutoClean ?? true,
             CleanOnStartup = c1?.CleanOnStartup ?? c2?.CleanOnStartup ?? c3.Value?.CleanOnStartup ?? c4.Value?.CleanOnStartup ?? false,
             CreateCollectionStrategy = c1?.CreateCollectionStrategy ?? c2?.CreateCollectionStrategy ?? c3.Value?.CreateCollectionStrategy ?? c4.Value?.CreateCollectionStrategy ?? CreateStrategy.DropEmpty,

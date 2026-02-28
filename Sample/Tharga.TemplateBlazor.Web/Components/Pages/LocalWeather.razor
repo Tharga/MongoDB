@@ -1,0 +1,129 @@
+﻿@page "/local-weather"
+@using global::MongoDB.Bson
+@using Tharga.Blazor.Framework.Buttons
+@using Tharga.TemplateBlazor.Web.Features.City
+@using Tharga.TemplateBlazor.Web.Features.Weather
+@attribute [StreamRendering]
+@inject ILocalWeatherRepository LocalWeatherRepository
+@inject ICityRepository CityRepository
+@inject DialogService DialogService
+
+<h1>Local Weather</h1>
+
+<p>This component demonstrates showing data.</p>
+
+@if (_cities == null)
+{
+    <p><em>Loading...</em></p>
+}
+else
+{
+    <RadzenStack Orientation="Orientation.Horizontal" Gap="1rem" Style="margin-bottom: 6px;">
+        <RadzenDropDown Data="@_cities" TValue="CityEntity" Value="@_selectedCity" Change="@(a => Change(a))" TextProperty="Name" />
+        <StandardButton Icon="delete" Click="DeleteCity" />
+        <StandardButton Icon="add" Click="@(() => CreateCity())" />
+        <StandardButton Icon="add" Text="Add 'Stockholm'" Click="@(() => CreateCity("Stockholm"))" />
+    </RadzenStack>
+    <RadzenCheckBox TValue="bool?" @bind-Value="_positive" Change="@ReloadData" />
+
+    <table class="table">
+        <thead>
+        <tr>
+            <th>Date</th>
+            <th aria-label="Temperature in Celsius">Temp. (C)</th>
+            <th aria-label="Temperature in Fahrenheit">Temp. (F)</th>
+            <th>Summary</th>
+        </tr>
+        </thead>
+        <tbody>
+        @foreach (var forecast in _forecasts)
+        {
+            <tr>
+                <td>@forecast.Date.ToShortDateString()</td>
+                <td>@forecast.TemperatureC</td>
+                <td>@forecast.TemperatureF</td>
+                <td>@forecast.Summary</td>
+            </tr>
+        }
+        </tbody>
+    </table>
+}
+
+<StandardButton Text="Populate" Click="Populate" />
+
+@code {
+    private CityEntity[] _cities;
+    private CityEntity _selectedCity;
+    private LocalWeatherEntity[] _forecasts = [];
+    private bool? _positive;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Task.Delay(500);
+        _cities = await CityRepository.GetAsync().ToArrayAsync();
+        if (_cities.Length == 0)
+        {
+            await CityRepository.Add(new CityEntity { Name = "Stockholm" });
+            await CityRepository.Add(new CityEntity { Name = "Benalmadena" });
+            StateHasChanged();
+        }
+
+        await ReloadData();
+    }
+
+    private async Task ReloadData()
+    {
+        if (_selectedCity == null) return;
+
+        _forecasts = await LocalWeatherRepository.GetAsync(_selectedCity.Name, x => _positive == null || (x.TemperatureC >= 0 && _positive == true) || (x.TemperatureC < 0 && _positive == false)).ToArrayAsync();
+        StateHasChanged();
+    }
+
+    private async Task Populate()
+    {
+        if (_selectedCity == null) return;
+
+        var startDate = DateOnly.FromDateTime(DateTime.Now);
+        var summaries = new[] { "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching" };
+        _forecasts = Enumerable.Range(1, 5).Select(index => new LocalWeatherEntity
+        {
+            Id = ObjectId.GenerateNewId(),
+            Date = startDate.AddDays(index),
+            TemperatureC = Random.Shared.Next(-20, 55),
+            Summary = summaries[Random.Shared.Next(summaries.Length)]
+        }).ToArray();
+
+        await LocalWeatherRepository.AddMany(_selectedCity.Name, _forecasts);
+        await ReloadData();
+    }
+
+    private async Task Change(object o)
+    {
+        _selectedCity = (CityEntity)o;
+        await ReloadData();
+        StateHasChanged();
+    }
+
+    private async Task CreateCity(string city = null)
+    {
+        await CityRepository.Add(new CityEntity { Name = city ?? Guid.NewGuid().ToString() });
+        _cities = await CityRepository.GetAsync().ToArrayAsync();
+        StateHasChanged();
+    }
+
+    private async Task DeleteCity()
+    {
+        if (_selectedCity == null) return;
+
+        var response = await DialogService.Confirm($"Confirm delete '{_selectedCity.Name}'.", "Confirm delete");
+        if (response != true) return;
+
+        await LocalWeatherRepository.DropAsync(_selectedCity.Name);
+        await CityRepository.DeleteAsync(_selectedCity.Name);
+
+        _cities = await CityRepository.GetAsync().ToArrayAsync();
+        _selectedCity = _cities.FirstOrDefault();
+        await ReloadData();
+    }
+
+}

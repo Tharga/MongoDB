@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 
 namespace Tharga.MongoDB;
@@ -10,4 +11,5 @@ internal interface ICallLibrary
     IEnumerable<CallInfo> GetLastCalls();
     IEnumerable<CallInfo> GetSlowCalls();
     IEnumerable<CallInfo> GetOngoingCalls();
+    CallInfo GetCall(Guid key);
 }

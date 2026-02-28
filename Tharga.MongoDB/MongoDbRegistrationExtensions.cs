@@ -226,6 +226,8 @@ public static class MongoDbRegistrationExtensions
     {
         _actionEvent?.Invoke(new ActionEventArgs(new ActionEventArgs.ActionData { Message = $"Entering {nameof(UseMongoDB)}.", Level = LogLevel.Debug }, new ActionEventArgs.ContextData()));
 
+        FlexibleGuidSerializer.Logger = app.Services.GetService<ILoggerFactory>()?.CreateLogger<FlexibleGuidSerializer>();
+
         var databaseOptions = app.Services.GetService<IOptions<DatabaseOptions>>();
 
         var mongoDbInstance = app.Services.GetService<IMongoDbInstance>();
@@ -306,7 +308,8 @@ public static class MongoDbRegistrationExtensions
                 var monitor = app.Services.GetService<IDatabaseMonitor>();
                 await foreach (var collectionInfo in monitor.GetInstancesAsync().Where(x => x.Registration == Registration.Static))
                 {
-                    await monitor.RestoreIndexAsync(collectionInfo);
+                    await monitor.RestoreIndexAsync(collectionInfo, false);
+                    o.Logger?.LogInformation("Restore index for configuration {Configuration}, database {DatabaseName}, collection {CollectionName}.", collectionInfo.ConfigurationName, collectionInfo.DatabaseName, collectionInfo.CollectionName);
                 }
             });
 

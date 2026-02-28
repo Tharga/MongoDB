@@ -13,15 +13,17 @@ public static class EntityScopeExtensions
     /// <typeparam name="TKey">Type of the key.</typeparam>
     /// <param name="item">The entity scope.</param>
     /// <param name="func">The function to be executed within the scope.</param>
+    /// <param name="errorHandler">Provide an error handler instead of an exception beeing thrown.</param>
     /// <returns></returns>
     /// <exception cref="ArgumentNullException"></exception>
-    public static async Task<T> ExecuteAsync<T, TKey>(this EntityScope<T, TKey> item, Func<T, Task<T>> func)
+    public static async Task<T> ExecuteAsync<T, TKey>(this EntityScope<T, TKey> item, Func<T, Task<T>> func, Action<Exception> errorHandler = null)
         where T : LockableEntityBase<TKey>
     {
         if (item == null) return null;
         if (func == null) throw new ArgumentNullException(nameof(func), $"{nameof(func)} needs to be provided.");
 
-        T entity;
+        T entity = default;
+
         try
         {
             entity = await func.Invoke(item.Entity);
@@ -34,6 +36,12 @@ public static class EntityScopeExtensions
         catch (Exception e)
         {
             await item.SetErrorStateAsync(e);
+            if (errorHandler != null)
+            {
+                errorHandler.Invoke(e);
+                return entity ?? item.Entity;
+            }
+
             throw;
         }
 

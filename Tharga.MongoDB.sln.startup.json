@@ -2,6 +2,11 @@
   "Version": 3,
   "ListAllProjects": false,
   "MultiProjectConfigurations": {
+    "Blazor": {
+      "Projects": {
+        "Tharga.TemplateBlazor.Web": {}
+      }
+    },
     "Host Sample": {
       "Projects": {
         "HostSample": {}

@@ -2,7 +2,7 @@
 
 public record CollectionModel : CollectionFingerprint
 {
-    public required DocumentCount DocumentCount { get; set; }
+    public DocumentCount DocumentCount { get; set; }
     public Source Source { get; set; }
     public required Registration Registration { get; init; }
     public bool Accessed => AccessCount > 0;
@@ -10,5 +10,5 @@ public record CollectionModel : CollectionFingerprint
     public required int CallCount { get; set; }
     public required long Size { get; set; }
     public required IndexModel[] Indices { get; set; }
-    public required bool IndexEqualFields { get; set; }
+    public required bool? IndexEqualFields { get; set; }
 }

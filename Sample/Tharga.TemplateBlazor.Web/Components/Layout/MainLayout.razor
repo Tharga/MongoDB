@@ -1,0 +1,24 @@
+﻿@inherits LayoutComponentBase
+@inject CookieThemeService CookieThemeService
+
+<CustomErrorBoundary>
+    <RadzenComponents @rendermode="InteractiveAuto" />
+</CustomErrorBoundary>
+
+<HeadContent>
+    <Title />
+</HeadContent>
+
+<RadzenLayout>
+    <CustomErrorBoundary>
+        <NavMenu/>
+    </CustomErrorBoundary>
+    <RadzenBody>
+        <CustomErrorBoundary>
+            @Body
+        </CustomErrorBoundary>
+    </RadzenBody>
+    <RadzenFooter>
+        TemplateBlazor by Thargelion
+    </RadzenFooter>
+</RadzenLayout>

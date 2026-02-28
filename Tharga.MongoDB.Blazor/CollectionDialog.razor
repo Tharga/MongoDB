@@ -1,5 +1,6 @@
-﻿@using Tharga.Blazor.Framework.Buttons
+@using Tharga.Blazor.Framework.Buttons
 @using Tharga.Toolkit
+@implements IDisposable
 @inject IDatabaseMonitor DatabaseMonitor
 @inject NotificationService NotificationService
 @inject DialogService DialogService
@@ -34,6 +35,10 @@ else
                 <RadzenText TextStyle="TextStyle.Caption" Text="Registration"/>
                 <RadzenText Text="@($"{_model.Registration}")" />
             </RadzenColumn>
+            <RadzenColumn>
+                <RadzenText TextStyle="TextStyle.Caption" Text="Types" />
+                <RadzenText Text="@($"{string.Join(", ", _model.Types)}")" />
+            </RadzenColumn>
         </RadzenRow>
         <RadzenRow>
             <RadzenColumn>
@@ -42,7 +47,7 @@ else
             </RadzenColumn>
             <RadzenColumn>
                 <RadzenText TextStyle="TextStyle.Caption" Text="Document Count"/>
-                <RadzenText Text="@($"{_model.DocumentCount.Count:N0}")" />
+                <RadzenText Text="@(_model.DocumentCount != null ? $"{_model.DocumentCount.Count:N0}" : "—")" />
             </RadzenColumn>
             <RadzenColumn>
                 <RadzenText TextStyle="TextStyle.Caption" Text="Size"/>
@@ -50,33 +55,55 @@ else
             </RadzenColumn>
         </RadzenRow>
 
-        <RadzenDataGrid Data="_indexModel" TItem="IndexModel"
-                        CellRender="@OnCellRender">
-            <Columns>
-                <RadzenDataGridColumn Title="Name" Property="@nameof(IndexModel.Name)"/>
-                <RadzenDataGridColumn Title="Defined" CssClass="css-defined">
-                    <Template>
-                        <RadzenText Text="@($"{((context.Defined?.IsUnique ?? false) ? "Unique " : "")}{string.Join(", ", context.Defined?.Fields ?? [])}")" />
-                    </Template>
-                </RadzenDataGridColumn>
-                <RadzenDataGridColumn Title="Current" CssClass="css-current">
-                    <Template>
-                        <RadzenText Text="@($"{((context.Current?.IsUnique ?? false) ? "Unique " : "")}{string.Join(", ", context.Current?.Fields ?? [])}")" />
-                    </Template>
-                </RadzenDataGridColumn>
-                <RadzenDataGridColumn>
-                    <Template>
-                        <RadzenButton Text="X" Click="@(() => Show(context))" />
-                    </Template>
-                </RadzenDataGridColumn>
-            </Columns>
-        </RadzenDataGrid>
+        @if (_model.Clean != null)
+        {
+            <RadzenRow>
+                <RadzenColumn>
+                    <RadzenText TextStyle="TextStyle.Caption" Text="Last Cleaned"/>
+                    <RadzenText Text="@_model.Clean.CleanedAt.ToLocalDurationString()" title="@_model.Clean.CleanedAt.ToLocalDateTimeString()" />
+                </RadzenColumn>
+                <RadzenColumn>
+                    <RadzenText TextStyle="TextStyle.Caption" Text="Documents Cleaned"/>
+                    <RadzenText Text="@($"{_model.Clean.DocumentsCleaned:N0}")" />
+                </RadzenColumn>
+                <RadzenColumn>
+                    <RadzenText TextStyle="TextStyle.Caption" Text="Fingerprint Match"/>
+                    <RadzenText Text="@(FingerprintMatch ? "Current" : "Outdated")" Style="@(FingerprintMatch ? "" : "color: orange; font-weight: bold;")" />
+                </RadzenColumn>
+            </RadzenRow>
+        }
+
+        @if (_indexModel.Any())
+        {
+            <RadzenText TextStyle="TextStyle.Caption" Text="Indices"/>
+            <RadzenDataGrid Data="_indexModel" TItem="IndexModel"
+                            CellRender="@OnCellRender">
+                <Columns>
+                    <RadzenDataGridColumn Title="Name" Property="@nameof(IndexModel.Name)"/>
+                    <RadzenDataGridColumn Title="Defined" CssClass="css-defined">
+                        <Template>
+                            <RadzenText Text="@($"{(context.Defined?.IsUnique ?? false ? "[Unique] " : "")}{string.Join(", ", context.Defined?.Fields ?? [])}")"/>
+                        </Template>
+                    </RadzenDataGridColumn>
+                    <RadzenDataGridColumn Title="Current" CssClass="css-current">
+                        <Template>
+                            <RadzenText Text="@($"{(context.Current?.IsUnique ?? false ? "[Unique] " : "")}{string.Join(", ", context.Current?.Fields ?? [])}")" />
+                        </Template>
+                    </RadzenDataGridColumn>
+                    <RadzenDataGridColumn>
+                        <Template>
+                            <RadzenButton Icon="compare_arrows" Text="Duplicates" Click="@(() => Show(context))" Disabled="@(!CanTouch)" Visible="@(context.Defined?.IsUnique == true && context.Differs())" />
+                        </Template>
+                    </RadzenDataGridColumn>
+                </Columns>
+            </RadzenDataGrid>
+        }
 
         <RadzenStack Orientation="Orientation.Horizontal" Gap="1rem">
             <ActionButton Text="Touch" Icon="touch_app" Click="TouchCollection" Enabled="@CanTouch" />
             <ActionButton Text="Drop index" Icon="delete" Click="DropIndex" Enabled="@CanDrop" />
             <ActionButton Text="Restore Index" Icon="construction" Click="RestoreIndex" Enabled="@CanRestore" />
-            @* <ActionButton Text="Clean" Icon="cleaning_services" Click="CleanCollection" Enabled="@CanClean" /> *@
+            <ActionButton Text="Clean" Icon="cleaning_services" Click="CleanCollection" Enabled="@CanClean" />
         </RadzenStack>
 
     </RadzenStack>
@@ -90,14 +117,35 @@ else
     public CollectionFingerprint Fingerprint { get; set; }
 
     private bool CanTouch => _model != null && _model.Registration != Registration.NotInCode;
-    private bool CanDrop => CanTouch && _model.Index.Current.Any();
+    private bool CanDrop => CanTouch && (_model.Index?.Current?.Any() ?? false);
     private bool CanRestore => CanTouch && _indexModel.Any(x => !x.EqualFields);
-    // private bool CanClean => CanTouch && false;
+    private bool CanClean => CanTouch;
+    private bool FingerprintMatch => _model?.Clean != null && _model.Clean.SchemaFingerprint == _model.CurrentSchemaFingerprint;
+
+    protected override async Task OnInitializedAsync()
+    {
+        DatabaseMonitor.CollectionInfoChangedEvent += OnCollectionInfoChanged;
+        await base.OnInitializedAsync();
+    }
+
+    public void Dispose()
+    {
+        DatabaseMonitor.CollectionInfoChangedEvent -= OnCollectionInfoChanged;
+    }
 
     protected override async Task OnParametersSetAsync()
     {
-        await ReloadData();
+        await ReloadDataAsync();
+        _ = Task.Run(() => DatabaseMonitor.RefreshStatsAsync(Fingerprint));
         await base.OnParametersSetAsync();
+    }
+
+    private async void OnCollectionInfoChanged(object sender, CollectionInfoChangedEventArgs e)
+    {
+        if (e.CollectionInfo.Key != Fingerprint?.Key) return;
+        _model = e.CollectionInfo;
+        _indexModel = _model.ToIndexModel().ToArray();
+        await InvokeAsync(StateHasChanged);
     }
 
     private async Task TouchCollection()
@@ -106,12 +154,12 @@ else
         {
             await DatabaseMonitor.TouchAsync(_model);
 
-            await ReloadData();
+            await ReloadDataAsync();
             NotificationService.Notify(new NotificationMessage { Summary = "Collection has been touched." });
         }
         catch (Exception e)
         {
-            await ReloadData();
+            await ReloadDataAsync();
             NotificationService.Notify(new NotificationMessage { Summary = e.Message, Detail = $"{e.StackTrace}", Severity = NotificationSeverity.Error });
         }
     }
@@ -126,12 +174,12 @@ else
             var response = await DatabaseMonitor.DropIndexAsync(_model);
             var dropCount = response.Before - response.After;
 
-            await ReloadData();
+            await ReloadDataAsync();
             NotificationService.Notify(new NotificationMessage { Summary = "Indices has been dropped.", Detail = $"Dropped {dropCount} indices. There are {response.After} indices left." });
         }
         catch (Exception e)
         {
-            await ReloadData();
+            await ReloadDataAsync();
             NotificationService.Notify(new NotificationMessage { Summary = e.Message, Detail = $"{e.StackTrace}", Severity = NotificationSeverity.Error });
         }
     }
@@ -143,14 +191,14 @@ else
             var result = await DialogService.Confirm("Indicies will be restored.", "Confirm restore indicies");
             if (result != true) return;
 
-            await DatabaseMonitor.RestoreIndexAsync(_model);
+            await DatabaseMonitor.RestoreIndexAsync(_model, true);
 
-            await ReloadData();
+            await ReloadDataAsync();
             NotificationService.Notify(new NotificationMessage { Summary = "Indices has been restored." });
         }
         catch (Exception e)
         {
-            await ReloadData();
+            await ReloadDataAsync();
             NotificationService.Notify(new NotificationMessage { Summary = e.Message, Detail = $"{e.StackTrace}", Severity = NotificationSeverity.Error });
         }
     }
@@ -159,22 +207,22 @@ else
     {
         try
         {
-            var result = await DialogService.Confirm($"All {_model.DocumentCount} documents in the collection will be cleaned. This might take time to perform.", "Confirm clean collection");
+            var result = await DialogService.Confirm($"All {(_model.DocumentCount != null ? $"{_model.DocumentCount.Count:N0}" : "unknown number of")} documents in the collection will be cleaned (including GUID format). This might take time to perform.", "Confirm clean collection");
             if (result != true) return;
 
-            throw new NotImplementedException();
+            var cleanInfo = await DatabaseMonitor.CleanAsync(_model, cleanGuids: true);
 
-            await ReloadData();
-            NotificationService.Notify(new NotificationMessage { Summary = "Collection has been cleaned." });
+            await ReloadDataAsync();
+            NotificationService.Notify(new NotificationMessage { Summary = "Collection has been cleaned.", Detail = $"{cleanInfo.DocumentsCleaned} documents cleaned." });
         }
         catch (Exception e)
         {
-            await ReloadData();
+            await ReloadDataAsync();
             NotificationService.Notify(new NotificationMessage { Summary = e.Message, Detail = $"{e.StackTrace}", Severity = NotificationSeverity.Error });
         }
     }
 
-    private async Task ReloadData()
+    private async Task ReloadDataAsync()
     {
         var response = await DatabaseMonitor.GetInstanceAsync(Fingerprint);
 
@@ -229,53 +277,13 @@ else
         }
     }
 
-    //private void BuildModel()
-    //{
-    //    var names = CollectionInfo.Index.Current.Select(x => x.Name)
-    //        .Union(CollectionInfo.Index.Defined.Select(x => x.Name));
-    //    _model = names.Select(x =>
-    //    {
-    //        var current = CollectionInfo.Index.Current.SingleOrDefault(y => y.Name == x);
-    //        var defined = CollectionInfo.Index.Defined.SingleOrDefault(y => y.Name == x);
-    //
-    //        var equalFields = (current?.Fields.Order().ToArray() ?? []).SequenceEqual(defined?.Fields.Order().ToArray() ?? []);
-    //
-    //        return new IndexModel
-    //        {
-    //            Name = x,
-    //            Current = current,
-    //            Defined = defined,
-    //            EqualFields = equalFields
-    //        };
-    //    }).ToArray();
-    //}
-
-    // private DatabaseContext BuildDatabaseContext()
-    // {
-    //     DatabaseContext context;
-    //     switch (CollectionInfo.Registration)
-    //     {
-    //         case Registration.NotInCode:
-    //             throw new NotSupportedException();
-    //         case Registration.Static:
-    //             context = new DatabaseContext { CollectionName = CollectionInfo.CollectionName, ConfigurationName = CollectionInfo.ConfigurationName };
-    //             break;
-    //         case Registration.Dynamic:
-    //             context = CollectionInfo.Context;
-    //             break;
-    //         default:
-    //             throw new ArgumentOutOfRangeException(nameof(CollectionInfo.Registration), $"Unknown {nameof(CollectionInfo.Registration)} {CollectionInfo.Registration}.");
-    //     }
-
-    //     return context;
-    // }
-
     private async Task Show(IndexModel context)
     {
-        // var defined = System.Text.Json.JsonSerializer.Serialize(context.Defined);
-        // var current = System.Text.Json.JsonSerializer.Serialize(context.Current);
-        var items = await DatabaseMonitor.GetIndexBlockersAsync(_model, context.Name);
-        throw new NotImplementedException();
+        var items = (await DatabaseMonitor.GetIndexBlockersAsync(_model, context.Name)).ToArray();
+        if (items.Any())
+            await DialogService.Alert($"{string.Join('\n', items.Select(x => $"{x.First()} == {x.Last()}"))}", "Duplicates");
+        else
+            await DialogService.Alert($"No duplicate documents by index '{context.Name}' found.", "Duplicates");
     }
 
 }

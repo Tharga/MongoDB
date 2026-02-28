@@ -230,6 +230,16 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
         return Disk.CleanAsync(collection);
     }
 
+    internal override Task<CleanInfo> CleanCollectionAsync(IMongoCollection<TEntity> collection, bool cleanGuids)
+    {
+        return Disk.CleanCollectionAsync(collection, cleanGuids);
+    }
+
+    internal override Task<CleanInfo> GetCleanInfoAsync()
+    {
+        return Disk.GetCleanInfoAsync();
+    }
+
     //Lock
     public Expression<Func<TEntity, bool>> UnlockedOrExpiredFilter
     {
@@ -622,7 +632,7 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
 
         if ((commit || exception != null) && expired)
         {
-            throw new LockExpiredException($"Entity of type {typeof(TEntity).Name} was locked for {lockTime} instead of {timeout}.");
+            throw new LockExpiredException($"Too late to release entity of type {typeof(TEntity).Name} locked by {lockInfo.Actor}.", timeout, lockTime);
         }
 
         EntityChangeResult<TEntity> result;

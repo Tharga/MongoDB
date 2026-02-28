@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using MongoDB.Driver;
 using System;
 using System.Collections.Generic;
@@ -60,7 +60,7 @@ public abstract class RepositoryCollectionBase<TEntity, TKey> : RepositoryCollec
     public virtual bool AutoClean => _mongoDbService.GetAutoClean();
     public virtual bool CleanOnStartup => _mongoDbService.GetCleanOnStartup();
     public virtual CreateStrategy CreateCollectionStrategy => _mongoDbService.CreateCollectionStrategy();
-    public virtual int? ResultLimit => _mongoDbService.GetResultLimit();
+    public virtual int? FetchSize => _mongoDbService.GetFetchSize();
     public virtual IEnumerable<CreateIndexModel<TEntity>> Indices => null;
     internal virtual IEnumerable<CreateIndexModel<TEntity>> CoreIndices => null;
     public virtual IEnumerable<Type> Types => null;
@@ -105,6 +105,8 @@ public abstract class RepositoryCollectionBase<TEntity, TKey> : RepositoryCollec
     internal abstract Task<bool> AssureIndex(IMongoCollection<TEntity> collection, bool forceAssure = false, bool throwOnException = false);
     internal abstract Task<(int Before, int After)> DropIndex(IMongoCollection<TEntity> collection);
     internal abstract Task CleanAsync(IMongoCollection<TEntity> collection);
+    internal abstract Task<CleanInfo> CleanCollectionAsync(IMongoCollection<TEntity> collection, bool cleanGuids);
+    internal abstract Task<CleanInfo> GetCleanInfoAsync();
 
     internal void InvokeAction(ActionEventArgs.ActionData actionData)
     {

@@ -2,7 +2,26 @@
   "permissions": {
     "allow": [
       "Bash(find:*)",
-      "Bash(powershell -Command:*)"
+      "Bash(powershell -Command:*)",
+      "Bash(python -c:*)",
+      "Bash(powershell -NoProfile -Command \"Set-Content -Path ''C:\\\\temp\\\\patch.ps1'' -Value ''Write-Host test'' -Encoding UTF8; Write-Host done\")",
+      "Bash(powershell -NoProfile -Command \"New-Item -ItemType Directory -Force -Path C:\\\\temp | Out-Null; Set-Content -Path ''C:\\\\temp\\\\patch.ps1'' -Value ''Write-Host test'' -Encoding UTF8; Write-Host done\")",
+      "Bash(cmd /c \"echo test\")",
+      "Bash(cmd /c \"powershell -NoProfile -File C:\\\\temp\\\\patch.ps1\")",
+      "Bash(powershell:*)",
+      "Bash(cmd /c \"powershell -NoProfile -Command \"\"[System.IO.File]::WriteAllText\\(''C:\\\\temp\\\\patch.ps1'', ''Write-Host hello'', [System.Text.Encoding]::UTF8\\)\"\" && type C:\\\\temp\\\\patch.ps1\")",
+      "Bash(node --version:*)",
+      "Bash(node -e \"require\\(''fs''\\).writeFileSync\\(''C:/temp/write_ps.js'', ''console.log\\(42\\)''\\)\")",
+      "Bash(node:*)",
+      "Bash(dotnet build Tharga.MongoDB/Tharga.MongoDB.csproj --no-restore)",
+      "Bash(dotnet build Tharga.MongoDB.Blazor/Tharga.MongoDB.Blazor.csproj --no-restore)",
+      "Bash(dotnet build Tharga.MongoDB/Tharga.MongoDB.csproj Tharga.MongoDB.Blazor/Tharga.MongoDB.Blazor.csproj --no-restore)",
+      "Bash(xargs grep -l \"includeDetails\")",
+      "Bash(dotnet build Tharga.MongoDB/Tharga.MongoDB.csproj --no-restore -v quiet)",
+      "Bash(dotnet build --no-restore -v q)",
+      "Bash(dotnet build Tharga.MongoDB/Tharga.MongoDB.csproj --no-restore -v q)",
+      "Bash(dotnet build Tharga.MongoDB/Tharga.MongoDB.csproj -v q)",
+      "Bash(dotnet build:*)"
     ]
   }
 }

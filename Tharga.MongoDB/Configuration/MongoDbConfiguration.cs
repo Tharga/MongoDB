@@ -11,11 +11,11 @@ public record MongoDbConfiguration
     public MongoDbApiAccess AccessInfo { get; init; }
 
     /// <summary>
-    /// The maximum number of records allowed in a single response.
-    /// The function GetPagesAsync can be used to make multiple calls to get more data.
-    /// Default value is null (no limit).
+    /// The number of documents fetched from the database per call when streaming with GetAsync.
+    /// When Options.Limit is not set, this acts as the batch size for paging through all results.
+    /// Default value is null (falls back to 1000).
     /// </summary>
-    public int? ResultLimit { get; init; }
+    public int? FetchSize { get; init; }
 
     /// <summary>
     /// Automatically clean database records and store back to the database when they are accessed.

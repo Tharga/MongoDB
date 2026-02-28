@@ -28,9 +28,18 @@ public static class IndexModelExtensions
         return sb.ToString();
     }
 
+    public static bool Differs(this IndexModel args)
+    {
+        if (args.Current == null) return true;
+        if (args.Defined != null && !args.EqualFields) return true;
+        return false;
+    }
+
     public static IEnumerable<IndexModel> ToIndexModel(this CollectionInfo collectionInfo)
     {
         if (collectionInfo == null) yield break;
+
+        if (collectionInfo.Index == null) yield break;
 
         var names = (collectionInfo.Index.Current?.Select(x => x.Name) ?? [])
             .Union(collectionInfo.Index.Defined?.Select(x => x.Name) ?? []);

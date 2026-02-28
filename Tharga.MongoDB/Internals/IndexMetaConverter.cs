@@ -57,11 +57,15 @@ internal static class IndexMetaConverter
 
         // Now we can render the index key document
         var renderedKey = model.Keys.Render(args);
-        var fields = renderedKey.Names.ToArray();
+        var fields = renderedKey.Elements.Select(e => $"{e.Name}_{e.Value}").ToArray();
+
+        // Generate a MongoDB-compatible auto-name (e.g. "Name_1", "Country_1_Name_1")
+        // so it aligns with the actual index name MongoDB assigns when no name is specified.
+        var autoName = string.Join("_", renderedKey.Elements.Select(e => $"{e.Name}_{e.Value}"));
 
         return new IndexMeta
         {
-            Name = model.Options.Name ?? string.Join("_", fields),
+            Name = model.Options.Name ?? autoName,
             Fields = fields,
             IsUnique = model.Options.Unique ?? false
         };

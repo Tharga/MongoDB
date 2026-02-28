@@ -1,0 +1,44 @@
+﻿@inject ILocalStorageService LocalStorageService
+
+<RadzenHeader>
+    <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Stretch" JustifyContent="JustifyContent.SpaceBetween" Gap="0">
+        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0">
+            <RadzenSidebarToggle Click="@ToggleMenuExpanded" />
+            <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0">
+                <BreadCrumbs ShowRoot="true" />
+            </RadzenStack>
+        </RadzenStack>
+        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="1rem">
+            @* <TeamSelector />
+                <LoginDisplay /> *@
+        </RadzenStack>
+    </RadzenStack>
+</RadzenHeader>
+
+<RadzenSidebar Responsive="false" Style="width: max-content">
+    <RadzenPanelMenu DisplayStyle="@(_menuExpanded ? MenuItemDisplayStyle.IconAndText : MenuItemDisplayStyle.Icon)" ShowArrow="false">
+        <RadzenPanelMenuItem Text="Home" Icon="home" Path="/"/>
+        @* <RadzenPanelMenuItem Text="Counter" Icon="exposure_plus_1" Path="/counter"/> *@
+        <RadzenPanelMenuItem Text="Weather" Icon="weather_mix" Path="/weather"/>
+        <RadzenPanelMenuItem Text="Local Weather" Icon="weather_mix" Path="/local-weather"/>
+        <RadzenPanelMenuItem Text="Database" Icon="database" Path="/database" />
+        <RadzenPanelMenuItem Text="About" Icon="info" Path="/about" />
+    </RadzenPanelMenu>
+</RadzenSidebar>
+
+@code {
+    bool _menuExpanded = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _menuExpanded = await LocalStorageService.GetItemAsync<bool?>("MenuExpanded") ?? true;
+        await base.OnInitializedAsync();
+    }
+
+    private async Task ToggleMenuExpanded(EventArgs arg)
+    {
+        _menuExpanded = !_menuExpanded;
+        await LocalStorageService.SetItemAsync<bool?>("MenuExpanded", _menuExpanded);
+    }
+
+}

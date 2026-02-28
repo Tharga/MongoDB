@@ -1,8 +1,10 @@
 ﻿using Microsoft.Extensions.Logging;
 using MongoDB.Bson;
+using MongoDB.Bson.IO;
 using MongoDB.Bson.Serialization;
 using MongoDB.Driver;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -19,10 +21,14 @@ namespace Tharga.MongoDB.Disk;
 public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCollectionBase<TEntity, TKey>, IDiskRepositoryCollection<TEntity, TKey>
     where TEntity : EntityBase<TKey>
 {
+    private const int AutoFetchTargetBytes = 4 * 1024 * 1024;
+    private const int AutoFetchMinimum = 100;
+    private static readonly ConcurrentDictionary<string, int> _autoFetchSizeCache = new();
     private readonly IExecuteLimiter _databaseExecutor;
     private readonly ICollectionPool _collectionPool;
     private readonly IInitiationLibrary _initiationLibrary;
     private static readonly SemaphoreSlim _fetchLock = new(1, 1); //TODO: This code makes all having to wait for initiation. This should be locked per "fullName" in "FetchCollectionAsync".
+    private int? _autoFetchSize;
 
     //TODO: Implement GetDerived or GetGeneric that loads T where TEntity is the base class.
 
@@ -50,12 +56,16 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         _initiationLibrary = ((MongoDbService)_mongoDbService).InitiationLibrary;
     }
 
-    protected async Task<T> ExecuteAsync<T>(string functionName, Func<IMongoCollection<TEntity>, CancellationToken, Task<(T Data, int Count)>> action, Operation operation, CancellationToken cancellationToken = default)
+    public override int? FetchSize => base.FetchSize ?? _autoFetchSize;
+
+    protected async Task<T> ExecuteAsync<T>(string functionName, Func<IMongoCollection<TEntity>, CancellationToken, Task<(T Data, int Count)>> action, Operation operation, CancellationToken cancellationToken = default, FilterDefinition<TEntity> filter = null)
     {
         var callKey = Guid.NewGuid();
         var startAt = Stopwatch.GetTimestamp();
         var steps = new List<StepResponse>();
         var count = -1;
+        Func<string> filterJsonProvider = null;
+        Func<CancellationToken, Task<string>> explainProvider = null;
 
         //NOTE: Register call started, in monitor
         steps.Add(FireCallStartEvent(functionName, operation, callKey));
@@ -72,8 +82,42 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                 steps.Add(fetchCollectionStep);
                 var collection = fetchCollectionStep.Value;
 
+                //NOTE: Capture filter render and explain as lazy delegates — no allocation until the value is read
+                if (filter != null)
+                {
+                    var serializer = collection.DocumentSerializer;
+                    var registry = collection.Settings.SerializerRegistry;
+                    filterJsonProvider = () =>
+                    {
+                        try { return filter.Render(new RenderArgs<TEntity>(serializer, registry)).ToJson(); }
+                        catch { return null; }
+                    };
+                    explainProvider = async ct =>
+                    {
+                        try
+                        {
+                            var command = new BsonDocument
+                            {
+                                { "explain", new BsonDocument
+                                    {
+                                        { "find", collection.CollectionNamespace.CollectionName },
+                                        { "filter", filter.Render(new RenderArgs<TEntity>(serializer, registry)) }
+                                    }
+                                },
+                                { "verbosity", "executionStats" }
+                            };
+                            var explanation = await collection.Database.RunCommandAsync<BsonDocument>(command, cancellationToken: ct);
+                            return explanation.ToJson(new JsonWriterSettings { Indent = true });
+                        }
+                        catch { return null; }
+                    };
+                }
+
                 //NOTE: Handle index depending on operation
                 steps.Add(await OperationIndexManagement(operation, collection));
+
+                //NOTE: Set collection context for FlexibleGuidSerializer warnings
+                FlexibleGuidSerializer.CollectionContext = ProtectedCollectionName;
 
                 //NOTE: Perform action
                 var response = await action.Invoke(collection, ct);
@@ -97,6 +141,16 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             InvokeAction(new ActionEventArgs.ActionData { Operation = functionName, Exception = e });
             throw;
         }
+        catch (MongoWaitQueueFullException e)
+        {
+            exception = e;
+            e.Data["Configuration"] = ConfigurationName ?? Constants.DefaultConfigurationName;
+            e.Data["Database"] = DatabaseName;
+            e.Data["Collection"] = CollectionName;
+            _logger?.LogError(e, $"{e.GetType().Name} {{repositoryType}}. [action: Database, operation: {functionName}]", "DiskRepository");
+            InvokeAction(new ActionEventArgs.ActionData { Operation = functionName, Exception = e });
+            throw;
+        }
         catch (Exception e)
         {
             exception = e;
@@ -110,16 +164,16 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             var elapsed = GetElapsed(startAt, Stopwatch.GetTimestamp());
 
             var total = TimeSpan.Zero;
-            var info = steps.Select((x, index) =>
+            var callSteps = steps.Select((x, index) =>
             {
                 var from = index == 0 ? startAt : steps[index - 1].Timestamp;
                 var delta = GetElapsed(from, x.Timestamp);
                 total = total.Add(delta);
-                return $"{x.Step}: {delta.TotalMilliseconds}";
-            });
-            var ss = string.Join(", ", info);
+                return new CallStepInfo { Step = x.Step, Delta = delta, Message = x.Message };
+            }).ToList();
+            var ss = string.Join(", ", callSteps.Select(x => $"{x.Step}: {x.Delta.TotalMilliseconds}"));
 
-            ((MongoDbServiceFactory)_mongoDbServiceFactory).OnCallEnd(this, new CallEndEventArgs(callKey, elapsed, exception, count));
+            ((MongoDbServiceFactory)_mongoDbServiceFactory).OnCallEnd(this, new CallEndEventArgs(callKey, elapsed, exception, count, callSteps, filterJsonProvider, explainProvider));
             //_logger?.LogInformation("Executed {method} on {collection} took {elapsed} ms. [{steps}, overhead: {overhead}]", functionName, CollectionName, elapsed.TotalMilliseconds, ss, (elapsed - total).TotalMilliseconds);
             var data = new Dictionary<string, object>
             {
@@ -188,13 +242,18 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
     {
         options ??= new Options<TEntity>();
 
+        await EnsureAutoFetchSizeAsync();
+
         var skip = options.Skip ?? 0;
-        var limit = options.Limit ?? ResultLimit ?? 1000;
+        var totalLimit = options.Limit;
+        var batchSize = totalLimit ?? FetchSize ?? 1000;
+        var remaining = totalLimit;
 
         var page = 0;
         while (true)
         {
-            var pageOptions = options with { Skip = skip, Limit = limit };
+            var pageLimit = remaining.HasValue ? Math.Min(remaining.Value, batchSize) : batchSize;
+            var pageOptions = options with { Skip = skip, Limit = pageLimit };
             var response = await GetManyAsync(filter, pageOptions, cancellationToken);
 
             foreach (var item in response.Items)
@@ -204,7 +263,15 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 
             skip += response.Items.Length;
 
-            if (skip >= response.TotalCount || response.Items.Length == 0)
+            if (remaining.HasValue)
+            {
+                remaining -= response.Items.Length;
+                if (remaining.Value <= 0 || response.Items.Length == 0)
+                {
+                    break;
+                }
+            }
+            else if (skip >= response.TotalCount || response.Items.Length == 0)
             {
                 break;
             }
@@ -212,10 +279,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             page++;
         }
 
-        if (page >= 5)
-        {
-            _logger?.LogWarning($"Query on collection {{collection}} returned {{pages}} pages with items {{count}} each. Consired using {nameof(GetManyAsync)}, limit the total response or increase the count for each page.", CollectionName, page, limit);
-        }
+        _logger?.LogDebug("Query on collection {collection} returned {pages} pages with items {count} each.", CollectionName, page, batchSize);
     }
 
     public override IAsyncEnumerable<T> GetProjectionAsync<T>(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default)
@@ -231,13 +295,18 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
     {
         options ??= new Options<TEntity>();
 
+        await EnsureAutoFetchSizeAsync();
+
         var skip = options.Skip ?? 0;
-        var limit = options.Limit ?? ResultLimit ?? 1000;
+        var totalLimit = options.Limit;
+        var batchSize = totalLimit ?? FetchSize ?? 1000;
+        var remaining = totalLimit;
 
         var page = 0;
         while (true)
         {
-            var pageOptions = options with { Skip = skip, Limit = limit };
+            var pageLimit = remaining.HasValue ? Math.Min(remaining.Value, batchSize) : batchSize;
+            var pageOptions = options with { Skip = skip, Limit = pageLimit };
             var response = await GetManyProjectionAsync<T>(filter, pageOptions, cancellationToken);
 
             foreach (var item in response.Items)
@@ -247,7 +316,15 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 
             skip += response.Items.Length;
 
-            if (skip >= response.TotalCount || response.Items.Length == 0)
+            if (remaining.HasValue)
+            {
+                remaining -= response.Items.Length;
+                if (remaining.Value <= 0 || response.Items.Length == 0)
+                {
+                    break;
+                }
+            }
+            else if (skip >= response.TotalCount || response.Items.Length == 0)
             {
                 break;
             }
@@ -257,7 +334,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 
         if (page >= 5)
         {
-            _logger?.LogWarning($"Query on collection {{collection}} returned {{pages}} pages with items {{count}} each. Consired using {nameof(GetManyProjectionAsync)}, limit the total response or increase the count for each page.", CollectionName, page, limit);
+            _logger?.LogWarning($"Query on collection {{collection}} returned {{pages}} pages with items {{count}} each. Consired using {nameof(GetManyProjectionAsync)}, limit the total response or increase the count for each page.", CollectionName, page, batchSize);
         }
     }
 
@@ -285,6 +362,16 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
     public override async Task<Result<TEntity, TKey>> GetManyAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default)
     {
         filter ??= new FilterDefinitionBuilder<TEntity>().Empty;
+        options ??= new Options<TEntity>();
+
+        await EnsureAutoFetchSizeAsync();
+
+        if (options.Limit == null)
+        {
+            var defaultLimit = options.FetchSize ?? FetchSize ?? 1000;
+            options = options with { Limit = defaultLimit };
+            _logger?.LogWarning("GetManyAsync called without limit. Defaulting to {limit} for collection {collection}.", defaultLimit, ProtectedCollectionName);
+        }
 
         return await ExecuteAsync(nameof(GetManyAsync), async (collection, ct) =>
         {
@@ -293,7 +380,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             var items = await BuildList(collection, cursor, ct).ToArrayAsync(ct);
 
             var totalCount = items.Length;
-            if (totalCount <= (options?.Limit ?? ResultLimit ?? 1000))
+            if (options?.Limit != null && items.Length >= options.Limit)
             {
                 totalCount = (int)await collection.CountDocumentsAsync(filter, cancellationToken: ct);
             }
@@ -303,7 +390,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                 Items = items,
                 TotalCount = totalCount
             }, items.Length);
-        }, Operation.Read, cancellationToken);
+        }, Operation.Read, cancellationToken, filter);
     }
 
     public override Task<Result<T>> GetManyProjectionAsync<T>(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default)
@@ -317,6 +404,17 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 
     public override async Task<Result<T>> GetManyProjectionAsync<T>(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default)
     {
+        options ??= new Options<TEntity>();
+
+        await EnsureAutoFetchSizeAsync();
+
+        if (options.Limit == null)
+        {
+            var defaultLimit = options.FetchSize ?? FetchSize ?? 1000;
+            options = options with { Limit = defaultLimit };
+            _logger?.LogWarning("GetManyProjectionAsync called without limit. Defaulting to {limit} for collection {collection}.", defaultLimit, ProtectedCollectionName);
+        }
+
         return await ExecuteAsync(nameof(GetManyProjectionAsync), async (collection, ct) =>
         {
             var findOptions = options == null
@@ -343,9 +441,9 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                 foreach (var current in cursor.Current)
                 {
                     count++;
-                    if (ResultLimit != null && count > ResultLimit)
+                    if (FetchSize != null && count > FetchSize)
                     {
-                        throw new ResultLimitException(ResultLimit.Value);
+                        throw new ResultLimitException(FetchSize.Value);
                     }
 
                     items.Add(current);
@@ -353,23 +451,23 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             }
 
             var totalCount = items.Count;
-            if (totalCount <= (options?.Limit ?? ResultLimit ?? 1000))
+            if (options?.Limit != null && items.Count >= options.Limit)
             {
                 totalCount = (int)await collection.CountDocumentsAsync(usedFilter, cancellationToken: ct);
             }
 
             return (new Result<T> { Items = items.ToArray(), TotalCount = totalCount }, items.Count);
-        }, Operation.Read, cancellationToken);
+        }, Operation.Read, cancellationToken, filter);
     }
 
     public override async Task<TEntity> GetOneAsync(TKey id, CancellationToken cancellationToken = default)
     {
+        var filter = Builders<TEntity>.Filter.Eq(x => x.Id, id);
         return await ExecuteAsync(nameof(GetOneAsync), async (collection, ct) =>
         {
-            var filter = Builders<TEntity>.Filter.Eq(x => x.Id, id);
             var item = await collection.Find(filter).Limit(1).SingleOrDefaultAsync(ct);
             return (await CleanEntityAsync(collection, item), item == null ? 0 : 1);
-        }, Operation.Read, cancellationToken);
+        }, Operation.Read, cancellationToken, filter);
     }
 
     public override Task<TEntity> GetOneAsync(Expression<Func<TEntity, bool>> predicate, OneOption<TEntity> options = null, CancellationToken cancellationToken = default)
@@ -405,7 +503,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             }
 
             return (await CleanEntityAsync(collection, item), item == null ? 0 : 1);
-        }, Operation.Read, cancellationToken);
+        }, Operation.Read, cancellationToken, filter);
     }
 
     public override Task<long> CountAsync(Expression<Func<TEntity, bool>> predicate, CancellationToken cancellationToken = default)
@@ -420,7 +518,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         {
             var count = await collection.CountDocumentsAsync(filter, cancellationToken: ct);
             return (count, (int)count);
-        }, Operation.Read, cancellationToken);
+        }, Operation.Read, cancellationToken, filter);
     }
 
     public override async Task<long> GetSizeAsync(CancellationToken cancellationToken = default)
@@ -468,9 +566,9 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
     //Update
     public virtual async Task<EntityChangeResult<TEntity>> AddOrReplaceAsync(TEntity entity)
     {
+        var filter = Builders<TEntity>.Filter.Eq(x => x.Id, entity.Id);
         return await ExecuteAsync(nameof(AddOrReplaceAsync), async (collection, ct) =>
         {
-            var filter = Builders<TEntity>.Filter.Eq(x => x.Id, entity.Id);
             var current = await collection.FindOneAndReplaceAsync(filter, entity, cancellationToken: ct);
             TEntity before = null;
             if (current == null)
@@ -483,7 +581,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             }
 
             return (new EntityChangeResult<TEntity>(before, entity), 1);
-        }, Operation.Update);
+        }, Operation.Update, filter: filter);
     }
 
     public virtual Task<EntityChangeResult<TEntity>> ReplaceOneAsync(TEntity entity, OneOption<TEntity> options = null)
@@ -534,7 +632,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             var before = await collection.FindOneAndReplaceAsync(filter, entity, cancellationToken: ct);
             return (new EntityChangeResult<TEntity>(before, entity), 1);
 
-        }, Operation.Update);
+        }, Operation.Update, filter: filter);
     }
 
     public virtual Task<EntityChangeResult<TEntity>> UpdateOneAsync(TKey id, UpdateDefinition<TEntity> update)
@@ -577,7 +675,12 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                             IsUpsert = false
                         };
                         item = await collection.FindOneAndUpdateAsync(filter, update, opt, ct);
-                        return (new EntityChangeResult<TEntity>(item, async () => { return await collection.Find(x => x.Id.Equals(item.Id)).SingleAsync(ct); }), 1);
+                        return (new EntityChangeResult<TEntity>(item, async () =>
+                        {
+                            if (item == null) return null;
+                            var after = await collection.Find(x => x.Id.Equals(item.Id)).SingleAsync(ct);
+                            return after;
+                        }), 1);
                     }
                 case EMode.First:
                     item = await findFluent.FirstAsync(ct);
@@ -592,18 +695,19 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             item = await collection.FindOneAndUpdateAsync(itemFilter, update, cancellationToken: ct);
 
             return (new EntityChangeResult<TEntity>(item, async () => { return await collection.Find(x => x.Id.Equals(item.Id)).SingleAsync(ct); }), 1);
-        }, Operation.Update);
+        }, Operation.Update, filter: filter);
 
         return response;
     }
 
     public virtual async Task<long> UpdateManyAsync(Expression<Func<TEntity, bool>> predicate, UpdateDefinition<TEntity> update)
     {
+        var filter = predicate != null ? Builders<TEntity>.Filter.Where(predicate) : FilterDefinition<TEntity>.Empty;
         return await ExecuteAsync(nameof(UpdateManyAsync), async (collection, ct) =>
         {
-            var result = await collection.UpdateManyAsync(predicate, update, cancellationToken: ct);
+            var result = await collection.UpdateManyAsync(filter, update, cancellationToken: ct);
             return (result.ModifiedCount, (int)result.ModifiedCount);
-        }, Operation.Update);
+        }, Operation.Update, filter: filter);
     }
 
     public async Task<long> UpdateManyAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update)
@@ -612,7 +716,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         {
             var result = await collection.UpdateManyAsync(filter, update, cancellationToken: ct);
             return (result.ModifiedCount, (int)result.ModifiedCount);
-        }, Operation.Update);
+        }, Operation.Update, filter: filter);
     }
 
     //Delete
@@ -667,16 +771,17 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             var itemFilter = new FilterDefinitionBuilder<TEntity>().Eq(x => x.Id, item.Id);
             await collection.FindOneAndDeleteAsync(itemFilter, cancellationToken: ct);
             return (item, 1);
-        }, Operation.Delete);
+        }, Operation.Delete, filter: filter);
     }
 
     public async Task<long> DeleteManyAsync(Expression<Func<TEntity, bool>> predicate)
     {
+        var filter = predicate != null ? Builders<TEntity>.Filter.Where(predicate) : FilterDefinition<TEntity>.Empty;
         return await ExecuteAsync(nameof(DeleteManyAsync), async (collection, ct) =>
         {
-            var item = await collection.DeleteManyAsync(predicate ?? (_ => true), cancellationToken: ct);
+            var item = await collection.DeleteManyAsync(filter, cancellationToken: ct);
             return (item.DeletedCount, (int)item.DeletedCount);
-        }, Operation.Delete);
+        }, Operation.Delete, filter: filter);
     }
 
     public async Task<long> DeleteManyAsync(FilterDefinition<TEntity> filter)
@@ -685,7 +790,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         {
             var item = await collection.DeleteManyAsync(filter, cancellationToken: ct);
             return (item.DeletedCount, (int)item.DeletedCount);
-        }, Operation.Delete);
+        }, Operation.Delete, filter: filter);
     }
 
     //Other
@@ -755,6 +860,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 
         if (_collectionPool.TryGetCollection<TEntity>(fullName, out var collection))
         {
+            await SetAutoFetchSizeIfNeededAsync(collection, fullName);
             return new StepResponse<IMongoCollection<TEntity>>
             {
                 Timestamp = Stopwatch.GetTimestamp(),
@@ -814,7 +920,8 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                 //initiateAction = InitiateAction.NoAction;
             }
 
-            _collectionPool.AddCollection(fullName, collection);
+            if (initiate) _collectionPool.AddCollection(fullName, collection);
+            await SetAutoFetchSizeIfNeededAsync(collection, fullName);
             return new StepResponse<IMongoCollection<TEntity>>
             {
                 Timestamp = Stopwatch.GetTimestamp(),
@@ -827,6 +934,59 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         {
             _fetchLock.Release();
         }
+    }
+
+    private async Task EnsureAutoFetchSizeAsync()
+    {
+        if (base.FetchSize != null || _autoFetchSize != null) return;
+
+        var fullName = $"{ConfigurationName ?? Constants.DefaultConfigurationName}.{DatabaseName}.{CollectionName}";
+        if (_autoFetchSizeCache.TryGetValue(fullName, out var cached))
+        {
+            _autoFetchSize = cached;
+            return;
+        }
+
+        var response = await FetchCollectionAsync(false);
+        await SetAutoFetchSizeIfNeededAsync(response.Value, fullName);
+    }
+
+    private async Task SetAutoFetchSizeIfNeededAsync(IMongoCollection<TEntity> collection, string fullName)
+    {
+        if (base.FetchSize != null || _autoFetchSize != null) return;
+
+        if (_autoFetchSizeCache.TryGetValue(fullName, out var cached))
+        {
+            _autoFetchSize = cached;
+            return;
+        }
+
+        int computed;
+        try
+        {
+            var count = await collection.EstimatedDocumentCountAsync();
+            if (count <= 0)
+            {
+                computed = AutoFetchMinimum;
+            }
+            else
+            {
+                var size = _mongoDbService.GetSize(ProtectedCollectionName, collection.Database);
+                var avg = size / (double)count;
+                if (avg <= 0) avg = 1;
+                computed = (int)Math.Floor(AutoFetchTargetBytes / avg);
+                if (computed < AutoFetchMinimum) computed = AutoFetchMinimum;
+            }
+        }
+        catch (Exception e)
+        {
+            _logger?.LogDebug(e, "Failed to auto-calculate fetch size for {collection}.", ProtectedCollectionName);
+            computed = AutoFetchMinimum;
+        }
+
+        _autoFetchSize = computed;
+        _logger?.LogDebug("Default fetch size for {collection} is calculated to {count}.", ProtectedCollectionName, computed);
+        _autoFetchSizeCache.TryAdd(fullName, computed);
     }
 
     internal override async Task<bool> AssureIndex(IMongoCollection<TEntity> collection, bool forceAssure = false, bool throwOnException = false)
@@ -845,7 +1005,10 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             //Not sure why this index should be created like this. Trying to disable.
             //await collection.Indexes.CreateOneAsync(new CreateIndexModel<TEntity>(Builders<TEntity>.IndexKeys.Ascending(x => x.Id).Ascending("_t"), new CreateIndexOptions()));
 
-            await UpdateIndicesAsync(collection, assureIndexMode, throwOnException);
+            // When mode is Disabled but a forced restore is requested, fall back to BySchema
+            // so indexes are created/restored without requiring configured names.
+            var effectiveMode = assureIndexMode == AssureIndexMode.Disabled ? AssureIndexMode.BySchema : assureIndexMode;
+            await UpdateIndicesAsync(collection, effectiveMode, throwOnException);
             return true;
         }
 
@@ -1037,6 +1200,84 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         }
     }
 
+    internal override async Task<CleanInfo> CleanCollectionAsync(IMongoCollection<TEntity> collection, bool cleanGuids)
+    {
+        var sw = Stopwatch.StartNew();
+        var filter = Builders<TEntity>.Filter.Empty;
+
+        _logger?.LogInformation($"Starting collection clean (cleanGuids: {{cleanGuids}}) in collection {{collection}}. [action: Database, operation: {nameof(CleanCollectionAsync)}]", cleanGuids, ProtectedCollectionName);
+
+        using var cursor = await FindAsync(collection, filter, CancellationToken.None, null);
+        var allItems = await cursor.ToListAsync();
+        var count = 0;
+
+        foreach (var item in allItems)
+        {
+            if (cleanGuids || item.NeedsCleaning())
+            {
+                var replaceFilter = Builders<TEntity>.Filter.Eq(x => x.Id, item.Id);
+                await collection.FindOneAndReplaceAsync(replaceFilter, item);
+                count++;
+            }
+        }
+
+        sw.Stop();
+
+        var fingerprint = SchemaFingerprint.Generate(typeof(TEntity));
+        var cleanInfo = new CleanInfo
+        {
+            SchemaFingerprint = fingerprint,
+            CleanedAt = DateTime.UtcNow,
+            DocumentsCleaned = count
+        };
+
+        await StoreCleanMarkerAsync(collection, cleanInfo);
+
+        _logger?.LogInformation($"Collection clean completed: {{count}} of {{totalCount}} documents cleaned in {{elapsed}} ms in collection {{collection}}. [action: Database, operation: {nameof(CleanCollectionAsync)}]", count, allItems.Count, sw.Elapsed.TotalMilliseconds, ProtectedCollectionName);
+        InvokeAction(new ActionEventArgs.ActionData { Operation = nameof(CleanCollectionAsync), Message = "Collection clean completed.", ItemCount = count, Elapsed = sw.Elapsed });
+
+        return cleanInfo;
+    }
+
+    internal override async Task<CleanInfo> GetCleanInfoAsync()
+    {
+        var fetchCollectionStep = await FetchCollectionAsync();
+        var collection = fetchCollectionStep.Value;
+        return await ReadCleanMarkerAsync(collection);
+    }
+
+    private async Task StoreCleanMarkerAsync(IMongoCollection<TEntity> collection, CleanInfo cleanInfo)
+    {
+        var cleanCollection = collection.Database.GetCollection<BsonDocument>("_clean");
+        var collectionName = collection.CollectionNamespace.CollectionName;
+        var marker = new BsonDocument
+        {
+            { "_id", collectionName },
+            { "SchemaFingerprint", cleanInfo.SchemaFingerprint },
+            { "CleanedAt", cleanInfo.CleanedAt },
+            { "DocumentsCleaned", cleanInfo.DocumentsCleaned }
+        };
+
+        var filter = new BsonDocument("_id", collectionName);
+        await cleanCollection.ReplaceOneAsync(filter, marker, new ReplaceOptions { IsUpsert = true });
+    }
+
+    private static async Task<CleanInfo> ReadCleanMarkerAsync(IMongoCollection<TEntity> collection)
+    {
+        var cleanCollection = collection.Database.GetCollection<BsonDocument>("_clean");
+        var collectionName = collection.CollectionNamespace.CollectionName;
+        var filter = new BsonDocument("_id", collectionName);
+        var doc = await cleanCollection.Find(filter).SingleOrDefaultAsync();
+        if (doc == null) return null;
+
+        return new CleanInfo
+        {
+            SchemaFingerprint = doc.GetValue("SchemaFingerprint", "").AsString,
+            CleanedAt = doc.GetValue("CleanedAt", DateTime.MinValue).ToUniversalTime(),
+            DocumentsCleaned = doc.GetValue("DocumentsCleaned", 0).AsInt32
+        };
+    }
+
     protected virtual async Task DropEmptyAsync(IMongoCollection<TEntity> collection)
     {
         if (CreateCollectionStrategy != CreateStrategy.DropEmpty) return;
@@ -1161,12 +1402,19 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             .ToArray();
         var definedIndiceModel = this.BuildIndexMetas().ToArray();
 
+        // Pair each CreateIndexModel with its IndexMeta so we can locate the model by schema
+        var indexPairs = indices.Zip(definedIndiceModel, (idx, meta) => (idx, meta)).ToArray();
+
+        // Schema-only equality: ignore name, compare fields (ordered) and uniqueness
+        static bool SameSchema(IndexMeta a, IndexMeta b) =>
+            a.IsUnique == b.IsUnique && a.Fields.SequenceEqual(b.Fields);
+
         var hasChanged = false;
 
         //NOTE: Drop indexes not in list
         foreach (var collectionIndexModel in existingIndiceModel)
         {
-            if (definedIndiceModel.All(x => x != collectionIndexModel))
+            if (definedIndiceModel.All(x => !SameSchema(x, collectionIndexModel)))
             {
                 var indexName = collectionIndexModel.Name;
 
@@ -1187,23 +1435,21 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         }
 
         //NOTE: Create indexes in the list
-        foreach (var definedIndexModel in definedIndiceModel)
+        foreach (var (indexModel, definedMeta) in indexPairs)
         {
-            if (existingIndiceModel.All(x => x != definedIndexModel))
+            if (existingIndiceModel.All(x => !SameSchema(x, definedMeta)))
             {
                 try
                 {
-                    var index = indices.Single(x => x.Options.Name == definedIndexModel.Name);
-
-                    _logger?.LogDebug("Index {indexName} will be created in collection {collection}.", definedIndexModel.Name, ProtectedCollectionName);
-                    var message = await collection.Indexes.CreateOneAsync(index);
-                    _logger?.LogInformation("Index {indexName} was created in collection {collection}. {message}", definedIndexModel.Name, ProtectedCollectionName, message);
+                    _logger?.LogDebug("Index {indexName} will be created in collection {collection}.", definedMeta.Name, ProtectedCollectionName);
+                    var message = await collection.Indexes.CreateOneAsync(indexModel);
+                    _logger?.LogInformation("Index {indexName} was created in collection {collection}. {message}", definedMeta.Name, ProtectedCollectionName, message);
                     hasChanged = true;
                 }
                 catch (Exception e)
                 {
-                    _logger?.LogError(e, "Failed to create index {indexName} in collection {collection}. {message}", definedIndexModel.Name, ProtectedCollectionName, e.Message);
-                    _initiationLibrary.AddFailedInitiateIndex(ServerName, DatabaseName, ProtectedCollectionName, (IndexFailOperation.Create, definedIndexModel.Name));
+                    _logger?.LogError(e, "Failed to create index {indexName} in collection {collection}. {message}", definedMeta.Name, ProtectedCollectionName, e.Message);
+                    _initiationLibrary.AddFailedInitiateIndex(ServerName, DatabaseName, ProtectedCollectionName, (IndexFailOperation.Create, definedMeta.Name));
                     if (throwOnException) throw;
                 }
             }
@@ -1279,17 +1525,10 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 
     private async IAsyncEnumerable<TEntity> BuildList(IMongoCollection<TEntity> collection, IAsyncCursor<TEntity> cursor, [EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        var index = 0;
         while (await cursor.MoveNextAsync(cancellationToken))
         {
             foreach (var current in cursor.Current)
             {
-                index++;
-                if (ResultLimit != null && index > ResultLimit)
-                {
-                    throw new ResultLimitException(ResultLimit.Value);
-                }
-
                 yield return await CleanEntityAsync(collection, current);
             }
         }

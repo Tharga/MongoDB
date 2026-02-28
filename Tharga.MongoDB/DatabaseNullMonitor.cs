@@ -25,6 +25,11 @@ internal class DatabaseNullMonitor : IDatabaseMonitor
         yield break;
     }
 
+    public Task RefreshStatsAsync(CollectionFingerprint fingerprint)
+    {
+        return Task.CompletedTask;
+    }
+
     public Task TouchAsync(CollectionInfo collectionInfo)
     {
         return Task.CompletedTask;
@@ -35,7 +40,7 @@ internal class DatabaseNullMonitor : IDatabaseMonitor
         return Task.FromResult((0, 0));
     }
 
-    public Task RestoreIndexAsync(CollectionInfo collectionInfo)
+    public Task RestoreIndexAsync(CollectionInfo collectionInfo, bool force)
     {
         return Task.CompletedTask;
     }
@@ -43,6 +48,11 @@ internal class DatabaseNullMonitor : IDatabaseMonitor
     public Task<IEnumerable<string[]>> GetIndexBlockersAsync(CollectionInfo collectionInfo, string indexName)
     {
         return Task.FromResult<IEnumerable<string[]>>(new List<string[]>());
+    }
+
+    public Task<CleanInfo> CleanAsync(CollectionInfo collectionInfo, bool cleanGuids)
+    {
+        return Task.FromResult<CleanInfo>(null);
     }
 
     public IEnumerable<CallInfo> GetCalls(CallType callType)

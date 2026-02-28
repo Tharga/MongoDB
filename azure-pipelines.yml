@@ -17,6 +17,8 @@ stages:
 
   - job: Build
     displayName: Build and Test
+    workspace:
+      clean: outputs
     steps:
     - checkout: self
 
@@ -105,10 +107,32 @@ stages:
         PathtoPublish: '$(Build.ArtifactStagingDirectory)'
         ArtifactName: 'drop'
 
+  - job: Push
+    displayName: Push locally
+    dependsOn: Build
+    condition: and(succeeded(), ne(variables['Build.SourceBranchName'], 'master')) #Only push prereleases to local artifacts.
+    steps:
+    - pwsh: |
+        $dropPath = "$(Pipeline.Workspace)/drop"
+        if (Test-Path $dropPath) {
+          Remove-Item -Path $dropPath -Recurse -Force
+          Write-Host "Cleaned: $dropPath"
+        }
+      displayName: 'Clean drop folder'
+    - download: current
+      artifact: drop
+    - task: DotNetCoreCLI@2
+      displayName: 'Push nuget packages locally'
+      inputs:
+        command: 'push'
+        packagesToPush: '$(Pipeline.Workspace)/drop/*.symbols.nupkg'
+        nuGetFeedType: 'internal'
+        publishVstsFeed: 'eda8985f-7491-4ceb-b57f-a6ce8a0c96d4'
+
 - stage: Release
   displayName: Release
   dependsOn: Build
-  condition: and(succeeded(), eq(variables['Build.SourceBranchName'], 'master'))
+  #condition: and(succeeded(), eq(variables['Build.SourceBranchName'], 'master')) #Exclude this line to push prereleases to github.
   jobs:
 
   - job: Release
@@ -117,6 +141,14 @@ stages:
       clean: resources
 
     steps:
+    - pwsh: |
+        $dropPath = "$(Pipeline.Workspace)/drop"
+        if (Test-Path $dropPath) {
+          Remove-Item -Path $dropPath -Recurse -Force
+          Write-Host "Cleaned: $dropPath"
+        }
+      displayName: 'Clean drop folder'
+
     - download: current
       artifact: drop
     - checkout: self
@@ -136,8 +168,14 @@ stages:
         publishFeedCredentials: 'Nuget.org'
         allowPackageConflicts: true
 
-    - script: |
-         git tag $(Build.BuildNumber)
-         git push origin $(Build.BuildNumber)
+    - pwsh: |
+         if ($env:SYSTEM_PULLREQUEST_SOURCECOMMITID) {
+           git fetch origin $env:SYSTEM_PULLREQUEST_SOURCEBRANCH
+           $commit = $env:SYSTEM_PULLREQUEST_SOURCECOMMITID
+         } else {
+           $commit = $env:BUILD_SOURCEVERSION
+         }
+         git tag $env:BUILD_BUILDNUMBER $commit
+         git push origin "refs/tags/$env:BUILD_BUILDNUMBER"
       workingDirectory: $(Build.SourcesDirectory)
       displayName: Tag
