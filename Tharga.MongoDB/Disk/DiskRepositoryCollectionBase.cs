@@ -380,7 +380,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             var items = await BuildList(collection, cursor, ct).ToArrayAsync(ct);
 
             var totalCount = items.Length;
-            if (options?.Limit != null && items.Length >= options.Limit)
+            if (options?.Limit != null && (items.Length >= options.Limit || options.Skip > 0))
             {
                 totalCount = (int)await collection.CountDocumentsAsync(filter, cancellationToken: ct);
             }
