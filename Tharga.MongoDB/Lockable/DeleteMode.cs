@@ -2,5 +2,11 @@
 
 public enum DeleteMode
 {
-    Exception
+    /// <summary>
+    /// Unlocked or expired.
+    /// </summary>
+    Unlocked,
+    ExceptionOnly,
+    LockedOnly,
+    Any
 }
