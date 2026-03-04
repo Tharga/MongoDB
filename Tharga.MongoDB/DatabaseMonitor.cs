@@ -262,7 +262,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
         {
             ConfigurationName = x.ConfigurationName?.Value ?? _options.DefaultConfigurationName,
             DatabasePart = x.DatabasePart.NullIfEmpty()
-        });
+        }).Where(x => configuredContexts.Any(y => y.ConfigurationName == x.ConfigurationName));
         var contexts = configuredContexts.Union(cachedContexts).Distinct().ToArray();
 
         var sw = new Stopwatch();

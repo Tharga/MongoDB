@@ -404,7 +404,7 @@ internal class MongoDbService : IMongoDbServiceInternal
             DatabasePart = BsonStr(doc.GetValue("DatabasePart", BsonNull.Value)),
             Source = doc.GetValue("Source", 0).ToInt32(),
             Registration = doc.GetValue("Registration", 0).ToInt32(),
-            Types = doc.GetValue("Types", new BsonArray()) is BsonArray ta ? ta.Select(x => x.AsString).ToArray() : [],
+            Types = doc.GetValue("Types", new BsonArray()) is BsonArray ta ? ta.Select(x => x.IsString ? x.AsString : null).ToArray() : [],
             CollectionTypeName = BsonStr(doc.GetValue("CollectionTypeName", BsonNull.Value)),
             DocumentCount = doc.GetValue("DocumentCount", 0L).ToInt64(),
             Size = doc.GetValue("Size", 0L).ToInt64(),

@@ -110,6 +110,8 @@ internal class CallLibrary : ICallLibrary
 
     public CallInfo GetCall(Guid key)
     {
-        return _calls[key];
+        if (_calls.TryGetValue(key, out var value)) return value;
+        var item = _slowest.UnorderedItems.FirstOrDefault(x => x.Element.Key == key);
+        return item.Element;
     }
 }
