@@ -17,6 +17,8 @@ internal class CallLibrary : ICallLibrary
     private readonly PriorityQueue<CallInfo, double> _slowest;
     private readonly SemaphoreSlim _slowestSemaphore = new(1, 1);
     private readonly ConcurrentDictionary<string, int> _callCounts = new();
+    private readonly ConcurrentDictionary<Guid, DateTime> _completedAt = new();
+    private static readonly TimeSpan CompletedRetention = TimeSpan.FromSeconds(10);
 
     public event EventHandler CallChanged;
 
@@ -90,6 +92,11 @@ internal class CallLibrary : ICallLibrary
             _slowestSemaphore.Release();
         }
 
+        if (e.Final)
+        {
+            _completedAt.TryAdd(e.CallKey, DateTime.UtcNow);
+        }
+
         CallChanged?.Invoke(this, EventArgs.Empty);
 
         return item.Fingerprint;
@@ -115,7 +122,19 @@ internal class CallLibrary : ICallLibrary
 
     public IEnumerable<CallInfo> GetOngoingCalls()
     {
-        return _calls.Values.Where(x => !x.Final);
+        var cutoff = DateTime.UtcNow - CompletedRetention;
+
+        // Purge expired completed calls
+        foreach (var kvp in _completedAt)
+        {
+            if (kvp.Value < cutoff)
+            {
+                _completedAt.TryRemove(kvp.Key, out _);
+            }
+        }
+
+        // Return ongoing + recently completed
+        return _calls.Values.Where(x => !x.Final || _completedAt.ContainsKey(x.Key));
     }
 
     public CallInfo GetCall(Guid key)
@@ -144,6 +163,7 @@ internal class CallLibrary : ICallLibrary
             _slowestSemaphore.Release();
         }
         _callCounts.Clear();
+        _completedAt.Clear();
 
         CallChanged?.Invoke(this, EventArgs.Empty);
     }
