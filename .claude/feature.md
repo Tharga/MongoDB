@@ -14,7 +14,7 @@ Improve call tracking: add per-collection call counts, filters on CallView, real
 
 ## Acceptance Criteria
 - [x] CallDialog Elapsed shows correct total milliseconds
-- [ ] CallCount tracked in ICallLibrary, visible in CollectionView
+- [x] CallCount tracked in ICallLibrary, visible in CollectionView
 - [ ] Reset button in CallView clears all call data including counts
 - [ ] CallView has filters for Database, Collection, Function, Operation
 - [ ] Ongoing view updates in real-time via events
