@@ -349,6 +349,50 @@ To create a key-pair, select *Access Manager* for the *organization*. Then Selec
 The *GroupId* can be found as part of the URL on the *Atlas MongoDB* website.
 Example. `https://cloud.mongodb.com/v2/[GroupId]`
 
+## Monitor
+The built-in monitor tracks collection metadata such as document counts, sizes, indexes and clean status.
+By default the monitor persists its state to a `_monitor` collection in MongoDB so that data survives application restarts and is shared across instances.
+
+### Storage mode
+Set `StorageMode` to control where the monitor keeps its state.
+
+| Mode | Behaviour |
+|---|---|
+| `Database` (default) | Persists to the `_monitor` collection. State survives restarts. |
+| `Memory` | In-memory only. State is lost on restart. |
+
+#### Configuration by `appsettings.json`
+```json
+"MongoDB": {
+  "Monitor": {
+    "Enabled": true,
+    "StorageMode": "Database",
+    "LastCallsToKeep": 1000,
+    "SlowCallsToKeep": 200
+  }
+}
+```
+
+#### Configuration by code
+```csharp
+services.AddMongoDB(o =>
+{
+    o.Monitor = new MonitorOptions
+    {
+        Enabled = true,
+        StorageMode = MonitorStorageMode.Database,
+        LastCallsToKeep = 1000,
+        SlowCallsToKeep = 200
+    };
+});
+```
+
+### Reset
+Call `IDatabaseMonitor.ResetAsync()` to clear all cached monitor state (both in-memory and persisted).
+The Blazor admin UI (`CollectionView`) includes a Reset button that triggers this.
+
+---
+
 ## MongoDB Result Limit
 It is possible to se t a hard limit for the number of documents returned. If the limit is reached `ResultLimitException` is thrown.
 For large result-sets, use the method `GetPageAsync` to get the `ResultLimit` on each page of the result.
