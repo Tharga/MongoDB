@@ -21,6 +21,11 @@ internal class ExecuteLimiter : IExecuteLimiter, IQueueMonitor
     private readonly ConcurrentDictionary<string, PerKeyState> _states = new();
     private readonly ConcurrentQueue<QueueMetricEventArgs> _metrics = new();
 
+    // Atomic state for polling
+    private int _totalQueueCount;
+    private int _totalExecutingCount;
+    private double _lastWaitTimeMs;
+
     public event EventHandler<QueueMetricEventArgs> QueueMetricEvent;
 
     public ExecuteLimiter(IOptions<ExecuteLimiterOptions> options, ILogger<ExecuteLimiter> logger)
@@ -46,6 +51,7 @@ internal class ExecuteLimiter : IExecuteLimiter, IQueueMonitor
 
         // Mark as queued (waiting to acquire a slot)
         var queuedCount = state.IncrementQueued();
+        Interlocked.Increment(ref _totalQueueCount);
         LogCount("ExecuteQueue", queuedCount);
 
         if (queuedCount > 1)
@@ -53,7 +59,7 @@ internal class ExecuteLimiter : IExecuteLimiter, IQueueMonitor
             _logger?.LogInformation("Queued {queueCount} executions for {key}.", queuedCount, key);
         }
 
-        EmitMetric(queuedCount, state.GetExecuting(), null);
+        RecordMetric(queuedCount, state.GetExecuting(), null);
 
         var acquired = false;
 
@@ -67,9 +73,11 @@ internal class ExecuteLimiter : IExecuteLimiter, IQueueMonitor
 
             // No longer queued once we got a slot
             state.DecrementQueued();
+            Interlocked.Decrement(ref _totalQueueCount);
 
             // Now executing
             var executingCount = state.IncrementExecuting();
+            Interlocked.Increment(ref _totalExecutingCount);
             LogCount("ExecuteConcurrent", executingCount);
 
             if (executingCount >= _maxConcurrentPerKey)
@@ -77,7 +85,18 @@ internal class ExecuteLimiter : IExecuteLimiter, IQueueMonitor
                 _logger?.LogWarning("The maximum number of {count} concurrent executions for {key} has been reached.", executingCount, key);
             }
 
-            EmitMetric(state.GetQueued(), executingCount, queueElapsed);
+            // Update last wait time atomically (take the max)
+            var waitMs = queueElapsed.TotalMilliseconds;
+            SpinWait spin = default;
+            while (true)
+            {
+                var current = Volatile.Read(ref _lastWaitTimeMs);
+                if (waitMs <= current) break;
+                if (Interlocked.CompareExchange(ref _lastWaitTimeMs, waitMs, current) == current) break;
+                spin.SpinOnce();
+            }
+
+            RecordMetric(state.GetQueued(), executingCount, queueElapsed);
 
             try
             {
@@ -93,9 +112,10 @@ internal class ExecuteLimiter : IExecuteLimiter, IQueueMonitor
             finally
             {
                 state.DecrementExecuting();
+                Interlocked.Decrement(ref _totalExecutingCount);
                 state.Semaphore.Release();
 
-                EmitMetric(state.GetQueued(), state.GetExecuting(), null);
+                RecordMetric(state.GetQueued(), state.GetExecuting(), null);
             }
         }
         catch
@@ -104,6 +124,7 @@ internal class ExecuteLimiter : IExecuteLimiter, IQueueMonitor
             if (!acquired)
             {
                 state.DecrementQueued();
+                Interlocked.Decrement(ref _totalQueueCount);
             }
 
             throw;
@@ -115,7 +136,17 @@ internal class ExecuteLimiter : IExecuteLimiter, IQueueMonitor
         return _metrics.ToArray();
     }
 
-    private void EmitMetric(int queueCount, int executingCount, TimeSpan? waitTime)
+    public (int QueueCount, int ExecutingCount, double LastWaitTimeMs) GetCurrentState()
+    {
+        var waitMs = Interlocked.Exchange(ref _lastWaitTimeMs, 0);
+        return (
+            Volatile.Read(ref _totalQueueCount),
+            Volatile.Read(ref _totalExecutingCount),
+            waitMs
+        );
+    }
+
+    private void RecordMetric(int queueCount, int executingCount, TimeSpan? waitTime)
     {
         var metric = new QueueMetricEventArgs
         {
@@ -129,7 +160,7 @@ internal class ExecuteLimiter : IExecuteLimiter, IQueueMonitor
         while (_metrics.Count > MaxMetricEntries)
             _metrics.TryDequeue(out _);
 
-        QueueMetricEvent?.Invoke(this, metric);
+        // No longer fire event synchronously — consumers poll via GetCurrentState()
     }
 
     private void LogCount(string action, int count)

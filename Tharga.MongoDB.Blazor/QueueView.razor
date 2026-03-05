@@ -43,23 +43,13 @@
     private readonly double[] _waitRing = new double[TotalSlots];
     private int _head;
     private int _currentQueue;
-    private int _lastKnownQueue;
-    private double _lastWaitTimeMs;
     private Timer _timer;
     private bool _disposed;
     private List<Slot> _slots = new();
 
     protected override void OnInitialized()
     {
-        var metrics = QueueMonitor.GetRecentMetrics();
-        if (metrics.Count > 0)
-        {
-            _lastKnownQueue = metrics[^1].QueueCount;
-            _currentQueue = _lastKnownQueue;
-        }
-
         BuildSlots();
-        QueueMonitor.QueueMetricEvent += OnMetric;
         _timer = new Timer(OnTick, null, SampleIntervalMs, SampleIntervalMs);
     }
 
@@ -67,14 +57,6 @@
     {
         _disposed = true;
         _timer?.Dispose();
-        QueueMonitor.QueueMetricEvent -= OnMetric;
-    }
-
-    private void OnMetric(object sender, QueueMetricEventArgs e)
-    {
-        _lastKnownQueue = e.QueueCount;
-        if (e.WaitTime.HasValue)
-            _lastWaitTimeMs = Math.Max(_lastWaitTimeMs, e.WaitTime.Value.TotalMilliseconds);
     }
 
     private async void OnTick(object state)
@@ -83,12 +65,14 @@
 
         try
         {
+            // Poll current state — no events, no threading concerns
+            var (queueCount, _, lastWaitTimeMs) = QueueMonitor.GetCurrentState();
+
             await InvokeAsync(() =>
             {
-                _currentQueue = _lastKnownQueue;
-                _ring[_head] = _lastKnownQueue;
-                _waitRing[_head] = _lastWaitTimeMs;
-                _lastWaitTimeMs = 0;
+                _currentQueue = queueCount;
+                _ring[_head] = queueCount;
+                _waitRing[_head] = lastWaitTimeMs;
                 _head = (_head + 1) % TotalSlots;
 
                 BuildSlots();

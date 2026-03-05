@@ -190,12 +190,12 @@ internal class DatabaseMonitor : IDatabaseMonitor
                 }
             };
 
-            _mongoDbServiceFactory.CallEndEvent += async (_, e) =>
+            _mongoDbServiceFactory.CallEndEvent += (_, e) =>
             {
                 try
                 {
                     _logger.LogTrace($"{nameof(IMongoDbServiceFactory.CallEndEvent)}: {e.Elapsed}");
-                    await _callLibrary.EndCallAsync(e);
+                    _callLibrary.EndCall(e);
                 }
                 catch (Exception exception)
                 {

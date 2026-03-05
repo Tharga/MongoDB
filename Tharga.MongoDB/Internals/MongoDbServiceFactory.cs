@@ -90,17 +90,11 @@ internal class MongoDbServiceFactory : IMongoDbServiceFactory
 
     public void OnCallStart(object sender, CallStartEventArgs e)
     {
-        Task.Run(() =>
-        {
-            CallStartEvent?.Invoke(sender, e);
-        });
+        CallStartEvent?.Invoke(sender, e);
     }
 
     public void OnCallEnd(object sender, CallEndEventArgs e)
     {
-        Task.Run(() =>
-        {
-            CallEndEvent?.Invoke(sender, e);
-        });
+        CallEndEvent?.Invoke(sender, e);
     }
 }

@@ -50,7 +50,7 @@ else
                         </RadzenColumn>
                         <RadzenColumn>
                             <RadzenText TextStyle="TextStyle.Caption" Text="Elapsed" />
-                            <RadzenText Text="@($"{_model.Elapsed?.TotalMilliseconds:F2} ms")" />
+                            <RadzenText Text="@($"{_model.Elapsed?.TotalMilliseconds:N2} ms")" />
                         </RadzenColumn>
                     </RadzenRow>
                     @if (_model.Steps != null && _model.Steps.Count > 0)
@@ -61,7 +61,7 @@ else
                                 <RadzenDataGridColumn TItem="CallStepInfo" Property="Step" Title="Step" />
                                 <RadzenDataGridColumn TItem="CallStepInfo" Title="Duration (ms)" TextAlign="TextAlign.Right">
                                     <Template Context="step">
-                                        @($"{step.Delta.TotalMilliseconds:F2}")
+                                        @($"{step.Delta.TotalMilliseconds:N2}")
                                     </Template>
                                 </RadzenDataGridColumn>
                                 <RadzenDataGridColumn TItem="CallStepInfo" Property="Message" Title="Message" Visible="@(_model.Steps.Any(x => !string.IsNullOrEmpty(x.Message)))" />
