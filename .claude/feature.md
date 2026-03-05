@@ -13,7 +13,7 @@ Improve call tracking: add per-collection call counts, filters on CallView, real
 - Fix CallDialog Elapsed bug (Milliseconds → TotalMilliseconds)
 
 ## Acceptance Criteria
-- [ ] CallDialog Elapsed shows correct total milliseconds
+- [x] CallDialog Elapsed shows correct total milliseconds
 - [ ] CallCount tracked in ICallLibrary, visible in CollectionView
 - [ ] Reset button in CallView clears all call data including counts
 - [ ] CallView has filters for Database, Collection, Function, Operation

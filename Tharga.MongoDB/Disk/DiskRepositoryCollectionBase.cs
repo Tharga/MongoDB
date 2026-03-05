@@ -158,20 +158,20 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         finally
         {
             //NOTE: Finalize
-            var elapsed = GetElapsed(startAt, Stopwatch.GetTimestamp());
+            var endTimestamp = Stopwatch.GetTimestamp();
+            var elapsed = GetElapsed(startAt, endTimestamp);
+            steps.Add(new StepResponse { Timestamp = endTimestamp, Step = "Finalize" });
 
-            var total = TimeSpan.Zero;
             var callSteps = steps.Select((x, index) =>
             {
                 var from = index == 0 ? startAt : steps[index - 1].Timestamp;
                 var delta = GetElapsed(from, x.Timestamp);
-                total = total.Add(delta);
                 return new CallStepInfo { Step = x.Step, Delta = delta, Message = x.Message };
             }).ToList();
             var ss = string.Join(", ", callSteps.Select(x => $"{x.Step}: {x.Delta.TotalMilliseconds}"));
 
             ((MongoDbServiceFactory)_mongoDbServiceFactory).OnCallEnd(this, new CallEndEventArgs(callKey, elapsed, exception, count, callSteps, filterJsonProvider, explainProvider));
-            //_logger?.LogInformation("Executed {method} on {collection} took {elapsed} ms. [{steps}, overhead: {overhead}]", functionName, CollectionName, elapsed.TotalMilliseconds, ss, (elapsed - total).TotalMilliseconds);
+            //_logger?.LogInformation("Executed {method} on {collection} took {elapsed} ms. [{steps}]", functionName, CollectionName, elapsed.TotalMilliseconds, ss);
             var data = new Dictionary<string, object>
             {
                 { "Monitor", "MongoDB" },
@@ -179,7 +179,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             };
 
             var details = System.Text.Json.JsonSerializer.Serialize(data);
-            _logger?.LogInformation("Measured {Action} in {Elapsed} ms. {Details} [{steps}, overhead: {overhead}]", $"MongoDB.{CollectionName}.{functionName}", elapsed, details, ss, (elapsed - total).TotalMilliseconds);
+            _logger?.LogInformation("Measured {Action} in {Elapsed} ms. {Details} [{steps}]", $"MongoDB.{CollectionName}.{functionName}", elapsed, details, ss);
         }
     }
 
