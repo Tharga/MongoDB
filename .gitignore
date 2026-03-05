@@ -397,3 +397,4 @@ FodyWeavers.xsd
 # JetBrains Rider
 *.sln.iml
 /.NCrunch_*/*
+/.claude/settings.local.json

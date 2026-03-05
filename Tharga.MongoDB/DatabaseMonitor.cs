@@ -354,7 +354,8 @@ internal class DatabaseMonitor : IDatabaseMonitor
                 StatsUpdatedAt = DateTime.UtcNow,
                 Index = BuildIndexInfo(existing, meta.Indexes),
                 IndexUpdatedAt = DateTime.UtcNow,
-                Clean = cleanInfo
+                Clean = cleanInfo,
+                CurrentSchemaFingerprint = existing.CurrentSchemaFingerprint ?? ComputeSchemaFingerprint(existing.CollectionType),
             });
 
         if (_cache.TryGet(fingerprint.Key, out var updated))
@@ -642,6 +643,13 @@ internal class DatabaseMonitor : IDatabaseMonitor
         await _cache.ResetAsync();
     }
 
+    private static string ComputeSchemaFingerprint(Type collectionType)
+    {
+        if (collectionType == null) return null;
+        var entityType = ResolveEntityType(collectionType);
+        return entityType != null ? SchemaFingerprint.Generate(entityType) : null;
+    }
+
     private static IndexInfo BuildIndexInfo(CollectionInfo existing, IndexMeta[] currentIndexes)
     {
         var defined = existing.Index?.Defined ?? [];
@@ -692,6 +700,29 @@ internal class DatabaseMonitor : IDatabaseMonitor
 
             if (_cache.TryGet(key, out var cached))
             {
+                // Enrich cache-loaded entries with code-derived info (defined indices, schema fingerprint)
+                var needsEnrich = cached.CurrentSchemaFingerprint == null
+                    || (cached.Index != null && (cached.Index.Defined == null || cached.Index.Defined.Length == 0));
+                if (needsEnrich)
+                {
+                    var fp = new CollectionFingerprint
+                    {
+                        ConfigurationName = meta.ConfigurationName,
+                        DatabaseName = meta.DatabaseName,
+                        CollectionName = meta.CollectionName
+                    };
+                    var codeEntry = BuildInitialEntry(fp, cached.Server, cached.DatabasePart, cached.Types?.FirstOrDefault());
+                    cached = cached with
+                    {
+                        CurrentSchemaFingerprint = cached.CurrentSchemaFingerprint ?? codeEntry.CurrentSchemaFingerprint,
+                        Index = cached.Index != null
+                            ? new IndexInfo { Current = cached.Index.Current, Defined = codeEntry.Index?.Defined ?? cached.Index.Defined }
+                            : codeEntry.Index,
+                        Registration = codeEntry.Registration != Registration.NotInCode ? codeEntry.Registration : cached.Registration,
+                        Source = cached.Source | codeEntry.Source,
+                    };
+                    _cache.AddOrUpdate(key, _ => cached, (_, _) => cached);
+                }
                 yield return cached;
             }
             else

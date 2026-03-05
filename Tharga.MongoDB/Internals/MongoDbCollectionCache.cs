@@ -48,6 +48,7 @@ internal class MongoDbCollectionCache : ICollectionCache
             {
                 var info = BsonToCollectionInfo(doc, configName);
                 if (info == null) continue;
+                info.Source |= Source.Monitor;
                 _dict[info.Key] = info;
             }
         }
@@ -101,13 +102,13 @@ internal class MongoDbCollectionCache : ICollectionCache
         }
     }
 
-    private static string MonitorKey(string databaseName, string collectionName) => $"{databaseName}/{collectionName}";
+    internal static string MonitorKey(string databaseName, string collectionName) => $"{databaseName}/{collectionName}";
 
-    private static BsonValue ToBson(string value) => value != null ? (BsonValue)value : BsonNull.Value;
+    internal static BsonValue ToBson(string value) => value != null ? (BsonValue)value : BsonNull.Value;
 
-    private static string BsonStr(BsonValue value) => value == null || value.IsBsonNull ? null : value.AsString;
+    internal static string BsonStr(BsonValue value) => value == null || value.IsBsonNull ? null : value.AsString;
 
-    private static BsonArray IndexesToBson(IndexMeta[] indexes)
+    internal static BsonArray IndexesToBson(IndexMeta[] indexes)
     {
         var arr = new BsonArray();
         if (indexes == null) return arr;
@@ -116,7 +117,7 @@ internal class MongoDbCollectionCache : ICollectionCache
         return arr;
     }
 
-    private static IndexMeta[] BsonToIndexes(BsonValue val)
+    internal static IndexMeta[] BsonToIndexes(BsonValue val)
     {
         if (val == null || val.IsBsonNull || val is not BsonArray arr) return null;
         return arr.Select(item =>
@@ -131,7 +132,7 @@ internal class MongoDbCollectionCache : ICollectionCache
         }).ToArray();
     }
 
-    private static BsonDocument CollectionInfoToBson(string id, CollectionInfo info)
+    internal static BsonDocument CollectionInfoToBson(string id, CollectionInfo info)
     {
         return new BsonDocument
         {
@@ -147,7 +148,6 @@ internal class MongoDbCollectionCache : ICollectionCache
             { "CollectionTypeName", ToBson(info.CollectionType?.AssemblyQualifiedName) },
             { "DocumentCount", info.DocumentCount?.Count ?? 0L },
             { "Size", info.Size },
-            { "AccessCount", info.AccessCount },
             { "CallCount", info.CallCount },
             { "CurrentIndexes", IndexesToBson(info.Index?.Current) },
             { "StatsUpdatedAt", info.StatsUpdatedAt.HasValue ? (BsonValue)info.StatsUpdatedAt.Value : BsonNull.Value },
@@ -155,7 +155,7 @@ internal class MongoDbCollectionCache : ICollectionCache
         };
     }
 
-    private static CollectionInfo BsonToCollectionInfo(BsonDocument doc, string configName)
+    internal static CollectionInfo BsonToCollectionInfo(BsonDocument doc, string configName)
     {
         try
         {
@@ -197,7 +197,6 @@ internal class MongoDbCollectionCache : ICollectionCache
                     ? new DocumentCount { Count = dc }
                     : null,
                 Size = doc.GetValue("Size", 0L).ToInt64(),
-                AccessCount = doc.GetValue("AccessCount", 0).ToInt32(),
                 CallCount = doc.GetValue("CallCount", 0).ToInt32(),
                 Index = currentIndexes != null ? new IndexInfo { Current = currentIndexes, Defined = [] } : null,
                 StatsUpdatedAt = statsUpdatedAt,

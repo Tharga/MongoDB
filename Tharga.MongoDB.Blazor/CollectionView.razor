@@ -60,23 +60,7 @@ else
                 <RadzenDataGridColumn Title="Collection" Property="@nameof(CollectionModel.CollectionName)" />
                 <RadzenDataGridColumn Title="Source" Property="@nameof(CollectionModel.Source)" Filterable="false"/>
                 <RadzenDataGridColumn Title="Registration" Property="@nameof(CollectionModel.Registration)" Filterable="false" Width="120px" />
-                <RadzenDataGridColumn Title="Access" Property="@nameof(CollectionModel.Accessed)" TextAlign="TextAlign.Right" CssClass="css-access" Width="120px">
-                    <Template>
-                        @if (context.Registration == Registration.NotInCode)
-                        {
-                            <span></span>
-                        }
-                        else if (context.AccessCount == 0)
-                        {
-                            <span title="Never accessed."><RadzenText Text="@($"{context.AccessCount:N0}")"/></span>
-                        }
-                        else
-                        {
-                            <RadzenText Text="@($"{context.AccessCount:N0}")"/>
-                        }
-                    </Template>
-                </RadzenDataGridColumn>
-                <RadzenDataGridColumn Title=Calls Property="@nameof(CollectionModel.CallCount)" Filterable="false" TextAlign="TextAlign.Right" CssClass="css-calls" Width="120px">
+<RadzenDataGridColumn Title=Calls Property="@nameof(CollectionModel.CallCount)" Filterable="false" TextAlign="TextAlign.Right" CssClass="css-calls" Width="120px">
                     <Template>
                         @if (context.Registration == Registration.NotInCode)
                         {
@@ -165,7 +149,6 @@ else
                 var indexModels = e.CollectionInfo.ToIndexModel().ToArray();
 
                 m.Source = e.CollectionInfo.Source;
-                m.AccessCount = e.CollectionInfo.AccessCount;
                 m.CallCount = e.CollectionInfo.CallCount;
                 m.DocumentCount = e.CollectionInfo.DocumentCount;
                 m.Size = e.CollectionInfo.Size;
@@ -236,7 +219,6 @@ else
                     CollectionName = x.CollectionName,
                     Source = x.Source,
                     Registration = x.Registration,
-                    AccessCount = x.AccessCount,
                     CallCount = x.CallCount,
                     Size = x.Size,
                     Indices = indexModels,
@@ -255,17 +237,7 @@ else
         var cssClass = args.Column.CssClass;
         if (string.IsNullOrEmpty(cssClass)) return;
 
-        if (cssClass.StartsWith("css-access"))
-        {
-            string color = null;
-            if (args.Data.Registration == Registration.NotInCode || args.Data.AccessCount == 0)
-            {
-                color = "lightyellow";
-            }
-
-            SetColor(args, color);
-        }
-        else if (cssClass.StartsWith("css-calls"))
+        if (cssClass.StartsWith("css-calls"))
         {
             string color = null;
             if (args.Data.Registration == Registration.NotInCode)

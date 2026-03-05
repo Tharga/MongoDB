@@ -42,16 +42,12 @@ else
         </RadzenRow>
         <RadzenRow>
             <RadzenColumn>
-                <RadzenText TextStyle="TextStyle.Caption" Text="Access Count"/>
-                <RadzenText Text="@($"{_model.AccessCount:N0}")" />
-            </RadzenColumn>
-            <RadzenColumn>
                 <RadzenText TextStyle="TextStyle.Caption" Text="Document Count"/>
-                <RadzenText Text="@(_model.DocumentCount != null ? $"{_model.DocumentCount.Count:N0}" : "—")" />
+                <RadzenText Text="@(_model.DocumentCount != null ? $"{_model.DocumentCount.Count:N0}" : "—")" title="@(_model.StatsUpdatedAt?.ToLocalDateTimeString())" />
             </RadzenColumn>
             <RadzenColumn>
                 <RadzenText TextStyle="TextStyle.Caption" Text="Size"/>
-                <RadzenText Text="@_model.Size.ToReadableByteSize()" />
+                <RadzenText Text="@_model.Size.ToReadableByteSize()" title="@(_model.StatsUpdatedAt?.ToLocalDateTimeString())" />
             </RadzenColumn>
         </RadzenRow>
 
@@ -75,7 +71,7 @@ else
 
         @if (_indexModel.Any())
         {
-            <RadzenText TextStyle="TextStyle.Caption" Text="Indices"/>
+            <RadzenText TextStyle="TextStyle.Caption" Text="Indices" title="@(_model.IndexUpdatedAt?.ToLocalDateTimeString())" />
             <RadzenDataGrid Data="_indexModel" TItem="IndexModel"
                             CellRender="@OnCellRender">
                 <Columns>

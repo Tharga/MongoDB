@@ -1,7 +1,20 @@
 {
   "permissions": {
     "allow": [
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git checkout:*)",
+      "Bash(npm run:*)",
+      "Read",
+      "Glob",
+      "Grep"
       "Bash(dotnet test:*)"
+    ],
+    "deny": [
+      "Bash(rm -rf:*)",
+      "Bash(sudo:*)"
     ]
   }
-}
+}	

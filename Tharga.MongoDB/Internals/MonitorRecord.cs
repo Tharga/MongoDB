@@ -15,7 +15,6 @@ internal record MonitorRecord
     public string CollectionTypeName { get; init; }
     public long DocumentCount { get; init; }
     public long Size { get; init; }
-    public int AccessCount { get; init; }
     public int CallCount { get; init; }
     public IndexMeta[] CurrentIndexes { get; init; }
     public DateTime? StatsUpdatedAt { get; init; }
