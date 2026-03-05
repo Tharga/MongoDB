@@ -16,7 +16,7 @@ public class ReleaseAsyncTests : LockableTestBase
 {
     [Theory]
     [InlineData(ReleaseMode.ExceptionOnly, 1)]
-    [InlineData(ReleaseMode.LockOnly, 0)]
+    [InlineData(ReleaseMode.LockedOnly, 0)]
     [InlineData(ReleaseMode.Any, 0)]
     [Trait("Category", "Database")]
     public async Task ReleaseLockedAsync(ReleaseMode mode, int locked)
@@ -42,7 +42,7 @@ public class ReleaseAsyncTests : LockableTestBase
 
     [Theory]
     [InlineData(ReleaseMode.ExceptionOnly, 0)]
-    [InlineData(ReleaseMode.LockOnly, 1)]
+    [InlineData(ReleaseMode.LockedOnly, 1)]
     [InlineData(ReleaseMode.Any, 0)]
     [Trait("Category", "Database")]
     public async Task ReleaseExceptionAsync(ReleaseMode mode, int locked)
@@ -65,7 +65,7 @@ public class ReleaseAsyncTests : LockableTestBase
 
     [Theory]
     [InlineData(ReleaseMode.ExceptionOnly)]
-    [InlineData(ReleaseMode.LockOnly)]
+    [InlineData(ReleaseMode.LockedOnly)]
     [InlineData(ReleaseMode.Any)]
     [Trait("Category", "Database")]
     public async Task ReleaseTimeoutAsync(ReleaseMode mode)
@@ -90,7 +90,7 @@ public class ReleaseAsyncTests : LockableTestBase
 
     [Theory]
     [InlineData(ReleaseMode.ExceptionOnly)]
-    [InlineData(ReleaseMode.LockOnly)]
+    [InlineData(ReleaseMode.LockedOnly)]
     [InlineData(ReleaseMode.Any)]
     [Trait("Category", "Database")]
     public async Task ReleaseUnlockedAsync(ReleaseMode mode)

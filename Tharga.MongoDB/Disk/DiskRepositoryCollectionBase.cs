@@ -27,7 +27,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
     private readonly IExecuteLimiter _databaseExecutor;
     private readonly ICollectionPool _collectionPool;
     private readonly IInitiationLibrary _initiationLibrary;
-    private static readonly SemaphoreSlim _fetchLock = new(1, 1); //TODO: This code makes all having to wait for initiation. This should be locked per "fullName" in "FetchCollectionAsync".
+    private static readonly ConcurrentDictionary<string, SemaphoreSlim> _fetchLocks = new();
     private int? _autoFetchSize;
 
     //TODO: Implement GetDerived or GetGeneric that loads T where TEntity is the base class.
@@ -124,9 +124,6 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                 steps.Add(new StepResponse { Timestamp = Stopwatch.GetTimestamp(), Step = "Action" });
 
                 if (operation == Operation.Delete) await DropEmptyAsync(collection);
-
-                //TODO: Option to turn on explain mode. This will be the analysis steps.
-                //TODO: Try to get more information about the filter or predicate on the call.
 
                 return response;
             }, $"MongoDB.{ConfigurationName ?? Constants.DefaultConfigurationName}", cancellationToken);
@@ -869,9 +866,10 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             };
         }
 
+        var semaphore = _fetchLocks.GetOrAdd(fullName, _ => new SemaphoreSlim(1, 1));
         try
         {
-            await _fetchLock.WaitAsync();
+            await semaphore.WaitAsync();
 
             if (_collectionPool.TryGetCollection(fullName, out collection))
             {
@@ -932,7 +930,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         }
         finally
         {
-            _fetchLock.Release();
+            semaphore.Release();
         }
     }
 

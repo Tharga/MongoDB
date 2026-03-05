@@ -187,8 +187,14 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
     {
         switch (deleteMode)
         {
-            case DeleteMode.Exception:
+            case DeleteMode.Unlocked:
+                return await Disk.DeleteManyAsync(UnlockedOrExpiredFilter.AndAlso(predicate ?? (_ => true)));
+            case DeleteMode.ExceptionOnly:
                 return await Disk.DeleteManyAsync(ExceptionFilter.AndAlso(predicate ?? (_ => true)));
+            case DeleteMode.LockedOnly:
+                return await Disk.DeleteManyAsync(LockedFilter.AndAlso(predicate ?? (_ => true)));
+            case DeleteMode.Any:
+                return await Disk.DeleteManyAsync(predicate ?? (_ => true));
             default:
                 throw new ArgumentOutOfRangeException(nameof(deleteMode), deleteMode, null);
         }
@@ -448,7 +454,7 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
                     Builders<TEntity>.Filter.Ne(x => x.Lock.ExceptionInfo, null)
                 );
                 break;
-            case ReleaseMode.LockOnly:
+            case ReleaseMode.LockedOnly:
                 filter = Builders<TEntity>.Filter.And(
                     Builders<TEntity>.Filter.Ne(x => x.Lock, null),
                     Builders<TEntity>.Filter.Eq(x => x.Lock.ExceptionInfo, null)
@@ -625,14 +631,14 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
     {
         if (commit && exception != null) throw new ArgumentException("Cannot commit entity when there is an exception.");
 
-        var lockTime = DateTime.UtcNow - entityLock.ExpireTime;
+        var lockTime = DateTime.UtcNow - entityLock.LockTime;
         var timeout = entityLock.ExpireTime - entityLock.LockTime;
         var lockInfo = BuildLockInfo(entityLock, exception);
         var expired = lockTime > timeout;
 
         if ((commit || exception != null) && expired)
         {
-            throw new LockExpiredException($"Too late to release entity of type {typeof(TEntity).Name} locked by {lockInfo.Actor}.", timeout, lockTime);
+            throw new LockExpiredException($"Too late to release entity of type {typeof(TEntity).Name} locked by {entityLock.Actor}.", timeout, lockTime);
         }
 
         EntityChangeResult<TEntity> result;
