@@ -1,7 +1,8 @@
-﻿using System;
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
@@ -9,15 +10,19 @@ using Microsoft.Extensions.Options;
 
 namespace Tharga.MongoDB;
 
-internal class ExecuteLimiter : IExecuteLimiter
+internal class ExecuteLimiter : IExecuteLimiter, IQueueMonitor
 {
     private readonly ILogger<ExecuteLimiter> _logger;
     private const string DefaultKey = "Default";
+    private const int MaxMetricEntries = 500;
 
     private readonly bool _enabled;
     private readonly int _maxConcurrentPerKey;
 
     private readonly ConcurrentDictionary<string, PerKeyState> _states = new();
+    private readonly ConcurrentQueue<QueueMetricEventArgs> _metrics = new();
+
+    public event EventHandler<QueueMetricEventArgs> QueueMetricEvent;
 
     public ExecuteLimiter(IOptions<ExecuteLimiterOptions> options, ILogger<ExecuteLimiter> logger)
     {
@@ -49,6 +54,8 @@ internal class ExecuteLimiter : IExecuteLimiter
             _logger?.LogInformation("Queued {queueCount} executions for {key}.", queuedCount, key);
         }
 
+        EmitMetric(queuedCount, state.GetExecuting(), null);
+
         var acquired = false;
 
         try
@@ -71,6 +78,8 @@ internal class ExecuteLimiter : IExecuteLimiter
                 _logger?.LogWarning("The maximum number of {count} concurrent executions for {key} has been reached.", executingCount, key);
             }
 
+            EmitMetric(state.GetQueued(), executingCount, queueElapsed);
+
             try
             {
                 var response = await action(cancellationToken);
@@ -86,6 +95,8 @@ internal class ExecuteLimiter : IExecuteLimiter
             {
                 state.DecrementExecuting();
                 state.Semaphore.Release();
+
+                EmitMetric(state.GetQueued(), state.GetExecuting(), null);
             }
         }
         catch
@@ -98,6 +109,28 @@ internal class ExecuteLimiter : IExecuteLimiter
 
             throw;
         }
+    }
+
+    public IReadOnlyList<QueueMetricEventArgs> GetRecentMetrics()
+    {
+        return _metrics.ToArray();
+    }
+
+    private void EmitMetric(int queueCount, int executingCount, TimeSpan? waitTime)
+    {
+        var metric = new QueueMetricEventArgs
+        {
+            Timestamp = DateTime.UtcNow,
+            QueueCount = queueCount,
+            ExecutingCount = executingCount,
+            WaitTime = waitTime,
+        };
+
+        _metrics.Enqueue(metric);
+        while (_metrics.Count > MaxMetricEntries)
+            _metrics.TryDequeue(out _);
+
+        QueueMetricEvent?.Invoke(this, metric);
     }
 
     private void LogCount(string action, int count)
@@ -127,8 +160,10 @@ internal class ExecuteLimiter : IExecuteLimiter
 
         public int IncrementQueued() => Interlocked.Increment(ref _queued);
         public int DecrementQueued() => Interlocked.Decrement(ref _queued);
+        public int GetQueued() => Volatile.Read(ref _queued);
 
         public int IncrementExecuting() => Interlocked.Increment(ref _executing);
         public int DecrementExecuting() => Interlocked.Decrement(ref _executing);
+        public int GetExecuting() => Volatile.Read(ref _executing);
     }
 }

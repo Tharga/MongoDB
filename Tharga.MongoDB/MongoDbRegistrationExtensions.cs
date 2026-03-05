@@ -73,7 +73,9 @@ public static class MongoDbRegistrationExtensions
         services.AddTransient<IMongoDbFirewallService, MongoDbFirewallService>();
         services.AddSingleton<IMongoDbClientProvider, MongoDbClientProvider>();
         services.AddSingleton<IMongoDbFirewallStateService, MongoDbFirewallStateService>();
-        services.AddSingleton<IExecuteLimiter, ExecuteLimiter>();
+        services.AddSingleton<ExecuteLimiter>();
+        services.AddSingleton<IExecuteLimiter>(sp => sp.GetRequiredService<ExecuteLimiter>());
+        services.AddSingleton<IQueueMonitor>(sp => sp.GetRequiredService<ExecuteLimiter>());
         services.AddSingleton<ICollectionPool, CollectionPool>();
         services.AddSingleton<IInitiationLibrary, InitiationLibrary>();
         services.AddSingleton<ICollectionProviderCache, CollectionProviderCache>();

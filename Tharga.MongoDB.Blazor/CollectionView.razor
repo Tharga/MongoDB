@@ -9,6 +9,7 @@
 @inject DialogService DialogService
 @inject NotificationService NotificationService
 @inject IOptions<DatabaseOptions> DatabaseOptions
+@inject ICallLibrary CallLibrary
 
 @if (!DatabaseOptions.Value.Monitor.Enabled)
 {
@@ -81,6 +82,11 @@ else
                         {
                             <span title="@context.Clean.CleanedAt.ToLocalDateTimeString()">@context.Clean.CleanedAt.ToLocalDurationString()</span>
                         }
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn Title="Calls" Property="@nameof(CollectionModel.CallCount)" Filterable="false" Sortable="true" TextAlign="TextAlign.Right" Width="80px">
+                    <Template>
+                        @(context.CallCount > 0 ? $"{context.CallCount:N0}" : "")
                     </Template>
                 </RadzenDataGridColumn>
                 <RadzenDataGridColumn Title="" Sortable="false" Width="60px;" Filterable="false">
@@ -197,12 +203,15 @@ else
 
     private async Task ReloadDataAsync()
     {
+        var callCounts = CallLibrary.GetCallCounts();
+
         _model = _all
             .Where(x => SelectedDatabases == null || !SelectedDatabases.Any() || SelectedDatabases.Contains(x.DatabaseName))
             .Where(x => SelectedRegistrationTypes == null || !SelectedRegistrationTypes.Any() || SelectedRegistrationTypes.Contains(x.Registration))
             .Select(x =>
             {
                 var indexModels = x.ToIndexModel().ToArray();
+                callCounts.TryGetValue(x.Key, out var count);
 
                 return new CollectionModel
                 {
@@ -217,7 +226,8 @@ else
                     IndexEqualFields = x.Index == null || x.Index.Current == null
                         ? null
                         : indexModels.All(y => y.EqualFields),
-                    Clean = x.Clean
+                    Clean = x.Clean,
+                    CallCount = count,
                 };
             })
             .ToArray();

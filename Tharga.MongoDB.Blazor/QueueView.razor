@@ -1,0 +1,88 @@
+@implements IDisposable
+@inject IQueueMonitor QueueMonitor
+
+<RadzenChart Style="height: 300px;">
+    <RadzenLineSeries Data="@_dataPoints" CategoryProperty="Label" ValueProperty="QueueCount" Title="Queue Depth" LineType="LineType.Solid" Smooth="true">
+        <RadzenMarkers MarkerType="MarkerType.None" />
+    </RadzenLineSeries>
+    <RadzenLineSeries Data="@_dataPoints" CategoryProperty="Label" ValueProperty="ExecutingCount" Title="Executing" LineType="LineType.Dashed" Smooth="true">
+        <RadzenMarkers MarkerType="MarkerType.None" />
+    </RadzenLineSeries>
+    <RadzenLineSeries Data="@_dataPoints" CategoryProperty="Label" ValueProperty="WaitTimeMs" Title="Wait Time (ms)" LineType="LineType.Dotted" Smooth="true">
+        <RadzenMarkers MarkerType="MarkerType.None" />
+    </RadzenLineSeries>
+    <RadzenCategoryAxis />
+    <RadzenValueAxis>
+        <RadzenGridLines Visible="true" />
+    </RadzenValueAxis>
+    <RadzenLegend Position="LegendPosition.Bottom" />
+</RadzenChart>
+
+@code {
+    private const int MaxDisplayPoints = 60;
+    private List<QueueDataPoint> _dataPoints = new();
+    private bool _disposed;
+
+    protected override void OnInitialized()
+    {
+        LoadHistorical();
+        QueueMonitor.QueueMetricEvent += OnMetric;
+    }
+
+    public void Dispose()
+    {
+        _disposed = true;
+        QueueMonitor.QueueMetricEvent -= OnMetric;
+    }
+
+    private void LoadHistorical()
+    {
+        var metrics = QueueMonitor.GetRecentMetrics();
+        var cutoff = DateTime.UtcNow.AddMinutes(-2);
+        _dataPoints = metrics
+            .Where(m => m.Timestamp >= cutoff)
+            .TakeLast(MaxDisplayPoints)
+            .Select(ToDataPoint)
+            .ToList();
+    }
+
+    private async void OnMetric(object sender, QueueMetricEventArgs e)
+    {
+        if (_disposed) return;
+
+        try
+        {
+            await InvokeAsync(() =>
+            {
+                _dataPoints.Add(ToDataPoint(e));
+
+                var cutoff = DateTime.UtcNow.AddMinutes(-2);
+                _dataPoints.RemoveAll(p => p.Timestamp < cutoff);
+
+                while (_dataPoints.Count > MaxDisplayPoints)
+                    _dataPoints.RemoveAt(0);
+
+                StateHasChanged();
+            });
+        }
+        catch (ObjectDisposedException) { }
+    }
+
+    private static QueueDataPoint ToDataPoint(QueueMetricEventArgs m) => new()
+    {
+        Timestamp = m.Timestamp,
+        Label = m.Timestamp.ToString("HH:mm:ss"),
+        QueueCount = m.QueueCount,
+        ExecutingCount = m.ExecutingCount,
+        WaitTimeMs = m.WaitTime?.TotalMilliseconds ?? 0
+    };
+
+    private class QueueDataPoint
+    {
+        public DateTime Timestamp { get; init; }
+        public string Label { get; init; }
+        public int QueueCount { get; init; }
+        public int ExecutingCount { get; init; }
+        public double WaitTimeMs { get; init; }
+    }
+}

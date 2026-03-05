@@ -9,4 +9,5 @@ public record CollectionModel : CollectionFingerprint
     public required IndexModel[] Indices { get; set; }
     public required bool? IndexEqualFields { get; set; }
     public CleanInfo Clean { get; set; }
+    public int CallCount { get; set; }
 }

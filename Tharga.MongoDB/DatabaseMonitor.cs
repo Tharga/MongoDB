@@ -486,6 +486,11 @@ internal class DatabaseMonitor : IDatabaseMonitor
         };
     }
 
+    public void ResetCalls()
+    {
+        _callLibrary.ResetCalls();
+    }
+
     // --- Private helpers ---
 
     private async Task<CollectionInfo> LoadAndCacheAsync(CollectionFingerprint fingerprint)

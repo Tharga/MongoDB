@@ -2,9 +2,12 @@
 @using Tharga.Blazor
 @using Tharga.Blazor.Framework.Buttons
 @using Tharga.MongoDB.Configuration
+@using Tharga.MongoDB.Disk
+@implements IDisposable
 @inject IDatabaseMonitor DatabaseMonitor;
 @inject IOptions<DatabaseOptions> DatabaseOptions
 @inject DialogService DialogService
+@inject ICallLibrary CallLibrary
 
 @if (!DatabaseOptions.Value.Monitor.Enabled)
 {
@@ -22,11 +25,12 @@ else
             <RadzenColumn>
                 <RadzenStack Orientation="Orientation.Vertical">
                     <RadzenText TextStyle="TextStyle.Caption" Text="Type"/>
-                    <RadzenSelectBar TValue="CallType" @bind-Value="@SelectedCallType" Change="@ReloadDataAsync" Style="margin-bottom: 6px;">
+                    <RadzenSelectBar TValue="string" @bind-Value="@SelectedTab" Change="@OnTabChanged" Style="margin-bottom: 6px;">
                         <Items>
-                            <RadzenSelectBarItem Text="Last" Value="CallType.Last"/>
-                            <RadzenSelectBarItem Text="Slow" Value="CallType.Slow"/>
-                            <RadzenSelectBarItem Text="Ongoing" Value="CallType.Ongoing"/>
+                            <RadzenSelectBarItem Text="Last" Value="@("Last")"/>
+                            <RadzenSelectBarItem Text="Slow" Value="@("Slow")"/>
+                            <RadzenSelectBarItem Text="Ongoing" Value="@("Ongoing")"/>
+                            <RadzenSelectBarItem Text="Queue" Value="@("Queue")"/>
                         </Items>
                     </RadzenSelectBar>
                 </RadzenStack>
@@ -35,6 +39,39 @@ else
                 <RadzenStack Orientation="Orientation.Vertical">
                     <RadzenText TextStyle="TextStyle.Caption" Text="Databases"/>
                     <RadzenDropDown Placeholder="Select databases" @bind-Value=@SelectedDatabases Data=@_databases Multiple=true Style="margin-bottom: 6px;" Change="@ReloadDataAsync" />
+                </RadzenStack>
+            </RadzenColumn>
+            <RadzenColumn Size="2">
+                <RadzenStack Orientation="Orientation.Vertical">
+                    <RadzenText TextStyle="TextStyle.Caption" Text="&nbsp;"/>
+                    <ActionButton Text="Reset" Icon="restart_alt" Click="ResetCallsAsync" />
+                </RadzenStack>
+            </RadzenColumn>
+        </RadzenRow>
+
+        @if (SelectedTab == "Queue")
+        {
+            <QueueView />
+        }
+        else
+        {
+        <RadzenRow>
+            <RadzenColumn>
+                <RadzenStack Orientation="Orientation.Vertical">
+                    <RadzenText TextStyle="TextStyle.Caption" Text="Collections"/>
+                    <RadzenDropDown Placeholder="Select collections" @bind-Value=@SelectedCollections Data=@_collections Multiple=true Style="margin-bottom: 6px;" Change="@ReloadDataAsync" />
+                </RadzenStack>
+            </RadzenColumn>
+            <RadzenColumn>
+                <RadzenStack Orientation="Orientation.Vertical">
+                    <RadzenText TextStyle="TextStyle.Caption" Text="Functions"/>
+                    <RadzenDropDown Placeholder="Select functions" @bind-Value=@SelectedFunctions Data=@_functions Multiple=true Style="margin-bottom: 6px;" Change="@ReloadDataAsync" />
+                </RadzenStack>
+            </RadzenColumn>
+            <RadzenColumn>
+                <RadzenStack Orientation="Orientation.Vertical">
+                    <RadzenText TextStyle="TextStyle.Caption" Text="Operations"/>
+                    <RadzenDropDown Placeholder="Select operations" @bind-Value=@SelectedOperations Data=@_operations Multiple=true Style="margin-bottom: 6px;" Change="@ReloadDataAsync" />
                 </RadzenStack>
             </RadzenColumn>
         </RadzenRow>
@@ -74,24 +111,70 @@ else
                 </RadzenDataGridColumn>
             </Columns>
         </RadzenDataGrid>
+        }
     </RadzenStack>
 }
 
 @code {
     private string[] _databases;
+    private string[] _collections;
+    private string[] _functions;
+    private Operation[] _operations;
     private CallInfo[] _model;
     private bool _showConfiguration;
     private CallInfo[] _all;
+    private bool _disposed;
 
-    private CallType SelectedCallType { get; set; }
+    private string SelectedTab { get; set; } = "Last";
     private IEnumerable<string> SelectedDatabases { get; set; }
+    private IEnumerable<string> SelectedCollections { get; set; }
+    private IEnumerable<string> SelectedFunctions { get; set; }
+    private IEnumerable<Operation> SelectedOperations { get; set; }
+
+    private CallType SelectedCallType => SelectedTab switch
+    {
+        "Last" => CallType.Last,
+        "Slow" => CallType.Slow,
+        "Ongoing" => CallType.Ongoing,
+        _ => CallType.Last
+    };
+
+    private async Task OnTabChanged()
+    {
+        if (SelectedTab != "Queue")
+        {
+            await ReloadDataAsync();
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        CallLibrary.CallChanged += OnCallChanged;
+        await base.OnInitializedAsync();
+    }
+
+    public void Dispose()
+    {
+        _disposed = true;
+        CallLibrary.CallChanged -= OnCallChanged;
+    }
+
+    private async void OnCallChanged(object sender, EventArgs e)
+    {
+        if (_disposed) return;
+        if (SelectedTab != "Ongoing") return;
+
+        try { await InvokeAsync(async () => { await ReloadDataAsync(); StateHasChanged(); }); }
+        catch (ObjectDisposedException) { }
+    }
 
     protected override async Task OnParametersSetAsync()
     {
-        //TODO: Add event listener to update, especially ongoing calls.
-
         _all = DatabaseMonitor.GetCalls(CallType.Last).Union(DatabaseMonitor.GetCalls(CallType.Slow)).ToArray();
-        _databases = _all.GroupBy(x => x.Fingerprint.DatabaseName).Select(x => x.First()).Select(x => x.Fingerprint.DatabaseName).Order().ToArray();
+        _databases = _all.Select(x => x.Fingerprint.DatabaseName).Distinct().Order().ToArray();
+        _collections = _all.Select(x => x.Fingerprint.CollectionName).Distinct().Order().ToArray();
+        _functions = _all.Select(x => x.FunctionName).Distinct().Order().ToArray();
+        _operations = _all.Select(x => x.Operation).Distinct().Order().ToArray();
 
         await ReloadDataAsync();
         await base.OnParametersSetAsync();
@@ -123,10 +206,20 @@ else
     private async Task ReloadDataAsync()
     {
         _all = DatabaseMonitor.GetCalls(SelectedCallType).ToArray();
-        // _databases = _all.GroupBy(x => x.DatabaseName).Select(x => x.First()).Select(x => x.DatabaseName).Order().ToArray();
-        _model = _all.Where(x => SelectedDatabases == null || !SelectedDatabases.Any() || SelectedDatabases.Contains(x.Fingerprint.DatabaseName)).ToArray();
+        _model = _all
+            .Where(x => SelectedDatabases == null || !SelectedDatabases.Any() || SelectedDatabases.Contains(x.Fingerprint.DatabaseName))
+            .Where(x => SelectedCollections == null || !SelectedCollections.Any() || SelectedCollections.Contains(x.Fingerprint.CollectionName))
+            .Where(x => SelectedFunctions == null || !SelectedFunctions.Any() || SelectedFunctions.Contains(x.FunctionName))
+            .Where(x => SelectedOperations == null || !SelectedOperations.Any() || SelectedOperations.Contains(x.Operation))
+            .ToArray();
         _showConfiguration = _model.GroupBy(x => x.Fingerprint.ConfigurationName).Count() > 1;
         StateHasChanged();
+    }
+
+    private async Task ResetCallsAsync()
+    {
+        DatabaseMonitor.ResetCalls();
+        await ReloadDataAsync();
     }
 
     private async Task ShowCallDialog(CallInfo context)
