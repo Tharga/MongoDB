@@ -128,15 +128,18 @@ else
         await base.OnInitializedAsync();
     }
 
+    private bool _disposed;
+
     public void Dispose()
     {
+        _disposed = true;
         DatabaseMonitor.CollectionInfoChangedEvent -= OnCollectionInfoChanged;
         DatabaseMonitor.CollectionDroppedEvent -= OnCollectionDropped;
     }
 
     private async void OnCollectionInfoChanged(object sender, CollectionInfoChangedEventArgs e)
     {
-        if (_all == null) return;
+        if (_disposed || _all == null) return;
 
         var item = _all.SingleOrDefault(x => x.Key == e.CollectionInfo.Key);
 
@@ -163,18 +166,20 @@ else
                 m.IndexEqualFields = e.CollectionInfo.Index == null || e.CollectionInfo.Index.Current == null ? null : indexModels.All(x => x.EqualFields);
             }
 
-            await InvokeAsync(StateHasChanged);
+            if (_disposed) return;
+            try { await InvokeAsync(StateHasChanged); } catch (Exception) { }
         }
     }
 
     private async void OnCollectionDropped(object sender, CollectionDroppedEventArgs e)
     {
-        if (_all == null) return;
+        if (_disposed || _all == null) return;
 
         _all = _all.Where(x => x.ToDatabaseContext() != e.DatabaseContext).ToArray();
         await ReloadDataAsync();
 
-        await InvokeAsync(StateHasChanged);
+        if (_disposed) return;
+        try { await InvokeAsync(StateHasChanged); } catch (Exception) { }
     }
 
     protected override async Task OnParametersSetAsync()

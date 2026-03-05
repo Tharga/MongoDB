@@ -263,7 +263,41 @@ internal class DatabaseMonitor : IDatabaseMonitor
             ConfigurationName = x.ConfigurationName?.Value ?? _options.DefaultConfigurationName,
             DatabasePart = x.DatabasePart.NullIfEmpty()
         }).Where(x => configuredContexts.Any(y => y.ConfigurationName == x.ConfigurationName));
-        var contexts = configuredContexts.Union(cachedContexts).Distinct().ToArray();
+
+        // Pre-load all monitor records from each configuration's base database (one read per config).
+        // Records for ALL databases (including tenant databases) are stored centrally, so this gives us
+        // everything needed to both restore the cache and discover previously-known tenant contexts.
+        var recordsByConfig = new Dictionary<string, Dictionary<string, MonitorRecord>>();
+        if (UsesDatabaseStorage)
+        {
+            foreach (var configCtx in configuredContexts)
+            {
+                var configName = configCtx.ConfigurationName ?? _options.DefaultConfigurationName;
+                if (recordsByConfig.ContainsKey(configName)) continue;
+                if (AsInternal(_mongoDbServiceFactory.GetMongoDbService(() => configCtx)) is not { } svc) continue;
+                var records = await svc.GetAllMonitorRecordsAsync(null);
+                var dict = new Dictionary<string, MonitorRecord>();
+                foreach (var r in records)
+                {
+                    if (string.IsNullOrEmpty(r.CollectionName) || string.IsNullOrEmpty(r.DatabaseName)) continue;
+                    dict[$"{r.DatabaseName}/{r.CollectionName}"] = r; // last write wins for duplicates
+                }
+                recordsByConfig[configName] = dict;
+            }
+        }
+
+        // Derive persisted contexts: tenant databases that had dynamic collections in a previous session
+        var persistedContexts = recordsByConfig
+            .SelectMany(kv => kv.Value.Values)
+            .Where(r => !string.IsNullOrEmpty(r.DatabasePart) && r.Registration != (int)Registration.NotInCode)
+            .Select(r => new DatabaseContext
+            {
+                ConfigurationName = r.ConfigurationName ?? _options.DefaultConfigurationName,
+                DatabasePart = r.DatabasePart
+            })
+            .ToList();
+
+        var contexts = configuredContexts.Union(cachedContexts).Union(persistedContexts).Distinct().ToArray();
 
         var sw = new Stopwatch();
         sw.Start();
@@ -277,19 +311,21 @@ internal class DatabaseMonitor : IDatabaseMonitor
         {
             Console.WriteLine($"Context {++index} of {total} {context.ConfigurationName}.{context.DatabasePart}.{context.CollectionName} [{sw.Elapsed.TotalSeconds:N0}s]");
             var mongoDbService = _mongoDbServiceFactory.GetMongoDbService(() => context);
+            var configName = context.ConfigurationName ?? _options.DefaultConfigurationName;
+            recordsByConfig.TryGetValue(configName, out var contextRecords);
 
             if (fullDatabaseScan)
             {
                 foreach (var database in mongoDbService.GetDatabases())
                 {
                     if (filter != null && !database.ProtectCollectionName().Contains(filter)) continue;
-                    await foreach (var info in GetCollectionsFromDb(mongoDbService, database, filter, currentDbKeys, visited, sw))
+                    await foreach (var info in GetCollectionsFromDb(mongoDbService, database, filter, currentDbKeys, visited, sw, contextRecords))
                         yield return info;
                 }
             }
             else
             {
-                await foreach (var info in GetCollectionsFromDb(mongoDbService, null, filter, currentDbKeys, visited, sw))
+                await foreach (var info in GetCollectionsFromDb(mongoDbService, null, filter, currentDbKeys, visited, sw, contextRecords))
                     yield return info;
             }
         }
@@ -309,18 +345,26 @@ internal class DatabaseMonitor : IDatabaseMonitor
             .GetCollectionsWithMetaAsync(fingerprint.DatabaseName, collectionNameFilter: fingerprint.CollectionName, includeDetails: true)
             .FirstOrDefaultAsync().AsTask();
         var cleanTask = mongoDbService.ReadCleanInfoAsync(fingerprint.DatabaseName, fingerprint.CollectionName);
+        var monitorTask = UsesDatabaseStorage && AsInternal(mongoDbService) is { } internalSvc
+            ? internalSvc.ReadMonitorRecordAsync(fingerprint.DatabaseName, fingerprint.CollectionName)
+            : Task.FromResult<MonitorRecord>(null);
 
-        await Task.WhenAll(metaTask, cleanTask);
+        await Task.WhenAll(metaTask, cleanTask, monitorTask);
 
         var meta = metaTask.Result;
         if (meta == null) return;
 
         var cleanInfo = cleanTask.Result;
+        var persisted = monitorTask.Result;
 
         _cache.AddOrUpdate(fingerprint.Key,
             addValueFactory: _ =>
             {
-                var entry = BuildInitialEntry(fingerprint, meta.Server, null, null);
+                // Use stored entity type name so dynamic collections are correctly recognised when not in cache
+                var entityTypeName = persisted != null && persisted.Registration != (int)Registration.NotInCode
+                    ? persisted.Types?.FirstOrDefault()
+                    : null;
+                var entry = BuildInitialEntry(fingerprint, meta.Server, persisted?.DatabasePart, entityTypeName);
                 return entry with
                 {
                     DocumentCount = new DocumentCount { Count = meta.DocumentCount },
@@ -603,8 +647,11 @@ internal class DatabaseMonitor : IDatabaseMonitor
 
             _staticLookup = GetStaticCollectionsFromCodeCore()
                 .ToDictionary(x => (x.ConfigurationName ?? _options.DefaultConfigurationName, x.CollectionName), x => x);
-            _dynamicLookup = GetDynamicRegistrations()
-                .ToDictionary(x => x.Type, x => x);
+            var a = GetDynamicRegistrations(_staticLookup.Select(x => new DatabaseContext { ConfigurationName = x.Key.Item1 })).ToArray();
+            var b = a.GroupBy(x => x.Type).ToArray();
+            var c = b.Where(x => x.Count() > 1).ToArray();
+            var d = b.Select(x => x.First());
+            _dynamicLookup = d.ToDictionary(x => x.Type, x => x);
 
             return (_staticLookup, _dynamicLookup);
         }
@@ -691,15 +738,9 @@ internal class DatabaseMonitor : IDatabaseMonitor
         });
     }
 
-    private async IAsyncEnumerable<CollectionInfo> GetCollectionsFromDb(IMongoDbService mongoDbService, string databaseName, string filter, HashSet<string> currentDbKeys, HashSet<string> visited, Stopwatch sw)
+    // preloadedRecords: keyed by "databaseName/collectionName", pre-loaded by GetInstancesAsync
+    private async IAsyncEnumerable<CollectionInfo> GetCollectionsFromDb(IMongoDbService mongoDbService, string databaseName, string filter, HashSet<string> currentDbKeys, HashSet<string> visited, Stopwatch sw, IReadOnlyDictionary<string, MonitorRecord> preloadedRecords)
     {
-        Dictionary<string, MonitorRecord> persistedRecords = null;
-        if (UsesDatabaseStorage && AsInternal(mongoDbService) is { } internalSvc)
-        {
-            var records = await internalSvc.GetAllMonitorRecordsAsync(databaseName);
-            persistedRecords = records.ToDictionary(r => r.CollectionName);
-        }
-
         await foreach (var meta in mongoDbService.GetCollectionsWithMetaAsync(databaseName, includeDetails: false))
         {
             if (meta.CollectionName.StartsWith("_")) continue;
@@ -712,8 +753,23 @@ internal class DatabaseMonitor : IDatabaseMonitor
 
             Console.WriteLine($"- Got {meta.CollectionName} [{sw.Elapsed.TotalSeconds:N0}s]");
 
+            var recordKey = $"{meta.DatabaseName}/{meta.CollectionName}";
+
             if (_cache.TryGetValue(key, out var cached))
             {
+                // Persist Dynamic entries that were classified via CollectionAccessEvent but may
+                // not have been written to the monitor DB yet (fire-and-forget save could have failed)
+                if (UsesDatabaseStorage && cached.Registration == Registration.Dynamic
+                    && (preloadedRecords == null || !preloadedRecords.ContainsKey(recordKey)))
+                {
+                    var fp = new CollectionFingerprint
+                    {
+                        ConfigurationName = meta.ConfigurationName,
+                        DatabaseName = meta.DatabaseName,
+                        CollectionName = meta.CollectionName
+                    };
+                    _ = Task.Run(async () => await SaveToMonitorAsync(fp, cached));
+                }
                 yield return cached;
             }
             else
@@ -725,7 +781,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
                     CollectionName = meta.CollectionName
                 };
                 var entry = BuildInitialEntry(fp, meta.Server, null, null);
-                if (persistedRecords != null && persistedRecords.TryGetValue(meta.CollectionName, out var persisted))
+                if (preloadedRecords != null && preloadedRecords.TryGetValue(recordKey, out var persisted))
                 {
                     // If unclassified but persisted record has registration info, rebuild with the
                     // stored entity type name so Dynamic collections are correctly recognised on reload
@@ -806,8 +862,10 @@ internal class DatabaseMonitor : IDatabaseMonitor
         }
     }
 
-    private IEnumerable<DynColInfo> GetDynamicRegistrations()
+    private IEnumerable<DynColInfo> GetDynamicRegistrations(IEnumerable<DatabaseContext> databaseContexts)
     {
+        var ctx = databaseContexts.DistinctBy(x => x.ConfigurationName).ToArray();
+
         foreach (var registeredCollection in _mongoDbInstance.RegisteredCollections)
         {
             var isDynamic = registeredCollection.Value
@@ -824,22 +882,25 @@ internal class DatabaseMonitor : IDatabaseMonitor
                     .FirstOrDefault();
 
                 var colType = _mongoDbInstance.RegisteredCollections.FirstOrDefault(x => x.Key.Name == registeredCollection.Key.Name).Key;
-                var collection = _collectionProvider.GetCollection(colType, new DatabaseContext()) as RepositoryCollectionBase;
+                foreach (var databaseContext in ctx)
+                {
+                    var collection = _collectionProvider.GetCollection(colType, databaseContext) as RepositoryCollectionBase;
 
-                if (genericParam?.Name != null)
-                {
-                    yield return new DynColInfo
+                    if (genericParam?.Name != null)
                     {
-                        Source = Source.Registration,
-                        Type = genericParam.Name,
-                        CollectionType = registeredCollection.Key,
-                        DefinedIndices = collection.BuildIndexMetas().ToArray(),
-                        EntityType = genericParam,
-                    };
-                }
-                else
-                {
-                    Debugger.Break();
+                        yield return new DynColInfo
+                        {
+                            Source = Source.Registration,
+                            Type = genericParam.Name,
+                            CollectionType = registeredCollection.Key,
+                            DefinedIndices = collection.BuildIndexMetas().ToArray(),
+                            EntityType = genericParam,
+                        };
+                    }
+                    else
+                    {
+                        Debugger.Break();
+                    }
                 }
             }
         }

@@ -112,6 +112,7 @@ else
 @code {
     private CollectionInfo _model;
     private IndexModel[] _indexModel;
+    private bool _disposed;
 
     [Parameter]
     public CollectionFingerprint Fingerprint { get; set; }
@@ -130,6 +131,7 @@ else
 
     public void Dispose()
     {
+        _disposed = true;
         DatabaseMonitor.CollectionInfoChangedEvent -= OnCollectionInfoChanged;
     }
 
@@ -142,10 +144,11 @@ else
 
     private async void OnCollectionInfoChanged(object sender, CollectionInfoChangedEventArgs e)
     {
-        if (e.CollectionInfo.Key != Fingerprint?.Key) return;
+        if (_disposed || e.CollectionInfo.Key != Fingerprint?.Key) return;
         _model = e.CollectionInfo;
         _indexModel = _model.ToIndexModel().ToArray();
-        await InvokeAsync(StateHasChanged);
+        if (_disposed) return;
+        try { await InvokeAsync(StateHasChanged); } catch (Exception) { }
     }
 
     private async Task TouchCollection()
@@ -168,9 +171,6 @@ else
     {
         try
         {
-            var result = await DialogService.Confirm("Indicies will be dropped.", "Confirm drop indicies");
-            if (result != true) return;
-
             var response = await DatabaseMonitor.DropIndexAsync(_model);
             var dropCount = response.Before - response.After;
 
@@ -188,9 +188,6 @@ else
     {
         try
         {
-            var result = await DialogService.Confirm("Indicies will be restored.", "Confirm restore indicies");
-            if (result != true) return;
-
             await DatabaseMonitor.RestoreIndexAsync(_model, true);
 
             await ReloadDataAsync();
@@ -225,6 +222,7 @@ else
     private async Task ReloadDataAsync()
     {
         var response = await DatabaseMonitor.GetInstanceAsync(Fingerprint);
+        if (response == null) return;
 
         _indexModel = response.ToIndexModel().ToArray();
         _model = response;

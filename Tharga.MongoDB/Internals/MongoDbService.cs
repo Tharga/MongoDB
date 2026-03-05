@@ -313,35 +313,43 @@ internal class MongoDbService : IMongoDbServiceInternal
         return dbs.Select(x => x.AsBsonValue["name"].ToString());
     }
 
+    // Monitor records are always stored in the base configured database (_mongoDatabase), not in
+    // per-tenant databases. This allows a single read on startup to discover all dynamic collections
+    // (including tenant-specific ones) without needing to know tenant database names in advance.
+    // The _id uses a composite "databaseName/collectionName" key to avoid collisions across databases.
+
+    private static string MonitorKey(string databaseName, string collectionName)
+        => $"{databaseName}/{collectionName}";
+
     public async Task<MonitorRecord> ReadMonitorRecordAsync(string databaseName, string collectionName)
     {
-        var mongoDatabase = string.IsNullOrEmpty(databaseName) ? _mongoDatabase : _mongoClient.GetDatabase(databaseName);
-        var col = mongoDatabase.GetCollection<BsonDocument>("_monitor");
-        var doc = await col.Find(new BsonDocument("_id", collectionName)).SingleOrDefaultAsync();
+        var col = _mongoDatabase.GetCollection<BsonDocument>("_monitor");
+        var doc = await col.Find(new BsonDocument("_id", MonitorKey(databaseName, collectionName))).SingleOrDefaultAsync();
         return doc == null ? null : BsonToMonitorRecord(doc);
     }
 
     public async Task<IEnumerable<MonitorRecord>> GetAllMonitorRecordsAsync(string databaseName)
     {
-        var mongoDatabase = string.IsNullOrEmpty(databaseName) ? _mongoDatabase : _mongoClient.GetDatabase(databaseName);
-        var col = mongoDatabase.GetCollection<BsonDocument>("_monitor");
-        var docs = await col.Find(FilterDefinition<BsonDocument>.Empty).ToListAsync();
+        var col = _mongoDatabase.GetCollection<BsonDocument>("_monitor");
+        var filter = string.IsNullOrEmpty(databaseName)
+            ? FilterDefinition<BsonDocument>.Empty
+            : Builders<BsonDocument>.Filter.Eq("DatabaseName", databaseName);
+        var docs = await col.Find(filter).ToListAsync();
         return docs.Select(BsonToMonitorRecord).ToArray();
     }
 
     public async Task SaveMonitorRecordAsync(string databaseName, MonitorRecord record)
     {
-        var mongoDatabase = string.IsNullOrEmpty(databaseName) ? _mongoDatabase : _mongoClient.GetDatabase(databaseName);
-        var col = mongoDatabase.GetCollection<BsonDocument>("_monitor");
-        var doc = MonitorRecordToBson(record);
-        await col.ReplaceOneAsync(new BsonDocument("_id", record.CollectionName), doc, new ReplaceOptions { IsUpsert = true });
+        var col = _mongoDatabase.GetCollection<BsonDocument>("_monitor");
+        var id = MonitorKey(databaseName, record.CollectionName);
+        var doc = MonitorRecordToBson(id, record);
+        await col.ReplaceOneAsync(new BsonDocument("_id", id), doc, new ReplaceOptions { IsUpsert = true });
     }
 
     public async Task RemoveMonitorRecordAsync(string databaseName, string collectionName)
     {
-        var mongoDatabase = string.IsNullOrEmpty(databaseName) ? _mongoDatabase : _mongoClient.GetDatabase(databaseName);
-        var col = mongoDatabase.GetCollection<BsonDocument>("_monitor");
-        await col.DeleteOneAsync(new BsonDocument("_id", collectionName));
+        var col = _mongoDatabase.GetCollection<BsonDocument>("_monitor");
+        await col.DeleteOneAsync(new BsonDocument("_id", MonitorKey(databaseName, collectionName)));
     }
 
     private static BsonValue ToBson(string value) => value != null ? (BsonValue)value : BsonNull.Value;
@@ -372,11 +380,12 @@ internal class MongoDbService : IMongoDbServiceInternal
         }).ToArray();
     }
 
-    private static BsonDocument MonitorRecordToBson(MonitorRecord r)
+    private static BsonDocument MonitorRecordToBson(string id, MonitorRecord r)
     {
         return new BsonDocument
         {
-            { "_id", r.CollectionName },
+            { "_id", id },
+            { "CollectionName", r.CollectionName },
             { "ConfigurationName", ToBson(r.ConfigurationName) },
             { "DatabaseName", ToBson(r.DatabaseName) },
             { "Server", ToBson(r.Server) },
@@ -395,9 +404,14 @@ internal class MongoDbService : IMongoDbServiceInternal
 
     private static MonitorRecord BsonToMonitorRecord(BsonDocument doc)
     {
+        var id = doc["_id"].AsString;
+        // Support both new composite format ("databaseName/collectionName") and legacy format ("collectionName")
+        var collectionName = doc.TryGetValue("CollectionName", out var cnVal) && !cnVal.IsBsonNull
+            ? cnVal.AsString
+            : (id.Contains('/') ? id[(id.LastIndexOf('/') + 1)..] : id);
         return new MonitorRecord
         {
-            CollectionName = doc["_id"].AsString,
+            CollectionName = collectionName,
             ConfigurationName = BsonStr(doc.GetValue("ConfigurationName", BsonNull.Value)),
             DatabaseName = BsonStr(doc.GetValue("DatabaseName", BsonNull.Value)),
             Server = BsonStr(doc.GetValue("Server", BsonNull.Value)),
