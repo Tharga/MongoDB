@@ -254,6 +254,11 @@ else
 
             SetColor(args, color);
         }
+        else if (cssClass.StartsWith("css-clean"))
+        {
+            string color = args.Data.Clean == null ? "lightyellow" : null;
+            SetColor(args, color);
+        }
     }
 
     private static void SetColor(DataGridCellRenderEventArgs<CollectionModel> args, string color)

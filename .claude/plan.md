@@ -41,5 +41,12 @@
   - Updated all tests (36 tests pass: 15 MemoryCollectionCache + 21 MongoDbCollectionCacheBson)
   - Build succeeds. 188 passing tests, 15 pre-existing lockable failures (unchanged).
 
+- [x] Step 23: CleanInfo — single source of truth from `_clean`
+  - Added `ReadAllCleanInfoAsync(databaseName)` to `IMongoDbService` + `MongoDbService` (batch reads all `_clean` docs)
+  - Batch-load CleanInfo in `GetCollectionsFromDb` — always sets Clean from `_clean` on every entry
+  - Removed per-collection `ReadCleanInfoAsync` from `RefreshStatsAsync` and `LoadAndCacheAsync` — they now preserve existing cached Clean
+  - Added yellow highlighting for unknown clean status (`css-clean`) in `CollectionView.razor`
+  - Build succeeds. 188 passing tests, 15 pre-existing lockable failures (unchanged).
+
 ## Last session
-Step 22 complete. CollectionInfo restructured with CollectionStats and IndexInfo.UpdatedAt entities. ICollectionCache now owns both in-memory state and persistence. DatabaseMonitor no longer has its own dictionary. AccessCount/CallCount removed. Types renamed to EntityTypes. CleanInfo visible in CollectionView table. Build succeeds. Tests: 188 passing, 15 pre-existing lockable failures.
+Step 23 complete. CleanInfo now loaded from `_clean` during list scan (batch per database). RefreshStatsAsync and LoadAndCacheAsync no longer read from `_clean` — they preserve cached CleanInfo. Unknown clean status shows yellow in CollectionView.

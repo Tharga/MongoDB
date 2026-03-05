@@ -302,17 +302,11 @@ internal class DatabaseMonitor : IDatabaseMonitor
         if (fingerprint == null) throw new ArgumentNullException(nameof(fingerprint));
 
         var mongoDbService = GetMongoDbService(fingerprint);
-        var metaTask = mongoDbService
+        var meta = await mongoDbService
             .GetCollectionsWithMetaAsync(fingerprint.DatabaseName, collectionNameFilter: fingerprint.CollectionName, includeDetails: true)
-            .FirstOrDefaultAsync().AsTask();
-        var cleanTask = mongoDbService.ReadCleanInfoAsync(fingerprint.DatabaseName, fingerprint.CollectionName);
-
-        await Task.WhenAll(metaTask, cleanTask);
-
-        var meta = metaTask.Result;
+            .FirstOrDefaultAsync();
         if (meta == null) return;
 
-        var cleanInfo = cleanTask.Result;
         var now = DateTime.UtcNow;
 
         // Use cached entry to restore entity type name for dynamic collections
@@ -330,14 +324,13 @@ internal class DatabaseMonitor : IDatabaseMonitor
                 {
                     Stats = new CollectionStats { DocumentCount = meta.DocumentCount, Size = meta.Size, UpdatedAt = now },
                     Index = BuildIndexInfo(entry, meta.Indexes, now),
-                    Clean = cleanInfo
+                    Clean = cachedEntry?.Clean,
                 };
             },
             updateFactory: (_, existing) => existing with
             {
                 Stats = new CollectionStats { DocumentCount = meta.DocumentCount, Size = meta.Size, UpdatedAt = now },
                 Index = BuildIndexInfo(existing, meta.Indexes, now),
-                Clean = cleanInfo,
                 CurrentSchemaFingerprint = existing.CurrentSchemaFingerprint ?? ComputeSchemaFingerprint(existing.CollectionType),
             });
 
@@ -498,14 +491,9 @@ internal class DatabaseMonitor : IDatabaseMonitor
     private async Task<CollectionInfo> LoadAndCacheAsync(CollectionFingerprint fingerprint)
     {
         var mongoDbService = GetMongoDbService(fingerprint);
-        var metaTask = mongoDbService
+        var meta = await mongoDbService
             .GetCollectionsWithMetaAsync(fingerprint.DatabaseName, collectionNameFilter: fingerprint.CollectionName, includeDetails: true)
-            .FirstOrDefaultAsync().AsTask();
-        var cleanTask = mongoDbService.ReadCleanInfoAsync(fingerprint.DatabaseName, fingerprint.CollectionName);
-
-        await Task.WhenAll(metaTask, cleanTask);
-
-        var meta = metaTask.Result;
+            .FirstOrDefaultAsync();
         if (meta == null) return null;
 
         // Use cached entry (pre-loaded from DB storage) to restore entity type name for Dynamic collections
@@ -520,7 +508,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
         {
             Stats = new CollectionStats { DocumentCount = meta.DocumentCount, Size = meta.Size, UpdatedAt = now },
             Index = BuildIndexInfo(entry, meta.Indexes, now),
-            Clean = cleanTask.Result
+            Clean = cachedEntry?.Clean,
         };
         _cache.Set(fingerprint.Key, entry);
         _ = Task.Run(() => _cache.SaveAsync(entry));
@@ -654,6 +642,8 @@ internal class DatabaseMonitor : IDatabaseMonitor
 
     private async IAsyncEnumerable<CollectionInfo> GetCollectionsFromDb(IMongoDbService mongoDbService, string databaseName, string filter, HashSet<string> currentDbKeys, HashSet<string> visited, Stopwatch sw)
     {
+        var cleanInfos = await mongoDbService.ReadAllCleanInfoAsync(databaseName);
+
         await foreach (var meta in mongoDbService.GetCollectionsWithMetaAsync(databaseName, includeDetails: false))
         {
             if (meta.CollectionName.StartsWith("_")) continue;
@@ -665,6 +655,8 @@ internal class DatabaseMonitor : IDatabaseMonitor
             if (!visited.Add(key)) continue;
 
             Console.WriteLine($"- Got {meta.CollectionName} [{sw.Elapsed.TotalSeconds:N0}s]");
+
+            cleanInfos.TryGetValue(meta.CollectionName, out var cleanInfo);
 
             if (_cache.TryGet(key, out var cached))
             {
@@ -689,8 +681,11 @@ internal class DatabaseMonitor : IDatabaseMonitor
                         Registration = codeEntry.Registration != Registration.NotInCode ? codeEntry.Registration : cached.Registration,
                         Source = cached.Source | codeEntry.Source,
                     };
-                    _cache.Set(key, cached);
                 }
+
+                // Always refresh CleanInfo from _clean (single source of truth)
+                cached = cached with { Clean = cleanInfo };
+                _cache.Set(key, cached);
                 yield return cached;
             }
             else
@@ -701,7 +696,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
                     DatabaseName = meta.DatabaseName,
                     CollectionName = meta.CollectionName
                 };
-                var entry = BuildInitialEntry(fp, meta.Server, null, null);
+                var entry = BuildInitialEntry(fp, meta.Server, null, null) with { Clean = cleanInfo };
                 _cache.Set(key, entry);
                 yield return entry;
             }

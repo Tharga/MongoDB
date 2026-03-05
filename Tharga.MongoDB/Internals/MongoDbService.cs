@@ -243,6 +243,25 @@ internal class MongoDbService : IMongoDbServiceInternal
         };
     }
 
+    public async Task<Dictionary<string, CleanInfo>> ReadAllCleanInfoAsync(string databaseName)
+    {
+        var mongoDatabase = string.IsNullOrEmpty(databaseName) ? _mongoDatabase : _mongoClient.GetDatabase(databaseName);
+        var cleanCollection = mongoDatabase.GetCollection<BsonDocument>("_clean");
+        var docs = await cleanCollection.Find(FilterDefinition<BsonDocument>.Empty).ToListAsync();
+        var result = new Dictionary<string, CleanInfo>();
+        foreach (var doc in docs)
+        {
+            var id = doc.GetValue("_id").AsString;
+            result[id] = new CleanInfo
+            {
+                SchemaFingerprint = doc.GetValue("SchemaFingerprint", "").AsString,
+                CleanedAt = doc.GetValue("CleanedAt", DateTime.MinValue).ToUniversalTime(),
+                DocumentsCleaned = doc.GetValue("DocumentsCleaned", 0).AsInt32
+            };
+        }
+        return result;
+    }
+
     public long GetSize(string collectionName, IMongoDatabase mongoDatabase = null)
     {
         var size = (mongoDatabase ?? _mongoDatabase).RunCommand<SizeResult>($"{{collstats: '{collectionName}'}}").Size;

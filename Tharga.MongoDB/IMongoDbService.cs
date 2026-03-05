@@ -20,6 +20,7 @@ public interface IMongoDbService
     IAsyncEnumerable<CollectionMeta> GetCollectionsWithMetaAsync(string databaseName = null, string collectionNameFilter = null, bool includeDetails = true);
     Task<bool> DoesCollectionExist(string name);
     Task<CleanInfo> ReadCleanInfoAsync(string databaseName, string collectionName);
+    Task<Dictionary<string, CleanInfo>> ReadAllCleanInfoAsync(string databaseName);
     void DropDatabase(string name);
     IEnumerable<string> GetDatabases();
     long GetSize(string collectionName, IMongoDatabase mongoDatabase = null);
