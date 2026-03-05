@@ -125,9 +125,6 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 
                 if (operation == Operation.Delete) await DropEmptyAsync(collection);
 
-                //TODO: Option to turn on explain mode. This will be the analysis steps.
-                //TODO: Try to get more information about the filter or predicate on the call.
-
                 return response;
             }, $"MongoDB.{ConfigurationName ?? Constants.DefaultConfigurationName}", cancellationToken);
 
