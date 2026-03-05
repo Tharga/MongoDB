@@ -9,6 +9,7 @@
 @inject DialogService DialogService
 @inject NotificationService NotificationService
 @inject IOptions<DatabaseOptions> DatabaseOptions
+@inject ICallLibrary CallLibrary
 
 @if (!DatabaseOptions.Value.Monitor.Enabled)
 {
@@ -83,6 +84,11 @@ else
                         }
                     </Template>
                 </RadzenDataGridColumn>
+                <RadzenDataGridColumn Title="Calls" Property="@nameof(CollectionModel.CallCount)" Filterable="false" Sortable="true" TextAlign="TextAlign.Right" Width="80px">
+                    <Template>
+                        @(context.CallCount > 0 ? $"{context.CallCount:N0}" : "")
+                    </Template>
+                </RadzenDataGridColumn>
                 <RadzenDataGridColumn Title="" Sortable="false" Width="60px;" Filterable="false">
                     <Template>
                         <StandardButton Icon="format_list_numbered" Click="@(() => ShowCollectionDialog(context))" Style="margin-right: 3px;" />
@@ -112,6 +118,7 @@ else
     {
         DatabaseMonitor.CollectionInfoChangedEvent += OnCollectionInfoChanged;
         DatabaseMonitor.CollectionDroppedEvent += OnCollectionDropped;
+        CallLibrary.CallChanged += OnCallChanged;
         await base.OnInitializedAsync();
     }
 
@@ -122,6 +129,27 @@ else
         _disposed = true;
         DatabaseMonitor.CollectionInfoChangedEvent -= OnCollectionInfoChanged;
         DatabaseMonitor.CollectionDroppedEvent -= OnCollectionDropped;
+        CallLibrary.CallChanged -= OnCallChanged;
+    }
+
+    private async void OnCallChanged(object sender, EventArgs e)
+    {
+        if (_disposed || _model == null) return;
+
+        try { await InvokeAsync(() => { UpdateCallCounts(); StateHasChanged(); }); }
+        catch (ObjectDisposedException) { }
+    }
+
+    private void UpdateCallCounts()
+    {
+        var callCounts = CallLibrary.GetCallCounts();
+        foreach (var m in _model)
+        {
+            var suffix = $".{m.DatabaseName}.{m.CollectionName}";
+            m.CallCount = callCounts
+                .Where(kvp => kvp.Key.EndsWith(suffix))
+                .Sum(kvp => kvp.Value);
+        }
     }
 
     private async void OnCollectionInfoChanged(object sender, CollectionInfoChangedEventArgs e)
@@ -197,12 +225,18 @@ else
 
     private async Task ReloadDataAsync()
     {
+        var callCounts = CallLibrary.GetCallCounts();
+
         _model = _all
             .Where(x => SelectedDatabases == null || !SelectedDatabases.Any() || SelectedDatabases.Contains(x.DatabaseName))
             .Where(x => SelectedRegistrationTypes == null || !SelectedRegistrationTypes.Any() || SelectedRegistrationTypes.Contains(x.Registration))
             .Select(x =>
             {
                 var indexModels = x.ToIndexModel().ToArray();
+                var suffix = $".{x.DatabaseName}.{x.CollectionName}";
+                var count = callCounts
+                    .Where(kvp => kvp.Key.EndsWith(suffix))
+                    .Sum(kvp => kvp.Value);
 
                 return new CollectionModel
                 {
@@ -217,7 +251,8 @@ else
                     IndexEqualFields = x.Index == null || x.Index.Current == null
                         ? null
                         : indexModels.All(y => y.EqualFields),
-                    Clean = x.Clean
+                    Clean = x.Clean,
+                    CallCount = count,
                 };
             })
             .ToArray();

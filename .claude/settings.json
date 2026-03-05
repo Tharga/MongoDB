@@ -9,7 +9,7 @@
       "Bash(npm run:*)",
       "Read",
       "Glob",
-      "Grep"
+      "Grep",
       "Bash(dotnet test:*)"
     ],
     "deny": [

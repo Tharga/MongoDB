@@ -50,7 +50,7 @@ else
                         </RadzenColumn>
                         <RadzenColumn>
                             <RadzenText TextStyle="TextStyle.Caption" Text="Elapsed" />
-                            <RadzenText Text="@($"{_model.Elapsed?.Milliseconds:F2} ms")" />
+                            <RadzenText Text="@($"{_model.Elapsed?.TotalMilliseconds:F2} ms")" />
                         </RadzenColumn>
                     </RadzenRow>
                     @if (_model.Steps != null && _model.Steps.Count > 0)
