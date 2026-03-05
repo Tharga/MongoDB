@@ -1,8 +1,8 @@
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -15,43 +15,58 @@ internal class MongoDbCollectionCache : ICollectionCache
     private readonly IMongoDbServiceFactory _factory;
     private readonly IRepositoryConfiguration _repositoryConfiguration;
     private readonly DatabaseOptions _options;
-    private readonly ConcurrentDictionary<string, CollectionInfo> _dict = new();
+    private readonly ILogger<MongoDbCollectionCache> _logger;
 
-    public MongoDbCollectionCache(IMongoDbServiceFactory factory, IRepositoryConfiguration repositoryConfiguration, IOptions<DatabaseOptions> options)
+    public MongoDbCollectionCache(IMongoDbServiceFactory factory, IRepositoryConfiguration repositoryConfiguration, IOptions<DatabaseOptions> options, ILogger<MongoDbCollectionCache> logger)
     {
         _factory = factory;
         _repositoryConfiguration = repositoryConfiguration;
         _options = options.Value;
+        _logger = logger;
     }
 
-    public bool TryGet(string key, out CollectionInfo value) => _dict.TryGetValue(key, out value);
-
-    public IEnumerable<CollectionInfo> GetAll() => _dict.Values;
-
-    public CollectionInfo AddOrUpdate(string key,
-        Func<string, CollectionInfo> addValueFactory,
-        Func<string, CollectionInfo, CollectionInfo> updateValueFactory)
-        => _dict.AddOrUpdate(key, addValueFactory, updateValueFactory);
-
-    public bool Remove(string key, out CollectionInfo value) => _dict.TryRemove(key, out value);
-
-    public async Task InitializeAsync()
+    public async Task<IReadOnlyList<CollectionInfo>> LoadAllAsync()
     {
+        var result = new List<CollectionInfo>();
         foreach (var configName in _repositoryConfiguration.GetDatabaseConfigurationNames())
         {
             var db = GetBaseDatabase(configName);
             if (db == null) continue;
 
             var col = db.GetCollection<BsonDocument>("_monitor");
-            var docs = await col.Find(FilterDefinition<BsonDocument>.Empty).ToListAsync();
+            List<BsonDocument> docs;
+            try
+            {
+                docs = await col.Find(FilterDefinition<BsonDocument>.Empty).ToListAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to read _monitor collection for config '{ConfigName}'. Dropping and starting fresh.", configName);
+                await col.Database.DropCollectionAsync("_monitor");
+                continue;
+            }
+
+            var hadDeserializationError = false;
             foreach (var doc in docs)
             {
                 var info = BsonToCollectionInfo(doc, configName);
-                if (info == null) continue;
+                if (info == null)
+                {
+                    hadDeserializationError = true;
+                    continue;
+                }
                 info.Source |= Source.Monitor;
-                _dict[info.Key] = info;
+                result.Add(info);
+            }
+
+            if (hadDeserializationError)
+            {
+                _logger.LogWarning("One or more _monitor documents failed to deserialize for config '{ConfigName}'. Dropping collection and starting fresh.", configName);
+                await col.Database.DropCollectionAsync("_monitor");
+                result.RemoveAll(x => (x.ConfigurationName?.Value ?? _options.DefaultConfigurationName) == configName);
             }
         }
+        return result;
     }
 
     public async Task SaveAsync(CollectionInfo info)
@@ -79,7 +94,6 @@ internal class MongoDbCollectionCache : ICollectionCache
 
     public async Task ResetAsync()
     {
-        _dict.Clear();
         foreach (var configName in _repositoryConfiguration.GetDatabaseConfigurationNames())
         {
             var db = GetBaseDatabase(configName);
@@ -148,7 +162,6 @@ internal class MongoDbCollectionCache : ICollectionCache
             { "CollectionTypeName", ToBson(info.CollectionType?.AssemblyQualifiedName) },
             { "DocumentCount", info.DocumentCount?.Count ?? 0L },
             { "Size", info.Size },
-            { "CallCount", info.CallCount },
             { "CurrentIndexes", IndexesToBson(info.Index?.Current) },
             { "StatsUpdatedAt", info.StatsUpdatedAt.HasValue ? (BsonValue)info.StatsUpdatedAt.Value : BsonNull.Value },
             { "IndexUpdatedAt", info.IndexUpdatedAt.HasValue ? (BsonValue)info.IndexUpdatedAt.Value : BsonNull.Value },
@@ -197,7 +210,6 @@ internal class MongoDbCollectionCache : ICollectionCache
                     ? new DocumentCount { Count = dc }
                     : null,
                 Size = doc.GetValue("Size", 0L).ToInt64(),
-                CallCount = doc.GetValue("CallCount", 0).ToInt32(),
                 Index = currentIndexes != null ? new IndexInfo { Current = currentIndexes, Defined = [] } : null,
                 StatsUpdatedAt = statsUpdatedAt,
                 IndexUpdatedAt = indexUpdatedAt,

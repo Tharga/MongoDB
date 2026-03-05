@@ -22,7 +22,6 @@ public class MongoDbCollectionCacheBsonTests
             Registration = Registration.Static,
             Types = new[] { "TypeA", "TypeB" },
             CollectionType = typeof(MongoDbCollectionCacheBsonTests),
-            CallCount = 42,
             DocumentCount = new DocumentCount { Count = 100 },
             Size = 2048,
             Index = new IndexInfo
@@ -170,7 +169,6 @@ public class MongoDbCollectionCacheBsonTests
         doc["Types"].AsBsonArray.Select(t => t.AsString).Should().BeEquivalentTo("TypeA", "TypeB");
         doc["DocumentCount"].AsInt64.Should().Be(100);
         doc["Size"].AsInt64.Should().Be(2048);
-        doc["CallCount"].AsInt32.Should().Be(42);
         doc["CurrentIndexes"].AsBsonArray.Count.Should().Be(2);
         doc["StatsUpdatedAt"].ToUniversalTime().Should().Be(new DateTime(2025, 6, 15, 10, 30, 0, DateTimeKind.Utc));
         doc["IndexUpdatedAt"].ToUniversalTime().Should().Be(new DateTime(2025, 6, 15, 11, 0, 0, DateTimeKind.Utc));
@@ -230,7 +228,6 @@ public class MongoDbCollectionCacheBsonTests
         result.CollectionType.Should().Be(typeof(MongoDbCollectionCacheBsonTests));
         result.DocumentCount.Count.Should().Be(100);
         result.Size.Should().Be(2048);
-        result.CallCount.Should().Be(42);
         result.Index.Current.Should().HaveCount(2);
         result.StatsUpdatedAt.Should().Be(new DateTime(2025, 6, 15, 10, 30, 0, DateTimeKind.Utc));
         result.IndexUpdatedAt.Should().Be(new DateTime(2025, 6, 15, 11, 0, 0, DateTimeKind.Utc));
@@ -353,7 +350,6 @@ public class MongoDbCollectionCacheBsonTests
         var result = MongoDbCollectionCache.BsonToCollectionInfo(doc, "cfg");
 
         result.Should().NotBeNull();
-        result.CallCount.Should().Be(0);
         result.Size.Should().Be(0);
         result.DocumentCount.Should().BeNull();
         result.StatsUpdatedAt.Should().BeNull();

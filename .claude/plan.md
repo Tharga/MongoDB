@@ -22,5 +22,9 @@
 - [x] Step 17: Set `Source.Monitor` flag on entries loaded from MongoDB cache in `InitializeAsync`
 - [x] Step 18: Fixed indices "not defined in code" — enrich cache-loaded entries with code-derived defined indices, registration, and source in `GetCollectionsFromDb`
 
+- [x] Step 19: Simplified ICollectionCache to persistence-only (LoadAllAsync, SaveAsync, DeleteAsync, ResetAsync). Removed dictionary from MongoDbCollectionCache — it now only handles DB persistence. Moved ConcurrentDictionary back into DatabaseMonitor.
+- [x] Step 20: Removed CallCount from Bson serialization — per-session only, not persisted.
+- [x] Step 21: Added deserialization failure handling in MongoDbCollectionCache.LoadAllAsync — drops _monitor collection and logs warning if any documents fail to deserialize.
+
 ## Last session
-Steps 13-18 complete. Tests: 186 passing, 14 pre-existing lockable failures. Build succeeds across all targets.
+Steps 19-21 complete. ICollectionCache is now persistence-only. DatabaseMonitor owns in-memory state via ConcurrentDictionary. CallCount not persisted. Deserialization failures drop collection gracefully. Build succeeds. Tests: 179 passing, 15 pre-existing lockable failures (flaky).
