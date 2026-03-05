@@ -19,6 +19,9 @@ internal class CallLibrary : ICallLibrary
     private readonly ConcurrentDictionary<string, int> _callCounts = new();
     private readonly ConcurrentDictionary<Guid, DateTime> _completedAt = new();
     private static readonly TimeSpan CompletedRetention = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan ThrottleInterval = TimeSpan.FromMilliseconds(500);
+    private int _throttlePending;
+    private long _lastNotifyTicks;
 
     public event EventHandler CallChanged;
 
@@ -54,7 +57,7 @@ internal class CallLibrary : ICallLibrary
 
         _callCounts.AddOrUpdate(e.Fingerprint.Key, 1, (_, count) => count + 1);
 
-        CallChanged?.Invoke(this, EventArgs.Empty);
+        NotifyChanged();
     }
 
     public async Task<CollectionFingerprint> EndCallAsync(CallEndEventArgs e)
@@ -97,7 +100,7 @@ internal class CallLibrary : ICallLibrary
             _completedAt.TryAdd(e.CallKey, DateTime.UtcNow);
         }
 
-        CallChanged?.Invoke(this, EventArgs.Empty);
+        NotifyChanged();
 
         return item.Fingerprint;
     }
@@ -144,6 +147,35 @@ internal class CallLibrary : ICallLibrary
         return item.Element;
     }
 
+    private void NotifyChanged(bool immediate = false)
+    {
+        if (immediate)
+        {
+            Interlocked.Exchange(ref _lastNotifyTicks, DateTime.UtcNow.Ticks);
+            CallChanged?.Invoke(this, EventArgs.Empty);
+            return;
+        }
+
+        var now = DateTime.UtcNow.Ticks;
+        var last = Interlocked.Read(ref _lastNotifyTicks);
+        if (now - last >= ThrottleInterval.Ticks)
+        {
+            Interlocked.Exchange(ref _lastNotifyTicks, now);
+            CallChanged?.Invoke(this, EventArgs.Empty);
+            return;
+        }
+
+        if (Interlocked.CompareExchange(ref _throttlePending, 1, 0) == 0)
+        {
+            _ = Task.Delay(ThrottleInterval).ContinueWith(_ =>
+            {
+                Interlocked.Exchange(ref _throttlePending, 0);
+                Interlocked.Exchange(ref _lastNotifyTicks, DateTime.UtcNow.Ticks);
+                CallChanged?.Invoke(this, EventArgs.Empty);
+            });
+        }
+    }
+
     public IReadOnlyDictionary<string, int> GetCallCounts()
     {
         return new ReadOnlyDictionary<string, int>(_callCounts);
@@ -165,6 +197,6 @@ internal class CallLibrary : ICallLibrary
         _callCounts.Clear();
         _completedAt.Clear();
 
-        CallChanged?.Invoke(this, EventArgs.Empty);
+        NotifyChanged(immediate: true);
     }
 }

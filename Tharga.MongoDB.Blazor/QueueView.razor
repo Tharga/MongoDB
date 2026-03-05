@@ -1,52 +1,83 @@
 @implements IDisposable
 @inject IQueueMonitor QueueMonitor
 
-<RadzenChart Style="height: 300px;">
-    <RadzenLineSeries Data="@_dataPoints" CategoryProperty="Label" ValueProperty="QueueCount" Title="Queue Depth" LineType="LineType.Solid" Smooth="true">
-        <RadzenMarkers MarkerType="MarkerType.None" />
-    </RadzenLineSeries>
-    <RadzenLineSeries Data="@_dataPoints" CategoryProperty="Label" ValueProperty="ExecutingCount" Title="Executing" LineType="LineType.Dashed" Smooth="true">
-        <RadzenMarkers MarkerType="MarkerType.None" />
-    </RadzenLineSeries>
-    <RadzenLineSeries Data="@_dataPoints" CategoryProperty="Label" ValueProperty="WaitTimeMs" Title="Wait Time (ms)" LineType="LineType.Dotted" Smooth="true">
-        <RadzenMarkers MarkerType="MarkerType.None" />
-    </RadzenLineSeries>
-    <RadzenCategoryAxis />
-    <RadzenValueAxis>
-        <RadzenGridLines Visible="true" />
-    </RadzenValueAxis>
-    <RadzenLegend Position="LegendPosition.Bottom" />
-</RadzenChart>
+<RadzenStack Orientation="Orientation.Vertical" Gap="16px">
+    <RadzenRow AlignItems="AlignItems.Center" Gap="16px">
+        <RadzenColumn Size="2">
+            <RadzenText TextStyle="TextStyle.Subtitle1" Text="Current Queue" />
+            <RadzenText TextStyle="TextStyle.H3" Text="@_currentQueue.ToString()" />
+        </RadzenColumn>
+    </RadzenRow>
+
+    <RadzenText TextStyle="TextStyle.Subtitle1" Text="Queue Depth" />
+    <RadzenChart Style="height: 250px;">
+        <RadzenLineSeries Data="@_slots" CategoryProperty="SlotIndex" ValueProperty="QueueCount" LineType="LineType.Solid" Smooth="true">
+            <RadzenMarkers MarkerType="MarkerType.None" />
+        </RadzenLineSeries>
+        <RadzenCategoryAxis Step="@AxisStep" FormatString="{0}" />
+        <RadzenValueAxis Min="0">
+            <RadzenGridLines Visible="true" />
+        </RadzenValueAxis>
+        <RadzenLegend Visible="false" />
+    </RadzenChart>
+
+    <RadzenText TextStyle="TextStyle.Subtitle1" Text="Wait Time (s)" />
+    <RadzenChart Style="height: 250px;">
+        <RadzenLineSeries Data="@_slots" CategoryProperty="SlotIndex" ValueProperty="WaitTimeSec" LineType="LineType.Solid" Smooth="true">
+            <RadzenMarkers MarkerType="MarkerType.None" />
+        </RadzenLineSeries>
+        <RadzenCategoryAxis Step="@AxisStep" FormatString="{0}" />
+        <RadzenValueAxis Min="0">
+            <RadzenGridLines Visible="true" />
+        </RadzenValueAxis>
+        <RadzenLegend Visible="false" />
+    </RadzenChart>
+
+</RadzenStack>
 
 @code {
-    private const int MaxDisplayPoints = 60;
-    private List<QueueDataPoint> _dataPoints = new();
+    private const int TotalSlots = 120;
+    private const int AxisStep = 20;
+    private const int SampleIntervalMs = 500;
+    private readonly int[] _ring = new int[TotalSlots];
+    private readonly double[] _waitRing = new double[TotalSlots];
+    private int _head;
+    private int _currentQueue;
+    private int _lastKnownQueue;
+    private double _lastWaitTimeMs;
+    private Timer _timer;
     private bool _disposed;
+    private List<Slot> _slots = new();
 
     protected override void OnInitialized()
     {
-        LoadHistorical();
+        var metrics = QueueMonitor.GetRecentMetrics();
+        if (metrics.Count > 0)
+        {
+            _lastKnownQueue = metrics[^1].QueueCount;
+            _currentQueue = _lastKnownQueue;
+        }
+
+        BuildSlots();
         QueueMonitor.QueueMetricEvent += OnMetric;
+        _timer = new Timer(OnTick, null, SampleIntervalMs, SampleIntervalMs);
     }
 
     public void Dispose()
     {
         _disposed = true;
+        _timer?.Dispose();
         QueueMonitor.QueueMetricEvent -= OnMetric;
     }
 
-    private void LoadHistorical()
+    private void OnMetric(object sender, QueueMetricEventArgs e)
     {
-        var metrics = QueueMonitor.GetRecentMetrics();
-        var cutoff = DateTime.UtcNow.AddMinutes(-2);
-        _dataPoints = metrics
-            .Where(m => m.Timestamp >= cutoff)
-            .TakeLast(MaxDisplayPoints)
-            .Select(ToDataPoint)
-            .ToList();
+        _lastKnownQueue = e.QueueCount;
+        if (e.WaitTime.HasValue)
+            _lastWaitTimeMs = Math.Max(_lastWaitTimeMs, e.WaitTime.Value.TotalMilliseconds);
     }
 
-    private async void OnMetric(object sender, QueueMetricEventArgs e)
+    private async void OnTick(object state)
     {
         if (_disposed) return;
 
@@ -54,35 +85,40 @@
         {
             await InvokeAsync(() =>
             {
-                _dataPoints.Add(ToDataPoint(e));
+                _currentQueue = _lastKnownQueue;
+                _ring[_head] = _lastKnownQueue;
+                _waitRing[_head] = _lastWaitTimeMs;
+                _lastWaitTimeMs = 0;
+                _head = (_head + 1) % TotalSlots;
 
-                var cutoff = DateTime.UtcNow.AddMinutes(-2);
-                _dataPoints.RemoveAll(p => p.Timestamp < cutoff);
-
-                while (_dataPoints.Count > MaxDisplayPoints)
-                    _dataPoints.RemoveAt(0);
-
+                BuildSlots();
                 StateHasChanged();
             });
         }
         catch (ObjectDisposedException) { }
     }
 
-    private static QueueDataPoint ToDataPoint(QueueMetricEventArgs m) => new()
+    private void BuildSlots()
     {
-        Timestamp = m.Timestamp,
-        Label = m.Timestamp.ToString("HH:mm:ss"),
-        QueueCount = m.QueueCount,
-        ExecutingCount = m.ExecutingCount,
-        WaitTimeMs = m.WaitTime?.TotalMilliseconds ?? 0
-    };
+        var list = new List<Slot>(TotalSlots);
+        for (var i = 0; i < TotalSlots; i++)
+        {
+            // i=0 → newest (head-1), i=119 → oldest (head)
+            var ringIdx = (_head - 1 - i + TotalSlots) % TotalSlots;
+            list.Add(new Slot
+            {
+                SlotIndex = i,
+                QueueCount = _ring[ringIdx],
+                WaitTimeSec = _waitRing[ringIdx] / 1000.0,
+            });
+        }
+        _slots = list;
+    }
 
-    private class QueueDataPoint
+    private class Slot
     {
-        public DateTime Timestamp { get; init; }
-        public string Label { get; init; }
+        public int SlotIndex { get; init; }
         public int QueueCount { get; init; }
-        public int ExecutingCount { get; init; }
-        public double WaitTimeMs { get; init; }
+        public double WaitTimeSec { get; init; }
     }
 }

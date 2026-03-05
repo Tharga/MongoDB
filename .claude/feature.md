@@ -17,10 +17,10 @@ Improve call tracking: add per-collection call counts, filters on CallView, real
 - [x] CallCount tracked in ICallLibrary, visible in CollectionView
 - [x] Reset button in CallView clears all call data including counts
 - [x] CallView has filters for Database, Collection, Function, Operation
-- [ ] Ongoing view updates in real-time via events
-- [ ] Queue tab in CallView shows live graph of queue depth and wait times
-- [ ] All existing tests pass
-- [ ] Solution builds without errors
+- [x] Ongoing view updates in real-time via events
+- [x] Queue tab in CallView shows live graph of queue depth and wait times
+- [x] All existing tests pass
+- [x] Solution builds without errors
 
 ## Done Condition
 All acceptance criteria met, tests green.

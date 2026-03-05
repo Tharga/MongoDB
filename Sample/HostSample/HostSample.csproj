@@ -11,6 +11,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\Tharga.MongoDB\Tharga.MongoDB.csproj" />
+    <ProjectReference Include="..\ConsoleSample\ConsoleSample.csproj" />
   </ItemGroup>
 
 </Project>
