@@ -631,14 +631,14 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
     {
         if (commit && exception != null) throw new ArgumentException("Cannot commit entity when there is an exception.");
 
-        var lockTime = DateTime.UtcNow - entityLock.ExpireTime;
+        var lockTime = DateTime.UtcNow - entityLock.LockTime;
         var timeout = entityLock.ExpireTime - entityLock.LockTime;
         var lockInfo = BuildLockInfo(entityLock, exception);
         var expired = lockTime > timeout;
 
         if ((commit || exception != null) && expired)
         {
-            throw new LockExpiredException($"Too late to release entity of type {typeof(TEntity).Name} locked by {lockInfo.Actor}.", timeout, lockTime);
+            throw new LockExpiredException($"Too late to release entity of type {typeof(TEntity).Name} locked by {entityLock.Actor}.", timeout, lockTime);
         }
 
         EntityChangeResult<TEntity> result;

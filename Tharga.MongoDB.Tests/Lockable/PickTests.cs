@@ -232,7 +232,7 @@ public class PickTests : LockableTestBase
         //Assert
         await act.Should()
             .ThrowAsync<LockExpiredException>()
-            .WithMessage($"Entity of type {nameof(LockableTestEntity)} was locked for * instead of {timeSpan}.");
+            .WithMessage($"Too late to release entity of type {nameof(LockableTestEntity)} locked by *");
         var item = await sut.GetOneAsync(entity.Id);
         item.Should().NotBeNull();
         item.Lock.Should().NotBeNull();
@@ -259,7 +259,7 @@ public class PickTests : LockableTestBase
         //Assert
         await act.Should()
             .ThrowAsync<LockExpiredException>()
-            .WithMessage($"Entity of type {nameof(LockableTestEntity)} was locked for * instead of {timeSpan}.");
+            .WithMessage($"Too late to release entity of type {nameof(LockableTestEntity)} locked by *");
         var item = await sut.GetOneAsync(entity.Id);
         item.Should().NotBeNull();
         item.Lock.Should().NotBeNull();
@@ -344,7 +344,7 @@ public class PickTests : LockableTestBase
         //Assert
         await act.Should()
             .ThrowAsync<LockExpiredException>()
-            .WithMessage($"Entity of type {nameof(LockableTestEntity)} was locked for * instead of {timeSpan}.");
+            .WithMessage($"Too late to release entity of type {nameof(LockableTestEntity)} locked by *");
 
         await scope.DisposeAsync();
     }

@@ -9,6 +9,7 @@ public record Lock
     {
     }
 
+    [FlexibleGuid]
     public required Guid LockKey { get; init; }
     public required DateTime LockTime { get; init; }
     public required DateTime ExpireTime { get; init; }
