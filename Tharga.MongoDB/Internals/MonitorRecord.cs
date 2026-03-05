@@ -1,3 +1,5 @@
+using System;
+
 namespace Tharga.MongoDB.Internals;
 
 internal record MonitorRecord
@@ -16,4 +18,6 @@ internal record MonitorRecord
     public int AccessCount { get; init; }
     public int CallCount { get; init; }
     public IndexMeta[] CurrentIndexes { get; init; }
+    public DateTime? StatsUpdatedAt { get; init; }
+    public DateTime? IndexUpdatedAt { get; init; }
 }

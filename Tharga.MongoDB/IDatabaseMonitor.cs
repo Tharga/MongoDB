@@ -20,4 +20,5 @@ public interface IDatabaseMonitor
     Task<IEnumerable<string[]>> GetIndexBlockersAsync(CollectionInfo collectionInfo, string indexName);
     Task<CleanInfo> CleanAsync(CollectionInfo collectionInfo, bool cleanGuids);
     IEnumerable<CallInfo> GetCalls(CallType callType);
+    Task ResetAsync();
 }

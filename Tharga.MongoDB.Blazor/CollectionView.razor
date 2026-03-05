@@ -7,6 +7,7 @@
 @implements IDisposable
 @inject IDatabaseMonitor DatabaseMonitor;
 @inject DialogService DialogService
+@inject NotificationService NotificationService
 @inject IOptions<DatabaseOptions> DatabaseOptions
 
 @if (!DatabaseOptions.Value.Monitor.Enabled)
@@ -38,6 +39,12 @@ else
                     <RadzenText TextStyle="TextStyle.Caption" Text="Databases"/>
                     <RadzenDropDown Placeholder="Select databases" @bind-Value=@SelectedDatabases Data=@_databases Multiple=true Style="margin-bottom: 6px;" Change="@ReloadDataAsync" />
                 </RadzenStack>
+            </RadzenColumn>
+        </RadzenRow>
+
+        <RadzenRow>
+            <RadzenColumn>
+                <ActionButton Text="Reset Cache" Icon="restart_alt" Click="ResetCache" />
             </RadzenColumn>
         </RadzenRow>
 
@@ -188,6 +195,18 @@ else
         _databases = _all.GroupBy(x => x.DatabaseName).Select(x => x.First()).Select(x => x.DatabaseName).Order().ToArray();
         await ReloadDataAsync();
         await base.OnParametersSetAsync();
+    }
+
+    private async Task ResetCache()
+    {
+        await DatabaseMonitor.ResetAsync();
+        _all = null;
+        _model = null;
+        StateHasChanged();
+        _all = await DatabaseMonitor.GetInstancesAsync(FullDatabaseScan, Filter).ToArrayAsync();
+        _databases = _all.GroupBy(x => x.DatabaseName).Select(x => x.First()).Select(x => x.DatabaseName).Order().ToArray();
+        await ReloadDataAsync();
+        NotificationService.Notify(new NotificationMessage { Summary = "Cache has been reset." });
     }
 
     private async Task ShowCollectionDialog(CollectionModel context)

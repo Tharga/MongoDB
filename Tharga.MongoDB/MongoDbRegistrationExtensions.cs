@@ -192,6 +192,10 @@ public static class MongoDbRegistrationExtensions
 
         if (o.Monitor?.Enabled ?? false)
         {
+            if (o.Monitor.StorageMode == MonitorStorageMode.Database)
+                services.AddSingleton<ICollectionCache, MongoDbCollectionCache>();
+            else
+                services.AddSingleton<ICollectionCache, MemoryCollectionCache>();
             services.AddSingleton<IDatabaseMonitor, DatabaseMonitor>();
             services.AddSingleton<ICallLibrary, CallLibrary>();
         }

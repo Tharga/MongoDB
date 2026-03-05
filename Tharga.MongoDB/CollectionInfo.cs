@@ -14,7 +14,9 @@ public record CollectionInfo : CollectionFingerprint
     public int CallCount { get; set; }
     public DocumentCount DocumentCount { get; set; }
     public long Size { get; set; }
+    public DateTime? StatsUpdatedAt { get; set; }
     public IndexInfo Index { get; set; }
+    public DateTime? IndexUpdatedAt { get; set; }
     public CleanInfo Clean { get; set; }
     public string CurrentSchemaFingerprint { get; set; }
 }
