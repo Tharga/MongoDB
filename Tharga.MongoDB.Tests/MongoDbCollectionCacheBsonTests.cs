@@ -20,10 +20,14 @@ public class MongoDbCollectionCacheBsonTests
             DatabasePart = "part1",
             Source = Source.Database | Source.Registration,
             Registration = Registration.Static,
-            Types = new[] { "TypeA", "TypeB" },
+            EntityTypes = new[] { "TypeA", "TypeB" },
             CollectionType = typeof(MongoDbCollectionCacheBsonTests),
-            DocumentCount = new DocumentCount { Count = 100 },
-            Size = 2048,
+            Stats = new CollectionStats
+            {
+                DocumentCount = 100,
+                Size = 2048,
+                UpdatedAt = new DateTime(2025, 6, 15, 10, 30, 0, DateTimeKind.Utc),
+            },
             Index = new IndexInfo
             {
                 Current = new[]
@@ -32,9 +36,8 @@ public class MongoDbCollectionCacheBsonTests
                     new IndexMeta { Name = "Name_1", Fields = new[] { "Name" }, IsUnique = false },
                 },
                 Defined = Array.Empty<IndexMeta>(),
+                UpdatedAt = new DateTime(2025, 6, 15, 11, 0, 0, DateTimeKind.Utc),
             },
-            StatsUpdatedAt = new DateTime(2025, 6, 15, 10, 30, 0, DateTimeKind.Utc),
-            IndexUpdatedAt = new DateTime(2025, 6, 15, 11, 0, 0, DateTimeKind.Utc),
         };
     }
 
@@ -177,24 +180,36 @@ public class MongoDbCollectionCacheBsonTests
     [Fact]
     public void CollectionInfoToBson_NullTimestamps_SerializeAsBsonNull()
     {
-        var info = CreateFullInfo() with { StatsUpdatedAt = null, IndexUpdatedAt = null };
+        var info = CreateFullInfo() with
+        {
+            Stats = new CollectionStats { DocumentCount = 100, Size = 2048, UpdatedAt = null },
+            Index = new IndexInfo { Current = info_index_current(), Defined = Array.Empty<IndexMeta>(), UpdatedAt = null },
+        };
         var id = MongoDbCollectionCache.MonitorKey(info.DatabaseName, info.CollectionName);
 
         var doc = MongoDbCollectionCache.CollectionInfoToBson(id, info);
 
         doc["StatsUpdatedAt"].IsBsonNull.Should().BeTrue();
         doc["IndexUpdatedAt"].IsBsonNull.Should().BeTrue();
+
+        static IndexMeta[] info_index_current() => new[]
+        {
+            new IndexMeta { Name = "_id_", Fields = new[] { "_id" }, IsUnique = true },
+            new IndexMeta { Name = "Name_1", Fields = new[] { "Name" }, IsUnique = false },
+        };
     }
 
     [Fact]
-    public void CollectionInfoToBson_NullDocumentCount_SerializesAsZero()
+    public void CollectionInfoToBson_NullStats_SerializesAsZero()
     {
-        var info = CreateFullInfo() with { DocumentCount = null };
+        var info = CreateFullInfo() with { Stats = null };
         var id = MongoDbCollectionCache.MonitorKey(info.DatabaseName, info.CollectionName);
 
         var doc = MongoDbCollectionCache.CollectionInfoToBson(id, info);
 
         doc["DocumentCount"].AsInt64.Should().Be(0);
+        doc["Size"].AsInt64.Should().Be(0);
+        doc["StatsUpdatedAt"].IsBsonNull.Should().BeTrue();
     }
 
     [Fact]
@@ -206,6 +221,7 @@ public class MongoDbCollectionCacheBsonTests
         var doc = MongoDbCollectionCache.CollectionInfoToBson(id, info);
 
         doc["CurrentIndexes"].AsBsonArray.Count.Should().Be(0);
+        doc["IndexUpdatedAt"].IsBsonNull.Should().BeTrue();
     }
 
     [Fact]
@@ -224,38 +240,43 @@ public class MongoDbCollectionCacheBsonTests
         result.DatabasePart.Should().Be("part1");
         result.Source.Should().Be(Source.Database | Source.Registration);
         result.Registration.Should().Be(Registration.Static);
-        result.Types.Should().BeEquivalentTo("TypeA", "TypeB");
+        result.EntityTypes.Should().BeEquivalentTo("TypeA", "TypeB");
         result.CollectionType.Should().Be(typeof(MongoDbCollectionCacheBsonTests));
-        result.DocumentCount.Count.Should().Be(100);
-        result.Size.Should().Be(2048);
+        result.Stats.Should().NotBeNull();
+        result.Stats.DocumentCount.Should().Be(100);
+        result.Stats.Size.Should().Be(2048);
+        result.Stats.UpdatedAt.Should().Be(new DateTime(2025, 6, 15, 10, 30, 0, DateTimeKind.Utc));
         result.Index.Current.Should().HaveCount(2);
-        result.StatsUpdatedAt.Should().Be(new DateTime(2025, 6, 15, 10, 30, 0, DateTimeKind.Utc));
-        result.IndexUpdatedAt.Should().Be(new DateTime(2025, 6, 15, 11, 0, 0, DateTimeKind.Utc));
+        result.Index.UpdatedAt.Should().Be(new DateTime(2025, 6, 15, 11, 0, 0, DateTimeKind.Utc));
     }
 
     [Fact]
     public void BsonToCollectionInfo_NullTimestamps_DeserializeAsNull()
     {
-        var info = CreateFullInfo() with { StatsUpdatedAt = null, IndexUpdatedAt = null };
+        var info = CreateFullInfo() with
+        {
+            Stats = new CollectionStats { DocumentCount = 100, Size = 2048, UpdatedAt = null },
+            Index = CreateFullInfo().Index with { UpdatedAt = null },
+        };
         var id = MongoDbCollectionCache.MonitorKey(info.DatabaseName, info.CollectionName);
         var doc = MongoDbCollectionCache.CollectionInfoToBson(id, info);
 
         var result = MongoDbCollectionCache.BsonToCollectionInfo(doc, "testConfig");
 
-        result.StatsUpdatedAt.Should().BeNull();
-        result.IndexUpdatedAt.Should().BeNull();
+        result.Stats.UpdatedAt.Should().BeNull();
+        result.Index.UpdatedAt.Should().BeNull();
     }
 
     [Fact]
-    public void BsonToCollectionInfo_ZeroDocumentCount_DeserializesAsNull()
+    public void BsonToCollectionInfo_ZeroDocumentCount_DeserializesAsNullStats()
     {
-        var info = CreateFullInfo() with { DocumentCount = null };
+        var info = CreateFullInfo() with { Stats = null };
         var id = MongoDbCollectionCache.MonitorKey(info.DatabaseName, info.CollectionName);
         var doc = MongoDbCollectionCache.CollectionInfoToBson(id, info);
 
         var result = MongoDbCollectionCache.BsonToCollectionInfo(doc, "testConfig");
 
-        result.DocumentCount.Should().BeNull();
+        result.Stats.Should().BeNull();
     }
 
     [Fact]
@@ -350,10 +371,7 @@ public class MongoDbCollectionCacheBsonTests
         var result = MongoDbCollectionCache.BsonToCollectionInfo(doc, "cfg");
 
         result.Should().NotBeNull();
-        result.Size.Should().Be(0);
-        result.DocumentCount.Should().BeNull();
-        result.StatsUpdatedAt.Should().BeNull();
-        result.IndexUpdatedAt.Should().BeNull();
+        result.Stats.Should().BeNull();
         result.Index.Should().BeNull();
         result.CollectionType.Should().BeNull();
     }

@@ -3,6 +3,7 @@ using Microsoft.Extensions.Options;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -16,6 +17,7 @@ internal class MongoDbCollectionCache : ICollectionCache
     private readonly IRepositoryConfiguration _repositoryConfiguration;
     private readonly DatabaseOptions _options;
     private readonly ILogger<MongoDbCollectionCache> _logger;
+    private readonly ConcurrentDictionary<string, CollectionInfo> _dict = new();
 
     public MongoDbCollectionCache(IMongoDbServiceFactory factory, IRepositoryConfiguration repositoryConfiguration, IOptions<DatabaseOptions> options, ILogger<MongoDbCollectionCache> logger)
     {
@@ -25,9 +27,23 @@ internal class MongoDbCollectionCache : ICollectionCache
         _logger = logger;
     }
 
-    public async Task<IReadOnlyList<CollectionInfo>> LoadAllAsync()
+    public bool TryGet(string key, out CollectionInfo value) => _dict.TryGetValue(key, out value);
+
+    public CollectionInfo AddOrUpdate(string key, Func<string, CollectionInfo> addFactory, Func<string, CollectionInfo, CollectionInfo> updateFactory)
+        => _dict.AddOrUpdate(key, addValueFactory: addFactory, updateValueFactory: updateFactory);
+
+    public bool TryRemove(string key, out CollectionInfo value) => _dict.TryRemove(key, out value);
+
+    public void Set(string key, CollectionInfo value) => _dict[key] = value;
+
+    public IEnumerable<CollectionInfo> GetAll() => _dict.Values;
+
+    public IEnumerable<string> GetKeys() => _dict.Keys;
+
+    public void Clear() => _dict.Clear();
+
+    public async Task LoadAsync()
     {
-        var result = new List<CollectionInfo>();
         foreach (var configName in _repositoryConfiguration.GetDatabaseConfigurationNames())
         {
             var db = GetBaseDatabase(configName);
@@ -47,6 +63,7 @@ internal class MongoDbCollectionCache : ICollectionCache
             }
 
             var hadDeserializationError = false;
+            var loadedKeys = new List<string>();
             foreach (var doc in docs)
             {
                 var info = BsonToCollectionInfo(doc, configName);
@@ -56,17 +73,18 @@ internal class MongoDbCollectionCache : ICollectionCache
                     continue;
                 }
                 info.Source |= Source.Monitor;
-                result.Add(info);
+                _dict[info.Key] = info;
+                loadedKeys.Add(info.Key);
             }
 
             if (hadDeserializationError)
             {
                 _logger.LogWarning("One or more _monitor documents failed to deserialize for config '{ConfigName}'. Dropping collection and starting fresh.", configName);
                 await col.Database.DropCollectionAsync("_monitor");
-                result.RemoveAll(x => (x.ConfigurationName?.Value ?? _options.DefaultConfigurationName) == configName);
+                foreach (var key in loadedKeys)
+                    _dict.TryRemove(key, out _);
             }
         }
-        return result;
     }
 
     public async Task SaveAsync(CollectionInfo info)
@@ -94,6 +112,7 @@ internal class MongoDbCollectionCache : ICollectionCache
 
     public async Task ResetAsync()
     {
+        _dict.Clear();
         foreach (var configName in _repositoryConfiguration.GetDatabaseConfigurationNames())
         {
             var db = GetBaseDatabase(configName);
@@ -158,13 +177,13 @@ internal class MongoDbCollectionCache : ICollectionCache
             { "DatabasePart", ToBson(info.DatabasePart) },
             { "Source", (int)info.Source },
             { "Registration", (int)info.Registration },
-            { "Types", new BsonArray(info.Types ?? []) },
+            { "Types", new BsonArray(info.EntityTypes ?? []) },
             { "CollectionTypeName", ToBson(info.CollectionType?.AssemblyQualifiedName) },
-            { "DocumentCount", info.DocumentCount?.Count ?? 0L },
-            { "Size", info.Size },
+            { "DocumentCount", info.Stats?.DocumentCount ?? 0L },
+            { "Size", info.Stats?.Size ?? 0L },
             { "CurrentIndexes", IndexesToBson(info.Index?.Current) },
-            { "StatsUpdatedAt", info.StatsUpdatedAt.HasValue ? (BsonValue)info.StatsUpdatedAt.Value : BsonNull.Value },
-            { "IndexUpdatedAt", info.IndexUpdatedAt.HasValue ? (BsonValue)info.IndexUpdatedAt.Value : BsonNull.Value },
+            { "StatsUpdatedAt", info.Stats?.UpdatedAt.HasValue == true ? (BsonValue)info.Stats.UpdatedAt.Value : BsonNull.Value },
+            { "IndexUpdatedAt", info.Index?.UpdatedAt.HasValue == true ? (BsonValue)info.Index.UpdatedAt.Value : BsonNull.Value },
         };
     }
 
@@ -191,6 +210,8 @@ internal class MongoDbCollectionCache : ICollectionCache
                 ? (DateTime?)iuVal.ToUniversalTime()
                 : null;
 
+            var documentCount = doc.GetValue("DocumentCount", 0L).ToInt64();
+            var size = doc.GetValue("Size", 0L).ToInt64();
             var currentIndexes = BsonToIndexes(doc.GetValue("CurrentIndexes", BsonNull.Value));
 
             return new CollectionInfo
@@ -202,17 +223,16 @@ internal class MongoDbCollectionCache : ICollectionCache
                 DatabasePart = BsonStr(doc.GetValue("DatabasePart", BsonNull.Value)),
                 Source = (Source)doc.GetValue("Source", 0).ToInt32(),
                 Registration = registration,
-                Types = doc.GetValue("Types", new BsonArray()) is BsonArray ta
+                EntityTypes = doc.GetValue("Types", new BsonArray()) is BsonArray ta
                     ? ta.Select(x => x.IsString ? x.AsString : null).ToArray()
                     : [],
                 CollectionType = collectionType,
-                DocumentCount = doc.GetValue("DocumentCount", 0L).ToInt64() is long dc and > 0
-                    ? new DocumentCount { Count = dc }
+                Stats = documentCount > 0 || size > 0 || statsUpdatedAt.HasValue
+                    ? new CollectionStats { DocumentCount = documentCount, Size = size, UpdatedAt = statsUpdatedAt }
                     : null,
-                Size = doc.GetValue("Size", 0L).ToInt64(),
-                Index = currentIndexes != null ? new IndexInfo { Current = currentIndexes, Defined = [] } : null,
-                StatsUpdatedAt = statsUpdatedAt,
-                IndexUpdatedAt = indexUpdatedAt,
+                Index = currentIndexes != null
+                    ? new IndexInfo { Current = currentIndexes, Defined = [], UpdatedAt = indexUpdatedAt }
+                    : null,
             };
         }
         catch

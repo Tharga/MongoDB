@@ -1,7 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -25,7 +24,6 @@ internal class DatabaseMonitor : IDatabaseMonitor
     private readonly ILogger<DatabaseMonitor> _logger;
     private readonly DatabaseOptions _options;
     private readonly ICollectionCache _cache;
-    private readonly ConcurrentDictionary<string, CollectionInfo> _dict = new();
     private Dictionary<(string, string), StatColInfo> _staticLookup;
     private Dictionary<string, DynColInfo> _dynamicLookup;
     private readonly SemaphoreSlim _lookupLock = new(1, 1);
@@ -51,9 +49,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
     {
         if (_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has already been started.");
 
-        var loaded = _cache.LoadAllAsync().GetAwaiter().GetResult();
-        foreach (var info in loaded)
-            _dict[info.Key] = info;
+        _cache.LoadAsync().GetAwaiter().GetResult();
 
         try
         {
@@ -66,15 +62,14 @@ internal class DatabaseMonitor : IDatabaseMonitor
                     var entry = BuildInitialEntry(e.Fingerprint, e.Server, e.DatabasePart, e.EntityType.Name);
 
                     // Track previous registration so we can detect reclassification
-                    var previousRegistration = _dict.TryGetValue(e.Fingerprint.Key, out var prev) ? (Registration?)prev.Registration : null;
+                    var previousRegistration = _cache.TryGet(e.Fingerprint.Key, out var prev) ? (Registration?)prev.Registration : null;
 
-                    _dict.AddOrUpdate(e.Fingerprint.Key,
-                        addValueFactory: _ => entry with
+                    _cache.AddOrUpdate(e.Fingerprint.Key,
+                        addFactory: _ => entry with
                         {
-                            AccessCount = 1,
-                            Types = entry.Types.Union([e.EntityType.Name]).ToArray()
+                            EntityTypes = entry.EntityTypes.Union([e.EntityType.Name]).ToArray()
                         },
-                        updateValueFactory: (_, existing) =>
+                        updateFactory: (_, existing) =>
                         {
                             // If previously unclassified, use the freshly-built entry as base
                             // (it may now be correctly classified as Dynamic via entityTypeName)
@@ -82,26 +77,23 @@ internal class DatabaseMonitor : IDatabaseMonitor
                             {
                                 return entry with
                                 {
-                                    AccessCount = existing.AccessCount + 1,
-                                    Types = entry.Types.Union([e.EntityType.Name]).ToArray(),
+                                    EntityTypes = entry.EntityTypes.Union([e.EntityType.Name]).ToArray(),
                                     DatabasePart = entry.DatabasePart ?? e.DatabasePart.NullIfEmpty(),
-                                    DocumentCount = existing.DocumentCount,
-                                    Size = existing.Size,
+                                    Stats = existing.Stats,
                                     Index = entry.Index != null
-                                        ? new IndexInfo { Current = existing.Index?.Current, Defined = entry.Index.Defined }
+                                        ? new IndexInfo { Current = existing.Index?.Current, Defined = entry.Index.Defined, UpdatedAt = existing.Index?.UpdatedAt }
                                         : existing.Index,
                                     Clean = existing.Clean,
                                 };
                             }
                             return existing with
                             {
-                                AccessCount = existing.AccessCount + 1,
-                                Types = existing.Types.Union([e.EntityType.Name]).ToArray(),
+                                EntityTypes = existing.EntityTypes.Union([e.EntityType.Name]).ToArray(),
                                 DatabasePart = existing.DatabasePart ?? e.DatabasePart.NullIfEmpty(),
                             };
                         });
 
-                    if (_dict.TryGetValue(e.Fingerprint.Key, out var item))
+                    if (_cache.TryGet(e.Fingerprint.Key, out var item))
                     {
                         if (CollectionInfoChangedEvent != null)
                             CollectionInfoChangedEvent.Invoke(this, new CollectionInfoChangedEventArgs(item));
@@ -134,16 +126,16 @@ internal class DatabaseMonitor : IDatabaseMonitor
 
                             if (meta == null) return;
 
-                            _dict.AddOrUpdate(e.Fingerprint.Key,
-                                addValueFactory: _ =>
+                            _cache.AddOrUpdate(e.Fingerprint.Key,
+                                addFactory: _ =>
                                 {
                                     var entry = BuildInitialEntry(e.Fingerprint, meta.Server, null, null);
                                     return entry with { Index = BuildIndexInfo(entry, meta.Indexes) };
                                 },
-                                updateValueFactory: (_, existing) =>
+                                updateFactory: (_, existing) =>
                                     existing with { Index = BuildIndexInfo(existing, meta.Indexes) });
 
-                            if (CollectionInfoChangedEvent != null && _dict.TryGetValue(e.Fingerprint.Key, out var item))
+                            if (CollectionInfoChangedEvent != null && _cache.TryGet(e.Fingerprint.Key, out var item))
                             {
                                 CollectionInfoChangedEvent?.Invoke(this, new CollectionInfoChangedEventArgs(item));
                                 await _cache.SaveAsync(item);
@@ -164,7 +156,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
             _mongoDbServiceFactory.CollectionDroppedEvent += (s, e) =>
             {
                 var configName = e.DatabaseContext.ConfigurationName ?? _options.DefaultConfigurationName;
-                var keysToRemove = _dict.Values
+                var keysToRemove = _cache.GetAll()
                     .Where(v => (v.ConfigurationName?.Value ?? _options.DefaultConfigurationName) == configName
                                 && v.CollectionName == e.DatabaseContext.CollectionName)
                     .Select(v => v.Key)
@@ -172,7 +164,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
 
                 var removedEntries = new List<CollectionInfo>();
                 foreach (var key in keysToRemove)
-                    if (_dict.TryRemove(key, out var removed))
+                    if (_cache.TryRemove(key, out var removed))
                         removedEntries.Add(removed);
 
                 if (removedEntries.Count > 0)
@@ -203,16 +195,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
                 try
                 {
                     _logger.LogTrace($"{nameof(IMongoDbServiceFactory.CallEndEvent)}: {e.Elapsed}");
-
-                    var fingerprint = await _callLibrary.EndCallAsync(e);
-                    if (fingerprint == null) return;
-
-                    _dict.AddOrUpdate(fingerprint.Key,
-                        addValueFactory: _ => BuildInitialEntry(fingerprint, null, null, null) with { CallCount = 1 },
-                        updateValueFactory: (_, existing) => existing with { CallCount = existing.CallCount + 1 });
-
-                    if (CollectionInfoChangedEvent != null && _dict.TryGetValue(fingerprint.Key, out var item))
-                        CollectionInfoChangedEvent?.Invoke(this, new CollectionInfoChangedEventArgs(item));
+                    await _callLibrary.EndCallAsync(e);
                 }
                 catch (Exception exception)
                 {
@@ -240,13 +223,13 @@ internal class DatabaseMonitor : IDatabaseMonitor
     {
         if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
 
-        if (_dict.TryGetValue(fingerprint.Key, out var cached))
+        if (_cache.TryGet(fingerprint.Key, out var cached))
         {
             var mongoDbService = GetMongoDbService(fingerprint);
             if (await mongoDbService.DoesCollectionExist(fingerprint.CollectionName))
                 return cached;
 
-            _dict.TryRemove(fingerprint.Key, out _);
+            _cache.TryRemove(fingerprint.Key, out _);
             return null;
         }
 
@@ -260,7 +243,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
         var configuredContexts = GetConfigurations()
             .Select(x => new DatabaseContext { ConfigurationName = x.Value ?? _options.DefaultConfigurationName })
             .ToArray();
-        var cachedContexts = _dict.Values.Select(x => new DatabaseContext
+        var cachedContexts = _cache.GetAll().Select(x => new DatabaseContext
         {
             ConfigurationName = x.ConfigurationName?.Value ?? _options.DefaultConfigurationName,
             DatabasePart = x.DatabasePart.NullIfEmpty()
@@ -268,7 +251,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
 
         // Derive persisted contexts from the cache (pre-loaded from DB storage on startup).
         // This includes tenant databases that had dynamic collections in a previous session.
-        var persistedContexts = _dict.Values
+        var persistedContexts = _cache.GetAll()
             .Where(r => !string.IsNullOrEmpty(r.DatabasePart) && r.Registration != Registration.NotInCode)
             .Select(r => new DatabaseContext
             {
@@ -309,8 +292,8 @@ internal class DatabaseMonitor : IDatabaseMonitor
         }
 
         // Remove stale cache entries for collections no longer in DB
-        foreach (var key in _dict.Keys.Where(k => !currentDbKeys.Contains(k)).ToList())
-            _dict.TryRemove(key, out _);
+        foreach (var key in _cache.GetKeys().Where(k => !currentDbKeys.Contains(k)).ToList())
+            _cache.TryRemove(key, out _);
     }
 
     public async Task RefreshStatsAsync(CollectionFingerprint fingerprint)
@@ -330,35 +313,30 @@ internal class DatabaseMonitor : IDatabaseMonitor
         if (meta == null) return;
 
         var cleanInfo = cleanTask.Result;
+        var now = DateTime.UtcNow;
 
         // Use cached entry to restore entity type name for dynamic collections
-        _dict.TryGetValue(fingerprint.Key, out var cachedEntry);
+        _cache.TryGet(fingerprint.Key, out var cachedEntry);
 
-        var updated = _dict.AddOrUpdate(fingerprint.Key,
-            addValueFactory: _ =>
+        var updated = _cache.AddOrUpdate(fingerprint.Key,
+            addFactory: _ =>
             {
                 // Use stored entity type name so dynamic collections are correctly recognised when not in cache
                 var entityTypeName = cachedEntry != null && cachedEntry.Registration != Registration.NotInCode
-                    ? cachedEntry.Types?.FirstOrDefault()
+                    ? cachedEntry.EntityTypes?.FirstOrDefault()
                     : null;
                 var entry = BuildInitialEntry(fingerprint, meta.Server, cachedEntry?.DatabasePart, entityTypeName);
                 return entry with
                 {
-                    DocumentCount = new DocumentCount { Count = meta.DocumentCount },
-                    Size = meta.Size,
-                    StatsUpdatedAt = DateTime.UtcNow,
-                    Index = BuildIndexInfo(entry, meta.Indexes),
-                    IndexUpdatedAt = DateTime.UtcNow,
+                    Stats = new CollectionStats { DocumentCount = meta.DocumentCount, Size = meta.Size, UpdatedAt = now },
+                    Index = BuildIndexInfo(entry, meta.Indexes, now),
                     Clean = cleanInfo
                 };
             },
-            updateValueFactory: (_, existing) => existing with
+            updateFactory: (_, existing) => existing with
             {
-                DocumentCount = new DocumentCount { Count = meta.DocumentCount },
-                Size = meta.Size,
-                StatsUpdatedAt = DateTime.UtcNow,
-                Index = BuildIndexInfo(existing, meta.Indexes),
-                IndexUpdatedAt = DateTime.UtcNow,
+                Stats = new CollectionStats { DocumentCount = meta.DocumentCount, Size = meta.Size, UpdatedAt = now },
+                Index = BuildIndexInfo(existing, meta.Indexes, now),
                 Clean = cleanInfo,
                 CurrentSchemaFingerprint = existing.CurrentSchemaFingerprint ?? ComputeSchemaFingerprint(existing.CollectionType),
             });
@@ -384,20 +362,17 @@ internal class DatabaseMonitor : IDatabaseMonitor
 
         if (meta == null) return;
 
-        var updated = _dict.AddOrUpdate(collectionInfo.Key,
-            addValueFactory: _ => collectionInfo with
+        var now = DateTime.UtcNow;
+        var updated = _cache.AddOrUpdate(collectionInfo.Key,
+            addFactory: _ => collectionInfo with
             {
-                AccessCount = collectionInfo.AccessCount + 1,
-                DocumentCount = new DocumentCount { Count = meta.DocumentCount },
-                Size = meta.Size,
-                Index = BuildIndexInfo(collectionInfo, meta.Indexes)
+                Stats = new CollectionStats { DocumentCount = meta.DocumentCount, Size = meta.Size, UpdatedAt = now },
+                Index = BuildIndexInfo(collectionInfo, meta.Indexes, now)
             },
-            updateValueFactory: (_, existing) => existing with
+            updateFactory: (_, existing) => existing with
             {
-                AccessCount = existing.AccessCount + 1,
-                DocumentCount = new DocumentCount { Count = meta.DocumentCount },
-                Size = meta.Size,
-                Index = BuildIndexInfo(existing, meta.Indexes)
+                Stats = new CollectionStats { DocumentCount = meta.DocumentCount, Size = meta.Size, UpdatedAt = now },
+                Index = BuildIndexInfo(existing, meta.Indexes, now)
             });
 
         CollectionInfoChangedEvent?.Invoke(this, new CollectionInfoChangedEventArgs(updated));
@@ -496,9 +471,9 @@ internal class DatabaseMonitor : IDatabaseMonitor
         if (resultProperty?.GetValue(task) is not CleanInfo result)
             throw new InvalidOperationException("Invoked task result was not CleanInfo.");
 
-        var updated = _dict.AddOrUpdate(collectionInfo.Key,
-            addValueFactory: _ => collectionInfo with { Clean = result },
-            updateValueFactory: (_, existing) => existing with { Clean = result });
+        var updated = _cache.AddOrUpdate(collectionInfo.Key,
+            addFactory: _ => collectionInfo with { Clean = result },
+            updateFactory: (_, existing) => existing with { Clean = result });
 
         CollectionInfoChangedEvent?.Invoke(this, new CollectionInfoChangedEventArgs(updated));
 
@@ -534,22 +509,20 @@ internal class DatabaseMonitor : IDatabaseMonitor
         if (meta == null) return null;
 
         // Use cached entry (pre-loaded from DB storage) to restore entity type name for Dynamic collections
-        _dict.TryGetValue(fingerprint.Key, out var cachedEntry);
+        _cache.TryGet(fingerprint.Key, out var cachedEntry);
         var entityTypeName = cachedEntry != null && cachedEntry.Registration != Registration.NotInCode
-            ? cachedEntry.Types?.FirstOrDefault()
+            ? cachedEntry.EntityTypes?.FirstOrDefault()
             : null;
 
+        var now = DateTime.UtcNow;
         var entry = BuildInitialEntry(fingerprint, meta.Server, cachedEntry?.DatabasePart, entityTypeName);
         entry = entry with
         {
-            DocumentCount = new DocumentCount { Count = meta.DocumentCount },
-            Size = meta.Size,
-            StatsUpdatedAt = DateTime.UtcNow,
-            Index = BuildIndexInfo(entry, meta.Indexes),
-            IndexUpdatedAt = DateTime.UtcNow,
+            Stats = new CollectionStats { DocumentCount = meta.DocumentCount, Size = meta.Size, UpdatedAt = now },
+            Index = BuildIndexInfo(entry, meta.Indexes, now),
             Clean = cleanTask.Result
         };
-        _dict[fingerprint.Key] = entry;
+        _cache.Set(fingerprint.Key, entry);
         _ = Task.Run(() => _cache.SaveAsync(entry));
         return entry;
     }
@@ -570,7 +543,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
                 DatabasePart = databasePart.NullIfEmpty(),
                 Source = reg.Source | Source.Database,
                 Registration = reg.Registration,
-                Types = reg.Types,
+                EntityTypes = reg.EntityTypes,
                 CollectionType = reg.CollectionType,
                 Index = new IndexInfo { Current = null, Defined = reg.DefinedIndices },
                 CurrentSchemaFingerprint = reg.EntityType != null ? SchemaFingerprint.Generate(reg.EntityType) : null,
@@ -588,7 +561,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
                 DatabasePart = databasePart.NullIfEmpty(),
                 Source = dyn.Source | Source.Database,
                 Registration = Registration.Dynamic,
-                Types = [entityTypeName],
+                EntityTypes = [entityTypeName],
                 CollectionType = dyn.CollectionType,
                 Index = new IndexInfo { Current = null, Defined = dyn.DefinedIndices },
                 CurrentSchemaFingerprint = dyn.EntityType != null ? SchemaFingerprint.Generate(dyn.EntityType) : null,
@@ -604,7 +577,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
             DatabasePart = databasePart.NullIfEmpty(),
             Source = Source.Database,
             Registration = Registration.NotInCode,
-            Types = entityTypeName != null ? [entityTypeName] : [],
+            EntityTypes = entityTypeName != null ? [entityTypeName] : [],
             CollectionType = null,
             Index = null,
         };
@@ -638,7 +611,6 @@ internal class DatabaseMonitor : IDatabaseMonitor
     public async Task ResetAsync()
     {
         if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
-        _dict.Clear();
         await _cache.ResetAsync();
     }
 
@@ -649,10 +621,10 @@ internal class DatabaseMonitor : IDatabaseMonitor
         return entityType != null ? SchemaFingerprint.Generate(entityType) : null;
     }
 
-    private static IndexInfo BuildIndexInfo(CollectionInfo existing, IndexMeta[] currentIndexes)
+    private static IndexInfo BuildIndexInfo(CollectionInfo existing, IndexMeta[] currentIndexes, DateTime? updatedAt = null)
     {
         var defined = existing.Index?.Defined ?? [];
-        return new IndexInfo { Current = currentIndexes, Defined = defined };
+        return new IndexInfo { Current = currentIndexes, Defined = defined, UpdatedAt = updatedAt ?? existing.Index?.UpdatedAt };
     }
 
     private async Task UpdateIndexCacheAsync(CollectionInfo collectionInfo)
@@ -664,9 +636,9 @@ internal class DatabaseMonitor : IDatabaseMonitor
 
         if (meta == null) return;
 
-        var updated = _dict.AddOrUpdate(collectionInfo.Key,
-            addValueFactory: _ => collectionInfo with { Index = BuildIndexInfo(collectionInfo, meta.Indexes) },
-            updateValueFactory: (_, existing) => existing with { Index = BuildIndexInfo(existing, meta.Indexes) });
+        var updated = _cache.AddOrUpdate(collectionInfo.Key,
+            addFactory: _ => collectionInfo with { Index = BuildIndexInfo(collectionInfo, meta.Indexes, DateTime.UtcNow) },
+            updateFactory: (_, existing) => existing with { Index = BuildIndexInfo(existing, meta.Indexes, DateTime.UtcNow) });
 
         CollectionInfoChangedEvent?.Invoke(this, new CollectionInfoChangedEventArgs(updated));
         _ = Task.Run(() => _cache.SaveAsync(updated));
@@ -694,7 +666,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
 
             Console.WriteLine($"- Got {meta.CollectionName} [{sw.Elapsed.TotalSeconds:N0}s]");
 
-            if (_dict.TryGetValue(key, out var cached))
+            if (_cache.TryGet(key, out var cached))
             {
                 // Enrich cache-loaded entries with code-derived info (defined indices, schema fingerprint)
                 var needsEnrich = cached.CurrentSchemaFingerprint == null
@@ -707,17 +679,17 @@ internal class DatabaseMonitor : IDatabaseMonitor
                         DatabaseName = meta.DatabaseName,
                         CollectionName = meta.CollectionName
                     };
-                    var codeEntry = BuildInitialEntry(fp, cached.Server, cached.DatabasePart, cached.Types?.FirstOrDefault());
+                    var codeEntry = BuildInitialEntry(fp, cached.Server, cached.DatabasePart, cached.EntityTypes?.FirstOrDefault());
                     cached = cached with
                     {
                         CurrentSchemaFingerprint = cached.CurrentSchemaFingerprint ?? codeEntry.CurrentSchemaFingerprint,
                         Index = cached.Index != null
-                            ? new IndexInfo { Current = cached.Index.Current, Defined = codeEntry.Index?.Defined ?? cached.Index.Defined }
+                            ? new IndexInfo { Current = cached.Index.Current, Defined = codeEntry.Index?.Defined ?? cached.Index.Defined, UpdatedAt = cached.Index.UpdatedAt }
                             : codeEntry.Index,
                         Registration = codeEntry.Registration != Registration.NotInCode ? codeEntry.Registration : cached.Registration,
                         Source = cached.Source | codeEntry.Source,
                     };
-                    _dict[key] = cached;
+                    _cache.Set(key, cached);
                 }
                 yield return cached;
             }
@@ -730,7 +702,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
                     CollectionName = meta.CollectionName
                 };
                 var entry = BuildInitialEntry(fp, meta.Server, null, null);
-                _dict[key] = entry;
+                _cache.Set(key, entry);
                 yield return entry;
             }
         }
@@ -793,7 +765,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
                     Source = Source.Registration,
                     ConfigurationName = instance.ConfigurationName,
                     CollectionName = instance.CollectionName,
-                    Types = [genericParam?.Name],
+                    EntityTypes = [genericParam?.Name],
                     CollectionType = registeredCollection.Key,
                     Registration = Registration.Static,
                     DefinedIndices = instance.BuildIndexMetas().ToArray(),
@@ -860,7 +832,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
         public required string ConfigurationName { get; init; }
         public required string CollectionName { get; init; }
         public required Registration Registration { get; init; }
-        public required string[] Types { get; init; }
+        public required string[] EntityTypes { get; init; }
     }
 
     internal record DynColInfo : ColInfo

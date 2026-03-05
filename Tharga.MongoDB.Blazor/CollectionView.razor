@@ -1,4 +1,4 @@
-﻿@using Microsoft.Extensions.Options
+@using Microsoft.Extensions.Options
 @using Tharga.Blazor
 @using Tharga.Blazor.Framework.Buttons
 @using Tharga.MongoDB
@@ -60,31 +60,27 @@ else
                 <RadzenDataGridColumn Title="Collection" Property="@nameof(CollectionModel.CollectionName)" />
                 <RadzenDataGridColumn Title="Source" Property="@nameof(CollectionModel.Source)" Filterable="false"/>
                 <RadzenDataGridColumn Title="Registration" Property="@nameof(CollectionModel.Registration)" Filterable="false" Width="120px" />
-<RadzenDataGridColumn Title=Calls Property="@nameof(CollectionModel.CallCount)" Filterable="false" TextAlign="TextAlign.Right" CssClass="css-calls" Width="120px">
-                    <Template>
-                        @if (context.Registration == Registration.NotInCode)
-                        {
-                            <span></span>
-                        }
-                        else
-                        {
-                            <RadzenText Text="@($"{context.CallCount:N0}")" />
-                        }
-                    </Template>
-                </RadzenDataGridColumn>
                 <RadzenDataGridColumn Title="Documents" TextAlign="TextAlign.Right" CssClass="css-count" Sortable="false" Filterable="false" Width="120px">
                     <Template>
-                        <RadzenText Text="@(context.DocumentCount != null ? $"{context.DocumentCount.Count:N0}" : "")" />
+                        <RadzenText Text="@(context.Stats != null ? $"{context.Stats.DocumentCount:N0}" : "")" />
                     </Template>
                 </RadzenDataGridColumn>
                 <RadzenDataGridColumn Title="Size" TextAlign="TextAlign.Right" Filterable="false" CssClass="css-size" Sortable="false" Width="120px">
                     <Template>
-                        @(context.DocumentCount != null ? context.Size.ToReadableByteSize() : "")
+                        @(context.Stats != null ? context.Stats.Size.ToReadableByteSize() : "")
                     </Template>
                 </RadzenDataGridColumn>
                 <RadzenDataGridColumn Title="Indices" Property="@nameof(CollectionModel.IndexEqualFields)" CssClass="css-indices" Width="120px">
                     <Template>
                         <span title="@context.Indices.Diff()">@(context.IndexEqualFields?.ToString() ?? "")</span>
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn Title="Clean" Sortable="false" Filterable="false" CssClass="css-clean" Width="100px">
+                    <Template>
+                        @if (context.Clean != null)
+                        {
+                            <span title="@context.Clean.CleanedAt.ToLocalDateTimeString()">@context.Clean.CleanedAt.ToLocalDurationString()</span>
+                        }
                     </Template>
                 </RadzenDataGridColumn>
                 <RadzenDataGridColumn Title="" Sortable="false" Width="60px;" Filterable="false">
@@ -137,10 +133,7 @@ else
         if (item != null)
         {
             item.Source = e.CollectionInfo.Source;
-            item.AccessCount = e.CollectionInfo.AccessCount;
-            item.CallCount = e.CollectionInfo.CallCount;
-            item.DocumentCount = e.CollectionInfo.DocumentCount;
-            item.Size = e.CollectionInfo.Size;
+            item.Stats = e.CollectionInfo.Stats;
             item.Index = e.CollectionInfo.Index;
 
             var m = _model?.SingleOrDefault(x => x.ConfigurationName == item.ConfigurationName && x.DatabaseName == item.DatabaseName && x.CollectionName == item.CollectionName);
@@ -149,11 +142,11 @@ else
                 var indexModels = e.CollectionInfo.ToIndexModel().ToArray();
 
                 m.Source = e.CollectionInfo.Source;
-                m.CallCount = e.CollectionInfo.CallCount;
-                m.DocumentCount = e.CollectionInfo.DocumentCount;
-                m.Size = e.CollectionInfo.Size;
+                m.Stats = e.CollectionInfo.Stats;
+                m.Size = e.CollectionInfo.Stats?.Size ?? 0;
                 m.Indices = indexModels;
                 m.IndexEqualFields = e.CollectionInfo.Index == null || e.CollectionInfo.Index.Current == null ? null : indexModels.All(x => x.EqualFields);
+                m.Clean = e.CollectionInfo.Clean;
             }
 
             if (_disposed) return;
@@ -214,17 +207,17 @@ else
                 return new CollectionModel
                 {
                     ConfigurationName = x.ConfigurationName,
-                    DocumentCount = x.DocumentCount,
+                    Stats = x.Stats,
                     DatabaseName = x.DatabaseName,
                     CollectionName = x.CollectionName,
                     Source = x.Source,
                     Registration = x.Registration,
-                    CallCount = x.CallCount,
-                    Size = x.Size,
+                    Size = x.Stats?.Size ?? 0,
                     Indices = indexModels,
                     IndexEqualFields = x.Index == null || x.Index.Current == null
                         ? null
-                        : indexModels.All(y => y.EqualFields)
+                        : indexModels.All(y => y.EqualFields),
+                    Clean = x.Clean
                 };
             })
             .ToArray();
@@ -237,24 +230,14 @@ else
         var cssClass = args.Column.CssClass;
         if (string.IsNullOrEmpty(cssClass)) return;
 
-        if (cssClass.StartsWith("css-calls"))
+        if (cssClass.StartsWith("css-count"))
         {
-            string color = null;
-            if (args.Data.Registration == Registration.NotInCode)
-            {
-                color = "lightyellow";
-            }
-
-            SetColor(args, color);
-        }
-        else if (cssClass.StartsWith("css-count"))
-        {
-            string color = args.Data.DocumentCount == null ? "lightyellow" : null;
+            string color = args.Data.Stats == null ? "lightyellow" : null;
             SetColor(args, color);
         }
         else if (cssClass.StartsWith("css-size"))
         {
-            string color = args.Data.DocumentCount == null ? "lightyellow" : null;
+            string color = args.Data.Stats == null ? "lightyellow" : null;
             SetColor(args, color);
         }
         else if (cssClass.StartsWith("css-indices"))

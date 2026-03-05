@@ -26,5 +26,20 @@
 - [x] Step 20: Removed CallCount from Bson serialization — per-session only, not persisted.
 - [x] Step 21: Added deserialization failure handling in MongoDbCollectionCache.LoadAllAsync — drops _monitor collection and logs warning if any documents fail to deserialize.
 
+- [x] Step 22: Major restructuring of CollectionInfo and ICollectionCache:
+  - Created `CollectionStats` entity grouping DocumentCount (long), Size, UpdatedAt
+  - Added `UpdatedAt` to `IndexInfo` (grouping index data with its timestamp)
+  - Removed `AccessCount`, `CallCount`, `DocumentCount` (record type), `Size`, `StatsUpdatedAt`, `IndexUpdatedAt` from CollectionInfo
+  - Renamed `Types` → `EntityTypes` in CollectionInfo, MonitorRecord, DatabaseMonitor, Blazor components
+  - Deleted `DocumentCount.cs` — replaced by `CollectionStats.DocumentCount` (long)
+  - Expanded `ICollectionCache` with in-memory methods (TryGet, AddOrUpdate, Set, TryRemove, GetAll, GetKeys, Clear)
+  - Updated both `MemoryCollectionCache` and `MongoDbCollectionCache` to own ConcurrentDictionary
+  - Removed `_dict` from `DatabaseMonitor` — now uses `_cache` for everything
+  - Updated Blazor components: removed Calls column, added Clean column to CollectionView table
+  - Updated CollectionDialog: "Entity Types" label, Stats-based tooltips
+  - Updated all Bson serialization for new entity structure (backward compatible: reads "Types" field from Bson)
+  - Updated all tests (36 tests pass: 15 MemoryCollectionCache + 21 MongoDbCollectionCacheBson)
+  - Build succeeds. 188 passing tests, 15 pre-existing lockable failures (unchanged).
+
 ## Last session
-Steps 19-21 complete. ICollectionCache is now persistence-only. DatabaseMonitor owns in-memory state via ConcurrentDictionary. CallCount not persisted. Deserialization failures drop collection gracefully. Build succeeds. Tests: 179 passing, 15 pre-existing lockable failures (flaky).
+Step 22 complete. CollectionInfo restructured with CollectionStats and IndexInfo.UpdatedAt entities. ICollectionCache now owns both in-memory state and persistence. DatabaseMonitor no longer has its own dictionary. AccessCount/CallCount removed. Types renamed to EntityTypes. CleanInfo visible in CollectionView table. Build succeeds. Tests: 188 passing, 15 pre-existing lockable failures.

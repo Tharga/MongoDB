@@ -36,18 +36,18 @@ else
                 <RadzenText Text="@($"{_model.Registration}")" />
             </RadzenColumn>
             <RadzenColumn>
-                <RadzenText TextStyle="TextStyle.Caption" Text="Types" />
-                <RadzenText Text="@($"{string.Join(", ", _model.Types)}")" />
+                <RadzenText TextStyle="TextStyle.Caption" Text="Entity Types" />
+                <RadzenText Text="@($"{string.Join(", ", _model.EntityTypes)}")" />
             </RadzenColumn>
         </RadzenRow>
         <RadzenRow>
             <RadzenColumn>
                 <RadzenText TextStyle="TextStyle.Caption" Text="Document Count"/>
-                <RadzenText Text="@(_model.DocumentCount != null ? $"{_model.DocumentCount.Count:N0}" : "—")" title="@(_model.StatsUpdatedAt?.ToLocalDateTimeString())" />
+                <RadzenText Text="@(_model.Stats != null ? $"{_model.Stats.DocumentCount:N0}" : "—")" title="@(_model.Stats?.UpdatedAt?.ToLocalDateTimeString())" />
             </RadzenColumn>
             <RadzenColumn>
                 <RadzenText TextStyle="TextStyle.Caption" Text="Size"/>
-                <RadzenText Text="@_model.Size.ToReadableByteSize()" title="@(_model.StatsUpdatedAt?.ToLocalDateTimeString())" />
+                <RadzenText Text="@(_model.Stats != null ? _model.Stats.Size.ToReadableByteSize() : "—")" title="@(_model.Stats?.UpdatedAt?.ToLocalDateTimeString())" />
             </RadzenColumn>
         </RadzenRow>
 
@@ -71,7 +71,7 @@ else
 
         @if (_indexModel.Any())
         {
-            <RadzenText TextStyle="TextStyle.Caption" Text="Indices" title="@(_model.IndexUpdatedAt?.ToLocalDateTimeString())" />
+            <RadzenText TextStyle="TextStyle.Caption" Text="Indices" title="@(_model.Index?.UpdatedAt?.ToLocalDateTimeString())" />
             <RadzenDataGrid Data="_indexModel" TItem="IndexModel"
                             CellRender="@OnCellRender">
                 <Columns>
@@ -200,7 +200,7 @@ else
     {
         try
         {
-            var result = await DialogService.Confirm($"All {(_model.DocumentCount != null ? $"{_model.DocumentCount.Count:N0}" : "unknown number of")} documents in the collection will be cleaned (including GUID format). This might take time to perform.", "Confirm clean collection");
+            var result = await DialogService.Confirm($"All {(_model.Stats != null ? $"{_model.Stats.DocumentCount:N0}" : "unknown number of")} documents in the collection will be cleaned (including GUID format). This might take time to perform.", "Confirm clean collection");
             if (result != true) return;
 
             var cleanInfo = await DatabaseMonitor.CleanAsync(_model, cleanGuids: true);

@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 
@@ -5,11 +7,32 @@ namespace Tharga.MongoDB.Internals;
 
 internal class MemoryCollectionCache : ICollectionCache
 {
-    public Task<IReadOnlyList<CollectionInfo>> LoadAllAsync() => Task.FromResult<IReadOnlyList<CollectionInfo>>([]);
+    private readonly ConcurrentDictionary<string, CollectionInfo> _dict = new();
+
+    public bool TryGet(string key, out CollectionInfo value) => _dict.TryGetValue(key, out value);
+
+    public CollectionInfo AddOrUpdate(string key, Func<string, CollectionInfo> addFactory, Func<string, CollectionInfo, CollectionInfo> updateFactory)
+        => _dict.AddOrUpdate(key, addValueFactory: addFactory, updateValueFactory: updateFactory);
+
+    public bool TryRemove(string key, out CollectionInfo value) => _dict.TryRemove(key, out value);
+
+    public void Set(string key, CollectionInfo value) => _dict[key] = value;
+
+    public IEnumerable<CollectionInfo> GetAll() => _dict.Values;
+
+    public IEnumerable<string> GetKeys() => _dict.Keys;
+
+    public void Clear() => _dict.Clear();
+
+    public Task LoadAsync() => Task.CompletedTask;
 
     public Task SaveAsync(CollectionInfo info) => Task.CompletedTask;
 
     public Task DeleteAsync(string databaseName, string collectionName) => Task.CompletedTask;
 
-    public Task ResetAsync() => Task.CompletedTask;
+    public Task ResetAsync()
+    {
+        _dict.Clear();
+        return Task.CompletedTask;
+    }
 }
