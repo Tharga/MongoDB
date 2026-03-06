@@ -254,7 +254,7 @@ public static class MongoDbRegistrationExtensions
         if (databaseOptions.Value.Monitor?.Enabled ?? false)
         {
             var monitor = app.Services.GetService<IDatabaseMonitor>() as DatabaseMonitor;
-            monitor?.Start();
+            monitor?.Start(app.Services);
         }
 
         if (o.OpenFirewall)

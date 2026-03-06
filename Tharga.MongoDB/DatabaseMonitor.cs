@@ -45,11 +45,31 @@ internal class DatabaseMonitor : IDatabaseMonitor
         _options = options.Value;
     }
 
-    internal void Start()
+    internal void Start(IServiceProvider serviceProvider)
     {
         if (_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has already been started.");
 
-        _cache.LoadAsync().GetAwaiter().GetResult();
+        if (_options.ReadyCallback != null)
+        {
+            var cacheLoaded = 0;
+            _options.ReadyCallback(serviceProvider, async () =>
+            {
+                if (Interlocked.CompareExchange(ref cacheLoaded, 1, 0) != 0) return;
+                try
+                {
+                    await _cache.LoadAsync();
+                    _logger.LogInformation("DatabaseMonitor cache loaded via ReadyCallback.");
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Failed to load DatabaseMonitor cache via ReadyCallback.");
+                }
+            });
+        }
+        else
+        {
+            _cache.LoadAsync().GetAwaiter().GetResult();
+        }
 
         try
         {

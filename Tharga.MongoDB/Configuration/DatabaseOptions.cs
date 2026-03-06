@@ -103,4 +103,23 @@ public record DatabaseOptions
     /// Configure database execution limiter.
     /// </summary>
     public ExecuteLimiterOptions Limiter { get; set; } = new();
+
+    /// <summary>
+    /// Optional callback that defers the monitor cache load until the system is ready.
+    /// When set, the monitor starts immediately (API is usable) but the cache load
+    /// is postponed until the provided callback action is invoked.
+    /// The cache is loaded at most once, even if the callback is invoked multiple times.
+    /// Example usage:
+    /// <code>
+    /// o.ReadyCallback = (serviceProvider, onReady) =>
+    /// {
+    ///     var config = serviceProvider.GetService&lt;IMyConfig&gt;();
+    ///     config.ConfigurationUpdatedEvent += async (_, _) =>
+    ///     {
+    ///         if (config.HasConfiguration) await onReady();
+    ///     };
+    /// };
+    /// </code>
+    /// </summary>
+    public Action<IServiceProvider, Func<Task>> ReadyCallback { get; set; }
 }
