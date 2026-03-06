@@ -146,7 +146,7 @@ public static class MongoDbRegistrationExtensions
 
                     _actionEvent?.Invoke(new ActionEventArgs(new ActionEventArgs.ActionData
                     {
-                        Message = $"Trying to register the same repository types twice. Perhaps two assemblies in the same application are set to automatically register repositories.",
+                        Message = "Trying to register the same repository types twice. Perhaps two assemblies in the same application are set to automatically register repositories.",
                         Level = LogLevel.Warning
                     }, new ActionEventArgs.ContextData()));
                 }
@@ -241,13 +241,20 @@ public static class MongoDbRegistrationExtensions
 
         //NOTE: Set up default configuration
         var repositoryConfiguration = app.Services.GetService<IRepositoryConfiguration>();
+
+        //NOTE: Checks if the Connection Strings will arrive later. If so we cannot start all features of the database, it will be done later.
+        var lateConnectionStrins = databaseOptions.Value.ReadyCallback != null;
+
+        //TODO: Have the option to open firewall when the connection strings arrive.
+        //TODO: Have the option to assure index when the connection strings arrive.
+
         var o = new UseMongoOptions
         {
             DatabaseUsage = new DatabaseUsage
             {
-                FirewallConfigurationNames = repositoryConfiguration.GetDatabaseConfigurationNames().ToArray()
+                FirewallConfigurationNames = lateConnectionStrins ? [] : repositoryConfiguration.GetDatabaseConfigurationNames().ToArray()
             },
-            OpenFirewall = true,
+            OpenFirewall = !lateConnectionStrins
         };
         options?.Invoke(o);
 
@@ -257,7 +264,7 @@ public static class MongoDbRegistrationExtensions
             monitor?.Start(app.Services);
         }
 
-        if (o.OpenFirewall)
+        if (o.OpenFirewall && !lateConnectionStrins)
         {
             _actionEvent?.Invoke(new ActionEventArgs(new ActionEventArgs.ActionData { Message = $"Found {o.DatabaseUsage.FirewallConfigurationNames.Length} database configurations. ({string.Join(", ", o.DatabaseUsage.FirewallConfigurationNames)})", Level = LogLevel.Debug }, new ActionEventArgs.ContextData()));
 
@@ -307,7 +314,7 @@ public static class MongoDbRegistrationExtensions
             if (o.WaitToComplete) Task.WaitAll(task);
         }
 
-        if (o.AssureIndex)
+        if (o.AssureIndex && !lateConnectionStrins)
         {
             var task = Task.Run(async () =>
             {
@@ -322,19 +329,6 @@ public static class MongoDbRegistrationExtensions
             if (o.WaitToComplete) Task.WaitAll(task);
         }
     }
-
-    //internal static IServiceCollection RegisterMongoDBCollection<TRepositoryCollection, TRepositoryCollectionBase>(this IServiceCollection services)
-    //    where TRepositoryCollection : IRepositoryCollection
-    //    where TRepositoryCollectionBase : RepositoryCollectionBase
-    //{
-    //    //var provider = services.BuildServiceProvider(); //TODO: Not allowed to do this, singletons will be strange.
-    //    //var mongoDbInstance = provider.GetService<IMongoDbInstance>();
-    //    var implementationType = typeof(TRepositoryCollectionBase);
-    //    var serviceType = typeof(TRepositoryCollection);
-
-    //    RegisterCollection(services, mongoDbInstance, serviceType, implementationType, "Direct");
-    //    return services;
-    //}
 
     internal static void RegisterCollection(this IServiceCollection services, IMongoDbInstance mongoDbInstance, Type serviceType, Type implementationType, string regTypeName)
     {

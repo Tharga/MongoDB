@@ -44,7 +44,8 @@ internal class MongoDbCollectionCache : ICollectionCache
 
     public async Task LoadAsync()
     {
-        foreach (var configName in _repositoryConfiguration.GetDatabaseConfigurationNames())
+        var databaseConfigurationNames = _repositoryConfiguration.GetDatabaseConfigurationNames().ToArray();
+        foreach (var configName in databaseConfigurationNames)
         {
             var db = GetBaseDatabase(configName);
             if (db == null) continue;

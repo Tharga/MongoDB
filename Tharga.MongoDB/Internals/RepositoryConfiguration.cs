@@ -23,7 +23,8 @@ internal class RepositoryConfiguration : IRepositoryConfiguration
     public string GetRawDatabaseUrl(string configurationName = null)
     {
         var name = configurationName ?? _databaseOptions.DefaultConfigurationName ?? throw new NullReferenceException("No default configuration name provided.");
-        return _databaseOptions.ConnectionStringLoader?.Invoke(name, _serviceProvider).GetAwaiter().GetResult() ?? _configuration.GetConnectionString(name);
+
+        return _databaseOptions.ConnectionStringLoader?.Invoke(name, _serviceProvider).GetAwaiter().GetResult() ?? _configuration?.GetConnectionString(name);
     }
 
     public MongoDbConfig GetConfiguration(string configurationName = null)
@@ -67,16 +68,32 @@ internal class RepositoryConfiguration : IRepositoryConfiguration
     private IEnumerable<string> GetAllConfigurationNames()
     {
         var any = false;
-        var connectionStrings = _configuration.GetSection("ConnectionStrings");
-        foreach (var connectionString in connectionStrings.GetChildren())
+        var connectionStrings = _configuration?.GetSection("ConnectionStrings");
+        if (connectionStrings != null)
         {
-            any = true;
-            yield return connectionString.Key;
+            foreach (var connectionString in connectionStrings.GetChildren())
+            {
+                any = true;
+                yield return connectionString.Key;
+            }
+        }
+
+        var configurationTree = _databaseOptions.ConfigurationLoader?.Invoke(_serviceProvider)?.GetAwaiter().GetResult();
+        if (configurationTree?.Configurations != null)
+        {
+            foreach (var key in configurationTree.Configurations.Keys)
+            {
+                any = true;
+                yield return key;
+            }
         }
 
         if (!any || !string.IsNullOrEmpty(_databaseOptions.DefaultConfigurationName))
         {
-            yield return _databaseOptions.DefaultConfigurationName ?? throw new NullReferenceException("No default configuration name provided.");
+            if (_databaseOptions.ReadyCallback == null) //NOTE: Only return "Default" if connection string are not provided by service.
+            {
+                yield return _databaseOptions.DefaultConfigurationName ?? throw new NullReferenceException("No default configuration name provided.");
+            }
         }
     }
 
