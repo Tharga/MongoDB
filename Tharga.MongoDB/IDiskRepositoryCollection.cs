@@ -32,8 +32,6 @@ public interface IDiskRepositoryCollection<TEntity, TKey> : IRepositoryCollectio
     //Other
     [Obsolete($"Use {nameof(ExecuteAsync)} instead. This method will be deprecated.")]
     IMongoCollection<TEntity> GetCollection();
-    Task<T> ExecuteAsync<T>(Func<IMongoCollection<TEntity>, Task<T>> execute, Operation operation);
-    Task<T> ExecuteAsync<T>(Func<IMongoCollection<TEntity>, CancellationToken, Task<T>> execute, Operation operation, CancellationToken cancellationToken);
 }
 
 public interface IDiskRepositoryCollection<TEntity> : IDiskRepositoryCollection<TEntity, ObjectId>

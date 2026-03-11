@@ -206,6 +206,18 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
         return Disk.DropCollectionAsync();
     }
 
+    public override Task<T> ExecuteAsync<T>(Func<IMongoCollection<TEntity>, Task<T>> execute, Operation operation)
+    {
+        if (operation != Operation.Read) throw new InvalidOperationException($"Only operation {nameof(Operation.Read)} is allowed for lockable repository collections.");
+        return Disk.ExecuteAsync(execute, operation);
+    }
+
+    public override Task<T> ExecuteAsync<T>(Func<IMongoCollection<TEntity>, CancellationToken, Task<T>> execute, Operation operation, CancellationToken cancellationToken)
+    {
+        if (operation != Operation.Read) throw new InvalidOperationException($"Only operation {nameof(Operation.Read)} is allowed for lockable repository collections.");
+        return Disk.ExecuteAsync(execute, operation, cancellationToken);
+    }
+
     public override IAsyncEnumerable<TEntity> GetDirtyAsync()
     {
         return Disk.GetDirtyAsync();

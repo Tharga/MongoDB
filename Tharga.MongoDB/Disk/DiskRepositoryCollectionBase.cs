@@ -798,7 +798,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         return item.Value;
     }
 
-    public async Task<T> ExecuteAsync<T>(Func<IMongoCollection<TEntity>, Task<T>> execute, Operation operation)
+    public override async Task<T> ExecuteAsync<T>(Func<IMongoCollection<TEntity>, Task<T>> execute, Operation operation)
     {
         var response = await ExecuteAsync(nameof(ExecuteAsync), async (collection, _) =>
         {
@@ -809,7 +809,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         return response;
     }
 
-    public async Task<T> ExecuteAsync<T>(Func<IMongoCollection<TEntity>, CancellationToken, Task<T>> execute, Operation operation, CancellationToken cancellationToken)
+    public override async Task<T> ExecuteAsync<T>(Func<IMongoCollection<TEntity>, CancellationToken, Task<T>> execute, Operation operation, CancellationToken cancellationToken)
     {
         var response = await ExecuteAsync(nameof(ExecuteAsync), async (collection, ct) =>
         {
