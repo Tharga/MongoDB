@@ -6,6 +6,7 @@ using Microsoft.Extensions.Options;
 using MongoDB.Bson.Serialization;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
@@ -215,17 +216,14 @@ public static class MongoDbRegistrationExtensions
         return (o.AutoRegistrationAssemblies ?? AssemblyService.GetAssemblies()).Union(o._extraAssemblies);
     }
 
+    [System.Diagnostics.DebuggerNonUserCode]
     private static void TryLoadCacheAssembly(DatabaseOptions o)
     {
-        try
-        {
-            var cacheAssembly = Assembly.Load(new AssemblyName("Tharga.Cache.MongoDB"));
-            o._extraAssemblies.Add(cacheAssembly);
-        }
-        catch
-        {
-            // ignored
-        }
+        var assemblyPath = Path.Combine(AppContext.BaseDirectory, "Tharga.Cache.MongoDB.dll");
+        if (!File.Exists(assemblyPath)) return;
+
+        var cacheAssembly = Assembly.Load(new AssemblyName("Tharga.Cache.MongoDB"));
+        o._extraAssemblies.Add(cacheAssembly);
     }
 
     public static void UseMongoDB(this IHost app, Action<UseMongoOptions> options = null)
