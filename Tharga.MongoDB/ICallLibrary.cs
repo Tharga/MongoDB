@@ -1,13 +1,17 @@
-﻿using System.Collections.Generic;
-using System.Threading.Tasks;
+﻿using System;
+using System.Collections.Generic;
 
 namespace Tharga.MongoDB;
 
-internal interface ICallLibrary
+internal interface ICallLibrary : IDisposable
 {
+    event EventHandler CallChanged;
     void StartCall(CallStartEventArgs callStartEventArgs);
-    Task<CollectionFingerprint> EndCallAsync(CallEndEventArgs e);
+    void EndCall(CallEndEventArgs e);
     IEnumerable<CallInfo> GetLastCalls();
     IEnumerable<CallInfo> GetSlowCalls();
     IEnumerable<CallInfo> GetOngoingCalls();
+    CallInfo GetCall(Guid key);
+    IReadOnlyDictionary<string, int> GetCallCounts();
+    void ResetCalls();
 }

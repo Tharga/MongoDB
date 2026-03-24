@@ -1,12 +1,15 @@
-﻿@using Microsoft.Extensions.Options
+@using Microsoft.Extensions.Options
 @using Tharga.Blazor
 @using Tharga.Blazor.Framework.Buttons
 @using Tharga.MongoDB
 @using Tharga.MongoDB.Configuration
 @using Tharga.Toolkit
+@implements IDisposable
 @inject IDatabaseMonitor DatabaseMonitor;
 @inject DialogService DialogService
+@inject NotificationService NotificationService
 @inject IOptions<DatabaseOptions> DatabaseOptions
+@inject ICallLibrary CallLibrary
 
 @if (!DatabaseOptions.Value.Monitor.Enabled)
 {
@@ -40,6 +43,12 @@ else
             </RadzenColumn>
         </RadzenRow>
 
+        <RadzenRow>
+            <RadzenColumn>
+                <ActionButton Text="Reset Cache" Icon="restart_alt" Click="ResetCache" />
+            </RadzenColumn>
+        </RadzenRow>
+
         <RadzenDataGrid Data="_model" TItem="CollectionModel"
                         AllowFiltering="true" FilterMode="FilterMode.Simple" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
                         AllowSorting="true"
@@ -52,59 +61,37 @@ else
                 <RadzenDataGridColumn Title="Collection" Property="@nameof(CollectionModel.CollectionName)" />
                 <RadzenDataGridColumn Title="Source" Property="@nameof(CollectionModel.Source)" Filterable="false"/>
                 <RadzenDataGridColumn Title="Registration" Property="@nameof(CollectionModel.Registration)" Filterable="false" Width="120px" />
-                <RadzenDataGridColumn Title="Access" Property="@nameof(CollectionModel.Accessed)" TextAlign="TextAlign.Right" CssClass="css-access" Width="120px">
+                <RadzenDataGridColumn Title="Documents" TextAlign="TextAlign.Right" CssClass="css-count" Sortable="false" Filterable="false" Width="120px">
                     <Template>
-                        @if (context.AccessCount == 0)
-                        {
-                            <span title="Never accessed."><RadzenText Text="@($"{context.AccessCount:N0}")"/></span>
-                        }
-                        else
-                        {
-                            <RadzenText Text="@($"{context.AccessCount:N0}")"/>
-                        }
+                        <RadzenText Text="@(context.Stats != null ? $"{context.Stats.DocumentCount:N0}" : "")" />
                     </Template>
                 </RadzenDataGridColumn>
-                <RadzenDataGridColumn Title=Calls Property="@nameof(CollectionModel.CallCount)" Filterable="false" TextAlign="TextAlign.Right" Width="120px">
+                <RadzenDataGridColumn Title="Size" TextAlign="TextAlign.Right" Filterable="false" CssClass="css-size" Sortable="false" Width="120px">
                     <Template>
-                        <RadzenText Text="@($"{context.CallCount:N0}")" />
-                    </Template>
-                </RadzenDataGridColumn>
-                <RadzenDataGridColumn Title="Documents" Property="@($"{nameof(CollectionModel.DocumentCount)}.{nameof(CollectionModel.DocumentCount.Count)}")" TextAlign="TextAlign.Right" CssClass="css-count" Width="120px">
-                    <Template>
-                        <RadzenText Text="@($"{context.DocumentCount.Count:N0}")" />
-                        @* @if (context.DocumentCount.IsValid)
-                        {
-                            <RadzenText Text="@($"{context.DocumentCount.Count:N0}")"/>
-                        }
-                        else
-                        {
-                            <span title="@($"Virtual count is {context.DocumentCount.Virtual:N0}.")"><RadzenText Text="@($"{context.DocumentCount.Count:N0}")"/></span>
-                        } *@
-                    </Template>
-                </RadzenDataGridColumn>
-                <RadzenDataGridColumn Title="Size" Property="@nameof(CollectionModel.Size)" TextAlign="TextAlign.Right" Filterable="false" Width="120px">
-                    <Template>
-                        @context.Size.ToReadableByteSize()
+                        @(context.Stats != null ? context.Stats.Size.ToReadableByteSize() : "")
                     </Template>
                 </RadzenDataGridColumn>
                 <RadzenDataGridColumn Title="Indices" Property="@nameof(CollectionModel.IndexEqualFields)" CssClass="css-indices" Width="120px">
                     <Template>
-                        <span title="@context.Indices.Diff()">@context.IndexEqualFields</span>
+                        <span title="@context.Indices.Diff()">@(context.IndexEqualFields?.ToString() ?? "")</span>
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn Title="Clean" Sortable="false" Filterable="false" CssClass="css-clean" Width="100px">
+                    <Template>
+                        @if (context.Clean != null)
+                        {
+                            <span title="@context.Clean.CleanedAt.ToLocalDateTimeString()">@context.Clean.CleanedAt.ToLocalDurationString()</span>
+                        }
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn Title="Calls" Property="@nameof(CollectionModel.CallCount)" Filterable="false" Sortable="true" TextAlign="TextAlign.Right" Width="80px">
+                    <Template>
+                        @(context.CallCount > 0 ? $"{context.CallCount:N0}" : "")
                     </Template>
                 </RadzenDataGridColumn>
                 <RadzenDataGridColumn Title="" Sortable="false" Width="60px;" Filterable="false">
                     <Template>
-                        @* @if (context.Index.Defined != null)
-                        {
-                            IndexInfo ii = context.Index;
-
-                            <StandardButton Icon="format_list_numbered" ButtonStyle="@(context.Index.Defined.SequenceEqual(context.Index.Current) ? ButtonStyle.Base : ButtonStyle.Warning)" Click="@(() => ShowIndexDialog(context))" Style="margin-right: 3px;"/>
-                        } *@
-                        <StandardButton Icon="format_list_numbered" Click="@(() => ShowIndexDialog(context))" Style="margin-right: 3px;" />
-                        @* @if (context.Registration != Registration.NotInCode && context.AccessCount == 0)
-                        {
-                            <StandardButton Icon="touch_app" Click="@(() => TouchCollection(context))"/>
-                        } *@
+                        <StandardButton Icon="format_list_numbered" Click="@(() => ShowCollectionDialog(context))" Style="margin-right: 3px;" />
                     </Template>
                 </RadzenDataGridColumn>
             </Columns>
@@ -127,63 +114,110 @@ else
     [Parameter]
     public string Filter { get; set; }
 
+    protected override async Task OnInitializedAsync()
+    {
+        DatabaseMonitor.CollectionInfoChangedEvent += OnCollectionInfoChanged;
+        DatabaseMonitor.CollectionDroppedEvent += OnCollectionDropped;
+        CallLibrary.CallChanged += OnCallChanged;
+        await base.OnInitializedAsync();
+    }
+
+    private bool _disposed;
+
+    public void Dispose()
+    {
+        _disposed = true;
+        DatabaseMonitor.CollectionInfoChangedEvent -= OnCollectionInfoChanged;
+        DatabaseMonitor.CollectionDroppedEvent -= OnCollectionDropped;
+        CallLibrary.CallChanged -= OnCallChanged;
+    }
+
+    private async void OnCallChanged(object sender, EventArgs e)
+    {
+        if (_disposed || _model == null) return;
+
+        try { await InvokeAsync(() => { UpdateCallCounts(); StateHasChanged(); }); }
+        catch (ObjectDisposedException) { }
+    }
+
+    private void UpdateCallCounts()
+    {
+        var callCounts = CallLibrary.GetCallCounts();
+        foreach (var m in _model)
+        {
+            var suffix = $".{m.DatabaseName}.{m.CollectionName}";
+            m.CallCount = callCounts
+                .Where(kvp => kvp.Key.EndsWith(suffix))
+                .Sum(kvp => kvp.Value);
+        }
+    }
+
+    private async void OnCollectionInfoChanged(object sender, CollectionInfoChangedEventArgs e)
+    {
+        if (_disposed || _all == null) return;
+
+        var item = _all.SingleOrDefault(x => x.Key == e.CollectionInfo.Key);
+
+        if (item != null)
+        {
+            item.Source = e.CollectionInfo.Source;
+            item.Stats = e.CollectionInfo.Stats;
+            item.Index = e.CollectionInfo.Index;
+
+            var m = _model?.SingleOrDefault(x => x.ConfigurationName == item.ConfigurationName && x.DatabaseName == item.DatabaseName && x.CollectionName == item.CollectionName);
+            if (m != null)
+            {
+                var indexModels = e.CollectionInfo.ToIndexModel().ToArray();
+
+                m.Source = e.CollectionInfo.Source;
+                m.Stats = e.CollectionInfo.Stats;
+                m.Size = e.CollectionInfo.Stats?.Size ?? 0;
+                m.Indices = indexModels;
+                m.IndexEqualFields = e.CollectionInfo.Index == null || e.CollectionInfo.Index.Current == null ? null : indexModels.All(x => x.EqualFields);
+                m.Clean = e.CollectionInfo.Clean;
+            }
+
+            if (_disposed) return;
+            try { await InvokeAsync(StateHasChanged); } catch (Exception) { }
+        }
+    }
+
+    private async void OnCollectionDropped(object sender, CollectionDroppedEventArgs e)
+    {
+        if (_disposed || _all == null) return;
+
+        _all = _all.Where(x => x.ToDatabaseContext() != e.DatabaseContext).ToArray();
+        await ReloadDataAsync();
+
+        if (_disposed) return;
+        try { await InvokeAsync(StateHasChanged); } catch (Exception) { }
+    }
+
     protected override async Task OnParametersSetAsync()
     {
-        DatabaseMonitor.CollectionInfoChangedEvent += async (_, e) =>
-        {
-            if (_all == null) return;
-
-            var item = _all.SingleOrDefault(x => x.Key == e.CollectionInfo.Key);
-
-            if (item != null)
-            {
-                item.Source = e.CollectionInfo.Source;
-                item.AccessCount = e.CollectionInfo.AccessCount;
-                item.CallCount = e.CollectionInfo.CallCount;
-                item.DocumentCount = e.CollectionInfo.DocumentCount;
-                item.Size = e.CollectionInfo.Size;
-                item.Index = e.CollectionInfo.Index;
-
-                var m = _model.SingleOrDefault(x => x.ConfigurationName == item.ConfigurationName && x.DatabaseName == item.DatabaseName && x.CollectionName == item.CollectionName);
-                if (m != null)
-                {
-                    var indexModels = e.CollectionInfo.ToIndexModel().ToArray();
-
-                    m.Source = e.CollectionInfo.Source;
-                    m.AccessCount = e.CollectionInfo.AccessCount;
-                    m.CallCount = e.CollectionInfo.CallCount;
-                    m.DocumentCount = e.CollectionInfo.DocumentCount;
-                    m.Size = e.CollectionInfo.Size;
-                    m.Indices = indexModels;
-                    m.IndexEqualFields = indexModels.All(x => x.EqualFields);
-                }
-
-                await InvokeAsync(StateHasChanged);
-            }
-        };
-        DatabaseMonitor.CollectionDroppedEvent += async (_, e) =>
-        {
-            if (_all == null) return;
-
-            _all = _all.Where(x => x.ToDatabaseContext() != e.DatabaseContext).ToArray();
-            await ReloadDataAsync();
-
-            await InvokeAsync(StateHasChanged);
-        };
-
         _all = await DatabaseMonitor.GetInstancesAsync(FullDatabaseScan, Filter).ToArrayAsync();
         _databases = _all.GroupBy(x => x.DatabaseName).Select(x => x.First()).Select(x => x.DatabaseName).Order().ToArray();
         await ReloadDataAsync();
         await base.OnParametersSetAsync();
     }
 
-    private async Task ShowIndexDialog(CollectionModel context)
+    private async Task ResetCache()
     {
-        var result = await DialogService.OpenAsync<CollectionDialog>(context.CollectionName, new Dictionary<string, object>
-        {
-            { "Fingerprint", context }
-        }, new DialogOptions { Resizable = true, Draggable = true });
+        await DatabaseMonitor.ResetAsync();
+        _all = null;
+        _model = null;
+        StateHasChanged();
+        _all = await DatabaseMonitor.GetInstancesAsync(FullDatabaseScan, Filter).ToArrayAsync();
+        _databases = _all.GroupBy(x => x.DatabaseName).Select(x => x.First()).Select(x => x.DatabaseName).Order().ToArray();
+        await ReloadDataAsync();
+        NotificationService.Notify(new NotificationMessage { Summary = "Cache has been reset." });
+    }
 
+    private async Task ShowCollectionDialog(CollectionModel context)
+    {
+        var parameters = new Dictionary<string, object> { { "Fingerprint", context } };
+        var dialogOptions = new DialogOptions { Resizable = true, Draggable = true };
+        var result = await DialogService.OpenAsync<CollectionDialog>(context.CollectionName, parameters, dialogOptions);
         if (result != true) return;
 
         await ReloadDataAsync();
@@ -191,26 +225,34 @@ else
 
     private async Task ReloadDataAsync()
     {
+        var callCounts = CallLibrary.GetCallCounts();
+
         _model = _all
             .Where(x => SelectedDatabases == null || !SelectedDatabases.Any() || SelectedDatabases.Contains(x.DatabaseName))
             .Where(x => SelectedRegistrationTypes == null || !SelectedRegistrationTypes.Any() || SelectedRegistrationTypes.Contains(x.Registration))
             .Select(x =>
             {
                 var indexModels = x.ToIndexModel().ToArray();
+                var suffix = $".{x.DatabaseName}.{x.CollectionName}";
+                var count = callCounts
+                    .Where(kvp => kvp.Key.EndsWith(suffix))
+                    .Sum(kvp => kvp.Value);
 
                 return new CollectionModel
                 {
                     ConfigurationName = x.ConfigurationName,
-                    DocumentCount = x.DocumentCount,
+                    Stats = x.Stats,
                     DatabaseName = x.DatabaseName,
                     CollectionName = x.CollectionName,
                     Source = x.Source,
                     Registration = x.Registration,
-                    AccessCount = x.AccessCount,
-                    CallCount = x.CallCount,
-                    Size = x.Size,
+                    Size = x.Stats?.Size ?? 0,
                     Indices = indexModels,
-                    IndexEqualFields = indexModels.All(y => y.EqualFields)
+                    IndexEqualFields = x.Index == null || x.Index.Current == null
+                        ? null
+                        : indexModels.All(y => y.EqualFields),
+                    Clean = x.Clean,
+                    CallCount = count,
                 };
             })
             .ToArray();
@@ -223,38 +265,33 @@ else
         var cssClass = args.Column.CssClass;
         if (string.IsNullOrEmpty(cssClass)) return;
 
-        if (cssClass.StartsWith("css-access"))
+        if (cssClass.StartsWith("css-count"))
         {
-            string color = null;
-            if (args.Data.AccessCount == 0)
-            {
-                color = "lightyellow";
-            }
-
+            string color = args.Data.Stats == null ? "lightyellow" : null;
             SetColor(args, color);
         }
-        else if (cssClass.StartsWith("css-count"))
+        else if (cssClass.StartsWith("css-size"))
         {
-            string color = null;
-            // if (!args.Data.DocumentCount.IsValid)
-            // {
-            //     color = "pink";
-            // }
-            //else if (args.Data.DocumentCount.Virtual == null)
-            //{
-            //    color = "lightyellow";
-            //}
-
+            string color = args.Data.Stats == null ? "lightyellow" : null;
             SetColor(args, color);
         }
         else if (cssClass.StartsWith("css-indices"))
         {
             string color = null;
-            if (!args.Data.IndexEqualFields)
+            if (args.Data.IndexEqualFields == null)
+            {
+                color = "lightyellow";
+            }
+            else if (args.Data.IndexEqualFields == false)
             {
                 color = "pink";
             }
 
+            SetColor(args, color);
+        }
+        else if (cssClass.StartsWith("css-clean"))
+        {
+            string color = args.Data.Clean == null ? "lightyellow" : null;
             SetColor(args, color);
         }
     }

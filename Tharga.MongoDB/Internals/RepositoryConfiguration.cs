@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Microsoft.Extensions.Configuration;
@@ -23,7 +23,8 @@ internal class RepositoryConfiguration : IRepositoryConfiguration
     public string GetRawDatabaseUrl(string configurationName = null)
     {
         var name = configurationName ?? _databaseOptions.DefaultConfigurationName ?? throw new NullReferenceException("No default configuration name provided.");
-        return _databaseOptions.ConnectionStringLoader?.Invoke(name, _serviceProvider).GetAwaiter().GetResult() ?? _configuration.GetConnectionString(name);
+
+        return _databaseOptions.ConnectionStringLoader?.Invoke(name, _serviceProvider).GetAwaiter().GetResult() ?? _configuration?.GetConnectionString(name);
     }
 
     public MongoDbConfig GetConfiguration(string configurationName = null)
@@ -47,7 +48,7 @@ internal class RepositoryConfiguration : IRepositoryConfiguration
         var configuration = new MongoDbConfig
         {
             AccessInfo = c1?.AccessInfo ?? c2?.AccessInfo ?? c3.Value?.AccessInfo ?? c4.Value?.AccessInfo,
-            ResultLimit = c1?.ResultLimit ?? c2?.ResultLimit ?? c3.Value?.ResultLimit ?? c4.Value?.ResultLimit,
+            FetchSize = c1?.FetchSize ?? c2?.FetchSize ?? c3.Value?.FetchSize ?? c4.Value?.FetchSize,
             AutoClean = c1?.AutoClean ?? c2?.AutoClean ?? c3.Value?.AutoClean ?? c4.Value?.AutoClean ?? true,
             CleanOnStartup = c1?.CleanOnStartup ?? c2?.CleanOnStartup ?? c3.Value?.CleanOnStartup ?? c4.Value?.CleanOnStartup ?? false,
             CreateCollectionStrategy = c1?.CreateCollectionStrategy ?? c2?.CreateCollectionStrategy ?? c3.Value?.CreateCollectionStrategy ?? c4.Value?.CreateCollectionStrategy ?? CreateStrategy.DropEmpty,
@@ -67,16 +68,32 @@ internal class RepositoryConfiguration : IRepositoryConfiguration
     private IEnumerable<string> GetAllConfigurationNames()
     {
         var any = false;
-        var connectionStrings = _configuration.GetSection("ConnectionStrings");
-        foreach (var connectionString in connectionStrings.GetChildren())
+        var connectionStrings = _configuration?.GetSection("ConnectionStrings");
+        if (connectionStrings != null)
         {
-            any = true;
-            yield return connectionString.Key;
+            foreach (var connectionString in connectionStrings.GetChildren())
+            {
+                any = true;
+                yield return connectionString.Key;
+            }
+        }
+
+        var configurationTree = _databaseOptions.ConfigurationLoader?.Invoke(_serviceProvider)?.GetAwaiter().GetResult();
+        if (configurationTree?.Configurations != null)
+        {
+            foreach (var key in configurationTree.Configurations.Keys)
+            {
+                any = true;
+                yield return key;
+            }
         }
 
         if (!any || !string.IsNullOrEmpty(_databaseOptions.DefaultConfigurationName))
         {
-            yield return _databaseOptions.DefaultConfigurationName ?? throw new NullReferenceException("No default configuration name provided.");
+            if (_databaseOptions.ReadyCallback == null) //NOTE: Only return "Default" if connection string are not provided by service.
+            {
+                yield return _databaseOptions.DefaultConfigurationName ?? throw new NullReferenceException("No default configuration name provided.");
+            }
         }
     }
 

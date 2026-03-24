@@ -64,10 +64,8 @@ public class CollectionController : ControllerBase
             x.DatabaseName,
             x.CollectionName,
             Registration = $"{x.Registration}",
-            x.AccessCount,
-            x.DocumentCount,
-            x.Size,
-            x.Types,
+            x.Stats,
+            x.EntityTypes,
             x.Index
         }));
     }

@@ -82,7 +82,7 @@ public class ReleaseDeleteTests : LockableTestBase
         {
             await act.Should()
                 .ThrowAsync<LockExpiredException>()
-                .WithMessage($"Entity of type {nameof(LockableTestEntity)} was locked for *");
+                .WithMessage($"Too late to release entity of type {nameof(LockableTestEntity)} locked by *");
         }
         else
         {

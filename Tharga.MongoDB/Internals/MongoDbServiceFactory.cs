@@ -40,15 +40,10 @@ internal class MongoDbServiceFactory : IMongoDbServiceFactory
     {
         var configuration = _repositoryConfigurationLoader.GetConfiguration(databaseContextLoader);
 
-        //var configurationName = configuration.GetConfigurationName();
         var mongoUrl = configuration.GetDatabaseUrl();
         var cacheKey = mongoUrl.Url;
-        //ConfigurationAccessEvent?.Invoke(this, new ConfigurationAccessEventArgs(configurationName, mongoUrl));
 
         //TODO: Should cache be used here or not?
-        //var ctx = configuration.GetDatabaseContext();
-        //var useCache = string.IsNullOrEmpty((ctx as DatabaseContextWithFingerprint)?.DatabaseName);
-        //var useCache = string.IsNullOrEmpty((ctx as ICollectionFingerprint)?.DatabaseName);
         var useCache = true;
 
         if (useCache && _databaseDbServices.TryGetValue(cacheKey, out var dbService)) return dbService;
@@ -90,17 +85,11 @@ internal class MongoDbServiceFactory : IMongoDbServiceFactory
 
     public void OnCallStart(object sender, CallStartEventArgs e)
     {
-        Task.Run(() =>
-        {
-            CallStartEvent?.Invoke(sender, e);
-        });
+        CallStartEvent?.Invoke(sender, e);
     }
 
     public void OnCallEnd(object sender, CallEndEventArgs e)
     {
-        Task.Run(() =>
-        {
-            CallEndEvent?.Invoke(sender, e);
-        });
+        CallEndEvent?.Invoke(sender, e);
     }
 }

@@ -1,0 +1,108 @@
+@implements IDisposable
+@inject IQueueMonitor QueueMonitor
+
+<RadzenStack Orientation="Orientation.Vertical" Gap="16px">
+    <RadzenRow AlignItems="AlignItems.Center" Gap="16px">
+        <RadzenColumn Size="2">
+            <RadzenText TextStyle="TextStyle.Subtitle1" Text="Current Queue" />
+            <RadzenText TextStyle="TextStyle.H3" Text="@_currentQueue.ToString()" />
+        </RadzenColumn>
+    </RadzenRow>
+
+    <RadzenText TextStyle="TextStyle.Subtitle1" Text="Queue Depth" />
+    <RadzenChart Style="height: 250px;">
+        <RadzenLineSeries Data="@_slots" CategoryProperty="SlotIndex" ValueProperty="QueueCount" LineType="LineType.Solid" Smooth="true">
+            <RadzenMarkers MarkerType="MarkerType.None" />
+        </RadzenLineSeries>
+        <RadzenCategoryAxis Step="@AxisStep" FormatString="{0}" />
+        <RadzenValueAxis Min="0">
+            <RadzenGridLines Visible="true" />
+        </RadzenValueAxis>
+        <RadzenLegend Visible="false" />
+    </RadzenChart>
+
+    <RadzenText TextStyle="TextStyle.Subtitle1" Text="Wait Time (s)" />
+    <RadzenChart Style="height: 250px;">
+        <RadzenLineSeries Data="@_slots" CategoryProperty="SlotIndex" ValueProperty="WaitTimeSec" LineType="LineType.Solid" Smooth="true">
+            <RadzenMarkers MarkerType="MarkerType.None" />
+        </RadzenLineSeries>
+        <RadzenCategoryAxis Step="@AxisStep" FormatString="{0}" />
+        <RadzenValueAxis Min="0">
+            <RadzenGridLines Visible="true" />
+        </RadzenValueAxis>
+        <RadzenLegend Visible="false" />
+    </RadzenChart>
+
+</RadzenStack>
+
+@code {
+    private const int TotalSlots = 120;
+    private const int AxisStep = 20;
+    private const int SampleIntervalMs = 500;
+    private readonly int[] _ring = new int[TotalSlots];
+    private readonly double[] _waitRing = new double[TotalSlots];
+    private int _head;
+    private int _currentQueue;
+    private Timer _timer;
+    private bool _disposed;
+    private List<Slot> _slots = new();
+
+    protected override void OnInitialized()
+    {
+        BuildSlots();
+        _timer = new Timer(OnTick, null, SampleIntervalMs, SampleIntervalMs);
+    }
+
+    public void Dispose()
+    {
+        _disposed = true;
+        _timer?.Dispose();
+    }
+
+    private async void OnTick(object state)
+    {
+        if (_disposed) return;
+
+        try
+        {
+            // Poll current state — no events, no threading concerns
+            var (queueCount, _, lastWaitTimeMs) = QueueMonitor.GetCurrentState();
+
+            await InvokeAsync(() =>
+            {
+                _currentQueue = queueCount;
+                _ring[_head] = queueCount;
+                _waitRing[_head] = lastWaitTimeMs;
+                _head = (_head + 1) % TotalSlots;
+
+                BuildSlots();
+                StateHasChanged();
+            });
+        }
+        catch (ObjectDisposedException) { }
+    }
+
+    private void BuildSlots()
+    {
+        var list = new List<Slot>(TotalSlots);
+        for (var i = 0; i < TotalSlots; i++)
+        {
+            // i=0 → newest (head-1), i=119 → oldest (head)
+            var ringIdx = (_head - 1 - i + TotalSlots) % TotalSlots;
+            list.Add(new Slot
+            {
+                SlotIndex = i,
+                QueueCount = _ring[ringIdx],
+                WaitTimeSec = _waitRing[ringIdx] / 1000.0,
+            });
+        }
+        _slots = list;
+    }
+
+    private class Slot
+    {
+        public int SlotIndex { get; init; }
+        public int QueueCount { get; init; }
+        public double WaitTimeSec { get; init; }
+    }
+}

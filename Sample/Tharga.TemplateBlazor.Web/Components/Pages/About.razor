@@ -1,0 +1,63 @@
+﻿@page "/about"
+@using System.Reflection
+@using Tharga.Blazor.Framework.Buttons
+@using Tharga.TemplateBlazor.Web.Framework
+@inject ThemeService ThemeService
+@inject ILocalStorageService LocalStorageService
+@inject IHostEnvironment HostEnvironment
+
+<RadzenStack Gap="1rem">
+    <RadzenCard>
+        <RadzenRow>
+            <RadzenColumn>
+                <RadzenText TextStyle="TextStyle.Caption" Text="Version" />
+                <RadzenText Text="@_version" />
+            </RadzenColumn>
+            <RadzenColumn>
+                <RadzenText TextStyle="TextStyle.Caption" Text="Environment" />
+                <RadzenText Text="@_environment" />
+            </RadzenColumn>
+            <RadzenColumn>
+                <RadzenText TextStyle="TextStyle.Caption" Text="Machine" />
+                <RadzenText Text="@_machine" />
+            </RadzenColumn>
+        </RadzenRow>
+    </RadzenCard>
+
+    <RadzenCard>
+        <RadzenRow>
+            <RadzenColumn>
+                <RadzenText TextStyle="TextStyle.Caption" Text="Theme" />
+                <div>
+                    <RadzenDropDown Name="ThemeDropDown" TValue="string" Value="@ThemeService.Theme" ValueChanged="@ChangeTheme" Data="@Themes.Free" TextProperty=@nameof(Theme.Text) ValueProperty=@nameof(Theme.Value) />
+                </div>
+            </RadzenColumn>
+        </RadzenRow>
+    </RadzenCard>
+
+    <RadzenCard>
+        <StandardButton Text="Invoke Exception" Icon="error" Click="@(() => { throw new InvalidOperationException("Manually invoked exception."); })" />
+    </RadzenCard>
+
+</RadzenStack>
+
+@code {
+    private string _version;
+    private string _environment;
+    private string _machine;
+
+    protected override Task OnInitializedAsync()
+    {
+        _version = $"{Assembly.GetEntryAssembly()?.GetName().Version}";
+        _environment = HostEnvironment.EnvironmentName;
+        _machine = Environment.MachineName;
+
+        return base.OnInitializedAsync();
+    }
+
+    void ChangeTheme(string value)
+    {
+        ThemeService.SetTheme(value);
+        LocalStorageService.SetItemAsync(Constants.ThemeStorageName, value);
+    }
+}

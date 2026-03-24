@@ -44,9 +44,10 @@ public record DatabaseOptions
     public IEnumerable<CollectionType> RegisterCollections { get; set; }
 
     /// <summary>
-    /// Assemblies that starts with the same name are registered automatically. (IE. namespace "[same name].[other parts]")
-    /// Classes that implements IRepository and IRepositoryCollection will be registered.
-    /// Override the list of assemblies where automatic registration should be done.
+    /// Override the list of assemblies scanned for automatic registration of IRepository and IRepositoryCollection.
+    /// By default, only assemblies whose name starts with the same prefix as the entry-point assembly are scanned.
+    /// Assemblies from external NuGet packages are NOT included by default — use <see cref="AddAutoRegistrationAssembly"/>
+    /// to add them without replacing the default scan.
     /// </summary>
     public IEnumerable<Assembly> AutoRegistrationAssemblies { get; set; }
 
@@ -103,4 +104,23 @@ public record DatabaseOptions
     /// Configure database execution limiter.
     /// </summary>
     public ExecuteLimiterOptions Limiter { get; set; } = new();
+
+    /// <summary>
+    /// Optional callback that defers the monitor cache load until the system is ready.
+    /// When set, the monitor starts immediately (API is usable) but the cache load
+    /// is postponed until the provided callback action is invoked.
+    /// The cache is loaded at most once, even if the callback is invoked multiple times.
+    /// Example usage:
+    /// <code>
+    /// o.ReadyCallback = (serviceProvider, onReady) =>
+    /// {
+    ///     var config = serviceProvider.GetService&lt;IMyConfig&gt;();
+    ///     config.ConfigurationUpdatedEvent += async (_, _) =>
+    ///     {
+    ///         if (config.HasConfiguration) await onReady();
+    ///     };
+    /// };
+    /// </code>
+    /// </summary>
+    public Action<IServiceProvider, Func<Task>> ReadyCallback { get; set; }
 }

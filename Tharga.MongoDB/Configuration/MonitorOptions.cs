@@ -17,4 +17,11 @@ public record MonitorOptions
     /// Number of slow calls to keep. The slowest calls replaces the less slow calls.
     /// </summary>
     public int SlowCallsToKeep { get; set; } = 200;
+
+    /// <summary>
+    /// Controls where monitor state is persisted. Database stores state in the _monitor
+    /// collection so it survives restarts and is shared across multiple application instances.
+    /// Default is Database.
+    /// </summary>
+    public MonitorStorageMode StorageMode { get; set; } = MonitorStorageMode.Database;
 }

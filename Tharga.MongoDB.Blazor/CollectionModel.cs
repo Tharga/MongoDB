@@ -1,14 +1,13 @@
-﻿namespace Tharga.MongoDB.Blazor;
+namespace Tharga.MongoDB.Blazor;
 
 public record CollectionModel : CollectionFingerprint
 {
-    public required DocumentCount DocumentCount { get; set; }
+    public CollectionStats Stats { get; set; }
     public Source Source { get; set; }
     public required Registration Registration { get; init; }
-    public bool Accessed => AccessCount > 0;
-    public required int AccessCount { get; set; }
-    public required int CallCount { get; set; }
     public required long Size { get; set; }
     public required IndexModel[] Indices { get; set; }
-    public required bool IndexEqualFields { get; set; }
+    public required bool? IndexEqualFields { get; set; }
+    public CleanInfo Clean { get; set; }
+    public int CallCount { get; set; }
 }

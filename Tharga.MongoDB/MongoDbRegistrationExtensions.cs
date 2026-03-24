@@ -6,6 +6,7 @@ using Microsoft.Extensions.Options;
 using MongoDB.Bson.Serialization;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
@@ -73,7 +74,9 @@ public static class MongoDbRegistrationExtensions
         services.AddTransient<IMongoDbFirewallService, MongoDbFirewallService>();
         services.AddSingleton<IMongoDbClientProvider, MongoDbClientProvider>();
         services.AddSingleton<IMongoDbFirewallStateService, MongoDbFirewallStateService>();
-        services.AddSingleton<IExecuteLimiter, ExecuteLimiter>();
+        services.AddSingleton<ExecuteLimiter>();
+        services.AddSingleton<IExecuteLimiter>(sp => sp.GetRequiredService<ExecuteLimiter>());
+        services.AddSingleton<IQueueMonitor>(sp => sp.GetRequiredService<ExecuteLimiter>());
         services.AddSingleton<ICollectionPool, CollectionPool>();
         services.AddSingleton<IInitiationLibrary, InitiationLibrary>();
         services.AddSingleton<ICollectionProviderCache, CollectionProviderCache>();
@@ -144,7 +147,7 @@ public static class MongoDbRegistrationExtensions
 
                     _actionEvent?.Invoke(new ActionEventArgs(new ActionEventArgs.ActionData
                     {
-                        Message = $"Trying to register the same repository types twice. Perhaps two assemblies in the same application are set to automatically register repositories.",
+                        Message = "Trying to register the same repository types twice. Perhaps two assemblies in the same application are set to automatically register repositories.",
                         Level = LogLevel.Warning
                     }, new ActionEventArgs.ContextData()));
                 }
@@ -192,6 +195,10 @@ public static class MongoDbRegistrationExtensions
 
         if (o.Monitor?.Enabled ?? false)
         {
+            if (o.Monitor.StorageMode == MonitorStorageMode.Database)
+                services.AddSingleton<ICollectionCache, MongoDbCollectionCache>();
+            else
+                services.AddSingleton<ICollectionCache, MemoryCollectionCache>();
             services.AddSingleton<IDatabaseMonitor, DatabaseMonitor>();
             services.AddSingleton<ICallLibrary, CallLibrary>();
         }
@@ -209,22 +216,21 @@ public static class MongoDbRegistrationExtensions
         return (o.AutoRegistrationAssemblies ?? AssemblyService.GetAssemblies()).Union(o._extraAssemblies);
     }
 
+    [System.Diagnostics.DebuggerNonUserCode]
     private static void TryLoadCacheAssembly(DatabaseOptions o)
     {
-        try
-        {
-            var cacheAssembly = Assembly.Load(new AssemblyName("Tharga.Cache.MongoDB"));
-            o._extraAssemblies.Add(cacheAssembly);
-        }
-        catch
-        {
-            // ignored
-        }
+        var assemblyPath = Path.Combine(AppContext.BaseDirectory, "Tharga.Cache.MongoDB.dll");
+        if (!File.Exists(assemblyPath)) return;
+
+        var cacheAssembly = Assembly.Load(new AssemblyName("Tharga.Cache.MongoDB"));
+        o._extraAssemblies.Add(cacheAssembly);
     }
 
     public static void UseMongoDB(this IHost app, Action<UseMongoOptions> options = null)
     {
         _actionEvent?.Invoke(new ActionEventArgs(new ActionEventArgs.ActionData { Message = $"Entering {nameof(UseMongoDB)}.", Level = LogLevel.Debug }, new ActionEventArgs.ContextData()));
+
+        FlexibleGuidSerializer.Logger = app.Services.GetService<ILoggerFactory>()?.CreateLogger<FlexibleGuidSerializer>();
 
         var databaseOptions = app.Services.GetService<IOptions<DatabaseOptions>>();
 
@@ -233,23 +239,30 @@ public static class MongoDbRegistrationExtensions
 
         //NOTE: Set up default configuration
         var repositoryConfiguration = app.Services.GetService<IRepositoryConfiguration>();
+
+        //NOTE: Checks if the Connection Strings will arrive later. If so we cannot start all features of the database, it will be done later.
+        var lateConnectionStrins = databaseOptions.Value.ReadyCallback != null;
+
+        //TODO: Have the option to open firewall when the connection strings arrive.
+        //TODO: Have the option to assure index when the connection strings arrive.
+
         var o = new UseMongoOptions
         {
             DatabaseUsage = new DatabaseUsage
             {
-                FirewallConfigurationNames = repositoryConfiguration.GetDatabaseConfigurationNames().ToArray()
+                FirewallConfigurationNames = lateConnectionStrins ? [] : repositoryConfiguration.GetDatabaseConfigurationNames().ToArray()
             },
-            OpenFirewall = true,
+            OpenFirewall = !lateConnectionStrins
         };
         options?.Invoke(o);
 
         if (databaseOptions.Value.Monitor?.Enabled ?? false)
         {
             var monitor = app.Services.GetService<IDatabaseMonitor>() as DatabaseMonitor;
-            monitor?.Start();
+            monitor?.Start(app.Services);
         }
 
-        if (o.OpenFirewall)
+        if (o.OpenFirewall && !lateConnectionStrins)
         {
             _actionEvent?.Invoke(new ActionEventArgs(new ActionEventArgs.ActionData { Message = $"Found {o.DatabaseUsage.FirewallConfigurationNames.Length} database configurations. ({string.Join(", ", o.DatabaseUsage.FirewallConfigurationNames)})", Level = LogLevel.Debug }, new ActionEventArgs.ContextData()));
 
@@ -299,33 +312,21 @@ public static class MongoDbRegistrationExtensions
             if (o.WaitToComplete) Task.WaitAll(task);
         }
 
-        if (o.AssureIndex)
+        if (o.AssureIndex && !lateConnectionStrins)
         {
             var task = Task.Run(async () =>
             {
                 var monitor = app.Services.GetService<IDatabaseMonitor>();
                 await foreach (var collectionInfo in monitor.GetInstancesAsync().Where(x => x.Registration == Registration.Static))
                 {
-                    await monitor.RestoreIndexAsync(collectionInfo);
+                    await monitor.RestoreIndexAsync(collectionInfo, false);
+                    o.Logger?.LogInformation("Restore index for configuration {Configuration}, database {DatabaseName}, collection {CollectionName}.", collectionInfo.ConfigurationName, collectionInfo.DatabaseName, collectionInfo.CollectionName);
                 }
             });
 
             if (o.WaitToComplete) Task.WaitAll(task);
         }
     }
-
-    //internal static IServiceCollection RegisterMongoDBCollection<TRepositoryCollection, TRepositoryCollectionBase>(this IServiceCollection services)
-    //    where TRepositoryCollection : IRepositoryCollection
-    //    where TRepositoryCollectionBase : RepositoryCollectionBase
-    //{
-    //    //var provider = services.BuildServiceProvider(); //TODO: Not allowed to do this, singletons will be strange.
-    //    //var mongoDbInstance = provider.GetService<IMongoDbInstance>();
-    //    var implementationType = typeof(TRepositoryCollectionBase);
-    //    var serviceType = typeof(TRepositoryCollection);
-
-    //    RegisterCollection(services, mongoDbInstance, serviceType, implementationType, "Direct");
-    //    return services;
-    //}
 
     internal static void RegisterCollection(this IServiceCollection services, IMongoDbInstance mongoDbInstance, Type serviceType, Type implementationType, string regTypeName)
     {

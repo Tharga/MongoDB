@@ -1,7 +1,10 @@
-﻿namespace Tharga.MongoDB;
+using System;
+
+namespace Tharga.MongoDB;
 
 public record IndexInfo
 {
-    public required IndexMeta[] Current { get; init; }
+    public IndexMeta[] Current { get; init; }
     public required IndexMeta[] Defined { get; init; }
+    public DateTime? UpdatedAt { get; init; }
 }

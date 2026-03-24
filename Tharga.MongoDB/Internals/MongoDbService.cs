@@ -12,7 +12,7 @@ using Tharga.MongoDB.Configuration;
 
 namespace Tharga.MongoDB.Internals;
 
-internal class MongoDbService : IMongoDbService
+internal class MongoDbService : IMongoDbServiceInternal
 {
     private readonly IRepositoryConfigurationInternal _configuration;
     private readonly IMongoDbFirewallStateService _mongoDbFirewallStateService;
@@ -117,27 +117,57 @@ internal class MongoDbService : IMongoDbService
         return _mongoDatabase.ListCollections().ToEnumerable().Select(x => x.AsBsonValue["name"].ToString());
     }
 
-    public async IAsyncEnumerable<CollectionMeta> GetCollectionsWithMetaAsync(string databaseName = null)
+    public async IAsyncEnumerable<CollectionMeta> GetCollectionsWithMetaAsync(string databaseName = null, string collectionNameFilter = null, bool includeDetails = true)
     {
         var mongoDatabase = string.IsNullOrEmpty(databaseName) ? _mongoDatabase : _mongoClient.GetDatabase(databaseName);
-        var collections = (await mongoDatabase.ListCollectionsAsync()).ToEnumerable();
+        ListCollectionsOptions options = null;
+        if (!string.IsNullOrEmpty(collectionNameFilter))
+            options = new ListCollectionsOptions { Filter = Builders<BsonDocument>.Filter.Eq("name", collectionNameFilter) };
+        IAsyncCursor<BsonDocument> collectionsCursor;
+        try
+        {
+            collectionsCursor = await mongoDatabase.ListCollectionsAsync(options);
+        }
+        catch (MongoWaitQueueFullException e)
+        {
+            e.Data["Configuration"] = _configuration.GetConfigurationName();
+            e.Data["Database"] = mongoDatabase.DatabaseNamespace.DatabaseName;
+            throw;
+        }
+        var collections = collectionsCursor.ToEnumerable();
+
+        var dbName = mongoDatabase.DatabaseNamespace.DatabaseName;
+        var server = ToServerName(dbName);
 
         foreach (var collection in collections)
         {
             var collectionName = collection["name"].AsString;
+
+            if (!includeDetails)
+            {
+                yield return new CollectionMeta
+                {
+                    ConfigurationName = _configuration.GetConfigurationName(),
+                    DatabaseName = dbName,
+                    CollectionName = collectionName,
+                    Server = server,
+                    DocumentCount = 0,
+                    Size = 0,
+                    Types = [],
+                    Indexes = [],
+                };
+                continue;
+            }
+
             var mongoCollection = mongoDatabase.GetCollection<BsonDocument>(collectionName);
 
-            var types = await mongoCollection
+            var typesTask = mongoCollection
                 .Distinct<string>("_t", FilterDefinition<BsonDocument>.Empty)
                 .ToListAsync();
+            var statsTask = mongoDatabase.RunCommandAsync<SizeResult>($"{{collstats: '{collectionName}'}}");
+            var indexTask = BuildIndicesModel(mongoCollection);
 
-            var documentCount = await mongoCollection.CountDocumentsAsync(FilterDefinition<BsonDocument>.Empty);
-            var size = GetSize(collectionName, mongoDatabase);
-
-            var indexModels = await BuildIndicesModel(mongoCollection);
-
-            var dbName = mongoDatabase.DatabaseNamespace.DatabaseName;
-            var server = ToServerName(dbName);
+            await Task.WhenAll(typesTask, statsTask, indexTask);
 
             yield return new CollectionMeta
             {
@@ -145,10 +175,10 @@ internal class MongoDbService : IMongoDbService
                 DatabaseName = dbName,
                 CollectionName = collectionName,
                 Server = server,
-                DocumentCount = documentCount,
-                Size = size,
-                Types = types.ToArray(),
-                Indexes = indexModels
+                DocumentCount = statsTask.Result.Count,
+                Size = statsTask.Result.Size,
+                Types = typesTask.Result.ToArray(),
+                Indexes = indexTask.Result
                     .Where(x => !x.Name.StartsWith("_id_"))
                     .ToArray(),
             };
@@ -167,7 +197,7 @@ internal class MongoDbService : IMongoDbService
             var isUnique = indexDoc.TryGetValue("unique", out var uniqueVal) && uniqueVal.AsBoolean;
             var keyDoc = indexDoc["key"].AsBsonDocument;
 
-            var fields = keyDoc.Names.ToArray();
+            var fields = keyDoc.Elements.Select(e => $"{e.Name}_{e.Value}").ToArray();
 
             indexModels.Add(new IndexMeta
             {
@@ -195,6 +225,41 @@ internal class MongoDbService : IMongoDbService
         var options = new ListCollectionNamesOptions { Filter = filter };
         var exists = await (await _mongoDatabase.ListCollectionNamesAsync(options)).AnyAsync();
         return exists;
+    }
+
+    public async Task<CleanInfo> ReadCleanInfoAsync(string databaseName, string collectionName)
+    {
+        var mongoDatabase = string.IsNullOrEmpty(databaseName) ? _mongoDatabase : _mongoClient.GetDatabase(databaseName);
+        var cleanCollection = mongoDatabase.GetCollection<BsonDocument>("_clean");
+        var filter = new BsonDocument("_id", collectionName);
+        var doc = await cleanCollection.Find(filter).SingleOrDefaultAsync();
+        if (doc == null) return null;
+
+        return new CleanInfo
+        {
+            SchemaFingerprint = doc.GetValue("SchemaFingerprint", "").AsString,
+            CleanedAt = doc.GetValue("CleanedAt", DateTime.MinValue).ToUniversalTime(),
+            DocumentsCleaned = doc.GetValue("DocumentsCleaned", 0).AsInt32
+        };
+    }
+
+    public async Task<Dictionary<string, CleanInfo>> ReadAllCleanInfoAsync(string databaseName)
+    {
+        var mongoDatabase = string.IsNullOrEmpty(databaseName) ? _mongoDatabase : _mongoClient.GetDatabase(databaseName);
+        var cleanCollection = mongoDatabase.GetCollection<BsonDocument>("_clean");
+        var docs = await cleanCollection.Find(FilterDefinition<BsonDocument>.Empty).ToListAsync();
+        var result = new Dictionary<string, CleanInfo>();
+        foreach (var doc in docs)
+        {
+            var id = doc.GetValue("_id").AsString;
+            result[id] = new CleanInfo
+            {
+                SchemaFingerprint = doc.GetValue("SchemaFingerprint", "").AsString,
+                CleanedAt = doc.GetValue("CleanedAt", DateTime.MinValue).ToUniversalTime(),
+                DocumentsCleaned = doc.GetValue("DocumentsCleaned", 0).AsInt32
+            };
+        }
+        return result;
     }
 
     public long GetSize(string collectionName, IMongoDatabase mongoDatabase = null)
@@ -230,9 +295,9 @@ internal class MongoDbService : IMongoDbService
         }
     }
 
-    public int? GetResultLimit()
+    public int? GetFetchSize()
     {
-        return _configuration.GetConfiguration().ResultLimit;
+        return _configuration.GetConfiguration().FetchSize;
     }
 
     public bool GetAutoClean()
@@ -267,11 +332,16 @@ internal class MongoDbService : IMongoDbService
         return dbs.Select(x => x.AsBsonValue["name"].ToString());
     }
 
+    public IMongoDatabase BaseMongoDatabase => _mongoDatabase;
+
     [BsonIgnoreExtraElements]
     // ReSharper disable once ClassNeverInstantiated.Local
     private record SizeResult
     {
         [BsonElement("size")]
         public long Size { get; init; }
+
+        [BsonElement("count")]
+        public long Count { get; init; }
     }
 }

@@ -187,8 +187,14 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
     {
         switch (deleteMode)
         {
-            case DeleteMode.Exception:
+            case DeleteMode.Unlocked:
+                return await Disk.DeleteManyAsync(UnlockedOrExpiredFilter.AndAlso(predicate ?? (_ => true)));
+            case DeleteMode.ExceptionOnly:
                 return await Disk.DeleteManyAsync(ExceptionFilter.AndAlso(predicate ?? (_ => true)));
+            case DeleteMode.LockedOnly:
+                return await Disk.DeleteManyAsync(LockedFilter.AndAlso(predicate ?? (_ => true)));
+            case DeleteMode.Any:
+                return await Disk.DeleteManyAsync(predicate ?? (_ => true));
             default:
                 throw new ArgumentOutOfRangeException(nameof(deleteMode), deleteMode, null);
         }
@@ -198,6 +204,18 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
     public override Task DropCollectionAsync()
     {
         return Disk.DropCollectionAsync();
+    }
+
+    public override Task<T> ExecuteAsync<T>(Func<IMongoCollection<TEntity>, Task<T>> execute, Operation operation)
+    {
+        if (operation != Operation.Read) throw new InvalidOperationException($"Only operation {nameof(Operation.Read)} is allowed for lockable repository collections.");
+        return Disk.ExecuteAsync(execute, operation);
+    }
+
+    public override Task<T> ExecuteAsync<T>(Func<IMongoCollection<TEntity>, CancellationToken, Task<T>> execute, Operation operation, CancellationToken cancellationToken)
+    {
+        if (operation != Operation.Read) throw new InvalidOperationException($"Only operation {nameof(Operation.Read)} is allowed for lockable repository collections.");
+        return Disk.ExecuteAsync(execute, operation, cancellationToken);
     }
 
     public override IAsyncEnumerable<TEntity> GetDirtyAsync()
@@ -228,6 +246,16 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
     internal override Task CleanAsync(IMongoCollection<TEntity> collection)
     {
         return Disk.CleanAsync(collection);
+    }
+
+    internal override Task<CleanInfo> CleanCollectionAsync(IMongoCollection<TEntity> collection, bool cleanGuids)
+    {
+        return Disk.CleanCollectionAsync(collection, cleanGuids);
+    }
+
+    internal override Task<CleanInfo> GetCleanInfoAsync()
+    {
+        return Disk.GetCleanInfoAsync();
     }
 
     //Lock
@@ -438,7 +466,7 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
                     Builders<TEntity>.Filter.Ne(x => x.Lock.ExceptionInfo, null)
                 );
                 break;
-            case ReleaseMode.LockOnly:
+            case ReleaseMode.LockedOnly:
                 filter = Builders<TEntity>.Filter.And(
                     Builders<TEntity>.Filter.Ne(x => x.Lock, null),
                     Builders<TEntity>.Filter.Eq(x => x.Lock.ExceptionInfo, null)
@@ -615,14 +643,14 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
     {
         if (commit && exception != null) throw new ArgumentException("Cannot commit entity when there is an exception.");
 
-        var lockTime = DateTime.UtcNow - entityLock.ExpireTime;
+        var lockTime = DateTime.UtcNow - entityLock.LockTime;
         var timeout = entityLock.ExpireTime - entityLock.LockTime;
         var lockInfo = BuildLockInfo(entityLock, exception);
         var expired = lockTime > timeout;
 
         if ((commit || exception != null) && expired)
         {
-            throw new LockExpiredException($"Entity of type {typeof(TEntity).Name} was locked for {lockTime} instead of {timeout}.");
+            throw new LockExpiredException($"Too late to release entity of type {typeof(TEntity).Name} locked by {entityLock.Actor}.", timeout, lockTime);
         }
 
         EntityChangeResult<TEntity> result;

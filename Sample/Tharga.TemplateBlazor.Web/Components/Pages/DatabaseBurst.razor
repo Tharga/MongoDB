@@ -1,0 +1,43 @@
+﻿@page "/database/burst"
+@using System.Diagnostics
+@using Tharga.Blazor.Framework.Buttons
+@using Tharga.TemplateBlazor.Web.Features.Weather
+@attribute [StreamRendering]
+@inject IWeatherRepository WeatherRepository
+
+<RadzenNumeric @bind-Value="_count" />
+<StandardButton Text="Burst Read" Click="BurstRead" />
+
+<ul>
+    @foreach (var item in _list)
+    {
+        <li>@item</li>
+    }
+</ul>
+
+@code {
+    private int _count = 10;
+    private readonly  List<string> _list = new();
+    private int _index;
+
+    private async Task BurstRead()
+    {
+        var count = _count;
+        var index = _index++;
+        var sw = new Stopwatch();
+        sw.Start();
+
+        var ts = new List<Task>();
+        for (var i = 0; i < count; i++)
+        {
+            var t = Task.Run(async () => await WeatherRepository.GetAsync().ToArrayAsync());
+            ts.Add(t);
+        }
+
+        _list.Add($"{index} {DateTime.Now}: {count} queries sent.");
+        await Task.WhenAll(ts);
+        sw.Stop();
+        _list.Add($"{index} {DateTime.Now}: {count} queries completed. It took {sw.Elapsed.TotalSeconds:N0} seconds.");
+    }
+
+}

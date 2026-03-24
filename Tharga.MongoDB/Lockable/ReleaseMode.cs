@@ -3,6 +3,6 @@
 public enum ReleaseMode
 {
     ExceptionOnly,
-    LockOnly,
+    LockedOnly,
     Any
 }
