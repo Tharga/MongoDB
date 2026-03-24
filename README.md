@@ -78,6 +78,35 @@ The framework is based on *repositories* and *collections* and the *entity* to b
 
 The repositories and collections are registered in the IOC automatically.
 
+#### Auto-registration scope
+By default, `AddMongoDB()` scans assemblies whose name starts with the same prefix as your entry-point assembly (via `AssemblyService.GetAssemblies()`).
+This means repositories and collections defined in **external NuGet packages** (e.g. `Tharga.Team.Service`) are **not** discovered automatically.
+
+To include an external assembly, call `AddAutoRegistrationAssembly()`:
+```csharp
+builder.Services.AddMongoDB(o =>
+{
+    o.AddAutoRegistrationAssembly(typeof(SomeTypeFromPackage).Assembly);
+});
+```
+
+You can also replace the default scan entirely:
+```csharp
+builder.Services.AddMongoDB(o =>
+{
+    o.AutoRegistrationAssemblies = AssemblyService.GetAssemblies<Program>();
+    o.AddAutoRegistrationAssembly(typeof(SomeTypeFromPackage).Assembly);
+});
+```
+
+**For NuGet package authors:** if your package ships MongoDB collections, either document that consumers must call `AddAutoRegistrationAssembly()`, or handle it inside your own registration method (see `Tharga.Cache.MongoDB` for an example):
+```csharp
+public static void AddMyFeature(this DatabaseOptions options)
+{
+    options.AddAutoRegistrationAssembly(Assembly.GetAssembly(typeof(MyMarkerType)));
+}
+```
+
 The pattern is built up like this.
 The *repository* holds the *collection* inside.
 The *repository* exposes the functions, that you create, protecting any operation to be used directly.

@@ -44,9 +44,10 @@ public record DatabaseOptions
     public IEnumerable<CollectionType> RegisterCollections { get; set; }
 
     /// <summary>
-    /// Assemblies that starts with the same name are registered automatically. (IE. namespace "[same name].[other parts]")
-    /// Classes that implements IRepository and IRepositoryCollection will be registered.
-    /// Override the list of assemblies where automatic registration should be done.
+    /// Override the list of assemblies scanned for automatic registration of IRepository and IRepositoryCollection.
+    /// By default, only assemblies whose name starts with the same prefix as the entry-point assembly are scanned.
+    /// Assemblies from external NuGet packages are NOT included by default — use <see cref="AddAutoRegistrationAssembly"/>
+    /// to add them without replacing the default scan.
     /// </summary>
     public IEnumerable<Assembly> AutoRegistrationAssemblies { get; set; }
 
