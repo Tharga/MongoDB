@@ -149,7 +149,9 @@ internal class DatabaseMonitor : IDatabaseMonitor
                             _cache.AddOrUpdate(e.Fingerprint.Key,
                                 addFactory: _ =>
                                 {
-                                    var entry = BuildInitialEntry(e.Fingerprint, meta.Server, null, null);
+                                    _cache.TryGet(e.Fingerprint.Key, out var prev);
+                                    var entityTypeName = prev?.EntityTypes?.FirstOrDefault();
+                                    var entry = BuildInitialEntry(e.Fingerprint, meta.Server, prev?.DatabasePart, entityTypeName);
                                     return entry with { Index = BuildIndexInfo(entry, meta.Indexes) };
                                 },
                                 updateFactory: (_, existing) =>
@@ -721,7 +723,10 @@ internal class DatabaseMonitor : IDatabaseMonitor
                     DatabaseName = meta.DatabaseName,
                     CollectionName = meta.CollectionName
                 };
-                var entry = BuildInitialEntry(fp, meta.Server, null, null) with { Clean = cleanInfo };
+                // Try to recover entity type from persisted cache so dynamic collections keep their defined indices
+                _cache.TryGet(key, out var persisted);
+                var entityTypeName = persisted?.EntityTypes?.FirstOrDefault();
+                var entry = BuildInitialEntry(fp, meta.Server, persisted?.DatabasePart, entityTypeName) with { Clean = cleanInfo };
                 _cache.Set(key, entry);
                 yield return entry;
             }
