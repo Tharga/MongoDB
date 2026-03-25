@@ -8,7 +8,12 @@
 Install the nuget package `Tharga.MongoDB`. It is available at [nuget.org](#https://www.nuget.org/packages/Tharga.MongoDB).
 
 Add *MongoDB* usage to services.
+```csharp
+builder.AddMongoDB();
 ```
+
+Or, if you only have access to `IServiceCollection`:
+```csharp
 builder.Services.AddMongoDB();
 ```
 
