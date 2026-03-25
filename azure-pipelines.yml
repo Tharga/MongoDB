@@ -8,7 +8,7 @@ pool:
 variables:
   buildPlatform: 'Any CPU'
   buildConfiguration: 'Release'
-  majorMinor: '2.8'
+  majorMinor: '2.9'
 
 stages:
 - stage: Build
@@ -132,7 +132,7 @@ stages:
 - stage: Release
   displayName: Release
   dependsOn: Build
-  #condition: and(succeeded(), eq(variables['Build.SourceBranchName'], 'master')) #Exclude this line to push prereleases to github.
+  condition: and(succeeded(), eq(variables['Build.SourceBranchName'], 'master')) #Exclude this line to push prereleases to github.
   jobs:
 
   - job: Release
