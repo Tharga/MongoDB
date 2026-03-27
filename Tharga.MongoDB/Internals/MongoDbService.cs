@@ -97,6 +97,11 @@ internal class MongoDbService : IMongoDbServiceInternal
         return _mongoClient.Settings.MaxConnectionPoolSize;
     }
 
+    public string GetServerKey()
+    {
+        return MongoDbClientProvider.GetServerKey(_mongoUrl);
+    }
+
     public string GetDatabaseHostName()
     {
         return _mongoClient.Settings.Server.Host;
