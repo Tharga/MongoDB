@@ -40,7 +40,6 @@ public static class MongoDbRegistrationExtensions
             DefaultConfigurationName = c?.DefaultConfigurationName ?? Constants.DefaultConfigurationName,
             AutoRegisterRepositories = c?.AutoRegisterRepositories ?? Constants.AutoRegisterRepositoriesDefault,
             AutoRegisterCollections = c?.AutoRegisterCollections ?? Constants.AutoRegisterCollectionsDefault,
-            ExecuteInfoLogLevel = c?.ExecuteInfoLogLevel ?? LogLevel.Debug,
             GuidStorageFormat = c?.GuidStorageFormat ?? new DatabaseOptions().GuidStorageFormat,
             AssureIndex = c?.AssureIndex ?? AssureIndexMode.ByName,
             Monitor = new MonitorOptions

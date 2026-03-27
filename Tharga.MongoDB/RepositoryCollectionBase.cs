@@ -33,8 +33,6 @@ public abstract class RepositoryCollectionBase<TEntity, TKey> : RepositoryCollec
     protected readonly ILogger<RepositoryCollectionBase<TEntity, TKey>> _logger;
     protected readonly DatabaseContext _databaseContext;
     protected readonly IMongoDbService _mongoDbService;
-    protected readonly LogLevel _executeInfoLogLevel;
-
     private readonly Lazy<ActionEventArgs.ContextData> _contextData;
 
     protected RepositoryCollectionBase(IMongoDbServiceFactory mongoDbServiceFactory, ILogger<RepositoryCollectionBase<TEntity, TKey>> logger, DatabaseContext databaseContext = null)
@@ -45,8 +43,6 @@ public abstract class RepositoryCollectionBase<TEntity, TKey> : RepositoryCollec
 
         _mongoDbService = mongoDbServiceFactory.GetMongoDbService(() => _databaseContext ?? new DatabaseContext { CollectionName = CollectionName, DatabasePart = DatabasePart, ConfigurationName = ConfigurationName });
         _contextData = new Lazy<ActionEventArgs.ContextData>(BuildContextData);
-
-        _executeInfoLogLevel = _mongoDbService.GetExecuteInfoLogLevel();
     }
 
     internal virtual IRepositoryCollection<TEntity, TKey> BaseCollection => this;

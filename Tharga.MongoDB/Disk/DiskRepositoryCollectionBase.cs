@@ -179,7 +179,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             };
 
             var details = System.Text.Json.JsonSerializer.Serialize(data);
-            _logger?.LogInformation("Measured {Action} in {Elapsed} ms. {Details} [{steps}]", $"MongoDB.{CollectionName}.{functionName}", elapsed, details, ss);
+            _logger?.LogDebug("Measured {Action} in {Elapsed} ms. {Details} [{steps}]", $"MongoDB.{CollectionName}.{functionName}", elapsed, details, ss);
         }
     }
 
@@ -1330,7 +1330,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             .Where(x => !x.StartsWith("_id_"))
             .ToArray();
 
-        _logger?.Log(_executeInfoLogLevel, "Assure index for collection {collection} with {count} documents.", ProtectedCollectionName, await collection.CountDocumentsAsync(x => true));
+        _logger?.LogDebug("Assure index for collection {collection} with {count} documents.", ProtectedCollectionName, await collection.CountDocumentsAsync(x => true));
         _logger?.LogTrace("All existing indices in collection {collection}: {indices}.", ProtectedCollectionName, string.Join(", ", allExistingIndexNames));
         _logger?.LogDebug("Existing, non system, indices in collection {collection}: {indices}.", ProtectedCollectionName, string.Join(", ", existingIndexNames));
         _logger?.LogDebug("Defined indices for collection {collection}: {indices}.", ProtectedCollectionName, string.Join(", ", indices.Select(x => x.Options.Name)));

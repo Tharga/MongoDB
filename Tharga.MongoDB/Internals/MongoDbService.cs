@@ -77,11 +77,6 @@ internal class MongoDbService : IMongoDbServiceInternal
         return message;
     }
 
-    public LogLevel GetExecuteInfoLogLevel()
-    {
-        return _configuration?.GetExecuteInfoLogLevel() ?? LogLevel.Debug;
-    }
-
     public AssureIndexMode GetAssureIndexMode()
     {
         return _configuration?.GetAssureIndexMode() ?? AssureIndexMode.ByName;
