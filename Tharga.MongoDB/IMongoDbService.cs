@@ -30,6 +30,5 @@ public interface IMongoDbService
     bool GetCleanOnStartup();
     CreateStrategy CreateCollectionStrategy();
     ValueTask<string> AssureFirewallAccessAsync(bool force = false);
-    LogLevel GetExecuteInfoLogLevel();
     AssureIndexMode GetAssureIndexMode();
 }

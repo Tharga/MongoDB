@@ -21,7 +21,7 @@
 - **Date:** 2026-03-27
 - **Priority:** High
 - **Description:** The `Measured MongoDB.*` trace in `DiskRepositoryCollectionBase` line 182 is hardcoded as `LogInformation`. This logs every single MongoDB operation with full timing details, producing ~57k entries per 2 hours in production — flooding Application Insights and burying real issues. **Fix:** Change the `Measured` trace to `LogDebug` or `LogTrace` so it's silent by default and only visible when explicitly enabled. Also mark `DatabaseOptions.ExecuteInfoLogLevel` as `[Obsolete]` — it only controls one unrelated log line (index assurance) and is redundant with standard .NET log level filtering (`"Tharga.MongoDB": "Warning"` in appsettings). Consumers currently need to add explicit namespace filters to suppress the noise; the library should be quiet by default.
-- **Status:** Pending
+- **Status:** Done (2026-03-27) — Removed ExecuteInfoLogLevel entirely; changed Measured and Assure index logs to LogDebug
 
 ### Publish Tharga.MongoDB with IHostApplicationBuilder overload
 - **From:** Tharga.Starter (`c:\dev\tharga\Starter`)
