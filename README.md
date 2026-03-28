@@ -425,6 +425,48 @@ services.AddMongoDB(o =>
 Call `IDatabaseMonitor.ResetAsync()` to clear all cached monitor state (both in-memory and persisted).
 The Blazor admin UI (`CollectionView`) includes a Reset button that triggers this.
 
+### REST API integration
+The monitor exposes API-friendly methods that return JSON-serializable DTOs.
+Wire them to your endpoints with minimal code:
+
+```csharp
+// Slow calls with timing, filter, and step breakdown
+app.MapGet("/api/monitor/slow-calls", (IDatabaseMonitor m) => m.GetCallDtos(CallType.Slow));
+
+// Recent calls
+app.MapGet("/api/monitor/recent-calls", (IDatabaseMonitor m) => m.GetCallDtos(CallType.Last));
+
+// Call summary grouped by collection+function (find chatty or slow patterns)
+app.MapGet("/api/monitor/call-summary", (IDatabaseMonitor m) => m.GetCallSummary());
+
+// Error summary grouped by exception type and collection
+app.MapGet("/api/monitor/errors", (IDatabaseMonitor m) => m.GetErrorSummary());
+
+// Slow calls with index coverage info (find missing indices)
+app.MapGet("/api/monitor/slow-calls-index", async (IDatabaseMonitor m) =>
+    await m.GetSlowCallsWithIndexInfoAsync().ToListAsync());
+
+// Explain plan for a specific call
+app.MapGet("/api/monitor/explain/{callKey}", (IDatabaseMonitor m, Guid callKey) =>
+    m.GetExplainAsync(callKey));
+
+// Call counts per collection
+app.MapGet("/api/monitor/call-counts", (IDatabaseMonitor m) => m.GetCallCounts());
+
+// Connection pool state (queue depth, executing count, wait time)
+app.MapGet("/api/monitor/pool", (IDatabaseMonitor m) => m.GetConnectionPoolState());
+```
+
+| Method | Returns | Use case |
+|---|---|---|
+| `GetCallDtos(CallType)` | `CallDto[]` | Serializable call data with filter, steps, timing |
+| `GetExplainAsync(Guid)` | `string` | MongoDB explain plan for a specific call |
+| `GetCallCounts()` | `Dictionary<string, int>` | Call frequency per collection |
+| `GetCallSummary()` | `CallSummaryDto[]` | Grouped by collection+function: count, avg/max/min elapsed |
+| `GetErrorSummary()` | `ErrorSummaryDto[]` | Errors grouped by type and collection |
+| `GetSlowCallsWithIndexInfoAsync()` | `SlowCallWithIndexInfoDto[]` | Slow calls with index coverage analysis |
+| `GetConnectionPoolState()` | `ConnectionPoolStateDto` | Queue depth, executing count, wait time, recent metrics |
+
 ---
 
 ## Execute Limiter
