@@ -427,6 +427,41 @@ The Blazor admin UI (`CollectionView`) includes a Reset button that triggers thi
 
 ---
 
+## Execute Limiter
+The built-in execute limiter queues database operations to prevent exhausting the MongoDB connection pool.
+By default it is enabled and automatically sizes itself to `MaxConnectionPoolSize` from the MongoDB driver — no configuration needed.
+
+Operations sharing the same connection pool (i.e. the same set of servers) share a single queue, regardless of how many configuration names point to that cluster.
+
+### Configuration by `appsettings.json`
+```json
+"MongoDB": {
+  "Limiter": {
+    "Enabled": true,
+    "MaxConcurrent": 50
+  }
+}
+```
+
+### Configuration by code
+```csharp
+builder.AddMongoDB(o =>
+{
+    o.Limiter = new ExecuteLimiterOptions
+    {
+        Enabled = true,
+        MaxConcurrent = 50
+    };
+});
+```
+
+| Setting | Default | Description |
+|---|---|---|
+| `Enabled` | `true` | Enable or disable the limiter. |
+| `MaxConcurrent` | `null` (auto) | Maximum concurrent operations per connection pool. When `null`, auto-detected from `MaxConnectionPoolSize`. Capped at the pool size even if set higher — a warning is logged in that case. |
+
+---
+
 ## MongoDB Result Limit
 It is possible to se t a hard limit for the number of documents returned. If the limit is reached `ResultLimitException` is thrown.
 For large result-sets, use the method `GetPageAsync` to get the `ResultLimit` on each page of the result.

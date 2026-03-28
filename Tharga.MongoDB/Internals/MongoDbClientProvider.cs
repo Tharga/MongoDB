@@ -29,7 +29,7 @@ internal class MongoDbClientProvider : IMongoDbClientProvider
         return lazyClient.Value;
     }
 
-    string GetServerKey(MongoUrl url)
+    internal static string GetServerKey(MongoUrl url)
     {
         return string.Join(",", url.Servers.Select(s => s.ToString()).OrderBy(x => x));
     }

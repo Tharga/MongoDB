@@ -126,7 +126,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                 if (operation == Operation.Delete) await DropEmptyAsync(collection);
 
                 return response;
-            }, $"MongoDB.{ConfigurationName ?? Constants.DefaultConfigurationName}", cancellationToken);
+            }, _mongoDbService.GetServerKey(), _mongoDbService.GetMaxConnectionPoolSize(), cancellationToken);
 
             count = response.Result.Count;
             return response.Result.Data;

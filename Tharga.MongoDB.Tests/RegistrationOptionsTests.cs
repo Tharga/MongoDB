@@ -96,13 +96,13 @@ public class RegistrationOptionsTests
     }
 
     [Fact]
-    public void Limiter_NoConfiguration_DefaultsTo20()
+    public void Limiter_NoConfiguration_DefaultsToNull()
     {
         var provider = Register(BuildConfig());
 
         var result = provider.GetRequiredService<IOptions<ExecuteLimiterOptions>>().Value;
 
-        result.MaxConcurrent.Should().Be(20);
+        result.MaxConcurrent.Should().BeNull();
     }
 
     [Fact]
