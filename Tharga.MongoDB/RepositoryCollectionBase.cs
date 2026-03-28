@@ -80,6 +80,12 @@ public abstract class RepositoryCollectionBase<TEntity, TKey> : RepositoryCollec
 
     public abstract Task<long> CountAsync(Expression<Func<TEntity, bool>> predicate, CancellationToken cancellationToken = default);
     public abstract Task<long> CountAsync(FilterDefinition<TEntity> filter, CancellationToken cancellationToken = default);
+    public abstract Task<long> EstimatedCountAsync(CancellationToken cancellationToken = default);
+
+    public abstract Task<decimal> SumAsync(Expression<Func<TEntity, decimal>> field, Expression<Func<TEntity, bool>> predicate = null, CancellationToken cancellationToken = default);
+    public abstract Task<decimal> AvgAsync(Expression<Func<TEntity, decimal>> field, Expression<Func<TEntity, bool>> predicate = null, CancellationToken cancellationToken = default);
+    public abstract Task<TField> MinAsync<TField>(Expression<Func<TEntity, TField>> field, Expression<Func<TEntity, bool>> predicate = null, CancellationToken cancellationToken = default);
+    public abstract Task<TField> MaxAsync<TField>(Expression<Func<TEntity, TField>> field, Expression<Func<TEntity, bool>> predicate = null, CancellationToken cancellationToken = default);
 
     public abstract Task<long> GetSizeAsync(CancellationToken cancellationToken = default);
 

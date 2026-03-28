@@ -518,6 +518,93 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         }, Operation.Read, cancellationToken, filter);
     }
 
+    public override async Task<long> EstimatedCountAsync(CancellationToken cancellationToken = default)
+    {
+        return await ExecuteAsync(nameof(EstimatedCountAsync), async (collection, ct) =>
+        {
+            var count = await collection.EstimatedDocumentCountAsync(cancellationToken: ct);
+            return (count, (int)count);
+        }, Operation.Read, cancellationToken);
+    }
+
+    public override async Task<decimal> SumAsync(Expression<Func<TEntity, decimal>> field, Expression<Func<TEntity, bool>> predicate = null, CancellationToken cancellationToken = default)
+    {
+        var filter = predicate == null ? FilterDefinition<TEntity>.Empty : new ExpressionFilterDefinition<TEntity>(predicate);
+        return await ExecuteAsync(nameof(SumAsync), async (collection, ct) =>
+        {
+            var fieldName = GetFieldName(field, collection);
+            var pipeline = BuildAggregationPipeline(filter, new BsonDocument("$sum", "$" + fieldName));
+            var result = await collection.Aggregate<BsonDocument>(pipeline, cancellationToken: ct).FirstOrDefaultAsync(ct);
+            var value = result?["result"].ToDecimal() ?? 0m;
+            return (value, 1);
+        }, Operation.Read, cancellationToken, filter);
+    }
+
+    public override async Task<decimal> AvgAsync(Expression<Func<TEntity, decimal>> field, Expression<Func<TEntity, bool>> predicate = null, CancellationToken cancellationToken = default)
+    {
+        var filter = predicate == null ? FilterDefinition<TEntity>.Empty : new ExpressionFilterDefinition<TEntity>(predicate);
+        return await ExecuteAsync(nameof(AvgAsync), async (collection, ct) =>
+        {
+            var fieldName = GetFieldName(field, collection);
+            var pipeline = BuildAggregationPipeline(filter, new BsonDocument("$avg", "$" + fieldName));
+            var result = await collection.Aggregate<BsonDocument>(pipeline, cancellationToken: ct).FirstOrDefaultAsync(ct);
+            var value = result?["result"].ToDecimal() ?? 0m;
+            return (value, 1);
+        }, Operation.Read, cancellationToken, filter);
+    }
+
+    public override async Task<TField> MinAsync<TField>(Expression<Func<TEntity, TField>> field, Expression<Func<TEntity, bool>> predicate = null, CancellationToken cancellationToken = default)
+    {
+        var filter = predicate == null ? FilterDefinition<TEntity>.Empty : new ExpressionFilterDefinition<TEntity>(predicate);
+        return await ExecuteAsync(nameof(MinAsync), async (collection, ct) =>
+        {
+            var fieldName = GetFieldName(field, collection);
+            var pipeline = BuildAggregationPipeline(filter, new BsonDocument("$min", "$" + fieldName));
+            var result = await collection.Aggregate<BsonDocument>(pipeline, cancellationToken: ct).FirstOrDefaultAsync(ct);
+            var value = result != null ? BsonSerializer.Deserialize<TField>(result["result"].ToJson()) : default;
+            return (value, 1);
+        }, Operation.Read, cancellationToken, filter);
+    }
+
+    public override async Task<TField> MaxAsync<TField>(Expression<Func<TEntity, TField>> field, Expression<Func<TEntity, bool>> predicate = null, CancellationToken cancellationToken = default)
+    {
+        var filter = predicate == null ? FilterDefinition<TEntity>.Empty : new ExpressionFilterDefinition<TEntity>(predicate);
+        return await ExecuteAsync(nameof(MaxAsync), async (collection, ct) =>
+        {
+            var fieldName = GetFieldName(field, collection);
+            var pipeline = BuildAggregationPipeline(filter, new BsonDocument("$max", "$" + fieldName));
+            var result = await collection.Aggregate<BsonDocument>(pipeline, cancellationToken: ct).FirstOrDefaultAsync(ct);
+            var value = result != null ? BsonSerializer.Deserialize<TField>(result["result"].ToJson()) : default;
+            return (value, 1);
+        }, Operation.Read, cancellationToken, filter);
+    }
+
+    private static PipelineDefinition<TEntity, BsonDocument> BuildAggregationPipeline(FilterDefinition<TEntity> filter, BsonDocument accumulator)
+    {
+        var stages = new List<IPipelineStageDefinition>();
+
+        if (filter != FilterDefinition<TEntity>.Empty)
+        {
+            stages.Add(PipelineStageDefinitionBuilder.Match(filter));
+        }
+
+        stages.Add(new BsonDocumentPipelineStageDefinition<TEntity, BsonDocument>(
+            new BsonDocument("$group", new BsonDocument
+            {
+                { "_id", BsonNull.Value },
+                { "result", accumulator }
+            })));
+
+        return new PipelineStagePipelineDefinition<TEntity, BsonDocument>(stages);
+    }
+
+    private static string GetFieldName<TField>(Expression<Func<TEntity, TField>> field, IMongoCollection<TEntity> collection)
+    {
+        var renderArgs = new RenderArgs<TEntity>(collection.DocumentSerializer, collection.Settings.SerializerRegistry);
+        var fieldDefinition = new ExpressionFieldDefinition<TEntity, TField>(field);
+        return fieldDefinition.Render(renderArgs).FieldName;
+    }
+
     public override async Task<long> GetSizeAsync(CancellationToken cancellationToken = default)
     {
         return await ExecuteAsync(nameof(GetSizeAsync), (_, _) => Task.FromResult((_mongoDbService.GetSize(ProtectedCollectionName), 1)),Operation.Read, cancellationToken);
