@@ -18,6 +18,7 @@ internal class ExecuteLimiter : IExecuteLimiter, IQueueMonitor
     private readonly int? _maxConcurrentOverride;
 
     private readonly ConcurrentDictionary<string, PerPoolState> _states = new();
+    private readonly ConcurrentDictionary<string, bool> _warnedServerKeys = new();
     private readonly ConcurrentQueue<QueueMetricEventArgs> _metrics = new();
 
     // Atomic state for polling
@@ -45,6 +46,14 @@ internal class ExecuteLimiter : IExecuteLimiter, IQueueMonitor
         var maxConcurrent = _maxConcurrentOverride.HasValue
             ? Math.Min(_maxConcurrentOverride.Value, maxConnectionPoolSize)
             : maxConnectionPoolSize;
+
+        if (_maxConcurrentOverride.HasValue && _maxConcurrentOverride.Value > maxConnectionPoolSize
+            && _warnedServerKeys.TryAdd(serverKey, true))
+        {
+            _logger?.LogWarning("Configured MaxConcurrent ({configured}) exceeds MaxConnectionPoolSize ({poolSize}) for {serverKey}. Capping at {poolSize}.",
+                _maxConcurrentOverride.Value, maxConnectionPoolSize, serverKey, maxConnectionPoolSize);
+        }
+
         var state = _states.GetOrAdd(serverKey, _ => new PerPoolState(maxConcurrent));
 
         var queuedAt = Stopwatch.GetTimestamp();
