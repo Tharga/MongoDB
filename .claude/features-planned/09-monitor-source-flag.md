@@ -17,7 +17,7 @@ Tag all monitoring data (calls, collections, events) with a source identifier so
 - [ ] All monitoring data includes a source identifier
 - [ ] Source is configurable via `AddMongoDB(o => o.Monitor.SourceName = "MyService")`
 - [ ] Blazor components display source and allow filtering by it
-- [ ] Defaults work without configuration (e.g. uses assembly name)
+- [ ] Defaults work without configuration (e.g. uses `{MachineName}/{AssemblyName}`)
 - [ ] Tests cover source tagging
 
 ## Done Condition
