@@ -42,7 +42,9 @@ internal class ExecuteLimiter : IExecuteLimiter, IQueueMonitor
             return (result, new ExecuteInfo { QueueElapsed = TimeSpan.Zero, ConcurrentCount = 0, QueueCount = 0 });
         }
 
-        var maxConcurrent = _maxConcurrentOverride ?? maxConnectionPoolSize;
+        var maxConcurrent = _maxConcurrentOverride.HasValue
+            ? Math.Min(_maxConcurrentOverride.Value, maxConnectionPoolSize)
+            : maxConnectionPoolSize;
         var state = _states.GetOrAdd(serverKey, _ => new PerPoolState(maxConcurrent));
 
         var queuedAt = Stopwatch.GetTimestamp();
