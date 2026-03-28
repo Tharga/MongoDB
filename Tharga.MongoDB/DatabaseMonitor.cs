@@ -24,6 +24,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
     private readonly ILogger<DatabaseMonitor> _logger;
     private readonly DatabaseOptions _options;
     private readonly ICollectionCache _cache;
+    private readonly IQueueMonitor _queueMonitor;
     private Dictionary<(string, string), StatColInfo> _staticLookup;
     private Dictionary<string, DynColInfo> _dynamicLookup;
     private readonly SemaphoreSlim _lookupLock = new(1, 1);
@@ -32,7 +33,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
     public event EventHandler<CollectionInfoChangedEventArgs> CollectionInfoChangedEvent;
     public event EventHandler<CollectionDroppedEventArgs> CollectionDroppedEvent;
 
-    public DatabaseMonitor(IMongoDbServiceFactory mongoDbServiceFactory, IMongoDbInstance mongoDbInstance, IServiceProvider serviceProvider, IRepositoryConfiguration repositoryConfiguration, ICollectionProvider collectionProvider, ICallLibrary callLibrary, ICollectionCache cache, IOptions<DatabaseOptions> options, ILogger<DatabaseMonitor> logger)
+    public DatabaseMonitor(IMongoDbServiceFactory mongoDbServiceFactory, IMongoDbInstance mongoDbInstance, IServiceProvider serviceProvider, IRepositoryConfiguration repositoryConfiguration, ICollectionProvider collectionProvider, ICallLibrary callLibrary, ICollectionCache cache, IQueueMonitor queueMonitor, IOptions<DatabaseOptions> options, ILogger<DatabaseMonitor> logger)
     {
         _mongoDbServiceFactory = mongoDbServiceFactory;
         _mongoDbInstance = mongoDbInstance;
@@ -41,6 +42,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
         _collectionProvider = collectionProvider;
         _callLibrary = callLibrary;
         _cache = cache;
+        _queueMonitor = queueMonitor;
         _logger = logger;
         _options = options.Value;
     }
@@ -511,6 +513,156 @@ internal class DatabaseMonitor : IDatabaseMonitor
     public void ResetCalls()
     {
         _callLibrary.ResetCalls();
+    }
+
+    // --- API-friendly methods ---
+
+    public IEnumerable<CallDto> GetCallDtos(CallType callType)
+    {
+        return GetCalls(callType).Select(ToCallDto);
+    }
+
+    public async Task<string> GetExplainAsync(Guid callKey, CancellationToken cancellationToken = default)
+    {
+        if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
+
+        var call = _callLibrary.GetCall(callKey);
+        if (call?.ExplainProvider == null) return null;
+        return await call.ExplainProvider(cancellationToken);
+    }
+
+    public IReadOnlyDictionary<string, int> GetCallCounts()
+    {
+        if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
+
+        return _callLibrary.GetCallCounts();
+    }
+
+    public IEnumerable<CallSummaryDto> GetCallSummary()
+    {
+        if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
+
+        return _callLibrary.GetLastCalls()
+            .Where(c => c.Elapsed.HasValue)
+            .GroupBy(c => (c.Fingerprint.ConfigurationName.Value, c.Fingerprint.DatabaseName, c.Fingerprint.CollectionName, c.FunctionName))
+            .Select(g =>
+            {
+                var elapsed = g.Select(c => c.Elapsed.Value.TotalMilliseconds).ToArray();
+                return new CallSummaryDto
+                {
+                    ConfigurationName = g.Key.Value,
+                    DatabaseName = g.Key.DatabaseName,
+                    CollectionName = g.Key.CollectionName,
+                    FunctionName = g.Key.FunctionName,
+                    CallCount = elapsed.Length,
+                    AvgElapsedMs = elapsed.Average(),
+                    MaxElapsedMs = elapsed.Max(),
+                    MinElapsedMs = elapsed.Min(),
+                    TotalElapsedMs = elapsed.Sum()
+                };
+            })
+            .OrderByDescending(x => x.TotalElapsedMs);
+    }
+
+    public IEnumerable<ErrorSummaryDto> GetErrorSummary()
+    {
+        if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
+
+        return _callLibrary.GetLastCalls()
+            .Where(c => c.Exception != null)
+            .GroupBy(c => (c.Fingerprint.ConfigurationName.Value, c.Fingerprint.DatabaseName, c.Fingerprint.CollectionName, ExceptionType: c.Exception.GetType().Name))
+            .Select(g => new ErrorSummaryDto
+            {
+                ConfigurationName = g.Key.Value,
+                DatabaseName = g.Key.DatabaseName,
+                CollectionName = g.Key.CollectionName,
+                ExceptionType = g.Key.ExceptionType,
+                Message = g.First().Exception.Message,
+                Count = g.Count(),
+                LastOccurrence = g.Max(c => c.StartTime)
+            })
+            .OrderByDescending(x => x.Count);
+    }
+
+    public async IAsyncEnumerable<SlowCallWithIndexInfoDto> GetSlowCallsWithIndexInfoAsync()
+    {
+        if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
+
+        var slowCalls = _callLibrary.GetSlowCalls().ToArray();
+
+        foreach (var call in slowCalls)
+        {
+            string[] definedIndexNames = [];
+            var hasCoverage = false;
+
+            try
+            {
+                var instance = await GetInstanceAsync(call.Fingerprint);
+                if (instance?.Index?.Defined != null)
+                {
+                    definedIndexNames = instance.Index.Defined.Select(x => x.Name).ToArray();
+                    hasCoverage = definedIndexNames.Length > 0;
+                }
+            }
+            catch
+            {
+                // Collection may no longer exist
+            }
+
+            yield return new SlowCallWithIndexInfoDto
+            {
+                Call = ToCallDto(call),
+                DefinedIndexNames = definedIndexNames,
+                HasPotentialIndexCoverage = hasCoverage
+            };
+        }
+    }
+
+    public ConnectionPoolStateDto GetConnectionPoolState()
+    {
+        var (queueCount, executingCount, lastWaitTimeMs) = _queueMonitor.GetCurrentState();
+        var recentMetrics = _queueMonitor.GetRecentMetrics()
+            .Select(m => new QueueMetricDto
+            {
+                Timestamp = m.Timestamp,
+                QueueCount = m.QueueCount,
+                ExecutingCount = m.ExecutingCount,
+                WaitTimeMs = m.WaitTime?.TotalMilliseconds
+            })
+            .ToArray();
+
+        return new ConnectionPoolStateDto
+        {
+            QueueCount = queueCount,
+            ExecutingCount = executingCount,
+            LastWaitTimeMs = lastWaitTimeMs,
+            RecentMetrics = recentMetrics
+        };
+    }
+
+    private static CallDto ToCallDto(CallInfo call)
+    {
+        return new CallDto
+        {
+            Key = call.Key,
+            StartTime = call.StartTime,
+            ConfigurationName = call.Fingerprint.ConfigurationName.Value,
+            DatabaseName = call.Fingerprint.DatabaseName,
+            CollectionName = call.Fingerprint.CollectionName,
+            FunctionName = call.FunctionName,
+            Operation = call.Operation.ToString(),
+            ElapsedMs = call.Elapsed?.TotalMilliseconds,
+            Count = call.Count,
+            Exception = call.Exception?.Message,
+            Final = call.Final,
+            FilterJson = call.FilterJson,
+            Steps = call.Steps?.Select(s => new CallStepDto
+            {
+                Step = s.Step,
+                DeltaMs = s.Delta.TotalMilliseconds,
+                Message = s.Message
+            }).ToArray()
+        };
     }
 
     // --- Private helpers ---

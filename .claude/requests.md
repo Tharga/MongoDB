@@ -14,7 +14,7 @@
 - **Date:** 2026-03-27
 - **Priority:** High
 - **Description:** The Tharga MongoDB Monitor currently exposes database operation metrics (call counts, slow calls, duration, collection, filter, explain) only through the Blazor UI component. This data needs to be accessible programmatically so it can be exposed via REST API endpoints. The purpose is to enable AI assistants (Claude) to query and analyze database performance — identifying slow queries, N+1 patterns, connection pool pressure, and other issues without needing access to the Blazor UI. **What is needed:** A service interface (e.g. `IDatabaseMonitorService`) that provides methods to query: (1) recent operations with duration, collection, filter, and operation type, (2) slow query log with thresholds, (3) current ExecuteLimiter state (queue depth, concurrent count per key), (4) explain output for specific operations, (5) collection statistics (sizes, index info). This service should be injectable so consuming applications can wire it to their own API controllers. The existing monitor data structures can be reused — this is about exposing them via a service contract rather than only through UI rendering.
-- **Status:** Pending
+- **Status:** Done (2026-03-28) — Added API-friendly methods to IDatabaseMonitor with serializable DTOs. Includes call summary, error summary, explain, slow calls with index info, and connection pool state.
 
 ### Lower default log level for MongoDB operation traces
 - **From:** Eplicta.Core (`c:\dev\Eplicta\Core`)

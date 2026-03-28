@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using Tharga.MongoDB.Configuration;
 
@@ -22,4 +23,41 @@ public interface IDatabaseMonitor
     IEnumerable<CallInfo> GetCalls(CallType callType);
     void ResetCalls();
     Task ResetAsync();
+
+    // --- API-friendly methods ---
+
+    /// <summary>
+    /// Get serialization-friendly representation of calls by type.
+    /// </summary>
+    IEnumerable<CallDto> GetCallDtos(CallType callType);
+
+    /// <summary>
+    /// Resolve the explain plan for a specific call.
+    /// </summary>
+    Task<string> GetExplainAsync(Guid callKey, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Get call counts per collection fingerprint key.
+    /// </summary>
+    IReadOnlyDictionary<string, int> GetCallCounts();
+
+    /// <summary>
+    /// Get call summary grouped by collection and function (for chatty/slow detection).
+    /// </summary>
+    IEnumerable<CallSummaryDto> GetCallSummary();
+
+    /// <summary>
+    /// Get error summary grouped by exception type and collection.
+    /// </summary>
+    IEnumerable<ErrorSummaryDto> GetErrorSummary();
+
+    /// <summary>
+    /// Get slow calls with index coverage info (for missing index detection).
+    /// </summary>
+    IAsyncEnumerable<SlowCallWithIndexInfoDto> GetSlowCallsWithIndexInfoAsync();
+
+    /// <summary>
+    /// Get aggregate connection pool state.
+    /// </summary>
+    ConnectionPoolStateDto GetConnectionPoolState();
 }
