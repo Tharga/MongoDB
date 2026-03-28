@@ -1024,14 +1024,34 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
     //}
     internal async Task<IEnumerable<string[]>> GetIndexBlockers(IMongoCollection<TEntity> collection, string indexName)
     {
-        //var indices = (CoreIndices?.ToArray() ?? []).Union(Indices?.ToArray() ?? []).ToArray();
-        //CreateIndexModel<TEntity> index = indices.FirstOrDefault(x => x.Options.Name == indexName);
-
         var indices = (CoreIndices?.ToArray() ?? Array.Empty<CreateIndexModel<TEntity>>())
             .Union(Indices?.ToArray() ?? Array.Empty<CreateIndexModel<TEntity>>())
             .ToArray();
 
+        // Try matching by explicit name first
         var index = indices.FirstOrDefault(x => x?.Options?.Name == indexName);
+
+        // Fall back to matching by rendered key fields
+        if (index == null)
+        {
+            var matchRenderArgs = new RenderArgs<TEntity>(
+                collection.DocumentSerializer,
+                collection.Settings.SerializerRegistry);
+
+            var existingIndexDoc = (await collection.Indexes.ListAsync()).ToList()
+                .FirstOrDefault(x => x.GetValue("name").AsString == indexName);
+
+            if (existingIndexDoc != null)
+            {
+                var existingKeys = existingIndexDoc["key"].AsBsonDocument;
+                index = indices.FirstOrDefault(x =>
+                {
+                    var renderedKeys = x.Keys.Render(matchRenderArgs);
+                    return renderedKeys.Equals(existingKeys);
+                });
+            }
+        }
+
         if (index == null || index.Options?.Unique != true)
         {
             return Array.Empty<string[]>();
