@@ -58,7 +58,7 @@ public class CollectionController : ControllerBase
         var items = await _databaseMonitor.GetInstancesAsync().ToArrayAsync();
         return Ok(items.Select(x => new
         {
-            Source = $"{x.Source}",
+            Discovery = $"{x.Discovery}",
             x.ConfigurationName,
             x.Server,
             x.DatabaseName,

@@ -10,6 +10,7 @@ public record CallDto
 {
     public required Guid Key { get; init; }
     public required DateTime StartTime { get; init; }
+    public required string SourceName { get; init; }
     public required string ConfigurationName { get; init; }
     public required string DatabaseName { get; init; }
     public required string CollectionName { get; init; }
@@ -38,6 +39,7 @@ public record CallStepDto
 /// </summary>
 public record CallSummaryDto
 {
+    public required string SourceName { get; init; }
     public required string ConfigurationName { get; init; }
     public required string DatabaseName { get; init; }
     public required string CollectionName { get; init; }
@@ -54,6 +56,7 @@ public record CallSummaryDto
 /// </summary>
 public record ErrorSummaryDto
 {
+    public required string SourceName { get; init; }
     public required string ConfigurationName { get; init; }
     public required string DatabaseName { get; init; }
     public required string CollectionName { get; init; }

@@ -24,4 +24,11 @@ public record MonitorOptions
     /// Default is Database.
     /// </summary>
     public MonitorStorageMode StorageMode { get; set; } = MonitorStorageMode.Database;
+
+    /// <summary>
+    /// Identifies the source of monitoring data. Used to distinguish data from different
+    /// applications or agents in a distributed monitoring scenario.
+    /// Defaults to "{MachineName}/{EntryAssemblyName}" when not configured.
+    /// </summary>
+    public string SourceName { get; set; }
 }

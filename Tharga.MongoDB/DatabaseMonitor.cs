@@ -544,12 +544,13 @@ internal class DatabaseMonitor : IDatabaseMonitor
 
         return _callLibrary.GetLastCalls()
             .Where(c => c.Elapsed.HasValue)
-            .GroupBy(c => (c.Fingerprint.ConfigurationName.Value, c.Fingerprint.DatabaseName, c.Fingerprint.CollectionName, c.FunctionName))
+            .GroupBy(c => (c.SourceName, c.Fingerprint.ConfigurationName.Value, c.Fingerprint.DatabaseName, c.Fingerprint.CollectionName, c.FunctionName))
             .Select(g =>
             {
                 var elapsed = g.Select(c => c.Elapsed.Value.TotalMilliseconds).ToArray();
                 return new CallSummaryDto
                 {
+                    SourceName = g.Key.SourceName,
                     ConfigurationName = g.Key.Value,
                     DatabaseName = g.Key.DatabaseName,
                     CollectionName = g.Key.CollectionName,
@@ -570,9 +571,10 @@ internal class DatabaseMonitor : IDatabaseMonitor
 
         return _callLibrary.GetLastCalls()
             .Where(c => c.Exception != null)
-            .GroupBy(c => (c.Fingerprint.ConfigurationName.Value, c.Fingerprint.DatabaseName, c.Fingerprint.CollectionName, ExceptionType: c.Exception.GetType().Name))
+            .GroupBy(c => (c.SourceName, c.Fingerprint.ConfigurationName.Value, c.Fingerprint.DatabaseName, c.Fingerprint.CollectionName, ExceptionType: c.Exception.GetType().Name))
             .Select(g => new ErrorSummaryDto
             {
+                SourceName = g.Key.SourceName,
                 ConfigurationName = g.Key.Value,
                 DatabaseName = g.Key.DatabaseName,
                 CollectionName = g.Key.CollectionName,
@@ -646,6 +648,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
         {
             Key = call.Key,
             StartTime = call.StartTime,
+            SourceName = call.SourceName,
             ConfigurationName = call.Fingerprint.ConfigurationName.Value,
             DatabaseName = call.Fingerprint.DatabaseName,
             CollectionName = call.Fingerprint.CollectionName,
@@ -708,7 +711,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
                 CollectionName = fingerprint.CollectionName,
                 Server = server ?? string.Empty,
                 DatabasePart = databasePart.NullIfEmpty(),
-                Source = reg.Source | Source.Database,
+                Discovery = reg.Discovery | Discovery.Database,
                 Registration = reg.Registration,
                 EntityTypes = reg.EntityTypes,
                 CollectionType = reg.CollectionType,
@@ -726,7 +729,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
                 CollectionName = fingerprint.CollectionName,
                 Server = server ?? string.Empty,
                 DatabasePart = databasePart.NullIfEmpty(),
-                Source = dyn.Source | Source.Database,
+                Discovery = dyn.Discovery | Discovery.Database,
                 Registration = Registration.Dynamic,
                 EntityTypes = [entityTypeName],
                 CollectionType = dyn.CollectionType,
@@ -742,7 +745,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
             CollectionName = fingerprint.CollectionName,
             Server = server ?? string.Empty,
             DatabasePart = databasePart.NullIfEmpty(),
-            Source = Source.Database,
+            Discovery = Discovery.Database,
             Registration = Registration.NotInCode,
             EntityTypes = entityTypeName != null ? [entityTypeName] : [],
             CollectionType = null,
@@ -858,7 +861,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
                             ? new IndexInfo { Current = cached.Index.Current, Defined = codeEntry.Index?.Defined ?? cached.Index.Defined, UpdatedAt = cached.Index.UpdatedAt }
                             : codeEntry.Index,
                         Registration = codeEntry.Registration != Registration.NotInCode ? codeEntry.Registration : cached.Registration,
-                        Source = cached.Source | codeEntry.Source,
+                        Discovery = cached.Discovery | codeEntry.Discovery,
                     };
                 }
 
@@ -939,7 +942,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
 
                 yield return new StatColInfo
                 {
-                    Source = Source.Registration,
+                    Discovery = Discovery.Registration,
                     ConfigurationName = instance.ConfigurationName,
                     CollectionName = instance.CollectionName,
                     EntityTypes = [genericParam?.Name],
@@ -980,7 +983,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
                     {
                         yield return new DynColInfo
                         {
-                            Source = Source.Registration,
+                            Discovery = Discovery.Registration,
                             Type = genericParam.Name,
                             CollectionType = registeredCollection.Key,
                             DefinedIndices = collection.BuildIndexMetas().ToArray(),
@@ -998,7 +1001,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
 
     internal abstract record ColInfo
     {
-        public required Source Source { get; init; }
+        public required Discovery Discovery { get; init; }
         public required Type CollectionType { get; init; }
         public required IndexMeta[] DefinedIndices { get; init; }
         public Type EntityType { get; init; }

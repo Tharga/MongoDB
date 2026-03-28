@@ -421,6 +421,29 @@ services.AddMongoDB(o =>
 });
 ```
 
+### Source identification
+All monitoring data is tagged with a source name to identify where it originates from. This is useful when multiple applications share the same database or when preparing for distributed monitoring.
+
+By default the source name is `{MachineName}/{AssemblyName}`. To override:
+
+```json
+"MongoDB": {
+  "Monitor": {
+    "SourceName": "OrderService-Prod"
+  }
+}
+```
+
+Or by code:
+```csharp
+services.AddMongoDB(o =>
+{
+    o.Monitor.SourceName = "OrderService-Prod";
+});
+```
+
+The Blazor call view automatically shows a Source column and filter when calls from multiple sources are present.
+
 ### Reset
 Call `IDatabaseMonitor.ResetAsync()` to clear all cached monitor state (both in-memory and persisted).
 The Blazor admin UI (`CollectionView`) includes a Reset button that triggers this.

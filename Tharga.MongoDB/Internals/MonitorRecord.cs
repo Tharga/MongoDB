@@ -9,7 +9,7 @@ internal record MonitorRecord
     public string DatabaseName { get; init; }
     public string Server { get; init; }
     public string DatabasePart { get; init; }
-    public int Source { get; init; }
+    public int Discovery { get; init; }
     public int Registration { get; init; }
     public string[] EntityTypes { get; init; }
     public string CollectionTypeName { get; init; }

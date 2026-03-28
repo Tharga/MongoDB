@@ -88,7 +88,10 @@ public static class MongoDbRegistrationExtensions
             var collectionPool = serviceProvider.GetService<ICollectionPool>();
             var initiationLibrary = serviceProvider.GetService<IInitiationLibrary>();
             var logger = serviceProvider.GetService<ILogger<MongoDbServiceFactory>>();
-            return new MongoDbServiceFactory(mongoDbClientProvider, repositoryConfigurationLoader, mongoDbFirewallStateService, executeLimiter, collectionPool, initiationLibrary, logger);
+            var factory = new MongoDbServiceFactory(mongoDbClientProvider, repositoryConfigurationLoader, mongoDbFirewallStateService, executeLimiter, collectionPool, initiationLibrary, logger);
+            if (!string.IsNullOrWhiteSpace(o.Monitor?.SourceName))
+                factory.SourceName = o.Monitor.SourceName;
+            return factory;
         });
         services.AddTransient<IRepositoryConfigurationLoader>(serviceProvider =>
         {
