@@ -7,7 +7,7 @@
 - **Date:** 2026-03-27
 - **Priority:** High
 - **Description:** The `ExecuteLimiter` creates a separate `SemaphoreSlim` per configuration key (e.g. `MongoDB.Aggregator`, `MongoDB.Document`, `MongoDB.Integration`). Each key gets `MaxConcurrent` slots independently. However, all keys share the same MongoDB driver connection pool (`MaxPoolSize` in the connection string). This means the **effective concurrent limit is `MaxConcurrent × number_of_keys`**, which can far exceed the connection pool size. In Eplicta's case: `MaxConcurrent=500 × 3 keys = 1500` potential concurrent operations, but `MaxPoolSize=300`. The limiter was unable to prevent `MongoWaitQueueFullException` because it allowed 5x more operations than the pool could handle. **Suggested fix:** Change `ExecuteLimiterOptions.MaxConcurrent` to `int?` (nullable). Resolution order: (1) If explicitly set by the user, use that value. (2) If null, read `MongoClientSettings.MaxConnectionPoolSize` from the parsed connection string (the driver always has this — either from an explicit `MaxPoolSize=N` in the connection string or the driver's default of 100). (3) Use that value as the **global** concurrent limit across all keys, enforced by a single shared `SemaphoreSlim`. The per-key semaphores can remain as a secondary mechanism for fairness between configuration names. This way the limiter automatically stays in sync with the actual connection pool size without manual configuration.
-- **Status:** Pending
+- **Status:** Done (2026-03-28) — Limiter now keyed by server key (per connection pool). MaxConcurrent auto-detects from MaxConnectionPoolSize, capped at pool size with warning log.
 
 ### Expose MongoDB Monitor data via API-friendly service
 - **From:** Eplicta.Core (`c:\dev\Eplicta\Core`)
