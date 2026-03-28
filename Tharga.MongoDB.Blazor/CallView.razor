@@ -37,6 +37,12 @@ else
             </RadzenColumn>
             <RadzenColumn>
                 <RadzenStack Orientation="Orientation.Vertical">
+                    <RadzenText TextStyle="TextStyle.Caption" Text="Sources"/>
+                    <RadzenDropDown Placeholder="Select sources" @bind-Value=@SelectedSources Data=@_sources Multiple=true Style="margin-bottom: 6px;" Change="@ReloadDataAsync" />
+                </RadzenStack>
+            </RadzenColumn>
+            <RadzenColumn>
+                <RadzenStack Orientation="Orientation.Vertical">
                     <RadzenText TextStyle="TextStyle.Caption" Text="Databases"/>
                     <RadzenDropDown Placeholder="Select databases" @bind-Value=@SelectedDatabases Data=@_databases Multiple=true Style="margin-bottom: 6px;" Change="@ReloadDataAsync" />
                 </RadzenStack>
@@ -88,6 +94,7 @@ else
                         <DateTimeView Date="@context.StartTime"/>
                     </Template>
                 </RadzenDataGridColumn>
+                <RadzenDataGridColumn Title="Source" Property="@nameof(CallInfo.SourceName)" Visible="@_showSource" />
                 <RadzenDataGridColumn Title="Configuration" Property="@($"{nameof(CallInfo.Fingerprint)}.{nameof(CallInfo.Fingerprint.ConfigurationName)}")" Visible="@_showConfiguration" />
                 <RadzenDataGridColumn Title="Database" Property="@($"{nameof(CallInfo.Fingerprint)}.{nameof(CallInfo.Fingerprint.DatabaseName)}")" />
                 <RadzenDataGridColumn Title="Collection" Property="@($"{nameof(CallInfo.Fingerprint)}.{nameof(CallInfo.Fingerprint.CollectionName)}")" />
@@ -116,16 +123,19 @@ else
 }
 
 @code {
+    private string[] _sources;
     private string[] _databases;
     private string[] _collections;
     private string[] _functions;
     private Operation[] _operations;
     private CallInfo[] _model;
     private bool _showConfiguration;
+    private bool _showSource;
     private CallInfo[] _all;
     private bool _disposed;
 
     private string SelectedTab { get; set; } = "Last";
+    private IEnumerable<string> SelectedSources { get; set; }
     private IEnumerable<string> SelectedDatabases { get; set; }
     private IEnumerable<string> SelectedCollections { get; set; }
     private IEnumerable<string> SelectedFunctions { get; set; }
@@ -171,6 +181,7 @@ else
     protected override async Task OnParametersSetAsync()
     {
         _all = DatabaseMonitor.GetCalls(CallType.Last).Union(DatabaseMonitor.GetCalls(CallType.Slow)).ToArray();
+        _sources = _all.Select(x => x.SourceName).Where(x => x != null).Distinct().Order().ToArray();
         _databases = _all.Select(x => x.Fingerprint.DatabaseName).Distinct().Order().ToArray();
         _collections = _all.Select(x => x.Fingerprint.CollectionName).Distinct().Order().ToArray();
         _functions = _all.Select(x => x.FunctionName).Distinct().Order().ToArray();
@@ -207,11 +218,13 @@ else
     {
         _all = DatabaseMonitor.GetCalls(SelectedCallType).ToArray();
         _model = _all
+            .Where(x => SelectedSources == null || !SelectedSources.Any() || SelectedSources.Contains(x.SourceName))
             .Where(x => SelectedDatabases == null || !SelectedDatabases.Any() || SelectedDatabases.Contains(x.Fingerprint.DatabaseName))
             .Where(x => SelectedCollections == null || !SelectedCollections.Any() || SelectedCollections.Contains(x.Fingerprint.CollectionName))
             .Where(x => SelectedFunctions == null || !SelectedFunctions.Any() || SelectedFunctions.Contains(x.FunctionName))
             .Where(x => SelectedOperations == null || !SelectedOperations.Any() || SelectedOperations.Contains(x.Operation))
             .ToArray();
+        _showSource = _model.Select(x => x.SourceName).Distinct().Count() > 1;
         _showConfiguration = _model.GroupBy(x => x.Fingerprint.ConfigurationName).Count() > 1;
         StateHasChanged();
     }

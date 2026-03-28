@@ -46,6 +46,7 @@ internal class CallLibrary : ICallLibrary
         {
             Key = e.CallKey,
             StartTime = DateTime.UtcNow,
+            SourceName = e.SourceName,
             Fingerprint = e.Fingerprint,
             FunctionName = e.FunctionName,
             Operation = e.Operation

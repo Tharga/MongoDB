@@ -10,5 +10,7 @@ public interface IMongoDbServiceFactory
     event EventHandler<CallStartEventArgs> CallStartEvent;
     event EventHandler<CallEndEventArgs> CallEndEvent;
 
+    string SourceName { get; }
+
     IMongoDbService GetMongoDbService(Func<DatabaseContext> databaseContextLoader);
 }

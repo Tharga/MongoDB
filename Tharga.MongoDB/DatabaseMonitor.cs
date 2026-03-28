@@ -544,12 +544,13 @@ internal class DatabaseMonitor : IDatabaseMonitor
 
         return _callLibrary.GetLastCalls()
             .Where(c => c.Elapsed.HasValue)
-            .GroupBy(c => (c.Fingerprint.ConfigurationName.Value, c.Fingerprint.DatabaseName, c.Fingerprint.CollectionName, c.FunctionName))
+            .GroupBy(c => (c.SourceName, c.Fingerprint.ConfigurationName.Value, c.Fingerprint.DatabaseName, c.Fingerprint.CollectionName, c.FunctionName))
             .Select(g =>
             {
                 var elapsed = g.Select(c => c.Elapsed.Value.TotalMilliseconds).ToArray();
                 return new CallSummaryDto
                 {
+                    SourceName = g.Key.SourceName,
                     ConfigurationName = g.Key.Value,
                     DatabaseName = g.Key.DatabaseName,
                     CollectionName = g.Key.CollectionName,
@@ -570,9 +571,10 @@ internal class DatabaseMonitor : IDatabaseMonitor
 
         return _callLibrary.GetLastCalls()
             .Where(c => c.Exception != null)
-            .GroupBy(c => (c.Fingerprint.ConfigurationName.Value, c.Fingerprint.DatabaseName, c.Fingerprint.CollectionName, ExceptionType: c.Exception.GetType().Name))
+            .GroupBy(c => (c.SourceName, c.Fingerprint.ConfigurationName.Value, c.Fingerprint.DatabaseName, c.Fingerprint.CollectionName, ExceptionType: c.Exception.GetType().Name))
             .Select(g => new ErrorSummaryDto
             {
+                SourceName = g.Key.SourceName,
                 ConfigurationName = g.Key.Value,
                 DatabaseName = g.Key.DatabaseName,
                 CollectionName = g.Key.CollectionName,
@@ -646,6 +648,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
         {
             Key = call.Key,
             StartTime = call.StartTime,
+            SourceName = call.SourceName,
             ConfigurationName = call.Fingerprint.ConfigurationName.Value,
             DatabaseName = call.Fingerprint.DatabaseName,
             CollectionName = call.Fingerprint.CollectionName,

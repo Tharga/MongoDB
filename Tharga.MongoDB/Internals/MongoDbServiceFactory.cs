@@ -1,9 +1,11 @@
 ﻿using System;
 using System.Collections.Concurrent;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Tharga.MongoDB.Atlas;
+using Tharga.MongoDB.Configuration;
 
 namespace Tharga.MongoDB.Internals;
 
@@ -19,6 +21,8 @@ internal class MongoDbServiceFactory : IMongoDbServiceFactory
     private readonly ConcurrentDictionary<string, MongoDbService> _databaseDbServices = new();
     private readonly SemaphoreSlim _lock = new(1, 1);
 
+    private static readonly string DefaultSourceName = $"{Environment.MachineName}/{Assembly.GetEntryAssembly()?.GetName().Name ?? "Unknown"}";
+
     public MongoDbServiceFactory(IMongoDbClientProvider mongoDbClientProvider, IRepositoryConfigurationLoader repositoryConfigurationLoader, IMongoDbFirewallStateService mongoDbFirewallStateService, IExecuteLimiter executeLimiter, ICollectionPool collectionPool, IInitiationLibrary initiationLibrary, ILogger<MongoDbServiceFactory> logger)
     {
         _mongoDbClientProvider = mongoDbClientProvider;
@@ -28,7 +32,10 @@ internal class MongoDbServiceFactory : IMongoDbServiceFactory
         _collectionPool = collectionPool;
         _initiationLibrary = initiationLibrary;
         _logger = logger;
+        SourceName = DefaultSourceName;
     }
+
+    public string SourceName { get; internal set; }
 
     public event EventHandler<CollectionAccessEventArgs> CollectionAccessEvent;
     public event EventHandler<IndexUpdatedEventArgs> IndexUpdatedEvent;

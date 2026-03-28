@@ -186,7 +186,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
     private StepResponse FireCallStartEvent(string functionName, Operation operation, Guid callKey)
     {
         var fingerprint = new CollectionFingerprint { ConfigurationName = ConfigurationName ?? Constants.DefaultConfigurationName, DatabaseName = DatabaseName, CollectionName = CollectionName };
-        ((MongoDbServiceFactory)_mongoDbServiceFactory).OnCallStart(this, new CallStartEventArgs(callKey, fingerprint, functionName, operation));
+        ((MongoDbServiceFactory)_mongoDbServiceFactory).OnCallStart(this, new CallStartEventArgs(callKey, fingerprint, functionName, operation, _mongoDbServiceFactory.SourceName));
 
         return new StepResponse
         {
