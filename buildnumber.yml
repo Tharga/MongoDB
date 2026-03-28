@@ -28,21 +28,20 @@ parameters:
     $uri = "$orgUrl$project/_apis/build/builds?definitions=$defId&branchName=$branchMaster&`$top=50&queryOrder=finishTimeDescending&api-version=7.1"
     $resp = Invoke-RestMethod -Uri $uri -Headers $headers -Method Get
 
-    if (-not $resp -or -not $resp.value -or $resp.count -lt 1) {
-      throw "No builds found on master for definition $defId."
-    }
-
     $releasePattern = "^$([regex]::Escape($majorMinor))\.(\d+)$"
     $anyPattern     = "^$([regex]::Escape($majorMinor))\.(\d+)(?:-pre\.\d+)?$"
 
-    $latestRelease = $resp.value | Where-Object { $_.buildNumber -match $releasePattern } | Select-Object -First 1
-    $latestAny     = $resp.value | Where-Object { $_.buildNumber -match $anyPattern }     | Select-Object -First 1
+    $picked = $null
+    if ($resp -and $resp.value -and $resp.count -ge 1) {
+      $latestRelease = $resp.value | Where-Object { $_.buildNumber -match $releasePattern } | Select-Object -First 1
+      $latestAny     = $resp.value | Where-Object { $_.buildNumber -match $anyPattern }     | Select-Object -First 1
 
-    $picked = $latestRelease
-    if (-not $picked) { $picked = $latestAny }
+      $picked = $latestRelease
+      if (-not $picked) { $picked = $latestAny }
+    }
 
     if (-not $picked) {
-      $patch = -1   # so nextPatch becomes 0 for a brand-new majorMinor
+      $patch = -1   # so nextPatch becomes 0 for a brand-new majorMinor/pipeline
     }
     else {
       $latestBuildNumber = $picked.buildNumber

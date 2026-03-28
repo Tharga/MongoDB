@@ -43,7 +43,7 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
     <PackageReference Include="MongoDB.Driver" Version="3.7.1" />
-    <PackageReference Include="Tharga.Runtime" Version="0.1.6" />
+    <PackageReference Include="Tharga.Runtime" Version="0.1.7" />
     <PackageReference Include="System.Linq.Async" Version="7.0.0" />
   </ItemGroup>
 

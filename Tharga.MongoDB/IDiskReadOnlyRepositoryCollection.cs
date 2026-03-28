@@ -40,6 +40,32 @@ public interface IReadOnlyRepositoryCollection<TEntity, TKey> : IReadOnlyReposit
     Task<long> CountAsync(Expression<Func<TEntity, bool>> predicate = default, CancellationToken cancellationToken = default);
     Task<long> CountAsync(FilterDefinition<TEntity> filter, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Returns an estimated count of documents in the collection using metadata.
+    /// This is very fast but may not be perfectly accurate.
+    /// </summary>
+    Task<long> EstimatedCountAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Computes the sum of a numeric field server-side.
+    /// </summary>
+    Task<decimal> SumAsync(Expression<Func<TEntity, decimal>> field, Expression<Func<TEntity, bool>> predicate = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Computes the average of a numeric field server-side.
+    /// </summary>
+    Task<decimal> AvgAsync(Expression<Func<TEntity, decimal>> field, Expression<Func<TEntity, bool>> predicate = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Computes the minimum value of a field server-side.
+    /// </summary>
+    Task<TField> MinAsync<TField>(Expression<Func<TEntity, TField>> field, Expression<Func<TEntity, bool>> predicate = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Computes the maximum value of a field server-side.
+    /// </summary>
+    Task<TField> MaxAsync<TField>(Expression<Func<TEntity, TField>> field, Expression<Func<TEntity, bool>> predicate = null, CancellationToken cancellationToken = default);
+
     //Other
 
     /// <summary>

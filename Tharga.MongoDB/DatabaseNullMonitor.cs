@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using Tharga.MongoDB.Configuration;
 
@@ -63,4 +64,24 @@ internal class DatabaseNullMonitor : IDatabaseMonitor
     public void ResetCalls() { }
 
     public Task ResetAsync() => Task.CompletedTask;
+
+    public IEnumerable<CallDto> GetCallDtos(CallType callType) { yield break; }
+
+    public Task<string> GetExplainAsync(Guid callKey, CancellationToken cancellationToken = default) => Task.FromResult<string>(null);
+
+    public IReadOnlyDictionary<string, int> GetCallCounts() => new Dictionary<string, int>();
+
+    public IEnumerable<CallSummaryDto> GetCallSummary() { yield break; }
+
+    public IEnumerable<ErrorSummaryDto> GetErrorSummary() { yield break; }
+
+    public async IAsyncEnumerable<SlowCallWithIndexInfoDto> GetSlowCallsWithIndexInfoAsync() { yield break; }
+
+    public ConnectionPoolStateDto GetConnectionPoolState() => new()
+    {
+        QueueCount = 0,
+        ExecutingCount = 0,
+        LastWaitTimeMs = 0,
+        RecentMetrics = []
+    };
 }

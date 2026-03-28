@@ -12,13 +12,13 @@ namespace Tharga.MongoDB;
 internal class ExecuteLimiter : IExecuteLimiter, IQueueMonitor
 {
     private readonly ILogger<ExecuteLimiter> _logger;
-    private const string DefaultKey = "Default";
     private const int MaxMetricEntries = 500;
 
     private readonly bool _enabled;
-    private readonly int _maxConcurrentPerKey;
+    private readonly int? _maxConcurrentOverride;
 
-    private readonly ConcurrentDictionary<string, PerKeyState> _states = new();
+    private readonly ConcurrentDictionary<string, PerPoolState> _states = new();
+    private readonly ConcurrentDictionary<string, bool> _warnedServerKeys = new();
     private readonly ConcurrentQueue<QueueMetricEventArgs> _metrics = new();
 
     // Atomic state for polling
@@ -32,10 +32,10 @@ internal class ExecuteLimiter : IExecuteLimiter, IQueueMonitor
     {
         _logger = logger;
         _enabled = options.Value.Enabled;
-        _maxConcurrentPerKey = options.Value.MaxConcurrent;
+        _maxConcurrentOverride = options.Value.MaxConcurrent;
     }
 
-    public async Task<(T Result, ExecuteInfo Info)> ExecuteAsync<T>(Func<CancellationToken, Task<T>> action, string key, CancellationToken cancellationToken)
+    public async Task<(T Result, ExecuteInfo Info)> ExecuteAsync<T>(Func<CancellationToken, Task<T>> action, string serverKey, int maxConnectionPoolSize, CancellationToken cancellationToken)
     {
         if (!_enabled)
         {
@@ -43,9 +43,18 @@ internal class ExecuteLimiter : IExecuteLimiter, IQueueMonitor
             return (result, new ExecuteInfo { QueueElapsed = TimeSpan.Zero, ConcurrentCount = 0, QueueCount = 0 });
         }
 
-        key ??= DefaultKey;
+        var maxConcurrent = _maxConcurrentOverride.HasValue
+            ? Math.Min(_maxConcurrentOverride.Value, maxConnectionPoolSize)
+            : maxConnectionPoolSize;
 
-        var state = _states.GetOrAdd(key, _ => new PerKeyState(_maxConcurrentPerKey));
+        if (_maxConcurrentOverride.HasValue && _maxConcurrentOverride.Value > maxConnectionPoolSize
+            && _warnedServerKeys.TryAdd(serverKey, true))
+        {
+            _logger?.LogWarning("Configured MaxConcurrent ({configured}) exceeds MaxConnectionPoolSize ({poolSize}) for {serverKey}. Capping at {poolSize}.",
+                _maxConcurrentOverride.Value, maxConnectionPoolSize, serverKey, maxConnectionPoolSize);
+        }
+
+        var state = _states.GetOrAdd(serverKey, _ => new PerPoolState(maxConcurrent));
 
         var queuedAt = Stopwatch.GetTimestamp();
 
@@ -56,7 +65,7 @@ internal class ExecuteLimiter : IExecuteLimiter, IQueueMonitor
 
         if (queuedCount > 1)
         {
-            _logger?.LogInformation("Queued {queueCount} executions for {key}.", queuedCount, key);
+            _logger?.LogInformation("Queued {queueCount} executions for {serverKey}.", queuedCount, serverKey);
         }
 
         RecordMetric(queuedCount, state.GetExecuting(), null);
@@ -80,9 +89,9 @@ internal class ExecuteLimiter : IExecuteLimiter, IQueueMonitor
             Interlocked.Increment(ref _totalExecutingCount);
             LogCount("ExecuteConcurrent", executingCount);
 
-            if (executingCount >= _maxConcurrentPerKey)
+            if (executingCount >= maxConcurrent)
             {
-                _logger?.LogWarning("The maximum number of {count} concurrent executions for {key} has been reached.", executingCount, key);
+                _logger?.LogWarning("The maximum number of {count} concurrent executions for {serverKey} has been reached.", executingCount, serverKey);
             }
 
             // Update last wait time atomically (take the max)
@@ -176,14 +185,14 @@ internal class ExecuteLimiter : IExecuteLimiter, IQueueMonitor
 
     private static TimeSpan GetElapsed(long from, long to) => TimeSpan.FromSeconds((to - from) / (double)Stopwatch.Frequency);
 
-    private sealed class PerKeyState
+    private sealed class PerPoolState
     {
         public SemaphoreSlim Semaphore { get; }
 
         private int _queued;
         private int _executing;
 
-        public PerKeyState(int maxConcurrent)
+        public PerPoolState(int maxConcurrent)
         {
             Semaphore = new SemaphoreSlim(maxConcurrent, maxConcurrent);
         }

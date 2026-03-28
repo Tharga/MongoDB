@@ -15,6 +15,7 @@ public interface IMongoDbService
     string GetDatabaseAddress();
     string GetDatabaseHostName();
     int GetMaxConnectionPoolSize();
+    string GetServerKey();
     Task DropCollectionAsync(string name);
     IEnumerable<string> GetCollections();
     IAsyncEnumerable<CollectionMeta> GetCollectionsWithMetaAsync(string databaseName = null, string collectionNameFilter = null, bool includeDetails = true);
@@ -30,6 +31,5 @@ public interface IMongoDbService
     bool GetCleanOnStartup();
     CreateStrategy CreateCollectionStrategy();
     ValueTask<string> AssureFirewallAccessAsync(bool force = false);
-    LogLevel GetExecuteInfoLogLevel();
     AssureIndexMode GetAssureIndexMode();
 }

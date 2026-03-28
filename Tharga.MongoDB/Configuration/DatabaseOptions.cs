@@ -2,7 +2,6 @@
 using System.Collections.Generic;
 using System.Reflection;
 using System.Threading.Tasks;
-using Microsoft.Extensions.Logging;
 using Tharga.MongoDB.Internals;
 
 namespace Tharga.MongoDB.Configuration;
@@ -76,11 +75,6 @@ public record DatabaseOptions
     /// 5. Default values.
     /// </summary>
     public Func<IServiceProvider, Task<MongoDbConfigurationTree>> ConfigurationLoader { get; set; }
-
-    /// <summary>
-    /// Log level for execution information.
-    /// </summary>
-    public LogLevel? ExecuteInfoLogLevel { get; set; } = LogLevel.Debug;
 
     /// <summary>
     /// Controls how Guid values are stored in MongoDB.

@@ -111,6 +111,31 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
         return Disk.CountAsync(filter, cancellationToken);
     }
 
+    public override Task<long> EstimatedCountAsync(CancellationToken cancellationToken = default)
+    {
+        return Disk.EstimatedCountAsync(cancellationToken);
+    }
+
+    public override Task<decimal> SumAsync(Expression<Func<TEntity, decimal>> field, Expression<Func<TEntity, bool>> predicate = null, CancellationToken cancellationToken = default)
+    {
+        return Disk.SumAsync(field, predicate, cancellationToken);
+    }
+
+    public override Task<decimal> AvgAsync(Expression<Func<TEntity, decimal>> field, Expression<Func<TEntity, bool>> predicate = null, CancellationToken cancellationToken = default)
+    {
+        return Disk.AvgAsync(field, predicate, cancellationToken);
+    }
+
+    public override Task<TField> MinAsync<TField>(Expression<Func<TEntity, TField>> field, Expression<Func<TEntity, bool>> predicate = null, CancellationToken cancellationToken = default)
+    {
+        return Disk.MinAsync(field, predicate, cancellationToken);
+    }
+
+    public override Task<TField> MaxAsync<TField>(Expression<Func<TEntity, TField>> field, Expression<Func<TEntity, bool>> predicate = null, CancellationToken cancellationToken = default)
+    {
+        return Disk.MaxAsync(field, predicate, cancellationToken);
+    }
+
     public override Task<long> GetSizeAsync(CancellationToken cancellationToken = default)
     {
         return Disk.GetSizeAsync(cancellationToken);

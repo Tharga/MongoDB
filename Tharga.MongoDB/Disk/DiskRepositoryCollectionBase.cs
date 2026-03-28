@@ -126,7 +126,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                 if (operation == Operation.Delete) await DropEmptyAsync(collection);
 
                 return response;
-            }, $"MongoDB.{ConfigurationName ?? Constants.DefaultConfigurationName}", cancellationToken);
+            }, _mongoDbService.GetServerKey(), _mongoDbService.GetMaxConnectionPoolSize(), cancellationToken);
 
             count = response.Result.Count;
             return response.Result.Data;
@@ -179,7 +179,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             };
 
             var details = System.Text.Json.JsonSerializer.Serialize(data);
-            _logger?.LogInformation("Measured {Action} in {Elapsed} ms. {Details} [{steps}]", $"MongoDB.{CollectionName}.{functionName}", elapsed, details, ss);
+            _logger?.LogDebug("Measured {Action} in {Elapsed} ms. {Details} [{steps}]", $"MongoDB.{CollectionName}.{functionName}", elapsed, details, ss);
         }
     }
 
@@ -516,6 +516,93 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             var count = await collection.CountDocumentsAsync(filter, cancellationToken: ct);
             return (count, (int)count);
         }, Operation.Read, cancellationToken, filter);
+    }
+
+    public override async Task<long> EstimatedCountAsync(CancellationToken cancellationToken = default)
+    {
+        return await ExecuteAsync(nameof(EstimatedCountAsync), async (collection, ct) =>
+        {
+            var count = await collection.EstimatedDocumentCountAsync(cancellationToken: ct);
+            return (count, (int)count);
+        }, Operation.Read, cancellationToken);
+    }
+
+    public override async Task<decimal> SumAsync(Expression<Func<TEntity, decimal>> field, Expression<Func<TEntity, bool>> predicate = null, CancellationToken cancellationToken = default)
+    {
+        var filter = predicate == null ? FilterDefinition<TEntity>.Empty : new ExpressionFilterDefinition<TEntity>(predicate);
+        return await ExecuteAsync(nameof(SumAsync), async (collection, ct) =>
+        {
+            var fieldName = GetFieldName(field, collection);
+            var pipeline = BuildAggregationPipeline(filter, new BsonDocument("$sum", "$" + fieldName));
+            var result = await collection.Aggregate<BsonDocument>(pipeline, cancellationToken: ct).FirstOrDefaultAsync(ct);
+            var value = result?["result"].ToDecimal() ?? 0m;
+            return (value, 1);
+        }, Operation.Read, cancellationToken, filter);
+    }
+
+    public override async Task<decimal> AvgAsync(Expression<Func<TEntity, decimal>> field, Expression<Func<TEntity, bool>> predicate = null, CancellationToken cancellationToken = default)
+    {
+        var filter = predicate == null ? FilterDefinition<TEntity>.Empty : new ExpressionFilterDefinition<TEntity>(predicate);
+        return await ExecuteAsync(nameof(AvgAsync), async (collection, ct) =>
+        {
+            var fieldName = GetFieldName(field, collection);
+            var pipeline = BuildAggregationPipeline(filter, new BsonDocument("$avg", "$" + fieldName));
+            var result = await collection.Aggregate<BsonDocument>(pipeline, cancellationToken: ct).FirstOrDefaultAsync(ct);
+            var value = result?["result"].ToDecimal() ?? 0m;
+            return (value, 1);
+        }, Operation.Read, cancellationToken, filter);
+    }
+
+    public override async Task<TField> MinAsync<TField>(Expression<Func<TEntity, TField>> field, Expression<Func<TEntity, bool>> predicate = null, CancellationToken cancellationToken = default)
+    {
+        var filter = predicate == null ? FilterDefinition<TEntity>.Empty : new ExpressionFilterDefinition<TEntity>(predicate);
+        return await ExecuteAsync(nameof(MinAsync), async (collection, ct) =>
+        {
+            var fieldName = GetFieldName(field, collection);
+            var pipeline = BuildAggregationPipeline(filter, new BsonDocument("$min", "$" + fieldName));
+            var result = await collection.Aggregate<BsonDocument>(pipeline, cancellationToken: ct).FirstOrDefaultAsync(ct);
+            var value = result != null ? BsonSerializer.Deserialize<TField>(result["result"].ToJson()) : default;
+            return (value, 1);
+        }, Operation.Read, cancellationToken, filter);
+    }
+
+    public override async Task<TField> MaxAsync<TField>(Expression<Func<TEntity, TField>> field, Expression<Func<TEntity, bool>> predicate = null, CancellationToken cancellationToken = default)
+    {
+        var filter = predicate == null ? FilterDefinition<TEntity>.Empty : new ExpressionFilterDefinition<TEntity>(predicate);
+        return await ExecuteAsync(nameof(MaxAsync), async (collection, ct) =>
+        {
+            var fieldName = GetFieldName(field, collection);
+            var pipeline = BuildAggregationPipeline(filter, new BsonDocument("$max", "$" + fieldName));
+            var result = await collection.Aggregate<BsonDocument>(pipeline, cancellationToken: ct).FirstOrDefaultAsync(ct);
+            var value = result != null ? BsonSerializer.Deserialize<TField>(result["result"].ToJson()) : default;
+            return (value, 1);
+        }, Operation.Read, cancellationToken, filter);
+    }
+
+    private static PipelineDefinition<TEntity, BsonDocument> BuildAggregationPipeline(FilterDefinition<TEntity> filter, BsonDocument accumulator)
+    {
+        var stages = new List<IPipelineStageDefinition>();
+
+        if (filter != FilterDefinition<TEntity>.Empty)
+        {
+            stages.Add(PipelineStageDefinitionBuilder.Match(filter));
+        }
+
+        stages.Add(new BsonDocumentPipelineStageDefinition<TEntity, BsonDocument>(
+            new BsonDocument("$group", new BsonDocument
+            {
+                { "_id", BsonNull.Value },
+                { "result", accumulator }
+            })));
+
+        return new PipelineStagePipelineDefinition<TEntity, BsonDocument>(stages);
+    }
+
+    private static string GetFieldName<TField>(Expression<Func<TEntity, TField>> field, IMongoCollection<TEntity> collection)
+    {
+        var renderArgs = new RenderArgs<TEntity>(collection.DocumentSerializer, collection.Settings.SerializerRegistry);
+        var fieldDefinition = new ExpressionFieldDefinition<TEntity, TField>(field);
+        return fieldDefinition.Render(renderArgs).FieldName;
     }
 
     public override async Task<long> GetSizeAsync(CancellationToken cancellationToken = default)
@@ -1024,14 +1111,34 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
     //}
     internal async Task<IEnumerable<string[]>> GetIndexBlockers(IMongoCollection<TEntity> collection, string indexName)
     {
-        //var indices = (CoreIndices?.ToArray() ?? []).Union(Indices?.ToArray() ?? []).ToArray();
-        //CreateIndexModel<TEntity> index = indices.FirstOrDefault(x => x.Options.Name == indexName);
-
         var indices = (CoreIndices?.ToArray() ?? Array.Empty<CreateIndexModel<TEntity>>())
             .Union(Indices?.ToArray() ?? Array.Empty<CreateIndexModel<TEntity>>())
             .ToArray();
 
+        // Try matching by explicit name first
         var index = indices.FirstOrDefault(x => x?.Options?.Name == indexName);
+
+        // Fall back to matching by rendered key fields
+        if (index == null)
+        {
+            var matchRenderArgs = new RenderArgs<TEntity>(
+                collection.DocumentSerializer,
+                collection.Settings.SerializerRegistry);
+
+            var existingIndexDoc = (await collection.Indexes.ListAsync()).ToList()
+                .FirstOrDefault(x => x.GetValue("name").AsString == indexName);
+
+            if (existingIndexDoc != null)
+            {
+                var existingKeys = existingIndexDoc["key"].AsBsonDocument;
+                index = indices.FirstOrDefault(x =>
+                {
+                    var renderedKeys = x.Keys.Render(matchRenderArgs);
+                    return renderedKeys.Equals(existingKeys);
+                });
+            }
+        }
+
         if (index == null || index.Options?.Unique != true)
         {
             return Array.Empty<string[]>();
@@ -1330,7 +1437,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             .Where(x => !x.StartsWith("_id_"))
             .ToArray();
 
-        _logger?.Log(_executeInfoLogLevel, "Assure index for collection {collection} with {count} documents.", ProtectedCollectionName, await collection.CountDocumentsAsync(x => true));
+        _logger?.LogDebug("Assure index for collection {collection} with {count} documents.", ProtectedCollectionName, await collection.CountDocumentsAsync(x => true));
         _logger?.LogTrace("All existing indices in collection {collection}: {indices}.", ProtectedCollectionName, string.Join(", ", allExistingIndexNames));
         _logger?.LogDebug("Existing, non system, indices in collection {collection}: {indices}.", ProtectedCollectionName, string.Join(", ", existingIndexNames));
         _logger?.LogDebug("Defined indices for collection {collection}: {indices}.", ProtectedCollectionName, string.Join(", ", indices.Select(x => x.Options.Name)));

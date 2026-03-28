@@ -425,6 +425,112 @@ services.AddMongoDB(o =>
 Call `IDatabaseMonitor.ResetAsync()` to clear all cached monitor state (both in-memory and persisted).
 The Blazor admin UI (`CollectionView`) includes a Reset button that triggers this.
 
+### REST API integration
+The monitor exposes API-friendly methods that return JSON-serializable DTOs.
+Wire them to your endpoints with minimal code:
+
+```csharp
+// Slow calls with timing, filter, and step breakdown
+app.MapGet("/api/monitor/slow-calls", (IDatabaseMonitor m) => m.GetCallDtos(CallType.Slow));
+
+// Recent calls
+app.MapGet("/api/monitor/recent-calls", (IDatabaseMonitor m) => m.GetCallDtos(CallType.Last));
+
+// Call summary grouped by collection+function (find chatty or slow patterns)
+app.MapGet("/api/monitor/call-summary", (IDatabaseMonitor m) => m.GetCallSummary());
+
+// Error summary grouped by exception type and collection
+app.MapGet("/api/monitor/errors", (IDatabaseMonitor m) => m.GetErrorSummary());
+
+// Slow calls with index coverage info (find missing indices)
+app.MapGet("/api/monitor/slow-calls-index", async (IDatabaseMonitor m) =>
+    await m.GetSlowCallsWithIndexInfoAsync().ToListAsync());
+
+// Explain plan for a specific call
+app.MapGet("/api/monitor/explain/{callKey}", (IDatabaseMonitor m, Guid callKey) =>
+    m.GetExplainAsync(callKey));
+
+// Call counts per collection
+app.MapGet("/api/monitor/call-counts", (IDatabaseMonitor m) => m.GetCallCounts());
+
+// Connection pool state (queue depth, executing count, wait time)
+app.MapGet("/api/monitor/pool", (IDatabaseMonitor m) => m.GetConnectionPoolState());
+```
+
+| Method | Returns | Use case |
+|---|---|---|
+| `GetCallDtos(CallType)` | `CallDto[]` | Serializable call data with filter, steps, timing |
+| `GetExplainAsync(Guid)` | `string` | MongoDB explain plan for a specific call |
+| `GetCallCounts()` | `Dictionary<string, int>` | Call frequency per collection |
+| `GetCallSummary()` | `CallSummaryDto[]` | Grouped by collection+function: count, avg/max/min elapsed |
+| `GetErrorSummary()` | `ErrorSummaryDto[]` | Errors grouped by type and collection |
+| `GetSlowCallsWithIndexInfoAsync()` | `SlowCallWithIndexInfoDto[]` | Slow calls with index coverage analysis |
+| `GetConnectionPoolState()` | `ConnectionPoolStateDto` | Queue depth, executing count, wait time, recent metrics |
+
+---
+
+## Aggregation Queries
+
+Server-side aggregation methods let you compute values without loading documents into memory.
+
+### Estimated Count
+```csharp
+// Fast metadata-based count (no collection scan)
+var count = await collection.EstimatedCountAsync();
+```
+
+### Sum, Avg, Min, Max
+```csharp
+// Sum a numeric field
+var total = await collection.SumAsync(x => x.Amount);
+
+// Average with filter
+var avg = await collection.AvgAsync(x => x.Amount, x => x.Category == "A");
+
+// Min / Max
+var min = await collection.MinAsync<decimal>(x => x.Amount);
+var max = await collection.MaxAsync<decimal>(x => x.Amount);
+```
+
+All methods accept an optional `predicate` to filter documents before aggregation, and a `CancellationToken`.
+
+For arbitrary aggregation pipelines, use `ExecuteAsync` which gives direct access to `IMongoCollection<T>`.
+
+---
+
+## Execute Limiter
+The built-in execute limiter queues database operations to prevent exhausting the MongoDB connection pool.
+By default it is enabled and automatically sizes itself to `MaxConnectionPoolSize` from the MongoDB driver — no configuration needed.
+
+Operations sharing the same connection pool (i.e. the same set of servers) share a single queue, regardless of how many configuration names point to that cluster.
+
+### Configuration by `appsettings.json`
+```json
+"MongoDB": {
+  "Limiter": {
+    "Enabled": true,
+    "MaxConcurrent": 50
+  }
+}
+```
+
+### Configuration by code
+```csharp
+builder.AddMongoDB(o =>
+{
+    o.Limiter = new ExecuteLimiterOptions
+    {
+        Enabled = true,
+        MaxConcurrent = 50
+    };
+});
+```
+
+| Setting | Default | Description |
+|---|---|---|
+| `Enabled` | `true` | Enable or disable the limiter. |
+| `MaxConcurrent` | `null` (auto) | Maximum concurrent operations per connection pool. When `null`, auto-detected from `MaxConnectionPoolSize`. Capped at the pool size even if set higher — a warning is logged in that case. |
+
 ---
 
 ## MongoDB Result Limit

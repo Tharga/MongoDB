@@ -77,11 +77,6 @@ internal class MongoDbService : IMongoDbServiceInternal
         return message;
     }
 
-    public LogLevel GetExecuteInfoLogLevel()
-    {
-        return _configuration?.GetExecuteInfoLogLevel() ?? LogLevel.Debug;
-    }
-
     public AssureIndexMode GetAssureIndexMode()
     {
         return _configuration?.GetAssureIndexMode() ?? AssureIndexMode.ByName;
@@ -100,6 +95,11 @@ internal class MongoDbService : IMongoDbServiceInternal
     public int GetMaxConnectionPoolSize()
     {
         return _mongoClient.Settings.MaxConnectionPoolSize;
+    }
+
+    public string GetServerKey()
+    {
+        return MongoDbClientProvider.GetServerKey(_mongoUrl);
     }
 
     public string GetDatabaseHostName()

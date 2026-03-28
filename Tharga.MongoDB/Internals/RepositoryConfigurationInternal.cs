@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Concurrent;
-using Microsoft.Extensions.Logging;
 using MongoDB.Driver;
 using Tharga.MongoDB.Configuration;
 
@@ -74,12 +73,6 @@ internal class RepositoryConfigurationInternal : IRepositoryConfigurationInterna
         configuration = _repositoryConfiguration.GetConfiguration(configurationName);
         _configurationCache.TryAdd(key, configuration);
         return configuration;
-    }
-
-    public LogLevel GetExecuteInfoLogLevel()
-    {
-        var logLevel = _databaseOptions.ExecuteInfoLogLevel ?? LogLevel.Debug;
-        return logLevel;
     }
 
     public AssureIndexMode GetAssureIndexMode() => _databaseOptions?.AssureIndex ?? AssureIndexMode.ByName;
