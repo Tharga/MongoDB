@@ -1,20 +1,24 @@
-# Feature: Monitor flag for sources found via Monitor event
+# Feature: Add source identification to monitoring data
 
 ## Source
-Backlog (Medium priority)
+Backlog (Medium priority) — prerequisite for distributed monitoring
 
 ## Goal
-When a source is discovered via a Monitor event, it should be flagged with the Monitor indicator.
+Tag all monitoring data (calls, collections, events) with a source identifier so the UI can distinguish where data originates from — e.g. "Local", "Agent-1", "OrderService".
 
 ## Scope
-- Identify where sources are detected via Monitor events
-- Add the Monitor flag to sources found this way
-- Update UI to display the flag
+- Add a `Source` property to `CallStartEventArgs`, `CallEndEventArgs`, and `CallDto`
+- Default source name derived from application name or configurable via `DatabaseOptions`
+- `CollectionInfo` includes source origin
+- Blazor components can filter/group by source
+- No breaking changes — source defaults to a sensible value when not configured
 
 ## Acceptance Criteria
-- [ ] Sources found via Monitor events have the Monitor flag set
-- [ ] Flag is visible in the UI
-- [ ] Existing source detection is unaffected
+- [ ] All monitoring data includes a source identifier
+- [ ] Source is configurable via `AddMongoDB(o => o.Monitor.SourceName = "MyService")`
+- [ ] Blazor components display source and allow filtering by it
+- [ ] Defaults work without configuration (e.g. uses assembly name)
+- [ ] Tests cover source tagging
 
 ## Done Condition
-Sources discovered through Monitor events are correctly flagged.
+Monitoring data is tagged with its origin, visible in the UI, and ready to support aggregation from multiple sources.
