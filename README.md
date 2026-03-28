@@ -469,6 +469,35 @@ app.MapGet("/api/monitor/pool", (IDatabaseMonitor m) => m.GetConnectionPoolState
 
 ---
 
+## Aggregation Queries
+
+Server-side aggregation methods let you compute values without loading documents into memory.
+
+### Estimated Count
+```csharp
+// Fast metadata-based count (no collection scan)
+var count = await collection.EstimatedCountAsync();
+```
+
+### Sum, Avg, Min, Max
+```csharp
+// Sum a numeric field
+var total = await collection.SumAsync(x => x.Amount);
+
+// Average with filter
+var avg = await collection.AvgAsync(x => x.Amount, x => x.Category == "A");
+
+// Min / Max
+var min = await collection.MinAsync<decimal>(x => x.Amount);
+var max = await collection.MaxAsync<decimal>(x => x.Amount);
+```
+
+All methods accept an optional `predicate` to filter documents before aggregation, and a `CancellationToken`.
+
+For arbitrary aggregation pipelines, use `ExecuteAsync` which gives direct access to `IMongoCollection<T>`.
+
+---
+
 ## Execute Limiter
 The built-in execute limiter queues database operations to prevent exhausting the MongoDB connection pool.
 By default it is enabled and automatically sizes itself to `MaxConnectionPoolSize` from the MongoDB driver — no configuration needed.
