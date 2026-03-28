@@ -18,7 +18,7 @@ public class MongoDbCollectionCacheBsonTests
             CollectionName = "testCol",
             Server = "localhost:27017",
             DatabasePart = "part1",
-            Source = Source.Database | Source.Registration,
+            Discovery = Discovery.Database | Discovery.Registration,
             Registration = Registration.Static,
             EntityTypes = new[] { "TypeA", "TypeB" },
             CollectionType = typeof(MongoDbCollectionCacheBsonTests),
@@ -167,7 +167,7 @@ public class MongoDbCollectionCacheBsonTests
         doc["DatabaseName"].AsString.Should().Be("testDb");
         doc["Server"].AsString.Should().Be("localhost:27017");
         doc["DatabasePart"].AsString.Should().Be("part1");
-        doc["Source"].AsInt32.Should().Be((int)(Source.Database | Source.Registration));
+        doc["Source"].AsInt32.Should().Be((int)(Discovery.Database | Discovery.Registration));
         doc["Registration"].AsInt32.Should().Be((int)Registration.Static);
         doc["Types"].AsBsonArray.Select(t => t.AsString).Should().BeEquivalentTo("TypeA", "TypeB");
         doc["DocumentCount"].AsInt64.Should().Be(100);
@@ -238,7 +238,7 @@ public class MongoDbCollectionCacheBsonTests
         result.DatabaseName.Should().Be("testDb");
         result.Server.Should().Be("localhost:27017");
         result.DatabasePart.Should().Be("part1");
-        result.Source.Should().Be(Source.Database | Source.Registration);
+        result.Discovery.Should().Be(Discovery.Database | Discovery.Registration);
         result.Registration.Should().Be(Registration.Static);
         result.EntityTypes.Should().BeEquivalentTo("TypeA", "TypeB");
         result.CollectionType.Should().Be(typeof(MongoDbCollectionCacheBsonTests));

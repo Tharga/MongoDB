@@ -3,7 +3,7 @@
 namespace Tharga.MongoDB;
 
 [Flags]
-public enum Source
+public enum Discovery
 {
     Database = 1,
     Registration = 2,

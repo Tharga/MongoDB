@@ -59,7 +59,7 @@ else
                 <RadzenDataGridColumn Title="Configuration" Property="@nameof(CollectionModel.ConfigurationName)" Visible="@_showConfiguration" />
                 <RadzenDataGridColumn Title="Database" Property="@nameof(CollectionModel.DatabaseName)" />
                 <RadzenDataGridColumn Title="Collection" Property="@nameof(CollectionModel.CollectionName)" />
-                <RadzenDataGridColumn Title="Source" Property="@nameof(CollectionModel.Source)" Filterable="false"/>
+                <RadzenDataGridColumn Title="Discovery" Property="@nameof(CollectionModel.Discovery)" Filterable="false"/>
                 <RadzenDataGridColumn Title="Registration" Property="@nameof(CollectionModel.Registration)" Filterable="false" Width="120px" />
                 <RadzenDataGridColumn Title="Documents" TextAlign="TextAlign.Right" CssClass="css-count" Sortable="false" Filterable="false" Width="120px">
                     <Template>
@@ -160,7 +160,7 @@ else
 
         if (item != null)
         {
-            item.Source = e.CollectionInfo.Source;
+            item.Discovery = e.CollectionInfo.Discovery;
             item.Stats = e.CollectionInfo.Stats;
             item.Index = e.CollectionInfo.Index;
 
@@ -169,7 +169,7 @@ else
             {
                 var indexModels = e.CollectionInfo.ToIndexModel().ToArray();
 
-                m.Source = e.CollectionInfo.Source;
+                m.Discovery = e.CollectionInfo.Discovery;
                 m.Stats = e.CollectionInfo.Stats;
                 m.Size = e.CollectionInfo.Stats?.Size ?? 0;
                 m.Indices = indexModels;
@@ -244,7 +244,7 @@ else
                     Stats = x.Stats,
                     DatabaseName = x.DatabaseName,
                     CollectionName = x.CollectionName,
-                    Source = x.Source,
+                    Discovery = x.Discovery,
                     Registration = x.Registration,
                     Size = x.Stats?.Size ?? 0,
                     Indices = indexModels,

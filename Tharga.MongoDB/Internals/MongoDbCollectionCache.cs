@@ -73,7 +73,7 @@ internal class MongoDbCollectionCache : ICollectionCache
                     hadDeserializationError = true;
                     continue;
                 }
-                info.Source |= Source.Monitor;
+                info.Discovery |= Discovery.Monitor;
                 _dict[info.Key] = info;
                 loadedKeys.Add(info.Key);
             }
@@ -176,7 +176,7 @@ internal class MongoDbCollectionCache : ICollectionCache
             { "DatabaseName", ToBson(info.DatabaseName) },
             { "Server", ToBson(info.Server) },
             { "DatabasePart", ToBson(info.DatabasePart) },
-            { "Source", (int)info.Source },
+            { "Source", (int)info.Discovery },
             { "Registration", (int)info.Registration },
             { "Types", new BsonArray(info.EntityTypes ?? []) },
             { "CollectionTypeName", ToBson(info.CollectionType?.AssemblyQualifiedName) },
@@ -222,7 +222,7 @@ internal class MongoDbCollectionCache : ICollectionCache
                 CollectionName = collectionName,
                 Server = BsonStr(doc.GetValue("Server", BsonNull.Value)) ?? string.Empty,
                 DatabasePart = BsonStr(doc.GetValue("DatabasePart", BsonNull.Value)),
-                Source = (Source)doc.GetValue("Source", 0).ToInt32(),
+                Discovery = (Discovery)doc.GetValue("Source", 0).ToInt32(),
                 Registration = registration,
                 EntityTypes = doc.GetValue("Types", new BsonArray()) is BsonArray ta
                     ? ta.Select(x => x.IsString ? x.AsString : null).ToArray()

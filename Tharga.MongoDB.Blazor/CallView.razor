@@ -35,12 +35,15 @@ else
                     </RadzenSelectBar>
                 </RadzenStack>
             </RadzenColumn>
+            @if (_sources.Length > 1)
+            {
             <RadzenColumn>
                 <RadzenStack Orientation="Orientation.Vertical">
                     <RadzenText TextStyle="TextStyle.Caption" Text="Sources"/>
                     <RadzenDropDown Placeholder="Select sources" @bind-Value=@SelectedSources Data=@_sources Multiple=true Style="margin-bottom: 6px;" Change="@ReloadDataAsync" />
                 </RadzenStack>
             </RadzenColumn>
+            }
             <RadzenColumn>
                 <RadzenStack Orientation="Orientation.Vertical">
                     <RadzenText TextStyle="TextStyle.Caption" Text="Databases"/>
