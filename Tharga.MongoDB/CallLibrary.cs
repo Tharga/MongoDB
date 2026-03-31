@@ -137,6 +137,46 @@ internal class CallLibrary : ICallLibrary
         return new ReadOnlyDictionary<string, int>(_callCounts);
     }
 
+    public void IngestCall(CallInfo call)
+    {
+        _calls.TryAdd(call.Key, call);
+        _recentCalls.Enqueue(call.Key);
+
+        while (_recentCalls.Count > _options.Monitor.LastCallsToKeep)
+        {
+            if (_recentCalls.TryDequeue(out var oldKey))
+            {
+                _calls.TryRemove(oldKey, out _);
+            }
+        }
+
+        _callCounts.AddOrUpdate(call.Fingerprint.Key, 1, (_, count) => count + 1);
+
+        if (call.Final)
+        {
+            _completedAt.TryAdd(call.Key, DateTime.UtcNow);
+
+            if (call.Elapsed.HasValue)
+            {
+                var elapsedMs = call.Elapsed.Value.TotalMilliseconds;
+                lock (_slowestLock)
+                {
+                    if (_slowest.Count < _options.Monitor.SlowCallsToKeep)
+                    {
+                        _slowest.Enqueue(call, elapsedMs);
+                    }
+                    else if (_slowest.TryPeek(out _, out var smallest) && elapsedMs > smallest)
+                    {
+                        _slowest.Dequeue();
+                        _slowest.Enqueue(call, elapsedMs);
+                    }
+                }
+            }
+        }
+
+        NotifyChanged();
+    }
+
     public void ResetCalls()
     {
         _calls.Clear();

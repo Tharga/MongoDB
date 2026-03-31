@@ -510,6 +510,11 @@ internal class DatabaseMonitor : IDatabaseMonitor
         };
     }
 
+    public void IngestCall(CallDto call)
+    {
+        _callLibrary.IngestCall(FromCallDto(call));
+    }
+
     public void ResetCalls()
     {
         _callLibrary.ResetCalls();
@@ -639,6 +644,34 @@ internal class DatabaseMonitor : IDatabaseMonitor
             ExecutingCount = executingCount,
             LastWaitTimeMs = lastWaitTimeMs,
             RecentMetrics = recentMetrics
+        };
+    }
+
+    private static CallInfo FromCallDto(CallDto dto)
+    {
+        Enum.TryParse<Operation>(dto.Operation, out var operation);
+        return new CallInfo
+        {
+            Key = dto.Key,
+            StartTime = dto.StartTime,
+            SourceName = dto.SourceName,
+            Fingerprint = new CollectionFingerprint
+            {
+                ConfigurationName = dto.ConfigurationName,
+                DatabaseName = dto.DatabaseName,
+                CollectionName = dto.CollectionName,
+            },
+            FunctionName = dto.FunctionName,
+            Operation = operation,
+            Elapsed = dto.ElapsedMs.HasValue ? TimeSpan.FromMilliseconds(dto.ElapsedMs.Value) : null,
+            Count = dto.Count,
+            Final = dto.Final,
+            Steps = dto.Steps?.Select(s => new CallStepInfo
+            {
+                Step = s.Step,
+                Delta = TimeSpan.FromMilliseconds(s.DeltaMs),
+                Message = s.Message
+            }).ToArray()
         };
     }
 
