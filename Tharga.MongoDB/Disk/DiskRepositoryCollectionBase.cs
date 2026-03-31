@@ -1137,6 +1137,17 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                     return renderedKeys.Equals(existingKeys);
                 });
             }
+            else
+            {
+                // Index doesn't exist on the server (e.g. creation failed due to duplicates).
+                // Match by the auto-generated name derived from rendered key fields.
+                index = indices.FirstOrDefault(x =>
+                {
+                    var renderedKeys = x.Keys.Render(matchRenderArgs);
+                    var autoName = string.Join("_", renderedKeys.Elements.Select(e => $"{e.Name}_{e.Value}"));
+                    return autoName == indexName;
+                });
+            }
         }
 
         if (index == null || index.Options?.Unique != true)

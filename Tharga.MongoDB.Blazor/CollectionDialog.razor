@@ -275,9 +275,37 @@ else
     {
         var items = (await DatabaseMonitor.GetIndexBlockersAsync(_model, context.Name)).ToArray();
         if (items.Any())
-            await DialogService.Alert($"{string.Join('\n', items.Select(x => $"{x.First()} == {x.Last()}"))}", "Duplicates");
+        {
+            var total = items.Sum(g => g.Length);
+            RenderFragment content = builder =>
+            {
+                builder.OpenElement(0, "div");
+                builder.AddAttribute(1, "style", "white-space: pre-wrap; font-family: monospace; font-size: 0.9em;");
+                builder.AddContent(2, $"{items.Length} duplicate group(s), {total} documents total.");
+                builder.AddMarkupContent(3, "<br/><br/>");
+                var groupIndex = 0;
+                foreach (var group in items)
+                {
+                    groupIndex++;
+                    builder.OpenElement(4, "strong");
+                    builder.AddContent(5, $"Group {groupIndex} ({group.Length} documents)");
+                    builder.CloseElement();
+                    builder.AddMarkupContent(6, "<br/>");
+                    foreach (var id in group)
+                    {
+                        builder.AddContent(7, $"  {id}");
+                        builder.AddMarkupContent(8, "<br/>");
+                    }
+                    builder.AddMarkupContent(9, "<br/>");
+                }
+                builder.CloseElement();
+            };
+            await DialogService.Alert(content, $"Duplicates for index '{context.Name}'");
+        }
         else
+        {
             await DialogService.Alert($"No duplicate documents by index '{context.Name}' found.", "Duplicates");
+        }
     }
 
 }
