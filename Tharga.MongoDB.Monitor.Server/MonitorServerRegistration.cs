@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Tharga.Communication.Server;
+using Tharga.MongoDB.Monitor.Client;
 
 namespace Tharga.MongoDB.Monitor.Server;
 
@@ -36,7 +37,7 @@ public static class MonitorServerRegistration
     /// <param name="pattern">The hub URL pattern. Defaults to <c>"hub"</c>.</param>
     public static WebApplication UseMongoDbMonitorServer(this WebApplication app, string pattern = null)
     {
-        app.UseThargaCommunicationServer(pattern);
+        app.UseThargaCommunicationServer(pattern ?? MonitorConstants.DefaultHubPattern);
         return app;
     }
 }
