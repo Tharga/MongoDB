@@ -70,6 +70,8 @@ internal class DatabaseNullMonitor : IDatabaseMonitor
 
     public void IngestClientDisconnected(string connectionId) { }
 
+    public void IngestCollectionInfo(RemoteCollectionInfoDto collectionInfo) { }
+
     public void ResetCalls() { }
 
     public Task ResetAsync() => Task.CompletedTask;

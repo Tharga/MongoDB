@@ -30,6 +30,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
     private readonly SemaphoreSlim _lookupLock = new(1, 1);
     private bool _started;
     private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, MonitorClientDto> _monitorClients = new();
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, CollectionInfo> _remoteCollections = new();
 
     public event EventHandler<CollectionInfoChangedEventArgs> CollectionInfoChangedEvent;
     public event EventHandler<CollectionDroppedEventArgs> CollectionDroppedEvent;
@@ -320,6 +321,15 @@ internal class DatabaseMonitor : IDatabaseMonitor
         // Remove stale cache entries for collections no longer in DB
         foreach (var key in _cache.GetKeys().Where(k => !currentDbKeys.Contains(k)).ToList())
             _cache.TryRemove(key, out _);
+
+        // Append remote collections not already present locally
+        foreach (var remote in _remoteCollections.Values)
+        {
+            if (!currentDbKeys.Contains(remote.Key))
+            {
+                yield return remote;
+            }
+        }
     }
 
     public async Task RefreshStatsAsync(CollectionFingerprint fingerprint)
@@ -543,6 +553,30 @@ internal class DatabaseMonitor : IDatabaseMonitor
             _monitorClients[entry.Instance] = entry with { IsConnected = false, DisconnectTime = DateTime.UtcNow };
             MonitorClientsChanged?.Invoke(this, EventArgs.Empty);
         }
+    }
+
+    public void IngestCollectionInfo(RemoteCollectionInfoDto dto)
+    {
+        Enum.TryParse<Discovery>(dto.Discovery, out var discovery);
+        var info = new CollectionInfo
+        {
+            ConfigurationName = dto.ConfigurationName,
+            DatabaseName = dto.DatabaseName,
+            CollectionName = dto.CollectionName,
+            Server = dto.Server,
+            DatabasePart = dto.DatabasePart,
+            Discovery = discovery,
+            Registration = Registration.Remote,
+            EntityTypes = dto.EntityTypes ?? [],
+            CollectionType = null,
+            Stats = dto.Stats,
+            Index = dto.Index,
+            Clean = dto.Clean,
+        };
+
+        var key = info.Key;
+        _remoteCollections[key] = info;
+        CollectionInfoChangedEvent?.Invoke(this, new CollectionInfoChangedEventArgs(info));
     }
 
     // --- API-friendly methods ---

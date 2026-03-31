@@ -15,6 +15,7 @@ namespace Tharga.MongoDB.Tests;
 public class MonitorForwarderTests : IAsyncLifetime
 {
     private readonly Mock<IMongoDbServiceFactory> _factoryMock;
+    private readonly Mock<IDatabaseMonitor> _monitorMock;
     private readonly Mock<IClientCommunication> _clientMock;
     private readonly MonitorForwarder _sut;
 
@@ -24,6 +25,7 @@ public class MonitorForwarderTests : IAsyncLifetime
     public MonitorForwarderTests()
     {
         _factoryMock = new Mock<IMongoDbServiceFactory>();
+        _monitorMock = new Mock<IDatabaseMonitor>();
         _clientMock = new Mock<IClientCommunication>();
 
         _factoryMock.SetupAdd(f => f.CallStartEvent += It.IsAny<EventHandler<CallStartEventArgs>>())
@@ -31,7 +33,7 @@ public class MonitorForwarderTests : IAsyncLifetime
         _factoryMock.SetupAdd(f => f.CallEndEvent += It.IsAny<EventHandler<CallEndEventArgs>>())
             .Callback<EventHandler<CallEndEventArgs>>(h => _callEndHandler = h);
 
-        _sut = new MonitorForwarder(_factoryMock.Object, _clientMock.Object);
+        _sut = new MonitorForwarder(_factoryMock.Object, _monitorMock.Object, _clientMock.Object);
     }
 
     public async Task InitializeAsync()

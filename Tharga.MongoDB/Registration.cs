@@ -4,5 +4,6 @@ public enum Registration
 {
     NotInCode,
     Static,
-    Dynamic
+    Dynamic,
+    Remote
 }

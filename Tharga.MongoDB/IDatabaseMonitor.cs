@@ -89,4 +89,9 @@ public interface IDatabaseMonitor
     /// Mark a monitoring agent as disconnected.
     /// </summary>
     void IngestClientDisconnected(string connectionId);
+
+    /// <summary>
+    /// Ingest collection metadata from a remote agent.
+    /// </summary>
+    void IngestCollectionInfo(RemoteCollectionInfoDto collectionInfo);
 }

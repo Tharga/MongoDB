@@ -30,6 +30,7 @@ else
                             <RadzenSelectBarItem Text="Static" Value="Registration.Static" />
                             <RadzenSelectBarItem Text="Dynamic" Value="Registration.Dynamic" />
                             <RadzenSelectBarItem Text="Not in Code" Value="Registration.NotInCode" />
+                            <RadzenSelectBarItem Text="Remote" Value="Registration.Remote" />
                         </Items>
                     </RadzenSelectBar>
                 </RadzenStack>
@@ -87,7 +88,10 @@ else
                 </RadzenDataGridColumn>
                 <RadzenDataGridColumn Title="" Sortable="false" Width="60px;" Filterable="false">
                     <Template>
-                        <StandardButton Icon="format_list_numbered" Click="@(() => ShowCollectionDialog(context))" Style="margin-right: 3px;" />
+                        @if (context.Registration != Registration.Remote)
+                        {
+                            <StandardButton Icon="format_list_numbered" Click="@(() => ShowCollectionDialog(context))" Style="margin-right: 3px;" />
+                        }
                     </Template>
                 </RadzenDataGridColumn>
             </Columns>
