@@ -31,4 +31,12 @@ public record MonitorOptions
     /// Defaults to "{MachineName}/{EntryAssemblyName}" when not configured.
     /// </summary>
     public string SourceName { get; set; }
+
+    /// <summary>
+    /// URL of the central monitor server to forward monitoring data to.
+    /// When set, the Tharga.MongoDB.Monitor.Client package must be referenced
+    /// and <see cref="SendTo"/> is used as the Tharga.Communication server address.
+    /// When null or empty, no forwarding is configured.
+    /// </summary>
+    public string SendTo { get; set; }
 }

@@ -32,6 +32,7 @@
 
 	<ItemGroup>
 	  <ProjectReference Include="..\Tharga.MongoDB\Tharga.MongoDB.csproj" />
+	  <ProjectReference Include="..\Tharga.MongoDB.Monitor.Client\Tharga.MongoDB.Monitor.Client.csproj" />
 	</ItemGroup>
 
 </Project>
