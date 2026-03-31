@@ -29,9 +29,11 @@ internal class DatabaseMonitor : IDatabaseMonitor
     private Dictionary<string, DynColInfo> _dynamicLookup;
     private readonly SemaphoreSlim _lookupLock = new(1, 1);
     private bool _started;
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, MonitorClientDto> _monitorClients = new();
 
     public event EventHandler<CollectionInfoChangedEventArgs> CollectionInfoChangedEvent;
     public event EventHandler<CollectionDroppedEventArgs> CollectionDroppedEvent;
+    public event EventHandler MonitorClientsChanged;
 
     public DatabaseMonitor(IMongoDbServiceFactory mongoDbServiceFactory, IMongoDbInstance mongoDbInstance, IServiceProvider serviceProvider, IRepositoryConfiguration repositoryConfiguration, ICollectionProvider collectionProvider, ICallLibrary callLibrary, ICollectionCache cache, IQueueMonitor queueMonitor, IOptions<DatabaseOptions> options, ILogger<DatabaseMonitor> logger)
     {
@@ -518,6 +520,29 @@ internal class DatabaseMonitor : IDatabaseMonitor
     public void ResetCalls()
     {
         _callLibrary.ResetCalls();
+    }
+
+    // --- Remote client management ---
+
+    public IEnumerable<MonitorClientDto> GetMonitorClients()
+    {
+        return _monitorClients.Values;
+    }
+
+    public void IngestClientConnected(MonitorClientDto client)
+    {
+        _monitorClients[client.Instance] = client;
+        MonitorClientsChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void IngestClientDisconnected(string connectionId)
+    {
+        var entry = _monitorClients.Values.FirstOrDefault(x => x.ConnectionId == connectionId);
+        if (entry != null)
+        {
+            _monitorClients[entry.Instance] = entry with { IsConnected = false, DisconnectTime = DateTime.UtcNow };
+            MonitorClientsChanged?.Invoke(this, EventArgs.Empty);
+        }
     }
 
     // --- API-friendly methods ---

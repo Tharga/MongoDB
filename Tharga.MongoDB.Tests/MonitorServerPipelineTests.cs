@@ -204,5 +204,9 @@ public class MonitorServerPipelineTests
         public System.Collections.Generic.IEnumerable<ErrorSummaryDto> GetErrorSummary() => throw new NotImplementedException();
         public System.Collections.Generic.IAsyncEnumerable<SlowCallWithIndexInfoDto> GetSlowCallsWithIndexInfoAsync() => throw new NotImplementedException();
         public ConnectionPoolStateDto GetConnectionPoolState() => throw new NotImplementedException();
+        public event EventHandler MonitorClientsChanged { add { } remove { } }
+        public System.Collections.Generic.IEnumerable<MonitorClientDto> GetMonitorClients() => throw new NotImplementedException();
+        public void IngestClientConnected(MonitorClientDto client) => throw new NotImplementedException();
+        public void IngestClientDisconnected(string connectionId) => throw new NotImplementedException();
     }
 }
