@@ -7,7 +7,7 @@ namespace Tharga.MongoDB.Monitor.Server;
 /// <summary>
 /// Default client state service for monitor agent connections.
 /// </summary>
-internal sealed class MonitorClientStateService : ClientStateServiceBase<MonitorClientConnectionInfo>
+public sealed class MonitorClientStateService : ClientStateServiceBase<MonitorClientConnectionInfo>
 {
     public MonitorClientStateService(IServiceProvider serviceProvider, IOptions<CommunicationOptions> options)
         : base(serviceProvider, options)

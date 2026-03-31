@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Builder;
+using Microsoft.Extensions.DependencyInjection;
 using Tharga.Communication.Server;
 
 namespace Tharga.MongoDB.Monitor.Server;
@@ -21,6 +22,9 @@ public static class MonitorServerRegistration
             options.RegisterClientStateService<MonitorClientStateService>();
             options.RegisterClientRepository<MonitorClientRepository, MonitorClientConnectionInfo>();
         });
+
+        // Ensure the handler is registered even if assembly scanning misses it
+        builder.Services.AddTransient<MonitorCallHandler>();
 
         return builder;
     }

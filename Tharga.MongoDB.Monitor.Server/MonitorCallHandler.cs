@@ -8,7 +8,7 @@ namespace Tharga.MongoDB.Monitor.Server;
 /// Receives <see cref="MonitorCallMessage"/> from remote agents
 /// and ingests the call data into the local <see cref="IDatabaseMonitor"/>.
 /// </summary>
-internal sealed class MonitorCallHandler : PostMessageHandlerBase<MonitorCallMessage>
+public sealed class MonitorCallHandler : PostMessageHandlerBase<MonitorCallMessage>
 {
     private readonly IDatabaseMonitor _databaseMonitor;
 
