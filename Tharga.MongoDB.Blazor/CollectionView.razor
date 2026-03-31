@@ -7,7 +7,6 @@
 @implements IDisposable
 @inject IDatabaseMonitor DatabaseMonitor;
 @inject DialogService DialogService
-@inject NotificationService NotificationService
 @inject IOptions<DatabaseOptions> DatabaseOptions
 @inject ICallLibrary CallLibrary
 
@@ -35,18 +34,15 @@ else
                     </RadzenSelectBar>
                 </RadzenStack>
             </RadzenColumn>
+            @if (_showDatabase)
+            {
             <RadzenColumn>
                 <RadzenStack Orientation="Orientation.Vertical">
                     <RadzenText TextStyle="TextStyle.Caption" Text="Databases"/>
                     <RadzenDropDown Placeholder="Select databases" @bind-Value=@SelectedDatabases Data=@_databases Multiple=true Style="margin-bottom: 6px;" Change="@ReloadDataAsync" />
                 </RadzenStack>
             </RadzenColumn>
-        </RadzenRow>
-
-        <RadzenRow>
-            <RadzenColumn>
-                <ActionButton Text="Reset Cache" Icon="restart_alt" Click="ResetCache" />
-            </RadzenColumn>
+            }
         </RadzenRow>
 
         <RadzenDataGrid Data="_model" TItem="CollectionModel"
@@ -57,7 +53,7 @@ else
                         CellRender="@OnCellRender">
             <Columns>
                 <RadzenDataGridColumn Title="Configuration" Property="@nameof(CollectionModel.ConfigurationName)" Visible="@_showConfiguration" />
-                <RadzenDataGridColumn Title="Database" Property="@nameof(CollectionModel.DatabaseName)" />
+                <RadzenDataGridColumn Title="Database" Property="@nameof(CollectionModel.DatabaseName)" Visible="@_showDatabase" />
                 <RadzenDataGridColumn Title="Collection" Property="@nameof(CollectionModel.CollectionName)" />
                 <RadzenDataGridColumn Title="Discovery" Property="@nameof(CollectionModel.Discovery)" Filterable="false"/>
                 <RadzenDataGridColumn Title="Registration" Property="@nameof(CollectionModel.Registration)" Filterable="false" Width="120px" />
@@ -103,6 +99,7 @@ else
     private string[] _databases;
     private CollectionModel[] _model;
     private bool _showConfiguration;
+    private bool _showDatabase;
     private CollectionInfo[] _all;
 
     private IEnumerable<Registration> SelectedRegistrationTypes { get; set; }
@@ -201,16 +198,11 @@ else
         await base.OnParametersSetAsync();
     }
 
-    private async Task ResetCache()
+    public async Task RefreshAsync()
     {
-        await DatabaseMonitor.ResetAsync();
-        _all = null;
-        _model = null;
-        StateHasChanged();
         _all = await DatabaseMonitor.GetInstancesAsync(FullDatabaseScan, Filter).ToArrayAsync();
         _databases = _all.GroupBy(x => x.DatabaseName).Select(x => x.First()).Select(x => x.DatabaseName).Order().ToArray();
         await ReloadDataAsync();
-        NotificationService.Notify(new NotificationMessage { Summary = "Cache has been reset." });
     }
 
     private async Task ShowCollectionDialog(CollectionModel context)
@@ -257,6 +249,7 @@ else
             })
             .ToArray();
         _showConfiguration = _model.GroupBy(x => x.ConfigurationName).Count() > 1;
+        _showDatabase = _model.Select(x => x.DatabaseName).Distinct().Count() > 1;
         StateHasChanged();
     }
 

@@ -44,18 +44,15 @@ else
                 </RadzenStack>
             </RadzenColumn>
             }
+            @if (_databases.Length > 1)
+            {
             <RadzenColumn>
                 <RadzenStack Orientation="Orientation.Vertical">
                     <RadzenText TextStyle="TextStyle.Caption" Text="Databases"/>
                     <RadzenDropDown Placeholder="Select databases" @bind-Value=@SelectedDatabases Data=@_databases Multiple=true Style="margin-bottom: 6px;" Change="@ReloadDataAsync" />
                 </RadzenStack>
             </RadzenColumn>
-            <RadzenColumn Size="2">
-                <RadzenStack Orientation="Orientation.Vertical">
-                    <RadzenText TextStyle="TextStyle.Caption" Text="&nbsp;"/>
-                    <ActionButton Text="Reset" Icon="restart_alt" Click="ResetCallsAsync" />
-                </RadzenStack>
-            </RadzenColumn>
+            }
         </RadzenRow>
 
         @if (SelectedTab == "Queue")
@@ -99,7 +96,7 @@ else
                 </RadzenDataGridColumn>
                 <RadzenDataGridColumn Title="Source" Property="@nameof(CallInfo.SourceName)" Visible="@_showSource" />
                 <RadzenDataGridColumn Title="Configuration" Property="@($"{nameof(CallInfo.Fingerprint)}.{nameof(CallInfo.Fingerprint.ConfigurationName)}")" Visible="@_showConfiguration" />
-                <RadzenDataGridColumn Title="Database" Property="@($"{nameof(CallInfo.Fingerprint)}.{nameof(CallInfo.Fingerprint.DatabaseName)}")" />
+                <RadzenDataGridColumn Title="Database" Property="@($"{nameof(CallInfo.Fingerprint)}.{nameof(CallInfo.Fingerprint.DatabaseName)}")" Visible="@_showDatabase" />
                 <RadzenDataGridColumn Title="Collection" Property="@($"{nameof(CallInfo.Fingerprint)}.{nameof(CallInfo.Fingerprint.CollectionName)}")" />
                 <RadzenDataGridColumn Title="Function" Property="@nameof(CallInfo.FunctionName)"/>
                 <RadzenDataGridColumn Title="Operation" Property="@nameof(CallInfo.Operation)"/>
@@ -133,6 +130,7 @@ else
     private Operation[] _operations;
     private CallInfo[] _model;
     private bool _showConfiguration;
+    private bool _showDatabase;
     private bool _showSource;
     private CallInfo[] _all;
     private bool _disposed;
@@ -229,12 +227,12 @@ else
             .ToArray();
         _showSource = _model.Select(x => x.SourceName).Distinct().Count() > 1;
         _showConfiguration = _model.GroupBy(x => x.Fingerprint.ConfigurationName).Count() > 1;
+        _showDatabase = _model.Select(x => x.Fingerprint.DatabaseName).Distinct().Count() > 1;
         StateHasChanged();
     }
 
-    private async Task ResetCallsAsync()
+    public async Task RefreshAsync()
     {
-        DatabaseMonitor.ResetCalls();
         await ReloadDataAsync();
     }
 
