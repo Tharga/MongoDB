@@ -1,44 +1,30 @@
-﻿using ConsoleSample;
-using Microsoft.Extensions.Configuration;
+using System;
+using ConsoleSample;
+using ConsoleSample.DynamicRepo;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using System;
-using ConsoleSample.DynamicRepo;
 using Microsoft.Extensions.Logging;
 using Tharga.Console;
 using Tharga.Console.Commands;
 using Tharga.Console.Consoles;
 using Tharga.MongoDB;
+using Tharga.MongoDB.Monitor.Client;
 
 using var console = new ClientConsole();
 
-var host = Host.CreateDefaultBuilder(args)
-    .ConfigureHostConfiguration(builder =>
-    {
-        builder.AddEnvironmentVariables();
-    })
-    .ConfigureAppConfiguration((_, builder) =>
-    {
-        builder
-            .SetBasePath(AppContext.BaseDirectory)
-            .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
-            .AddEnvironmentVariables();
-    })
-    .ConfigureLogging(logging =>
-    {
-        logging.ClearProviders();
-        logging.AddConsole();
-    })
-    .ConfigureServices((context, services) =>
-    {
-        //_ = AssemblyService.GetTypes<ICommand>().Select(services.AddTransient).ToArray();
+var builder = Host.CreateApplicationBuilder(args);
 
-        services.AddMongoDB(context.Configuration, o =>
-        {
-            o.Monitor.Enabled = true;
-        });
-    })
-    .Build();
+builder.Logging.ClearProviders();
+builder.Logging.AddConsole();
+
+builder.Services.AddMongoDB(builder.Configuration, o =>
+{
+    o.Monitor.Enabled = true;
+});
+
+builder.AddMongoDbMonitorClient(sendTo: "https://localhost:7205");
+
+var host = builder.Build();
 
 host.UseMongoDB();
 

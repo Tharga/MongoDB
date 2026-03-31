@@ -21,6 +21,13 @@ public interface IDatabaseMonitor
     Task<IEnumerable<string[]>> GetIndexBlockersAsync(CollectionInfo collectionInfo, string indexName);
     Task<CleanInfo> CleanAsync(CollectionInfo collectionInfo, bool cleanGuids);
     IEnumerable<CallInfo> GetCalls(CallType callType);
+
+    /// <summary>
+    /// Ingest an externally produced call (e.g. from a remote agent) into the monitor pipeline.
+    /// The call will appear in GetCalls, summaries, and Blazor components.
+    /// </summary>
+    void IngestCall(CallDto call);
+
     void ResetCalls();
     Task ResetAsync();
 

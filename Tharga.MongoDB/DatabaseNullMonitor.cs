@@ -61,6 +61,8 @@ internal class DatabaseNullMonitor : IDatabaseMonitor
         yield break;
     }
 
+    public void IngestCall(CallDto call) { }
+
     public void ResetCalls() { }
 
     public Task ResetAsync() => Task.CompletedTask;

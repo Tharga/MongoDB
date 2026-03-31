@@ -101,6 +101,24 @@ stages:
         versionEnvVar: 'BUILD_BUILDNUMBER'
         arguments: '--configuration Release /p:IncludeSymbols=true /p:IncludeSource=true /p:SymbolPackageFormat=snupkg /p:ContinuousIntegrationBuild=true'
 
+    - task: DotNetCoreCLI@2
+      displayName: 'Pack Tharga.MongoDB.Monitor.Client'
+      inputs:
+        command: 'pack'
+        packagesToPack: '**/Tharga.MongoDB.Monitor.Client.csproj'
+        versioningScheme: 'byEnvVar'
+        versionEnvVar: 'BUILD_BUILDNUMBER'
+        arguments: '--configuration Release /p:IncludeSymbols=true /p:IncludeSource=true /p:SymbolPackageFormat=snupkg /p:ContinuousIntegrationBuild=true'
+
+    - task: DotNetCoreCLI@2
+      displayName: 'Pack Tharga.MongoDB.Monitor.Server'
+      inputs:
+        command: 'pack'
+        packagesToPack: '**/Tharga.MongoDB.Monitor.Server.csproj'
+        versioningScheme: 'byEnvVar'
+        versionEnvVar: 'BUILD_BUILDNUMBER'
+        arguments: '--configuration Release /p:IncludeSymbols=true /p:IncludeSource=true /p:SymbolPackageFormat=snupkg /p:ContinuousIntegrationBuild=true'
+
     - task: PublishBuildArtifacts@1
       displayName: 'Publish artifacts'
       inputs:
