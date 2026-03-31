@@ -67,4 +67,26 @@ public interface IDatabaseMonitor
     /// Get aggregate connection pool state.
     /// </summary>
     ConnectionPoolStateDto GetConnectionPoolState();
+
+    // --- Remote client management ---
+
+    /// <summary>
+    /// Raised when the list of connected monitoring agents changes.
+    /// </summary>
+    event EventHandler MonitorClientsChanged;
+
+    /// <summary>
+    /// Get all known monitoring agents (connected and recently disconnected).
+    /// </summary>
+    IEnumerable<MonitorClientDto> GetMonitorClients();
+
+    /// <summary>
+    /// Register a connected monitoring agent.
+    /// </summary>
+    void IngestClientConnected(MonitorClientDto client);
+
+    /// <summary>
+    /// Mark a monitoring agent as disconnected.
+    /// </summary>
+    void IngestClientDisconnected(string connectionId);
 }

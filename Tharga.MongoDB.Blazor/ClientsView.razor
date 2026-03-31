@@ -1,0 +1,104 @@
+@using Microsoft.Extensions.Options
+@using Tharga.MongoDB.Configuration
+@implements IDisposable
+@inject IDatabaseMonitor DatabaseMonitor;
+@inject IOptions<DatabaseOptions> DatabaseOptions
+
+@if (!DatabaseOptions.Value.Monitor.Enabled)
+{
+    <RadzenText>Database monitor is disabled.</RadzenText>
+}
+else if (_model == null)
+{
+    <Tharga.Blazor.Loading />
+}
+else if (!_model.Any())
+{
+    <RadzenText TextStyle="TextStyle.Body1" Style="color: gray; padding: 16px;">No monitoring agents connected.</RadzenText>
+}
+else
+{
+    <RadzenDataGrid Data="_model" TItem="MonitorClientDto"
+                    AllowSorting="true"
+                    AllowPaging="true" PageSize="8" PageSizeOptions="[8, 16, 32, 64]"
+                    ShowPagingSummary="true" PagingSummaryFormat="@("{2:N0} clients, page {0} of {1}")"
+                    CellRender="@OnCellRender">
+        <Columns>
+            <RadzenDataGridColumn Title="Status" Sortable="true" Width="100px" CssClass="css-status">
+                <Template>
+                    @if (context.IsConnected)
+                    {
+                        <RadzenBadge BadgeStyle="BadgeStyle.Success" Text="Connected" />
+                    }
+                    else
+                    {
+                        <RadzenBadge BadgeStyle="BadgeStyle.Danger" Text="Disconnected" />
+                    }
+                </Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn Title="Machine" Property="@nameof(MonitorClientDto.Machine)" />
+            <RadzenDataGridColumn Title="Application" Property="@nameof(MonitorClientDto.Type)" />
+            <RadzenDataGridColumn Title="Version" Property="@nameof(MonitorClientDto.Version)" Width="120px" />
+            <RadzenDataGridColumn Title="Connected" Property="@nameof(MonitorClientDto.ConnectTime)" SortOrder="SortOrder.Descending" Width="180px">
+                <Template>
+                    <Tharga.Blazor.DateTimeView Date="@context.ConnectTime" />
+                </Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn Title="Disconnected" Property="@nameof(MonitorClientDto.DisconnectTime)" Width="180px">
+                <Template>
+                    @if (context.DisconnectTime.HasValue)
+                    {
+                        <Tharga.Blazor.DateTimeView Date="@context.DisconnectTime.Value" />
+                    }
+                </Template>
+            </RadzenDataGridColumn>
+        </Columns>
+    </RadzenDataGrid>
+}
+
+@code {
+    private MonitorClientDto[] _model;
+    private bool _disposed;
+
+    protected override void OnInitialized()
+    {
+        DatabaseMonitor.MonitorClientsChanged += OnClientsChanged;
+        _model = DatabaseMonitor.GetMonitorClients().ToArray();
+    }
+
+    public void Dispose()
+    {
+        _disposed = true;
+        DatabaseMonitor.MonitorClientsChanged -= OnClientsChanged;
+    }
+
+    private async void OnClientsChanged(object sender, EventArgs e)
+    {
+        if (_disposed) return;
+
+        try
+        {
+            await InvokeAsync(() =>
+            {
+                _model = DatabaseMonitor.GetMonitorClients().ToArray();
+                StateHasChanged();
+            });
+        }
+        catch (ObjectDisposedException) { }
+    }
+
+    void OnCellRender(DataGridCellRenderEventArgs<MonitorClientDto> args)
+    {
+        if (!args.Data.IsConnected)
+        {
+            if (args.Attributes.TryGetValue("style", out var existing))
+            {
+                args.Attributes["style"] = existing + "opacity: 0.5;";
+            }
+            else
+            {
+                args.Attributes.Add("style", "opacity: 0.5;");
+            }
+        }
+    }
+}

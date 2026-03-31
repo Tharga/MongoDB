@@ -10,6 +10,7 @@ internal class DatabaseNullMonitor : IDatabaseMonitor
 {
     public event EventHandler<CollectionInfoChangedEventArgs> CollectionInfoChangedEvent;
     public event EventHandler<CollectionDroppedEventArgs> CollectionDroppedEvent;
+    public event EventHandler MonitorClientsChanged { add { } remove { } }
 
     public IEnumerable<ConfigurationName> GetConfigurations()
     {
@@ -62,6 +63,12 @@ internal class DatabaseNullMonitor : IDatabaseMonitor
     }
 
     public void IngestCall(CallDto call) { }
+
+    public IEnumerable<MonitorClientDto> GetMonitorClients() { yield break; }
+
+    public void IngestClientConnected(MonitorClientDto client) { }
+
+    public void IngestClientDisconnected(string connectionId) { }
 
     public void ResetCalls() { }
 
