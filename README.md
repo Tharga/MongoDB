@@ -444,6 +444,16 @@ services.AddMongoDB(o =>
 
 The Blazor call view automatically shows a Source column and filter when calls from multiple sources are present.
 
+### Remote forwarding
+Install the `Tharga.MongoDB.Monitor.Client` package to forward monitoring data from a remote agent to a central server via [Tharga.Communication](https://www.nuget.org/packages/Tharga.Communication).
+
+```csharp
+builder.AddMongoDB();
+builder.AddMongoDbMonitorClient(sendTo: "https://monitor-server/hub");
+```
+
+The forwarder subscribes to call events and sends `CallDto` via fire-and-forget. When the server is unavailable or not configured, there is zero overhead. The central server can aggregate data from multiple agents using the `Tharga.MongoDB.Monitor.Server` package (coming soon).
+
 ### Reset
 Call `IDatabaseMonitor.ResetAsync()` to clear all cached monitor state (both in-memory and persisted).
 The Blazor admin UI (`CollectionView`) includes a Reset button that triggers this.
