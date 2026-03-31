@@ -452,7 +452,7 @@ builder.AddMongoDB();
 builder.AddMongoDbMonitorClient(sendTo: "https://monitor-server");
 ```
 
-The forwarder subscribes to call events and sends `CallDto` via fire-and-forget. When the server is unavailable or not configured, there is zero overhead.
+The forwarder subscribes to call events and sends `CallDto` via fire-and-forget. When the server is unavailable or not configured, there is zero overhead. The hub endpoint defaults to `/mongodb-monitor`.
 
 ### Receiving remote monitoring data
 Install the `Tharga.MongoDB.Monitor.Server` package on the central server (typically the Blazor dashboard app) to receive monitoring data from remote agents.
@@ -464,6 +464,8 @@ builder.AddMongoDbMonitorServer();
 app.UseMongoDB();
 app.UseMongoDbMonitorServer();
 ```
+
+The hub is mapped at `/mongodb-monitor` by default. Both client and server accept an optional pattern override if needed.
 
 Remote calls are ingested into the local `IDatabaseMonitor` and appear automatically in Blazor components, REST API endpoints, and summaries alongside local data. The Source column and filter appear when calls from multiple sources are present.
 

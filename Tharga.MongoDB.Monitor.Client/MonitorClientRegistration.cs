@@ -23,6 +23,7 @@ public static class MonitorClientRegistration
         builder.AddThargaCommunicationClient(o =>
         {
             o.ServerAddress = serverAddress;
+            o.Pattern = MonitorConstants.DefaultHubPattern;
         });
 
         builder.Services.AddHostedService<MonitorForwarder>();
