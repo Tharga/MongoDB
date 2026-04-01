@@ -14,7 +14,17 @@
       "Read",
       "Glob",
       "Grep",
-      "Bash(dotnet test:*)"
+      "Bash(dotnet build -v q)",
+      "Bash(dotnet build:*)",
+      "Bash(rm .claude/feature.md)",
+      "Bash(rm .claude/plan.md)",
+      "Bash(git rm:*)",
+      "Bash(git merge:*)",
+      "Bash(git branch:*)",
+      "Bash(dotnet test:*)",
+      "Bash(xargs grep:*)",
+      "Bash(git mv:*)",
+      "Bash(xargs ls:*)"
     ],
     "deny": [
       "Bash(rm -rf:*)",

@@ -49,7 +49,7 @@
 - **Date:** 2026-04-01
 - **Priority:** Medium
 - **Description:** When the ExecuteLimiter logs "The maximum number of {count} concurrent executions for {serverKey} has been reached", the message does not include the number of operations waiting in the queue. During production incidents this makes it impossible to gauge severity — hitting the limit with 2 items in the queue is very different from hitting it with 500. **Suggested fix:** Add the queue depth to the warning log: `"The maximum number of {count} concurrent executions for {serverKey} has been reached. {queueCount} operations waiting in queue."` The value is already available via `state.GetQueued()` at line 94 of `ExecuteLimiter.cs`.
-- **Status:** Pending
+- **Status:** Done (2026-04-01) — Added queue depth to the concurrent limit warning log.
 
 ## Notifications
 
