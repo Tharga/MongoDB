@@ -311,7 +311,7 @@ public static class MongoDbRegistrationExtensions
                 o.Logger?.LogDebug("Firewall open process complete.");
             });
 
-            if (o.WaitToComplete) Task.WhenAll(task);
+            if (o.WaitToComplete) Task.WaitAll(task);
         }
 
         if (o.AssureIndex && !lateConnectionStrins)
@@ -326,7 +326,7 @@ public static class MongoDbRegistrationExtensions
                 }
             });
 
-            if (o.WaitToComplete) Task.WhenAll(task);
+            if (o.WaitToComplete) Task.WaitAll(task);
         }
     }
 

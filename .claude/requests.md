@@ -30,6 +30,20 @@
 - **Description:** The `AddMongoDB` extension currently only has an `IServiceCollection` overload in the published NuGet (2.7.8). The local source has an `IHostApplicationBuilder` overload. This is needed so `builder.AddMongoDB()` works consistently. Also, `Tharga.Team.MongoDB 2.0.1` depends on `Tharga.MongoDB >= 2.8.5-pre.20` which is not published as stable — a stable release of Tharga.MongoDB >= 2.8.5 is needed.
 - **Status:** Done (2026-03-25) — README updated, version bumped to 2.9, release gate restored to master-only
 
+### Make UseMongoDB async to avoid sync-over-async blocking
+- **From:** Eplicta.Core (`c:\dev\Eplicta\Core`)
+- **Date:** 2026-04-01
+- **Priority:** High
+- **Description:** `UseMongoDB` is currently `void` and uses `Task.WaitAll` to synchronously block on firewall and index assurance tasks (lines 314, 329 of `MongoDbRegistrationExtensions.cs`). These were recently changed to `Task.WhenAll` without `await`, which silently discards the result — making firewall and index tasks fire-and-forget. The correct fix is to make the method async: change signature to `public static async Task UseMongoDBAsync(this IHost app, ...)` and `await Task.WhenAll(task)`. Keep the old `UseMongoDB` as an obsolete sync wrapper calling `UseMongoDBAsync(...).GetAwaiter().GetResult()` for backwards compatibility. In the meantime, the current code should revert to `Task.WaitAll` until this is done.
+- **Status:** Pending
+
+### Optional MongoDB driver command monitoring for diagnostics
+- **From:** Eplicta.Core (`c:\dev\Eplicta\Core`)
+- **Date:** 2026-04-01
+- **Priority:** Low
+- **Description:** When investigating slow MongoDB operations, the existing step timings (Queue, FetchCollection, Action, Finalize) don't distinguish between slow server execution and thread pool starvation — both show up as a slow "Action" step. MongoDB driver command monitoring (`CommandStartedEvent`/`CommandSucceededEvent` via `ClusterConfigurator`) would provide the driver-level round-trip time (network + server), separate from thread pool wait. However, this should NOT be always-on in production due to volume and sensitive data in command bodies. **Suggested approach:** Add a `DatabaseOptions.EnableCommandMonitoring` flag (default `false`) that can be toggled via config (`MongoDB:EnableCommandMonitoring`). When enabled, subscribe to `CommandSucceededEvent` and log the command name, collection, and duration at `LogDebug` level. Optionally add the driver duration as a sub-step within the "Action" step in the monitor data. This allows operators to turn it on temporarily during incidents and off again afterwards.
+- **Status:** Pending
+
 ### Include queue depth in ExecuteLimiter warning log
 - **From:** Eplicta.Core (`c:\dev\Eplicta\Core`)
 - **Date:** 2026-04-01
