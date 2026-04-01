@@ -121,7 +121,15 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 
                 //NOTE: Perform action
                 var response = await action.Invoke(collection, ct);
-                steps.Add(new StepResponse { Timestamp = Stopwatch.GetTimestamp(), Step = "Action" });
+
+                //NOTE: Attach driver command duration if command monitoring is enabled
+                var commandMonitor = ((MongoDbServiceFactory)_mongoDbServiceFactory).CommandMonitor;
+                var commandEntry = commandMonitor?.TakeLatestForCurrentThread();
+                var driverMessage = commandEntry != null
+                    ? $"Driver: {commandEntry.CommandName} {commandEntry.Duration.TotalMilliseconds:N2}ms{(commandEntry.Failed ? " (FAILED)" : "")}"
+                    : null;
+
+                steps.Add(new StepResponse { Timestamp = Stopwatch.GetTimestamp(), Step = "Action", Message = driverMessage });
 
                 if (operation == Operation.Delete) await DropEmptyAsync(collection);
 

@@ -39,4 +39,12 @@ public record MonitorOptions
     /// When null or empty, no forwarding is configured.
     /// </summary>
     public string SendTo { get; set; }
+
+    /// <summary>
+    /// Enable MongoDB driver command monitoring. When enabled, driver-level command durations
+    /// are captured and surfaced in call step data, allowing operators to distinguish slow
+    /// server execution from thread pool starvation. Default is false.
+    /// Should NOT be always-on in production due to volume.
+    /// </summary>
+    public bool EnableCommandMonitoring { get; set; }
 }
