@@ -1,28 +1,14 @@
 using System;
 using System.Linq;
 using FluentAssertions;
-using Microsoft.Extensions.Options;
-using Tharga.MongoDB.Configuration;
 using Xunit;
 
 namespace Tharga.MongoDB.Tests;
 
 public class IngestCollectionInfoTests
 {
-    private readonly DatabaseMonitor _monitor;
-
-    public IngestCollectionInfoTests()
-    {
-        // DatabaseMonitor requires many dependencies — use a minimal approach via IDatabaseMonitor
-        // We test via the real DatabaseMonitor by checking _remoteCollections indirectly
-        // through GetInstancesAsync. But that requires Start() which needs full DI.
-        // Instead, test the RemoteCollectionInfoDto → CollectionInfo conversion and dedup
-        // by testing the ingest + GetInstancesAsync path won't work without full wiring.
-        // So we test at the handler level with a mock.
-    }
-
     [Fact]
-    public void IngestedCollectionInfo_HasRegistrationRemote()
+    public void IngestedCollectionInfo_PreservesOriginalRegistration()
     {
         // Arrange
         var dto = new RemoteCollectionInfoDto
@@ -40,24 +26,22 @@ public class IngestCollectionInfoTests
 
         // Act — parse the same way DatabaseMonitor does
         Enum.TryParse<Discovery>(dto.Discovery, out var discovery);
+        Enum.TryParse<Registration>(dto.Registration, out var registration);
         var info = new CollectionInfo
         {
             ConfigurationName = dto.ConfigurationName,
             DatabaseName = dto.DatabaseName,
             CollectionName = dto.CollectionName,
             Server = dto.Server,
-            DatabasePart = dto.DatabasePart,
             Discovery = discovery,
-            Registration = Registration.Remote,
+            Registration = registration,
             EntityTypes = dto.EntityTypes ?? [],
             CollectionType = null,
             Stats = dto.Stats,
-            Index = dto.Index,
-            Clean = dto.Clean,
         };
 
-        // Assert
-        info.Registration.Should().Be(Registration.Remote);
+        // Assert — registration is preserved, not overwritten to Remote
+        info.Registration.Should().Be(Registration.Static);
         info.ConfigurationName.Value.Should().Be("Default");
         info.DatabaseName.Should().Be("RemoteDb");
         info.CollectionName.Should().Be("Orders");
@@ -77,7 +61,7 @@ public class IngestCollectionInfoTests
             DatabaseName = "Db",
             CollectionName = "Orders",
             Server = "server-a",
-            Registration = Registration.Remote,
+            Registration = Registration.Static,
             EntityTypes = [],
             CollectionType = null,
             Stats = new CollectionStats { DocumentCount = 50, Size = 1024 }
@@ -89,7 +73,7 @@ public class IngestCollectionInfoTests
             DatabaseName = "Db",
             CollectionName = "Orders",
             Server = "server-b",
-            Registration = Registration.Remote,
+            Registration = Registration.Static,
             EntityTypes = [],
             CollectionType = null,
             Stats = new CollectionStats { DocumentCount = 150, Size = 8192 }
@@ -102,5 +86,25 @@ public class IngestCollectionInfoTests
         // Assert — same key, second overwrites first
         dict.Should().HaveCount(1);
         dict.Values.Single().Stats.DocumentCount.Should().Be(150);
+    }
+
+    [Fact]
+    public void SourceTracking_MultipleSources_SameCollection()
+    {
+        // Arrange
+        var sources = new System.Collections.Concurrent.ConcurrentDictionary<string, System.Collections.Concurrent.ConcurrentDictionary<string, bool>>();
+        var key = "Default.Db.Orders";
+
+        // Act — two sources report the same collection
+        var bag1 = sources.GetOrAdd(key, _ => new System.Collections.Concurrent.ConcurrentDictionary<string, bool>());
+        bag1["Agent-A/OrderService"] = true;
+
+        var bag2 = sources.GetOrAdd(key, _ => new System.Collections.Concurrent.ConcurrentDictionary<string, bool>());
+        bag2["Agent-B/PaymentService"] = true;
+
+        // Assert
+        sources[key].Keys.Should().HaveCount(2);
+        sources[key].Keys.Should().Contain("Agent-A/OrderService");
+        sources[key].Keys.Should().Contain("Agent-B/PaymentService");
     }
 }

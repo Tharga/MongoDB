@@ -72,6 +72,8 @@ internal class DatabaseNullMonitor : IDatabaseMonitor
 
     public void IngestCollectionInfo(RemoteCollectionInfoDto collectionInfo) { }
 
+    public IReadOnlyCollection<string> GetCollectionSources(string fingerprintKey) => [];
+
     public void ResetCalls() { }
 
     public Task ResetAsync() => Task.CompletedTask;

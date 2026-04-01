@@ -31,6 +31,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
     private bool _started;
     private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, MonitorClientDto> _monitorClients = new();
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, CollectionInfo> _remoteCollections = new();
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, System.Collections.Concurrent.ConcurrentDictionary<string, bool>> _collectionSources = new();
 
     public event EventHandler<CollectionInfoChangedEventArgs> CollectionInfoChangedEvent;
     public event EventHandler<CollectionDroppedEventArgs> CollectionDroppedEvent;
@@ -296,6 +297,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
         var visited = new HashSet<string>();
         var index = 0;
         var total = contexts.Length;
+        var localSource = _mongoDbServiceFactory.SourceName;
 
         foreach (var context in contexts)
         {
@@ -308,13 +310,21 @@ internal class DatabaseMonitor : IDatabaseMonitor
                 {
                     if (filter != null && !database.ProtectCollectionName().Contains(filter)) continue;
                     await foreach (var info in GetCollectionsFromDb(mongoDbService, database, filter, currentDbKeys, visited, sw))
+                    {
+                        var sources = _collectionSources.GetOrAdd(info.Key, _ => new System.Collections.Concurrent.ConcurrentDictionary<string, bool>());
+                        sources[localSource] = true;
                         yield return info;
+                    }
                 }
             }
             else
             {
                 await foreach (var info in GetCollectionsFromDb(mongoDbService, null, filter, currentDbKeys, visited, sw))
+                {
+                    var sources = _collectionSources.GetOrAdd(info.Key, _ => new System.Collections.Concurrent.ConcurrentDictionary<string, bool>());
+                    sources[localSource] = true;
                     yield return info;
+                }
             }
         }
 
@@ -558,6 +568,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
     public void IngestCollectionInfo(RemoteCollectionInfoDto dto)
     {
         Enum.TryParse<Discovery>(dto.Discovery, out var discovery);
+        Enum.TryParse<Registration>(dto.Registration, out var registration);
         var info = new CollectionInfo
         {
             ConfigurationName = dto.ConfigurationName,
@@ -566,7 +577,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
             Server = dto.Server,
             DatabasePart = dto.DatabasePart,
             Discovery = discovery,
-            Registration = Registration.Remote,
+            Registration = registration,
             EntityTypes = dto.EntityTypes ?? [],
             CollectionType = null,
             Stats = dto.Stats,
@@ -576,7 +587,19 @@ internal class DatabaseMonitor : IDatabaseMonitor
 
         var key = info.Key;
         _remoteCollections[key] = info;
+
+        // Track source
+        var sources = _collectionSources.GetOrAdd(key, _ => new System.Collections.Concurrent.ConcurrentDictionary<string, bool>());
+        sources[dto.SourceName] = true;
+
         CollectionInfoChangedEvent?.Invoke(this, new CollectionInfoChangedEventArgs(info));
+    }
+
+    public IReadOnlyCollection<string> GetCollectionSources(string fingerprintKey)
+    {
+        if (_collectionSources.TryGetValue(fingerprintKey, out var sources))
+            return sources.Keys.ToArray();
+        return [];
     }
 
     // --- API-friendly methods ---
