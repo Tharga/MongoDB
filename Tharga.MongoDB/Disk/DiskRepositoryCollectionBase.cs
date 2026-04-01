@@ -120,16 +120,22 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                 FlexibleGuidSerializer.CollectionContext = ProtectedCollectionName;
 
                 //NOTE: Perform action
+                var actionStartTimestamp = steps[^1].Timestamp;
                 var response = await action.Invoke(collection, ct);
+                var actionEndTimestamp = Stopwatch.GetTimestamp();
 
-                //NOTE: Attach driver command duration if command monitoring is enabled
+                //NOTE: Attach driver command duration and serialization overhead if command monitoring is enabled
                 var commandMonitor = ((MongoDbServiceFactory)_mongoDbServiceFactory).CommandMonitor;
                 var commandEntry = commandMonitor?.TakeLatestForCurrentThread();
-                var driverMessage = commandEntry != null
-                    ? $"Driver: {commandEntry.CommandName} {commandEntry.Duration.TotalMilliseconds:N2}ms{(commandEntry.Failed ? " (FAILED)" : "")}"
-                    : null;
+                string driverMessage = null;
+                if (commandEntry != null)
+                {
+                    var actionDuration = GetElapsed(actionStartTimestamp, actionEndTimestamp);
+                    var serializationDuration = actionDuration - commandEntry.Duration;
+                    driverMessage = $"Driver: {commandEntry.CommandName} {commandEntry.Duration.TotalMilliseconds:N2}ms | Serialization: {serializationDuration.TotalMilliseconds:N2}ms{(commandEntry.Failed ? " | FAILED" : "")}";
+                }
 
-                steps.Add(new StepResponse { Timestamp = Stopwatch.GetTimestamp(), Step = "Action", Message = driverMessage });
+                steps.Add(new StepResponse { Timestamp = actionEndTimestamp, Step = "Action", Message = driverMessage });
 
                 if (operation == Operation.Delete) await DropEmptyAsync(collection);
 
