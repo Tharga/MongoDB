@@ -4,4 +4,4 @@ Shared Blazor components and team management infrastructure, published as NuGet 
 
 ## External References
 - **Backlog**: `c:\Users\danie\SynologyDrive\Documents\Notes\Tharga\Toolkit\MongoDB.md`
-- **Incoming requests**: `c:\dev\Eplicta\.claude\requests.md` — check for pending requests **To: Tharga.Cache** on startup; write back notifications when completed
+- **Incoming requests**: `c:\Users\danie\SynologyDrive\Documents\Notes\Tharga\Requests.md` — check for pending requests for this project on startup

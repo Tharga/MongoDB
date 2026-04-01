@@ -98,34 +98,12 @@ When all planned steps are done:
 
 ## Feature Requests (cross-project)
 
-Projects can request features from each other via `.claude/requests.md`.
+Cross-project requests are handled via `mission.md` — see the "Incoming requests" reference there for the central location.
 
-- Read `~/.claude/projects.md` (or `$OBSIDIAN_VAULT/Tharga/projects.md`) to discover other projects
-- Read `.claude/requests.md` on startup — show pending requests and new notifications to the user
-- Writing feature requests to other projects is **exempt from the cross-project guard**
-- For mono-repos: requests go to the root, not sub-projects (see projects.md for details)
+- On startup, check `mission.md` for the requests location and show pending requests to the user
+- Writing feature requests is **exempt from the cross-project guard**
 - Never mark a request as done without user confirmation
-- When a request is completed: update status to Done and write a notification back to the requester's `.claude/requests.md`
-
-### Request format
-```markdown
-## Pending
-
-### <short description>
-- **From:** <project name> (`<project path>`)
-- **Date:** <YYYY-MM-DD>
-- **Priority:** <High/Medium/Low>
-- **Description:** <what is needed and why>
-- **Status:** Pending
-
-## Notifications
-
-### <short description> — DONE
-- **From:** <project name> (`<project path>`)
-- **Completed:** <YYYY-MM-DD>
-- **Summary:** <what was done>
-- **Branch/Version:** <branch or version>
-```
+- When a request is completed: update its status to Done in the central file, add completion date and summary
 
 ## Backlog Hygiene
 - When a task from the backlog (in `mission.md` or linked external files) is completed, mark it as done or remove it
