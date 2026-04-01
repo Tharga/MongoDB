@@ -89,4 +89,14 @@ public interface IDatabaseMonitor
     /// Mark a monitoring agent as disconnected.
     /// </summary>
     void IngestClientDisconnected(string connectionId);
+
+    /// <summary>
+    /// Ingest collection metadata from a remote agent.
+    /// </summary>
+    void IngestCollectionInfo(RemoteCollectionInfoDto collectionInfo);
+
+    /// <summary>
+    /// Get the source names that have reported a given collection (by fingerprint key).
+    /// </summary>
+    IReadOnlyCollection<string> GetCollectionSources(string fingerprintKey);
 }

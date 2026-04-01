@@ -208,5 +208,7 @@ public class MonitorServerPipelineTests
         public System.Collections.Generic.IEnumerable<MonitorClientDto> GetMonitorClients() => throw new NotImplementedException();
         public void IngestClientConnected(MonitorClientDto client) => throw new NotImplementedException();
         public void IngestClientDisconnected(string connectionId) => throw new NotImplementedException();
+        public void IngestCollectionInfo(RemoteCollectionInfoDto collectionInfo) => throw new NotImplementedException();
+        public System.Collections.Generic.IReadOnlyCollection<string> GetCollectionSources(string fingerprintKey) => throw new NotImplementedException();
     }
 }

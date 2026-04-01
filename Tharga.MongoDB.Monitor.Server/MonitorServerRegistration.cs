@@ -24,8 +24,9 @@ public static class MonitorServerRegistration
             options.RegisterClientRepository<MonitorClientRepository, MonitorClientConnectionInfo>();
         });
 
-        // Ensure the handler is registered even if assembly scanning misses it
+        // Ensure handlers are registered even if assembly scanning misses them
         builder.Services.AddTransient<MonitorCallHandler>();
+        builder.Services.AddTransient<MonitorCollectionInfoHandler>();
 
         // Bridge client connection events into IDatabaseMonitor
         builder.Services.AddHostedService<MonitorClientBridge>();

@@ -52,6 +52,11 @@ else
                         ShowPagingSummary="true" PagingSummaryFormat="@("{2:N0} collections, page {0} of {1}")"
                         CellRender="@OnCellRender">
             <Columns>
+                <RadzenDataGridColumn Title="Source" Visible="@_showSource" Sortable="false" Filterable="false" Width="200px">
+                    <Template>
+                        @string.Join(", ", context.Sources)
+                    </Template>
+                </RadzenDataGridColumn>
                 <RadzenDataGridColumn Title="Configuration" Property="@nameof(CollectionModel.ConfigurationName)" Visible="@_showConfiguration" />
                 <RadzenDataGridColumn Title="Database" Property="@nameof(CollectionModel.DatabaseName)" Visible="@_showDatabase" />
                 <RadzenDataGridColumn Title="Collection" Property="@nameof(CollectionModel.CollectionName)" />
@@ -87,7 +92,7 @@ else
                 </RadzenDataGridColumn>
                 <RadzenDataGridColumn Title="" Sortable="false" Width="60px;" Filterable="false">
                     <Template>
-                        <StandardButton Icon="format_list_numbered" Click="@(() => ShowCollectionDialog(context))" Style="margin-right: 3px;" />
+                        <StandardButton Icon="format_list_numbered" Click="@(() => ShowCollectionDialog(context))" Style="margin-right: 3px;" Visible="@context.IsLocal" />
                     </Template>
                 </RadzenDataGridColumn>
             </Columns>
@@ -99,6 +104,7 @@ else
     private string[] _databases;
     private CollectionModel[] _model;
     private bool _showConfiguration;
+    private bool _showSource;
     private bool _showDatabase;
     private CollectionInfo[] _all;
 
@@ -230,6 +236,9 @@ else
                     .Where(kvp => kvp.Key.EndsWith(suffix))
                     .Sum(kvp => kvp.Value);
 
+                var sources = DatabaseMonitor.GetCollectionSources(x.Key).ToArray();
+                var isLocal = x.CollectionType != null;
+
                 return new CollectionModel
                 {
                     ConfigurationName = x.ConfigurationName,
@@ -245,11 +254,14 @@ else
                         : indexModels.All(y => y.EqualFields),
                     Clean = x.Clean,
                     CallCount = count,
+                    Sources = sources,
+                    IsLocal = isLocal,
                 };
             })
             .ToArray();
         _showConfiguration = _model.GroupBy(x => x.ConfigurationName).Count() > 1;
         _showDatabase = _model.Select(x => x.DatabaseName).Distinct().Count() > 1;
+        _showSource = _model.SelectMany(x => x.Sources).Distinct().Count() > 1;
         StateHasChanged();
     }
 
