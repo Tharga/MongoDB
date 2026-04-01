@@ -35,7 +35,7 @@
 - **Date:** 2026-04-01
 - **Priority:** High
 - **Description:** `UseMongoDB` is currently `void` and uses `Task.WaitAll` to synchronously block on firewall and index assurance tasks (lines 314, 329 of `MongoDbRegistrationExtensions.cs`). These were recently changed to `Task.WhenAll` without `await`, which silently discards the result — making firewall and index tasks fire-and-forget. The correct fix is to make the method async: change signature to `public static async Task UseMongoDBAsync(this IHost app, ...)` and `await Task.WhenAll(task)`. Keep the old `UseMongoDB` as an obsolete sync wrapper calling `UseMongoDBAsync(...).GetAwaiter().GetResult()` for backwards compatibility. In the meantime, the current code should revert to `Task.WaitAll` until this is done.
-- **Status:** Pending
+- **Status:** Done (2026-04-01) — Added error handling to index assurance startup task. Kept UseMongoDB sync (standard .NET startup pattern). Both tasks now have proper try/catch with logging. Task.WaitAll used when WaitToComplete=true.
 
 ### Optional MongoDB driver command monitoring for diagnostics
 - **From:** Eplicta.Core (`c:\dev\Eplicta\Core`)
