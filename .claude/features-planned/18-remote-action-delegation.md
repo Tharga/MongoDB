@@ -7,7 +7,7 @@ Follow-up from feature #14 (remote-collection-metadata)
 When a user performs an action (Touch, Drop Index, Restore Index, Clean) on a collection that the server doesn't have direct access to, delegate the action to a connected agent that does.
 
 ## Dependencies
-- **Blocked on:** Tharga.Communication request-response support (client-side `SendMessage` is not implemented)
+- ~~**Blocked on:** Tharga.Communication request-response support~~ **DONE** — `IClientCommunication.SendMessage<TRequest, TResponse>` exists
 
 ## Scope
 - Server sends action request to an agent via `SendMessageAsync<TRequest, TResponse>`
@@ -16,7 +16,7 @@ When a user performs an action (Touch, Drop Index, Restore Index, Clean) on a co
 - UI shows which agent executed the action
 
 ## Acceptance Criteria
-- [ ] Tharga.Communication supports client-side request-response
+- [x] Tharga.Communication supports client-side request-response
 - [ ] Actions on remote-only collections are delegated to a connected agent
 - [ ] Actions on locally accessible collections execute locally (no delegation)
 - [ ] Result is returned to the UI

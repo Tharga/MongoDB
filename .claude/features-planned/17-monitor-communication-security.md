@@ -14,11 +14,15 @@ Protect the SignalR communication channel between monitoring agents and the cent
 - Configuration via `appsettings.json`, Manage User Secrets, environment variables, or code
 
 ## Dependencies
-- **Blocked on:** Tharga.Communication API key authentication feature (request filed 2026-03-31)
-- Once Tharga.Communication supports API key auth, this feature is just configuration — no code needed in Tharga.MongoDB
+- ~~**Blocked on:** Tharga.Communication API key authentication feature~~ **DONE** — API key auth is implemented in Tharga.Communication v1.1.0
+
+## Remaining Work
+- Document how to configure API keys for Monitor.Client and Monitor.Server
+- Verify that the Tharga.Communication API key auth works end-to-end with the monitor packages
+- Update README
 
 ## Acceptance Criteria
-- [ ] Tharga.Communication supports API key auth (primary + secondary)
+- [x] Tharga.Communication supports API key auth (primary + secondary)
 - [ ] Unauthorized agents cannot connect to the monitor hub
 - [ ] Configuration works via appsettings.json, User Secrets, or code
 - [ ] Existing functionality works without breaking changes
