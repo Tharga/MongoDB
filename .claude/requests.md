@@ -30,6 +30,13 @@
 - **Description:** The `AddMongoDB` extension currently only has an `IServiceCollection` overload in the published NuGet (2.7.8). The local source has an `IHostApplicationBuilder` overload. This is needed so `builder.AddMongoDB()` works consistently. Also, `Tharga.Team.MongoDB 2.0.1` depends on `Tharga.MongoDB >= 2.8.5-pre.20` which is not published as stable — a stable release of Tharga.MongoDB >= 2.8.5 is needed.
 - **Status:** Done (2026-03-25) — README updated, version bumped to 2.9, release gate restored to master-only
 
+### Include queue depth in ExecuteLimiter warning log
+- **From:** Eplicta.Core (`c:\dev\Eplicta\Core`)
+- **Date:** 2026-04-01
+- **Priority:** Medium
+- **Description:** When the ExecuteLimiter logs "The maximum number of {count} concurrent executions for {serverKey} has been reached", the message does not include the number of operations waiting in the queue. During production incidents this makes it impossible to gauge severity — hitting the limit with 2 items in the queue is very different from hitting it with 500. **Suggested fix:** Add the queue depth to the warning log: `"The maximum number of {count} concurrent executions for {serverKey} has been reached. {queueCount} operations waiting in queue."` The value is already available via `state.GetQueued()` at line 94 of `ExecuteLimiter.cs`.
+- **Status:** Pending
+
 ## Notifications
 
 ### Null-safe config binding in AddThargaCommunicationClient — DONE
