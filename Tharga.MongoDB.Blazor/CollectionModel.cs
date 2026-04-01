@@ -10,6 +10,6 @@ public record CollectionModel : CollectionFingerprint
     public required bool? IndexEqualFields { get; set; }
     public CleanInfo Clean { get; set; }
     public int CallCount { get; set; }
-    public string[] Sources { get; init; } = [];
+    public string[] Sources { get; set; } = [];
     public bool IsLocal { get; init; }
 }

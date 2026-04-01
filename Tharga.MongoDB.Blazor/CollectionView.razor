@@ -161,28 +161,39 @@ else
 
         var item = _all.SingleOrDefault(x => x.Key == e.CollectionInfo.Key);
 
-        if (item != null)
+        if (item == null)
         {
-            item.Discovery = e.CollectionInfo.Discovery;
-            item.Stats = e.CollectionInfo.Stats;
-            item.Index = e.CollectionInfo.Index;
-
-            var m = _model?.SingleOrDefault(x => x.ConfigurationName == item.ConfigurationName && x.DatabaseName == item.DatabaseName && x.CollectionName == item.CollectionName);
-            if (m != null)
-            {
-                var indexModels = e.CollectionInfo.ToIndexModel().ToArray();
-
-                m.Discovery = e.CollectionInfo.Discovery;
-                m.Stats = e.CollectionInfo.Stats;
-                m.Size = e.CollectionInfo.Stats?.Size ?? 0;
-                m.Indices = indexModels;
-                m.IndexEqualFields = e.CollectionInfo.Index == null || e.CollectionInfo.Index.Current == null ? null : indexModels.All(x => x.EqualFields);
-                m.Clean = e.CollectionInfo.Clean;
-            }
-
+            // New remote collection — add it and reload
+            _all = _all.Append(e.CollectionInfo).ToArray();
+            await ReloadDataAsync();
             if (_disposed) return;
             try { await InvokeAsync(StateHasChanged); } catch (Exception) { }
+            return;
         }
+
+        item.Discovery = e.CollectionInfo.Discovery;
+        item.Stats = e.CollectionInfo.Stats;
+        item.Index = e.CollectionInfo.Index;
+
+        var m = _model?.SingleOrDefault(x => x.ConfigurationName == item.ConfigurationName && x.DatabaseName == item.DatabaseName && x.CollectionName == item.CollectionName);
+        if (m != null)
+        {
+            var indexModels = e.CollectionInfo.ToIndexModel().ToArray();
+            var sources = DatabaseMonitor.GetCollectionSources(item.Key).ToArray();
+
+            m.Discovery = e.CollectionInfo.Discovery;
+            m.Stats = e.CollectionInfo.Stats;
+            m.Size = e.CollectionInfo.Stats?.Size ?? 0;
+            m.Indices = indexModels;
+            m.IndexEqualFields = e.CollectionInfo.Index == null || e.CollectionInfo.Index.Current == null ? null : indexModels.All(x => x.EqualFields);
+            m.Clean = e.CollectionInfo.Clean;
+            m.Sources = sources;
+
+            _showSource = _model.SelectMany(x => x.Sources).Distinct().Count() > 1;
+        }
+
+        if (_disposed) return;
+        try { await InvokeAsync(StateHasChanged); } catch (Exception) { }
     }
 
     private async void OnCollectionDropped(object sender, CollectionDroppedEventArgs e)
