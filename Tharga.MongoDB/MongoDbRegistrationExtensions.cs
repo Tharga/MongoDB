@@ -318,11 +318,19 @@ public static class MongoDbRegistrationExtensions
         {
             var task = Task.Run(async () =>
             {
-                var monitor = app.Services.GetService<IDatabaseMonitor>();
-                await foreach (var collectionInfo in monitor.GetInstancesAsync().Where(x => x.Registration == Registration.Static))
+                try
                 {
-                    await monitor.RestoreIndexAsync(collectionInfo, false);
-                    o.Logger?.LogInformation("Restore index for configuration {Configuration}, database {DatabaseName}, collection {CollectionName}.", collectionInfo.ConfigurationName, collectionInfo.DatabaseName, collectionInfo.CollectionName);
+                    var monitor = app.Services.GetService<IDatabaseMonitor>();
+                    await foreach (var collectionInfo in monitor.GetInstancesAsync().Where(x => x.Registration == Registration.Static))
+                    {
+                        await monitor.RestoreIndexAsync(collectionInfo, false);
+                        o.Logger?.LogInformation("Restore index for configuration {Configuration}, database {DatabaseName}, collection {CollectionName}.", collectionInfo.ConfigurationName, collectionInfo.DatabaseName, collectionInfo.CollectionName);
+                    }
+                }
+                catch (Exception e)
+                {
+                    _actionEvent?.Invoke(new ActionEventArgs(new ActionEventArgs.ActionData { Message = e.Message, Level = LogLevel.Critical, Exception = e }, new ActionEventArgs.ContextData()));
+                    o.Logger?.LogError(e, "Index assurance failed.");
                 }
             });
 
