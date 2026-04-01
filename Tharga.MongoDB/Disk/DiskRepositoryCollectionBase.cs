@@ -77,9 +77,13 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             {
                 steps.Add(new StepResponse { Timestamp = Stopwatch.GetTimestamp(), Step = "Queue" });
 
+                var commandMonitor = ((MongoDbServiceFactory)_mongoDbServiceFactory).CommandMonitor;
+
                 //NOTE: Fetch collection
+                var fetchStartTimestamp = Stopwatch.GetTimestamp();
                 var fetchCollectionStep = await FetchCollectionAsync();
-                steps.Add(fetchCollectionStep);
+                var fetchMessage = FormatDriverCommands(commandMonitor, fetchStartTimestamp, Stopwatch.GetTimestamp());
+                steps.Add(fetchMessage != null ? fetchCollectionStep with { Message = fetchMessage } : fetchCollectionStep);
                 var collection = fetchCollectionStep.Value;
 
                 //NOTE: Capture filter render and explain as lazy delegates — no allocation until the value is read
@@ -114,28 +118,21 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                 }
 
                 //NOTE: Handle index depending on operation
-                steps.Add(await OperationIndexManagement(operation, collection));
+                var indexStartTimestamp = Stopwatch.GetTimestamp();
+                var indexStep = await OperationIndexManagement(operation, collection);
+                var indexMessage = FormatDriverCommands(commandMonitor, indexStartTimestamp, Stopwatch.GetTimestamp());
+                steps.Add(indexMessage != null ? indexStep with { Message = indexMessage } : indexStep);
 
                 //NOTE: Set collection context for FlexibleGuidSerializer warnings
                 FlexibleGuidSerializer.CollectionContext = ProtectedCollectionName;
 
                 //NOTE: Perform action
-                var actionStartTimestamp = steps[^1].Timestamp;
+                var actionStartTimestamp = Stopwatch.GetTimestamp();
                 var response = await action.Invoke(collection, ct);
                 var actionEndTimestamp = Stopwatch.GetTimestamp();
+                var actionMessage = FormatDriverCommands(commandMonitor, actionStartTimestamp, actionEndTimestamp);
 
-                //NOTE: Attach driver command duration and serialization overhead if command monitoring is enabled
-                var commandMonitor = ((MongoDbServiceFactory)_mongoDbServiceFactory).CommandMonitor;
-                var commandEntry = commandMonitor?.TakeLatestForCurrentThread();
-                string driverMessage = null;
-                if (commandEntry != null)
-                {
-                    var actionDuration = GetElapsed(actionStartTimestamp, actionEndTimestamp);
-                    var serializationDuration = actionDuration - commandEntry.Duration;
-                    driverMessage = $"Driver: {commandEntry.CommandName} {commandEntry.Duration.TotalMilliseconds:N2}ms | Serialization: {serializationDuration.TotalMilliseconds:N2}ms{(commandEntry.Failed ? " | FAILED" : "")}";
-                }
-
-                steps.Add(new StepResponse { Timestamp = actionEndTimestamp, Step = "Action", Message = driverMessage });
+                steps.Add(new StepResponse { Timestamp = actionEndTimestamp, Step = "Action", Message = actionMessage });
 
                 if (operation == Operation.Delete) await DropEmptyAsync(collection);
 
@@ -1750,6 +1747,23 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
     private static TimeSpan GetElapsed(long from, long to)
     {
         return TimeSpan.FromSeconds((to - from) / (double)Stopwatch.Frequency);
+    }
+
+    private static string FormatDriverCommands(ICommandMonitorService commandMonitor, long sinceTimestamp, long untilTimestamp)
+    {
+        var commands = commandMonitor?.TakeSince(sinceTimestamp);
+        if (commands == null || commands.Length == 0) return null;
+
+        var stepDuration = GetElapsed(sinceTimestamp, untilTimestamp);
+        var driverTotal = TimeSpan.FromTicks(commands.Sum(c => c.Duration.Ticks));
+        var overhead = stepDuration - driverTotal;
+
+        var parts = commands.Select(c =>
+            $"{c.CommandName} {c.Duration.TotalMilliseconds:N2}ms{(c.Failed ? " FAILED" : "")}");
+
+        return commands.Length == 1
+            ? $"Driver: {string.Join(", ", parts)} | Other: {overhead.TotalMilliseconds:N2}ms"
+            : $"Driver ({commands.Length}): {string.Join(", ", parts)} | Other: {overhead.TotalMilliseconds:N2}ms";
     }
 
     private static ProjectionDefinition<TEntity, T> BuildProjection<T>()

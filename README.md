@@ -455,7 +455,13 @@ Enable driver-level command monitoring to see how much of the "Action" step is a
 }
 ```
 
-When enabled, the Action step in call details includes a message like `Driver: find 12.34ms`, showing the command name and server-side duration. This helps diagnose whether slow operations are caused by the database or by application-side contention.
+When enabled, steps that involve MongoDB driver calls include a breakdown of driver time vs other overhead (serialization, thread pool wait, etc.):
+
+- **FetchCollection**: `Driver: listIndexes 2.10ms | Other: 0.45ms`
+- **OperationIndexManagement**: `Driver (2): createIndexes 8.50ms, listIndexes 1.20ms | Other: 0.30ms`
+- **Action**: `Driver: find 12.34ms | Other: 3.21ms`
+
+This helps diagnose whether slow operations are caused by the database, serialization, or application-side contention.
 
 ### Remote forwarding
 Install the `Tharga.MongoDB.Monitor.Client` package to forward monitoring data from a remote agent to a central server via [Tharga.Communication](https://www.nuget.org/packages/Tharga.Communication).

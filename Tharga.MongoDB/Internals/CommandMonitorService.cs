@@ -1,5 +1,8 @@
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Linq;
 using Microsoft.Extensions.Logging;
 using MongoDB.Driver.Core.Events;
 
@@ -9,8 +12,7 @@ internal class CommandMonitorService : ICommandMonitorService
 {
     private const int MaxEntries = 2000;
     private readonly ILogger<CommandMonitorService> _logger;
-    private readonly ConcurrentDictionary<int, CommandEntry> _entries = new();
-    private readonly ConcurrentQueue<int> _order = new();
+    private readonly ConcurrentQueue<CommandEntry> _entries = new();
 
     public CommandMonitorService(ILogger<CommandMonitorService> logger)
     {
@@ -24,9 +26,10 @@ internal class CommandMonitorService : ICommandMonitorService
             CommandName = e.CommandName,
             Duration = e.Duration,
             DatabaseNamespace = e.DatabaseNamespace?.DatabaseName,
+            StopwatchTimestamp = Stopwatch.GetTimestamp(),
         };
 
-        Store(e.RequestId, entry);
+        Store(entry);
 
         _logger?.LogDebug("Command {CommandName} on {Database} completed in {Duration}ms (RequestId: {RequestId}).",
             e.CommandName, entry.DatabaseNamespace, e.Duration.TotalMilliseconds, e.RequestId);
@@ -40,54 +43,43 @@ internal class CommandMonitorService : ICommandMonitorService
             Duration = e.Duration,
             DatabaseNamespace = e.DatabaseNamespace?.DatabaseName,
             Failed = true,
+            StopwatchTimestamp = Stopwatch.GetTimestamp(),
         };
 
-        Store(e.RequestId, entry);
+        Store(entry);
 
         _logger?.LogDebug("Command {CommandName} on {Database} failed after {Duration}ms (RequestId: {RequestId}).",
             e.CommandName, entry.DatabaseNamespace, e.Duration.TotalMilliseconds, e.RequestId);
     }
 
-    public CommandEntry TakeLatestForCurrentThread()
+    public CommandEntry[] TakeSince(long sinceTimestamp)
     {
-        // Drain entries older than 5 seconds during lookup
-        while (_order.TryPeek(out var oldId) && _entries.TryGetValue(oldId, out var old) && old.Timestamp < DateTime.UtcNow.AddSeconds(-5))
+        var result = new List<CommandEntry>();
+        var remaining = new List<CommandEntry>();
+
+        // Drain the queue and split into matching and remaining
+        while (_entries.TryDequeue(out var entry))
         {
-            if (_order.TryDequeue(out var removed))
-                _entries.TryRemove(removed, out _);
+            if (entry.StopwatchTimestamp >= sinceTimestamp)
+                result.Add(entry);
+            else if (entry.StopwatchTimestamp >= sinceTimestamp - Stopwatch.Frequency * 5) // keep entries up to 5s old
+                remaining.Add(entry);
+            // else: drop old entries
         }
 
-        // Find the most recent entry — command events fire on the same connection,
-        // so we take the latest entry by timestamp within a short window.
-        CommandEntry latest = null;
-        int latestId = -1;
-        foreach (var kvp in _entries)
-        {
-            if (latest == null || kvp.Value.Timestamp > latest.Timestamp)
-            {
-                latest = kvp.Value;
-                latestId = kvp.Key;
-            }
-        }
+        // Re-enqueue non-matching entries
+        foreach (var entry in remaining)
+            _entries.Enqueue(entry);
 
-        if (latest != null && latestId >= 0)
-        {
-            _entries.TryRemove(latestId, out _);
-        }
-
-        return latest;
+        return result.ToArray();
     }
 
-    private void Store(int requestId, CommandEntry entry)
+    private void Store(CommandEntry entry)
     {
-        _entries[requestId] = entry;
-        _order.Enqueue(requestId);
+        _entries.Enqueue(entry);
 
-        while (_order.Count > MaxEntries)
-        {
-            if (_order.TryDequeue(out var old))
-                _entries.TryRemove(old, out _);
-        }
+        while (_entries.Count > MaxEntries)
+            _entries.TryDequeue(out _);
     }
 
     internal record CommandEntry
@@ -96,11 +88,11 @@ internal class CommandMonitorService : ICommandMonitorService
         public required TimeSpan Duration { get; init; }
         public string DatabaseNamespace { get; init; }
         public bool Failed { get; init; }
-        public DateTime Timestamp { get; init; } = DateTime.UtcNow;
+        public long StopwatchTimestamp { get; init; }
     }
 }
 
 internal interface ICommandMonitorService
 {
-    CommandMonitorService.CommandEntry TakeLatestForCurrentThread();
+    CommandMonitorService.CommandEntry[] TakeSince(long sinceTimestamp);
 }
