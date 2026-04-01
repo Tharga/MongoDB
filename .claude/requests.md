@@ -37,3 +37,9 @@
 - **Completed:** 2026-03-31
 - **Summary:** Added null-coalesce to `Get<CommunicationOptions>()` so missing `Tharga:Communication` config section no longer throws NullReferenceException. Options callback alone can now provide all required values.
 - **Branch/Version:** feature/null-safe-config (merged to develop)
+
+### API key authentication for SignalR connections — DONE
+- **From:** Tharga.Communication (`c:\dev\tharga\Toolkit\Communication`)
+- **Completed:** 2026-04-01
+- **Summary:** Added API key authentication to SignalR connections. Client sends `X-Api-Key` header when `ApiKey` is configured. Server validates against `PrimaryApiKey`/`SecondaryApiKey` — rejects invalid keys, accepts all when no keys configured (backwards compatible). Supports zero-downtime key rotation via dual keys.
+- **Branch/Version:** v1.1.0 (feature/api-key-auth on develop)
