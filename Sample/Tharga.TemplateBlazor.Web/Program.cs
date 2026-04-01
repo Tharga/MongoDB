@@ -31,6 +31,7 @@ builder.AddMongoDB(o =>
     o.DefaultConfigurationName = "Core";
     o.AssureIndex = AssureIndexMode.BySchema;
     o.Monitor.StorageMode = MonitorStorageMode.Database;
+    o.Monitor.EnableCommandMonitoring = true;
 });
 
 builder.AddMongoDbMonitorServer();

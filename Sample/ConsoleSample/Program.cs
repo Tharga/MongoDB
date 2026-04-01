@@ -20,6 +20,7 @@ builder.Logging.AddConsole();
 builder.Services.AddMongoDB(builder.Configuration, o =>
 {
     o.Monitor.Enabled = true;
+    o.Monitor.EnableCommandMonitoring = true;
 });
 
 builder.AddMongoDbMonitorClient(sendTo: "https://localhost:7205");

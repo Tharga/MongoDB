@@ -64,3 +64,9 @@
 - **Completed:** 2026-04-01
 - **Summary:** Added API key authentication to SignalR connections. Client sends `X-Api-Key` header when `ApiKey` is configured. Server validates against `PrimaryApiKey`/`SecondaryApiKey` — rejects invalid keys, accepts all when no keys configured (backwards compatible). Supports zero-downtime key rotation via dual keys.
 - **Branch/Version:** v1.1.0 (feature/api-key-auth on develop)
+
+### Subscription-based messaging support — DONE
+- **From:** Tharga.Communication (`c:\dev\tharga\Toolkit\Communication`)
+- **Completed:** 2026-04-01
+- **Summary:** Added subscription-based messaging with type-based and data-based granularity. Server: `SubscribeAsync<T>(key?)` returns `IAsyncDisposable`, `GetSubscriptions()` for monitoring. Client: `HasSubscribers<T>(key?)`, `PostIfSubscribedAsync<T>(message, key?)`, `SubscriptionChanged` event. Wildcard subscriptions (no key) match any key. Clients are automatically notified when subscriber state crosses 0↔1 boundary.
+- **Branch/Version:** feature/subscription-messaging on develop
