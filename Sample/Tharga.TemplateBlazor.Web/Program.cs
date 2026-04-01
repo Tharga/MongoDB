@@ -3,6 +3,7 @@ using Radzen;
 using Tharga.Blazor.Framework;
 using Tharga.MongoDB;
 using Tharga.MongoDB.Configuration;
+using Tharga.Communication.Client;
 using Tharga.MongoDB.Monitor.Server;
 using Tharga.TemplateBlazor.Web.Components;
 using Tharga.TemplateBlazor.Web.Framework;
@@ -35,6 +36,11 @@ builder.AddMongoDB(o =>
 });
 
 builder.AddMongoDbMonitorServer();
+
+// TODO: Workaround for Tharga.Communication bug — SubscriptionStateChangedHandler is auto-discovered
+// but its dependency is internal and only registered by AddThargaCommunicationClient().
+// Remove when Tharga.Communication publishes a fix. See Requests.md.
+((IHostApplicationBuilder)builder).AddThargaCommunicationClient(o => { });
 
 builder.Services.AddCors(options =>
 {
