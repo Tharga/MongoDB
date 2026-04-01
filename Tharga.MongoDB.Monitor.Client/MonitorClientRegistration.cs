@@ -33,6 +33,12 @@ public static class MonitorClientRegistration
 
         builder.Services.AddHostedService<MonitorForwarder>();
 
+        // Register action handlers for remote delegation
+        builder.Services.AddTransient<TouchCollectionHandler>();
+        builder.Services.AddTransient<DropIndexHandler>();
+        builder.Services.AddTransient<RestoreIndexHandler>();
+        builder.Services.AddTransient<CleanCollectionHandler>();
+
         return builder;
     }
 }

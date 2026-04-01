@@ -15,4 +15,5 @@ public record MonitorClientDto
     public required bool IsConnected { get; init; }
     public required DateTime ConnectTime { get; init; }
     public DateTime? DisconnectTime { get; init; }
+    public string SourceName { get; init; }
 }

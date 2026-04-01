@@ -507,6 +507,13 @@ builder.AddMongoDbMonitorServer(primaryApiKey: "new-key", secondaryApiKey: "old-
 
 API keys can also be provided via `appsettings.json` under `Tharga:Communication`.
 
+### Remote action delegation
+When the server dashboard displays collections from remote agents, actions like Touch, Drop Index, Restore Index, and Clean are automatically delegated to the connected agent that owns the collection. No additional configuration is needed — if the `Tharga.MongoDB.Monitor.Client` and `Tharga.MongoDB.Monitor.Server` packages are installed, delegation works out of the box.
+
+- **Local collections**: actions execute directly on the server (existing behavior)
+- **Remote-only collections**: actions are forwarded to the connected agent via `IServerCommunication.SendMessageAsync`
+- **No agent connected**: an error is returned to the UI
+
 ### Reset
 Call `IDatabaseMonitor.ResetAsync()` to clear all cached monitor state (both in-memory and persisted).
 The Blazor admin UI (`CollectionView`) includes a Reset button that triggers this.

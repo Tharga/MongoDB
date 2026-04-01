@@ -70,9 +70,11 @@ internal class DatabaseNullMonitor : IDatabaseMonitor
 
     public void IngestClientDisconnected(string connectionId) { }
 
-    public void IngestCollectionInfo(RemoteCollectionInfoDto collectionInfo) { }
+    public void IngestCollectionInfo(RemoteCollectionInfoDto collectionInfo, string connectionId = null) { }
 
     public IReadOnlyCollection<string> GetCollectionSources(string fingerprintKey) => [];
+
+    public string FindConnectionIdBySource(string sourceName) => null;
 
     public void ResetCalls() { }
 
