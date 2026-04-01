@@ -488,6 +488,25 @@ The hub is mapped at `/mongodb-monitor` by default. Both client and server accep
 
 Remote calls are ingested into the local `IDatabaseMonitor` and appear automatically in Blazor components, REST API endpoints, and summaries alongside local data. The Source column and filter appear when calls from multiple sources are present.
 
+### Securing the monitor hub
+Both client and server support API key authentication via [Tharga.Communication](https://www.nuget.org/packages/Tharga.Communication). When keys are configured, unauthorized agents are rejected. When no keys are configured, all connections are accepted (backwards compatible).
+
+```csharp
+// Agent
+builder.AddMongoDbMonitorClient(sendTo: "https://monitor-server", apiKey: "my-secret-key");
+
+// Server
+builder.AddMongoDbMonitorServer(primaryApiKey: "my-secret-key");
+```
+
+For zero-downtime key rotation, configure both primary and secondary keys on the server — either key is accepted:
+
+```csharp
+builder.AddMongoDbMonitorServer(primaryApiKey: "new-key", secondaryApiKey: "old-key");
+```
+
+API keys can also be provided via `appsettings.json` under `Tharga:Communication`.
+
 ### Reset
 Call `IDatabaseMonitor.ResetAsync()` to clear all cached monitor state (both in-memory and persisted).
 The Blazor admin UI (`CollectionView`) includes a Reset button that triggers this.

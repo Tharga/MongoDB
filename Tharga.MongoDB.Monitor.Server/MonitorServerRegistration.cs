@@ -16,12 +16,19 @@ public static class MonitorServerRegistration
     /// with default client state tracking and the <see cref="MonitorCallHandler"/>
     /// for receiving monitoring data from remote agents.
     /// </summary>
-    public static WebApplicationBuilder AddMongoDbMonitorServer(this WebApplicationBuilder builder)
+    /// <param name="builder">The web application builder.</param>
+    /// <param name="primaryApiKey">Optional primary API key. When set, clients must provide a matching key to connect.</param>
+    /// <param name="secondaryApiKey">Optional secondary API key for zero-downtime key rotation.</param>
+    public static WebApplicationBuilder AddMongoDbMonitorServer(this WebApplicationBuilder builder, string primaryApiKey = null, string secondaryApiKey = null)
     {
         builder.AddThargaCommunicationServer(options =>
         {
             options.RegisterClientStateService<MonitorClientStateService>();
             options.RegisterClientRepository<MonitorClientRepository, MonitorClientConnectionInfo>();
+            if (!string.IsNullOrWhiteSpace(primaryApiKey))
+                options.PrimaryApiKey = primaryApiKey;
+            if (!string.IsNullOrWhiteSpace(secondaryApiKey))
+                options.SecondaryApiKey = secondaryApiKey;
         });
 
         // Ensure handlers are registered even if assembly scanning misses them
