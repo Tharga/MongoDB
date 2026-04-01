@@ -42,7 +42,7 @@
 - **Date:** 2026-04-01
 - **Priority:** Low
 - **Description:** When investigating slow MongoDB operations, the existing step timings (Queue, FetchCollection, Action, Finalize) don't distinguish between slow server execution and thread pool starvation — both show up as a slow "Action" step. MongoDB driver command monitoring (`CommandStartedEvent`/`CommandSucceededEvent` via `ClusterConfigurator`) would provide the driver-level round-trip time (network + server), separate from thread pool wait. However, this should NOT be always-on in production due to volume and sensitive data in command bodies. **Suggested approach:** Add a `DatabaseOptions.EnableCommandMonitoring` flag (default `false`) that can be toggled via config (`MongoDB:EnableCommandMonitoring`). When enabled, subscribe to `CommandSucceededEvent` and log the command name, collection, and duration at `LogDebug` level. Optionally add the driver duration as a sub-step within the "Action" step in the monitor data. This allows operators to turn it on temporarily during incidents and off again afterwards.
-- **Status:** Pending
+- **Status:** Done (2026-04-01) — Added EnableCommandMonitoring flag. When enabled, driver command durations are captured for all steps (FetchCollection, OperationIndexManagement, Action) with driver vs other overhead breakdown.
 
 ### Include queue depth in ExecuteLimiter warning log
 - **From:** Eplicta.Core (`c:\dev\Eplicta\Core`)

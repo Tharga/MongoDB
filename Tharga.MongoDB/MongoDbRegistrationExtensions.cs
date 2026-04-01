@@ -71,7 +71,17 @@ public static class MongoDbRegistrationExtensions
 
         services.AddTransient<IExternalIpAddressService, ExternalIpAddressService>();
         services.AddTransient<IMongoDbFirewallService, MongoDbFirewallService>();
-        services.AddSingleton<IMongoDbClientProvider, MongoDbClientProvider>();
+        if (o.Monitor?.EnableCommandMonitoring == true)
+        {
+            services.AddSingleton<CommandMonitorService>();
+            services.AddSingleton<ICommandMonitorService>(sp => sp.GetRequiredService<CommandMonitorService>());
+            services.AddSingleton<IMongoDbClientProvider>(sp =>
+                new MongoDbClientProvider(sp.GetRequiredService<CommandMonitorService>()));
+        }
+        else
+        {
+            services.AddSingleton<IMongoDbClientProvider>(new MongoDbClientProvider());
+        }
         services.AddSingleton<IMongoDbFirewallStateService, MongoDbFirewallStateService>();
         services.AddSingleton<ExecuteLimiter>();
         services.AddSingleton<IExecuteLimiter>(sp => sp.GetRequiredService<ExecuteLimiter>());
@@ -91,6 +101,7 @@ public static class MongoDbRegistrationExtensions
             var factory = new MongoDbServiceFactory(mongoDbClientProvider, repositoryConfigurationLoader, mongoDbFirewallStateService, executeLimiter, collectionPool, initiationLibrary, logger);
             if (!string.IsNullOrWhiteSpace(o.Monitor?.SourceName))
                 factory.SourceName = o.Monitor.SourceName;
+            factory.CommandMonitor = serviceProvider.GetService<ICommandMonitorService>();
             return factory;
         });
         services.AddTransient<IRepositoryConfigurationLoader>(serviceProvider =>

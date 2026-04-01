@@ -36,6 +36,7 @@ internal class MongoDbServiceFactory : IMongoDbServiceFactory
     }
 
     public string SourceName { get; internal set; }
+    internal ICommandMonitorService CommandMonitor { get; set; }
 
     public event EventHandler<CollectionAccessEventArgs> CollectionAccessEvent;
     public event EventHandler<IndexUpdatedEventArgs> IndexUpdatedEvent;
