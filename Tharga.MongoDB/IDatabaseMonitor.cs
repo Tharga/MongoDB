@@ -105,4 +105,14 @@ public interface IDatabaseMonitor
     /// Returns null if no connected agent matches.
     /// </summary>
     string FindConnectionIdBySource(string sourceName);
+
+    /// <summary>
+    /// Ingest a queue metric snapshot from a remote agent.
+    /// </summary>
+    void IngestQueueMetric(string sourceName, int queueCount, int executingCount, double? waitTimeMs);
+
+    /// <summary>
+    /// Get per-source queue state for all known sources (local + remote).
+    /// </summary>
+    IReadOnlyDictionary<string, ConnectionPoolStateDto> GetPerSourceQueueState();
 }

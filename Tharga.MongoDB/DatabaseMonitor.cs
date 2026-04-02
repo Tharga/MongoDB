@@ -33,6 +33,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, CollectionInfo> _remoteCollections = new();
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, System.Collections.Concurrent.ConcurrentDictionary<string, bool>> _collectionSources = new();
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> _sourceToConnectionId = new();
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, RemoteQueueState> _remoteQueueStates = new();
 
     public event EventHandler<CollectionInfoChangedEventArgs> CollectionInfoChangedEvent;
     public event EventHandler<CollectionDroppedEventArgs> CollectionDroppedEvent;
@@ -664,6 +665,48 @@ internal class DatabaseMonitor : IDatabaseMonitor
         // Verify the client is still connected
         var client = _monitorClients.Values.FirstOrDefault(x => x.ConnectionId == connectionId && x.IsConnected);
         return client != null ? connectionId : null;
+    }
+
+    public void IngestQueueMetric(string sourceName, int queueCount, int executingCount, double? waitTimeMs)
+    {
+        _remoteQueueStates[sourceName] = new RemoteQueueState
+        {
+            QueueCount = queueCount,
+            ExecutingCount = executingCount,
+            LastWaitTimeMs = waitTimeMs ?? 0,
+            Timestamp = DateTime.UtcNow,
+        };
+    }
+
+    public IReadOnlyDictionary<string, ConnectionPoolStateDto> GetPerSourceQueueState()
+    {
+        var result = new Dictionary<string, ConnectionPoolStateDto>();
+
+        // Local
+        var localSource = _mongoDbServiceFactory.SourceName;
+        result[localSource] = GetConnectionPoolState();
+
+        // Remote
+        foreach (var (source, state) in _remoteQueueStates)
+        {
+            result[source] = new ConnectionPoolStateDto
+            {
+                QueueCount = state.QueueCount,
+                ExecutingCount = state.ExecutingCount,
+                LastWaitTimeMs = state.LastWaitTimeMs,
+                RecentMetrics = [],
+            };
+        }
+
+        return result;
+    }
+
+    private record RemoteQueueState
+    {
+        public int QueueCount { get; init; }
+        public int ExecutingCount { get; init; }
+        public double LastWaitTimeMs { get; init; }
+        public DateTime Timestamp { get; init; }
     }
 
     // --- API-friendly methods ---
