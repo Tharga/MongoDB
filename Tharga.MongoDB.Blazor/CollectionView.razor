@@ -176,6 +176,7 @@ else
         {
             // New remote collection — add it and reload
             _all = _all.Append(e.CollectionInfo).ToArray();
+            UpdateFilterOptions();
             await ReloadDataAsync();
             if (_disposed) return;
             try { await InvokeAsync(StateHasChanged); } catch (Exception) { }
@@ -200,7 +201,7 @@ else
             m.Clean = e.CollectionInfo.Clean;
             m.Sources = sources;
 
-            _showSource = _model.SelectMany(x => x.Sources).Distinct().Count() > 1;
+            UpdateFilterOptions();
         }
 
         if (_disposed) return;
@@ -221,6 +222,7 @@ else
     protected override async Task OnParametersSetAsync()
     {
         _all = await DatabaseMonitor.GetInstancesAsync(FullDatabaseScan, Filter).ToArrayAsync();
+        UpdateFilterOptions();
         await ReloadDataAsync();
         await base.OnParametersSetAsync();
     }
@@ -228,7 +230,17 @@ else
     public async Task RefreshAsync()
     {
         _all = await DatabaseMonitor.GetInstancesAsync(FullDatabaseScan, Filter).ToArrayAsync();
+        UpdateFilterOptions();
         await ReloadDataAsync();
+    }
+
+    private void UpdateFilterOptions()
+    {
+        _sources = _all.SelectMany(x => DatabaseMonitor.GetCollectionSources(x.Key)).Distinct().Order().ToArray();
+        _databases = _all.Select(x => x.DatabaseName).Distinct().Order().ToArray();
+        _showSource = _sources.Length > 1;
+        _showDatabase = _databases.Length > 1;
+        _showConfiguration = _all.Select(x => x.ConfigurationName).Distinct().Count() > 1;
     }
 
     private async Task ShowCollectionDialog(CollectionModel context)
@@ -279,10 +291,6 @@ else
             })
             .ToArray();
 
-        // Populate filter options from unfiltered data
-        _sources = allModels.SelectMany(x => x.Sources).Distinct().Order().ToArray();
-        _databases = allModels.Select(x => x.DatabaseName).Distinct().Order().ToArray();
-
         // Apply filters
         _model = allModels
             .Where(x => SelectedSources == null || !SelectedSources.Any() || x.Sources.Any(s => SelectedSources.Contains(s)))
@@ -290,9 +298,6 @@ else
             .Where(x => SelectedRegistrationTypes == null || !SelectedRegistrationTypes.Any() || SelectedRegistrationTypes.Contains(x.Registration))
             .ToArray();
 
-        _showConfiguration = allModels.Select(x => x.ConfigurationName).Distinct().Count() > 1;
-        _showDatabase = allModels.Select(x => x.DatabaseName).Distinct().Count() > 1;
-        _showSource = _sources.Length > 1;
         StateHasChanged();
     }
 
