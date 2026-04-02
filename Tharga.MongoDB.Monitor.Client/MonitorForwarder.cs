@@ -38,7 +38,37 @@ internal sealed class MonitorForwarder : IHostedService, IDisposable
         _mongoDbServiceFactory.CallStartEvent += OnCallStart;
         _mongoDbServiceFactory.CallEndEvent += OnCallEnd;
         _databaseMonitor.CollectionInfoChangedEvent += OnCollectionInfoChanged;
+
+        // Send all known collections once connected
+        _ = SendInitialCollectionInfoAsync(cancellationToken);
+
         return Task.CompletedTask;
+    }
+
+    private async Task SendInitialCollectionInfoAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            // Wait for connection to establish
+            for (var i = 0; i < 60 && !cancellationToken.IsCancellationRequested; i++)
+            {
+                if (_clientCommunication.IsConnected) break;
+                await Task.Delay(1000, cancellationToken);
+            }
+
+            if (!_clientCommunication.IsConnected) return;
+
+            await foreach (var info in _databaseMonitor.GetInstancesAsync().WithCancellation(cancellationToken))
+            {
+                var message = BuildCollectionInfoMessage(info);
+                await ForwardCollectionInfoAsync(message);
+            }
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "Failed to send initial collection info.");
+        }
     }
 
     public Task StopAsync(CancellationToken cancellationToken)
