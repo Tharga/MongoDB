@@ -34,6 +34,15 @@ else
                     </RadzenSelectBar>
                 </RadzenStack>
             </RadzenColumn>
+            @if (_sources.Length > 1)
+            {
+            <RadzenColumn>
+                <RadzenStack Orientation="Orientation.Vertical">
+                    <RadzenText TextStyle="TextStyle.Caption" Text="Sources"/>
+                    <RadzenDropDown Placeholder="Select sources" @bind-Value=@SelectedSources Data=@_sources Multiple=true Style="margin-bottom: 6px;" Change="@ReloadDataAsync" />
+                </RadzenStack>
+            </RadzenColumn>
+            }
             @if (_showDatabase)
             {
             <RadzenColumn>
@@ -101,6 +110,7 @@ else
 }
 
 @code {
+    private string[] _sources = [];
     private string[] _databases;
     private CollectionModel[] _model;
     private bool _showConfiguration;
@@ -109,6 +119,7 @@ else
     private CollectionInfo[] _all;
 
     private IEnumerable<Registration> SelectedRegistrationTypes { get; set; }
+    private IEnumerable<string> SelectedSources { get; set; }
     private IEnumerable<string> SelectedDatabases { get; set; }
 
     [Parameter]
@@ -236,7 +247,8 @@ else
     {
         var callCounts = CallLibrary.GetCallCounts();
 
-        _model = _all
+        // Build all models first to populate sources for filtering
+        var allModels = _all
             .Where(x => SelectedDatabases == null || !SelectedDatabases.Any() || SelectedDatabases.Contains(x.DatabaseName))
             .Where(x => SelectedRegistrationTypes == null || !SelectedRegistrationTypes.Any() || SelectedRegistrationTypes.Contains(x.Registration))
             .Select(x =>
@@ -270,9 +282,16 @@ else
                 };
             })
             .ToArray();
+
+        _sources = allModels.SelectMany(x => x.Sources).Distinct().Order().ToArray();
+
+        _model = allModels
+            .Where(x => SelectedSources == null || !SelectedSources.Any() || x.Sources.Any(s => SelectedSources.Contains(s)))
+            .ToArray();
+
         _showConfiguration = _model.GroupBy(x => x.ConfigurationName).Count() > 1;
         _showDatabase = _model.Select(x => x.DatabaseName).Distinct().Count() > 1;
-        _showSource = _model.SelectMany(x => x.Sources).Distinct().Count() > 1;
+        _showSource = _sources.Length > 1;
         StateHasChanged();
     }
 
