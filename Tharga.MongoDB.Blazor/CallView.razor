@@ -181,15 +181,22 @@ else
 
     protected override async Task OnParametersSetAsync()
     {
-        _all = DatabaseMonitor.GetCalls(CallType.Last).Union(DatabaseMonitor.GetCalls(CallType.Slow)).ToArray();
-        _sources = _all.Select(x => x.SourceName).Where(x => x != null).Distinct().Order().ToArray();
-        _databases = _all.Select(x => x.Fingerprint.DatabaseName).Distinct().Order().ToArray();
-        _collections = _all.Select(x => x.Fingerprint.CollectionName).Distinct().Order().ToArray();
-        _functions = _all.Select(x => x.FunctionName).Distinct().Order().ToArray();
-        _operations = _all.Select(x => x.Operation).Distinct().Order().ToArray();
-
+        UpdateFilterOptions();
         await ReloadDataAsync();
         await base.OnParametersSetAsync();
+    }
+
+    private void UpdateFilterOptions()
+    {
+        var allCalls = DatabaseMonitor.GetCalls(CallType.Last)
+            .Union(DatabaseMonitor.GetCalls(CallType.Slow))
+            .Union(DatabaseMonitor.GetCalls(CallType.Ongoing))
+            .ToArray();
+        _sources = allCalls.Select(x => x.SourceName).Where(x => x != null).Distinct().Order().ToArray();
+        _databases = allCalls.Select(x => x.Fingerprint.DatabaseName).Distinct().Order().ToArray();
+        _collections = allCalls.Select(x => x.Fingerprint.CollectionName).Distinct().Order().ToArray();
+        _functions = allCalls.Select(x => x.FunctionName).Distinct().Order().ToArray();
+        _operations = allCalls.Select(x => x.Operation).Distinct().Order().ToArray();
     }
 
     void OnCellRender(DataGridCellRenderEventArgs<CallInfo> args)
@@ -225,9 +232,9 @@ else
             .Where(x => SelectedFunctions == null || !SelectedFunctions.Any() || SelectedFunctions.Contains(x.FunctionName))
             .Where(x => SelectedOperations == null || !SelectedOperations.Any() || SelectedOperations.Contains(x.Operation))
             .ToArray();
-        _showSource = _model.Select(x => x.SourceName).Distinct().Count() > 1;
-        _showConfiguration = _model.GroupBy(x => x.Fingerprint.ConfigurationName).Count() > 1;
-        _showDatabase = _model.Select(x => x.Fingerprint.DatabaseName).Distinct().Count() > 1;
+        _showSource = _sources.Length > 1;
+        _showConfiguration = _all.Select(x => x.Fingerprint.ConfigurationName).Distinct().Count() > 1;
+        _showDatabase = _all.Select(x => x.Fingerprint.DatabaseName).Distinct().Count() > 1;
         StateHasChanged();
     }
 
