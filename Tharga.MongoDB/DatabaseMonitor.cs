@@ -263,6 +263,10 @@ internal class DatabaseMonitor : IDatabaseMonitor
             return null;
         }
 
+        // Check remote collections
+        if (_remoteCollections.TryGetValue(fingerprint.Key, out var remote))
+            return remote;
+
         return await LoadAndCacheAsync(fingerprint);
     }
 
