@@ -15,20 +15,25 @@ namespace Tharga.MongoDB.Monitor.Client;
 /// </summary>
 internal sealed class MonitorForwarder : IHostedService, IDisposable
 {
+    private const int QueueMetricIntervalMs = 500;
     private readonly IMongoDbServiceFactory _mongoDbServiceFactory;
     private readonly IDatabaseMonitor _databaseMonitor;
+    private readonly IQueueMonitor _queueMonitor;
     private readonly IClientCommunication _clientCommunication;
     private readonly ILogger<MonitorForwarder> _logger;
     private readonly ConcurrentDictionary<Guid, CallStartEventArgs> _pendingCalls = new();
+    private Timer _queueMetricTimer;
 
     public MonitorForwarder(
         IMongoDbServiceFactory mongoDbServiceFactory,
         IDatabaseMonitor databaseMonitor,
+        IQueueMonitor queueMonitor,
         IClientCommunication clientCommunication,
         ILogger<MonitorForwarder> logger = null)
     {
         _mongoDbServiceFactory = mongoDbServiceFactory;
         _databaseMonitor = databaseMonitor;
+        _queueMonitor = queueMonitor;
         _clientCommunication = clientCommunication;
         _logger = logger;
     }
@@ -38,6 +43,7 @@ internal sealed class MonitorForwarder : IHostedService, IDisposable
         _mongoDbServiceFactory.CallStartEvent += OnCallStart;
         _mongoDbServiceFactory.CallEndEvent += OnCallEnd;
         _databaseMonitor.CollectionInfoChangedEvent += OnCollectionInfoChanged;
+        _queueMetricTimer = new Timer(OnQueueMetricTick, null, QueueMetricIntervalMs, QueueMetricIntervalMs);
 
         // Send all known collections once connected
         _ = SendInitialCollectionInfoAsync(cancellationToken);
@@ -76,12 +82,14 @@ internal sealed class MonitorForwarder : IHostedService, IDisposable
         _mongoDbServiceFactory.CallStartEvent -= OnCallStart;
         _mongoDbServiceFactory.CallEndEvent -= OnCallEnd;
         _databaseMonitor.CollectionInfoChangedEvent -= OnCollectionInfoChanged;
+        _queueMetricTimer?.Dispose();
         _pendingCalls.Clear();
         return Task.CompletedTask;
     }
 
     public void Dispose()
     {
+        _queueMetricTimer?.Dispose();
         _pendingCalls.Clear();
     }
 
@@ -135,6 +143,32 @@ internal sealed class MonitorForwarder : IHostedService, IDisposable
         catch (Exception ex)
         {
             _logger?.LogDebug(ex, "Failed to forward collection info for {Collection}.", message.CollectionName);
+        }
+    }
+
+    private async void OnQueueMetricTick(object state)
+    {
+        try
+        {
+            if (!_clientCommunication.IsConnected) return;
+
+            var (queueCount, executingCount, lastWaitTimeMs) = _queueMonitor.GetCurrentState();
+
+            // Only send when there's activity to avoid unnecessary traffic
+            if (queueCount == 0 && executingCount == 0 && lastWaitTimeMs == 0) return;
+
+            await _clientCommunication.PostAsync(new MonitorQueueMetricMessage
+            {
+                SourceName = _mongoDbServiceFactory.SourceName,
+                Timestamp = DateTime.UtcNow,
+                QueueCount = queueCount,
+                ExecutingCount = executingCount,
+                WaitTimeMs = lastWaitTimeMs > 0 ? lastWaitTimeMs : null,
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "Failed to forward queue metric.");
         }
     }
 
