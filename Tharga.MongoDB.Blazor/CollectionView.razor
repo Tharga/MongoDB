@@ -34,6 +34,15 @@ else
                     </RadzenSelectBar>
                 </RadzenStack>
             </RadzenColumn>
+            @if (_sources.Length > 1)
+            {
+            <RadzenColumn>
+                <RadzenStack Orientation="Orientation.Vertical">
+                    <RadzenText TextStyle="TextStyle.Caption" Text="Sources"/>
+                    <RadzenDropDown Placeholder="Select sources" @bind-Value=@SelectedSources Data=@_sources Multiple=true Style="margin-bottom: 6px;" Change="@ReloadDataAsync" />
+                </RadzenStack>
+            </RadzenColumn>
+            }
             @if (_showDatabase)
             {
             <RadzenColumn>
@@ -101,6 +110,7 @@ else
 }
 
 @code {
+    private string[] _sources = [];
     private string[] _databases;
     private CollectionModel[] _model;
     private bool _showConfiguration;
@@ -109,6 +119,7 @@ else
     private CollectionInfo[] _all;
 
     private IEnumerable<Registration> SelectedRegistrationTypes { get; set; }
+    private IEnumerable<string> SelectedSources { get; set; }
     private IEnumerable<string> SelectedDatabases { get; set; }
 
     [Parameter]
@@ -161,28 +172,40 @@ else
 
         var item = _all.SingleOrDefault(x => x.Key == e.CollectionInfo.Key);
 
-        if (item != null)
+        if (item == null)
         {
-            item.Discovery = e.CollectionInfo.Discovery;
-            item.Stats = e.CollectionInfo.Stats;
-            item.Index = e.CollectionInfo.Index;
-
-            var m = _model?.SingleOrDefault(x => x.ConfigurationName == item.ConfigurationName && x.DatabaseName == item.DatabaseName && x.CollectionName == item.CollectionName);
-            if (m != null)
-            {
-                var indexModels = e.CollectionInfo.ToIndexModel().ToArray();
-
-                m.Discovery = e.CollectionInfo.Discovery;
-                m.Stats = e.CollectionInfo.Stats;
-                m.Size = e.CollectionInfo.Stats?.Size ?? 0;
-                m.Indices = indexModels;
-                m.IndexEqualFields = e.CollectionInfo.Index == null || e.CollectionInfo.Index.Current == null ? null : indexModels.All(x => x.EqualFields);
-                m.Clean = e.CollectionInfo.Clean;
-            }
-
+            // New remote collection — add it and reload
+            _all = _all.Append(e.CollectionInfo).ToArray();
+            UpdateFilterOptions();
+            await ReloadDataAsync();
             if (_disposed) return;
             try { await InvokeAsync(StateHasChanged); } catch (Exception) { }
+            return;
         }
+
+        item.Discovery = e.CollectionInfo.Discovery;
+        item.Stats = e.CollectionInfo.Stats;
+        item.Index = e.CollectionInfo.Index;
+
+        var m = _model?.SingleOrDefault(x => x.ConfigurationName == item.ConfigurationName && x.DatabaseName == item.DatabaseName && x.CollectionName == item.CollectionName);
+        if (m != null)
+        {
+            var indexModels = e.CollectionInfo.ToIndexModel().ToArray();
+            var sources = DatabaseMonitor.GetCollectionSources(item.Key).ToArray();
+
+            m.Discovery = e.CollectionInfo.Discovery;
+            m.Stats = e.CollectionInfo.Stats;
+            m.Size = e.CollectionInfo.Stats?.Size ?? 0;
+            m.Indices = indexModels;
+            m.IndexEqualFields = e.CollectionInfo.Index == null || e.CollectionInfo.Index.Current == null ? null : indexModels.All(x => x.EqualFields);
+            m.Clean = e.CollectionInfo.Clean;
+            m.Sources = sources;
+
+            UpdateFilterOptions();
+        }
+
+        if (_disposed) return;
+        try { await InvokeAsync(StateHasChanged); } catch (Exception) { }
     }
 
     private async void OnCollectionDropped(object sender, CollectionDroppedEventArgs e)
@@ -199,7 +222,7 @@ else
     protected override async Task OnParametersSetAsync()
     {
         _all = await DatabaseMonitor.GetInstancesAsync(FullDatabaseScan, Filter).ToArrayAsync();
-        _databases = _all.GroupBy(x => x.DatabaseName).Select(x => x.First()).Select(x => x.DatabaseName).Order().ToArray();
+        UpdateFilterOptions();
         await ReloadDataAsync();
         await base.OnParametersSetAsync();
     }
@@ -207,8 +230,17 @@ else
     public async Task RefreshAsync()
     {
         _all = await DatabaseMonitor.GetInstancesAsync(FullDatabaseScan, Filter).ToArrayAsync();
-        _databases = _all.GroupBy(x => x.DatabaseName).Select(x => x.First()).Select(x => x.DatabaseName).Order().ToArray();
+        UpdateFilterOptions();
         await ReloadDataAsync();
+    }
+
+    private void UpdateFilterOptions()
+    {
+        _sources = _all.SelectMany(x => DatabaseMonitor.GetCollectionSources(x.Key)).Distinct().Order().ToArray();
+        _databases = _all.Select(x => x.DatabaseName).Distinct().Order().ToArray();
+        _showSource = _sources.Length > 1;
+        _showDatabase = _databases.Length > 1;
+        _showConfiguration = _all.Select(x => x.ConfigurationName).Distinct().Count() > 1;
     }
 
     private async Task ShowCollectionDialog(CollectionModel context)
@@ -225,9 +257,8 @@ else
     {
         var callCounts = CallLibrary.GetCallCounts();
 
-        _model = _all
-            .Where(x => SelectedDatabases == null || !SelectedDatabases.Any() || SelectedDatabases.Contains(x.DatabaseName))
-            .Where(x => SelectedRegistrationTypes == null || !SelectedRegistrationTypes.Any() || SelectedRegistrationTypes.Contains(x.Registration))
+        // Build all models with sources
+        var allModels = _all
             .Select(x =>
             {
                 var indexModels = x.ToIndexModel().ToArray();
@@ -259,9 +290,14 @@ else
                 };
             })
             .ToArray();
-        _showConfiguration = _model.GroupBy(x => x.ConfigurationName).Count() > 1;
-        _showDatabase = _model.Select(x => x.DatabaseName).Distinct().Count() > 1;
-        _showSource = _model.SelectMany(x => x.Sources).Distinct().Count() > 1;
+
+        // Apply filters
+        _model = allModels
+            .Where(x => SelectedSources == null || !SelectedSources.Any() || x.Sources.Any(s => SelectedSources.Contains(s)))
+            .Where(x => SelectedDatabases == null || !SelectedDatabases.Any() || SelectedDatabases.Contains(x.DatabaseName))
+            .Where(x => SelectedRegistrationTypes == null || !SelectedRegistrationTypes.Any() || SelectedRegistrationTypes.Contains(x.Registration))
+            .ToArray();
+
         StateHasChanged();
     }
 

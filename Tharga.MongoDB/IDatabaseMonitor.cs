@@ -93,10 +93,16 @@ public interface IDatabaseMonitor
     /// <summary>
     /// Ingest collection metadata from a remote agent.
     /// </summary>
-    void IngestCollectionInfo(RemoteCollectionInfoDto collectionInfo);
+    void IngestCollectionInfo(RemoteCollectionInfoDto collectionInfo, string connectionId = null);
 
     /// <summary>
     /// Get the source names that have reported a given collection (by fingerprint key).
     /// </summary>
     IReadOnlyCollection<string> GetCollectionSources(string fingerprintKey);
+
+    /// <summary>
+    /// Find the SignalR connection ID of a connected agent by source name.
+    /// Returns null if no connected agent matches.
+    /// </summary>
+    string FindConnectionIdBySource(string sourceName);
 }

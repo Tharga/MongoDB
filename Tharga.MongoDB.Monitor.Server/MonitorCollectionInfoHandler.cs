@@ -33,7 +33,7 @@ public sealed class MonitorCollectionInfoHandler : PostMessageHandlerBase<Monito
             Stats = message.Stats,
             Index = message.Index,
             Clean = message.Clean,
-        });
+        }, ConnectionId);
         return Task.CompletedTask;
     }
 }

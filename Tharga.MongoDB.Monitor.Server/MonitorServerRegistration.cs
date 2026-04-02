@@ -38,6 +38,9 @@ public static class MonitorServerRegistration
         // Bridge client connection events into IDatabaseMonitor
         builder.Services.AddHostedService<MonitorClientBridge>();
 
+        // Enable remote action delegation
+        builder.Services.AddSingleton<IRemoteActionDispatcher, RemoteActionDispatcher>();
+
         return builder;
     }
 
