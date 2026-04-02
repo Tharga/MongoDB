@@ -5,30 +5,31 @@
   },  
   "permissions": {
     "allow": [
-      "Bash(git status:*)",
-      "Bash(git diff:*)",
-      "Bash(git add:*)",
-      "Bash(git commit:*)",
-      "Bash(git checkout:*)",
-      "Bash(npm run:*)",
       "Read",
       "Glob",
       "Grep",
-      "Bash(dotnet build -v q)",
-      "Bash(dotnet build:*)",
-      "Bash(rm .claude/feature.md)",
-      "Bash(rm .claude/plan.md)",
-      "Bash(git rm:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git checkout:*)",
       "Bash(git merge:*)",
       "Bash(git branch:*)",
-      "Bash(dotnet test:*)",
-      "Bash(xargs grep:*)",
       "Bash(git mv:*)",
-      "Bash(xargs ls:*)"
+      "Bash(git rm:*)",
+      "Bash(dotnet build:*)",
+      "Bash(dotnet test:*)",
+      "Bash(cp .claude/feature.md .claude/features-done/*)",
+      "Bash(rm .claude/feature.md)",
+      "Bash(rm .claude/plan.md)",
+      "Bash(rm .claude/features-planned/*)"
     ],
     "deny": [
       "Bash(rm -rf:*)",
-      "Bash(sudo:*)"
+      "Bash(sudo:*)",
+      "Bash(git push:*)",
+      "Bash(git reset --hard:*)"
     ]
   }
-}	
+}
