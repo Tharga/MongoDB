@@ -4,25 +4,31 @@
 Performance optimization + pending request in central Requests.md
 
 ## Goal
-Remote agents should not send monitoring data unless someone is actively viewing the dashboard. Use Tharga.Communication's subscription mechanism to notify clients when to start/stop sending.
+Remote agents should not send live monitoring data (ongoing calls, queue metrics) unless someone is actively viewing the dashboard. Use Tharga.Communication's subscription mechanism to gate live data.
+
+## Design Decisions
+- **Always sent (no gating):** Collection metadata, completed calls (Last/Slow) — low volume, needed for cache
+- **Gated by subscription:** Queue metric timer, ongoing call forwarding — high volume, only useful when someone is watching
+- **Single topic:** `live-monitoring` — no per-client filtering, all agents send when anyone subscribes
+- **Tharga.Communication handles counting:** `SubscriptionManager` reference-counts subscribers, `SubscriptionStateChanged` fires on first/last transitions, client sees `HasSubscribers` as boolean
 
 ## Scope
-- Server notifies connected clients "someone is watching" when a Blazor component subscribes
-- Server notifies "no one is watching" when all subscribers disconnect
-- MonitorForwarder only forwards calls and collection info when watching is active
-- Initial collection info is still sent on connect (for the Collections tab)
-- Call data and queue metrics are gated by subscription state
-- Use SubscriptionStateTracker from Tharga.Communication
+- Blazor components (CallView on Ongoing tab, QueueView) call `SubscribeAsync<LiveMonitoringMarker>()` on mount, dispose on unmount
+- Server notifies all connected agents via `SubscriptionStateChanged`
+- `MonitorForwarder` checks `HasSubscribers<LiveMonitoringMarker>()` before sending queue metrics and ongoing calls
+- Queue metric timer runs but skips sending when no subscribers
+- Ongoing call events (CallStart without matching CallEnd) only forwarded when subscribers present
 
 ## Dependencies
-- Tharga.Communication subscription support (SubscriptionStateTracker, SubscriptionStateChangedHandler)
+- Tharga.Communication subscription support (SubscriptionStateTracker, SubscriptionStateChangedHandler) — already implemented
 
 ## Acceptance Criteria
-- [ ] No call data sent when no one is viewing the dashboard
-- [ ] Call data starts flowing when a user opens the Calls or Queue tab
-- [ ] Data stops when the last viewer disconnects
-- [ ] Collection metadata is always sent (not gated)
+- [ ] Queue metrics not sent when no one is viewing Queue tab
+- [ ] Ongoing calls not sent when no one is viewing Ongoing tab
+- [ ] Data starts flowing instantly when a user opens Ongoing or Queue tab
+- [ ] Data stops when the last viewer closes those tabs
+- [ ] Collection metadata and completed calls always sent
 - [ ] No breaking changes for existing setups
 
 ## Done Condition
-Remote agents produce zero network traffic for call/queue data when no dashboard is open. Data flows instantly when someone starts watching.
+Remote agents produce zero network traffic for live data when no dashboard tab is viewing it. Data flows instantly when someone starts watching.
