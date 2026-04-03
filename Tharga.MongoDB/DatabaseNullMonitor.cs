@@ -76,6 +76,8 @@ internal class DatabaseNullMonitor : IDatabaseMonitor
 
     public string FindConnectionIdBySource(string sourceName) => null;
 
+    public IReadOnlyDictionary<string, int> GetSubscriptions() => new Dictionary<string, int>();
+
     public void IngestQueueMetric(string sourceName, int queueCount, int executingCount, double? waitTimeMs) { }
 
     public IReadOnlyDictionary<string, ConnectionPoolStateDto> GetPerSourceQueueState() => new Dictionary<string, ConnectionPoolStateDto>();

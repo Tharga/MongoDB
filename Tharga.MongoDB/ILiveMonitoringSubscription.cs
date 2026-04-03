@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 
 namespace Tharga.MongoDB;
@@ -11,4 +12,9 @@ namespace Tharga.MongoDB;
 public interface ILiveMonitoringSubscription
 {
     Task<IAsyncDisposable> SubscribeAsync();
+
+    /// <summary>
+    /// Returns active subscriptions and their subscriber counts.
+    /// </summary>
+    IReadOnlyDictionary<string, int> GetSubscriptions();
 }

@@ -54,22 +54,61 @@ else
             </RadzenDataGridColumn>
         </Columns>
     </RadzenDataGrid>
+
+    @if (_subscriptions.Any())
+    {
+        <RadzenText TextStyle="TextStyle.Subtitle1" Text="Active Subscriptions" Style="margin-top: 16px;" />
+        <RadzenDataGrid Data="_subscriptions" TItem="SubscriptionEntry"
+                        AllowSorting="true" AllowPaging="false" Density="Density.Compact">
+            <Columns>
+                <RadzenDataGridColumn Title="Topic" Property="@nameof(SubscriptionEntry.Topic)" />
+                <RadzenDataGridColumn Title="Subscribers" Property="@nameof(SubscriptionEntry.Count)" Width="120px" TextAlign="TextAlign.Right" />
+            </Columns>
+        </RadzenDataGrid>
+    }
 }
 
 @code {
     private MonitorClientDto[] _model;
+    private SubscriptionEntry[] _subscriptions = [];
     private bool _disposed;
+    private Timer _timer;
 
     protected override void OnInitialized()
     {
         DatabaseMonitor.MonitorClientsChanged += OnClientsChanged;
         _model = DatabaseMonitor.GetMonitorClients().ToArray();
+        RefreshSubscriptions();
+        _timer = new Timer(OnTick, null, 2000, 2000);
     }
 
     public void Dispose()
     {
         _disposed = true;
+        _timer?.Dispose();
         DatabaseMonitor.MonitorClientsChanged -= OnClientsChanged;
+    }
+
+    private async void OnTick(object state)
+    {
+        if (_disposed) return;
+        try
+        {
+            await InvokeAsync(() =>
+            {
+                RefreshSubscriptions();
+                StateHasChanged();
+            });
+        }
+        catch (ObjectDisposedException) { }
+    }
+
+    private void RefreshSubscriptions()
+    {
+        _subscriptions = DatabaseMonitor.GetSubscriptions()
+            .Select(kvp => new SubscriptionEntry { Topic = kvp.Key, Count = kvp.Value })
+            .OrderBy(x => x.Topic)
+            .ToArray();
     }
 
     private async void OnClientsChanged(object sender, EventArgs e)
@@ -81,10 +120,17 @@ else
             await InvokeAsync(() =>
             {
                 _model = DatabaseMonitor.GetMonitorClients().ToArray();
+                RefreshSubscriptions();
                 StateHasChanged();
             });
         }
         catch (ObjectDisposedException) { }
+    }
+
+    private record SubscriptionEntry
+    {
+        public required string Topic { get; init; }
+        public required int Count { get; init; }
     }
 
     void OnCellRender(DataGridCellRenderEventArgs<MonitorClientDto> args)

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Tharga.Communication.Server.Communication;
 using Tharga.MongoDB.Monitor.Client;
@@ -22,5 +23,10 @@ internal sealed class LiveMonitoringSubscriptionService : ILiveMonitoringSubscri
     public Task<IAsyncDisposable> SubscribeAsync()
     {
         return _serverCommunication.SubscribeAsync<LiveMonitoringMarker>();
+    }
+
+    public IReadOnlyDictionary<string, int> GetSubscriptions()
+    {
+        return _serverCommunication.GetSubscriptions();
     }
 }

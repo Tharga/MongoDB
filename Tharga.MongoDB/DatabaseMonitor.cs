@@ -671,6 +671,12 @@ internal class DatabaseMonitor : IDatabaseMonitor
         return client != null ? connectionId : null;
     }
 
+    public IReadOnlyDictionary<string, int> GetSubscriptions()
+    {
+        var subscription = _serviceProvider.GetService(typeof(ILiveMonitoringSubscription)) as ILiveMonitoringSubscription;
+        return subscription?.GetSubscriptions() ?? new Dictionary<string, int>();
+    }
+
     public void IngestQueueMetric(string sourceName, int queueCount, int executingCount, double? waitTimeMs)
     {
         _remoteQueueStates[sourceName] = new RemoteQueueState
