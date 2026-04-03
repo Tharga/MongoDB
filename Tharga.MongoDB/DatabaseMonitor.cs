@@ -401,10 +401,13 @@ internal class DatabaseMonitor : IDatabaseMonitor
 
         if (collectionInfo.CollectionType == null)
         {
+            _logger?.LogDebug("TouchAsync: Remote collection detected — {Key}", collectionInfo.Key);
             var dispatcher = TryGetRemoteDispatcher(collectionInfo);
             if (dispatcher.Dispatcher != null)
             {
+                _logger?.LogDebug("TouchAsync: Delegating to agent via connection {ConnectionId}", dispatcher.ConnectionId);
                 await dispatcher.Dispatcher.TouchAsync(dispatcher.ConnectionId, collectionInfo);
+                _logger?.LogDebug("TouchAsync: Remote delegation completed.");
                 return;
             }
             throw new InvalidOperationException("Collection is remote-only but no connected agent was found.");
@@ -934,12 +937,19 @@ internal class DatabaseMonitor : IDatabaseMonitor
     private (IRemoteActionDispatcher Dispatcher, string ConnectionId) TryGetRemoteDispatcher(CollectionInfo collectionInfo)
     {
         var dispatcher = _serviceProvider.GetService(typeof(IRemoteActionDispatcher)) as IRemoteActionDispatcher;
-        if (dispatcher == null) return (null, null);
+        if (dispatcher == null)
+        {
+            _logger?.LogDebug("TryGetRemoteDispatcher: IRemoteActionDispatcher not registered.");
+            return (null, null);
+        }
 
         var sources = GetCollectionSources(collectionInfo.Key);
+        _logger?.LogDebug("TryGetRemoteDispatcher: Collection {Key} has {Count} sources: [{Sources}]", collectionInfo.Key, sources.Count, string.Join(", ", sources));
+
         foreach (var source in sources)
         {
             var connectionId = FindConnectionIdBySource(source);
+            _logger?.LogDebug("TryGetRemoteDispatcher: Source {Source} → ConnectionId {ConnectionId}", source, connectionId ?? "(null)");
             if (connectionId != null) return (dispatcher, connectionId);
         }
 
