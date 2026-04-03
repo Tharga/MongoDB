@@ -10,6 +10,7 @@ internal class DatabaseNullMonitor : IDatabaseMonitor
 {
     public event EventHandler<CollectionInfoChangedEventArgs> CollectionInfoChangedEvent;
     public event EventHandler<CollectionDroppedEventArgs> CollectionDroppedEvent;
+    public event EventHandler MonitorClientsChanged { add { } remove { } }
 
     public IEnumerable<ConfigurationName> GetConfigurations()
     {
@@ -60,6 +61,26 @@ internal class DatabaseNullMonitor : IDatabaseMonitor
     {
         yield break;
     }
+
+    public void IngestCall(CallDto call) { }
+
+    public IEnumerable<MonitorClientDto> GetMonitorClients() { yield break; }
+
+    public void IngestClientConnected(MonitorClientDto client) { }
+
+    public void IngestClientDisconnected(string connectionId) { }
+
+    public void IngestCollectionInfo(RemoteCollectionInfoDto collectionInfo, string connectionId = null) { }
+
+    public IReadOnlyCollection<string> GetCollectionSources(string fingerprintKey) => [];
+
+    public string FindConnectionIdBySource(string sourceName) => null;
+
+    public IReadOnlyDictionary<string, int> GetSubscriptions() => new Dictionary<string, int>();
+
+    public void IngestQueueMetric(string sourceName, int queueCount, int executingCount, double? waitTimeMs) { }
+
+    public IReadOnlyDictionary<string, ConnectionPoolStateDto> GetPerSourceQueueState() => new Dictionary<string, ConnectionPoolStateDto>();
 
     public void ResetCalls() { }
 

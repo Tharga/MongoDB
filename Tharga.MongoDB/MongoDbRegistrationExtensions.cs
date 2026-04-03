@@ -71,7 +71,17 @@ public static class MongoDbRegistrationExtensions
 
         services.AddTransient<IExternalIpAddressService, ExternalIpAddressService>();
         services.AddTransient<IMongoDbFirewallService, MongoDbFirewallService>();
-        services.AddSingleton<IMongoDbClientProvider, MongoDbClientProvider>();
+        if (o.Monitor?.EnableCommandMonitoring == true)
+        {
+            services.AddSingleton<CommandMonitorService>();
+            services.AddSingleton<ICommandMonitorService>(sp => sp.GetRequiredService<CommandMonitorService>());
+            services.AddSingleton<IMongoDbClientProvider>(sp =>
+                new MongoDbClientProvider(sp.GetRequiredService<CommandMonitorService>()));
+        }
+        else
+        {
+            services.AddSingleton<IMongoDbClientProvider>(new MongoDbClientProvider());
+        }
         services.AddSingleton<IMongoDbFirewallStateService, MongoDbFirewallStateService>();
         services.AddSingleton<ExecuteLimiter>();
         services.AddSingleton<IExecuteLimiter>(sp => sp.GetRequiredService<ExecuteLimiter>());
@@ -88,7 +98,11 @@ public static class MongoDbRegistrationExtensions
             var collectionPool = serviceProvider.GetService<ICollectionPool>();
             var initiationLibrary = serviceProvider.GetService<IInitiationLibrary>();
             var logger = serviceProvider.GetService<ILogger<MongoDbServiceFactory>>();
-            return new MongoDbServiceFactory(mongoDbClientProvider, repositoryConfigurationLoader, mongoDbFirewallStateService, executeLimiter, collectionPool, initiationLibrary, logger);
+            var factory = new MongoDbServiceFactory(mongoDbClientProvider, repositoryConfigurationLoader, mongoDbFirewallStateService, executeLimiter, collectionPool, initiationLibrary, logger);
+            if (!string.IsNullOrWhiteSpace(o.Monitor?.SourceName))
+                factory.SourceName = o.Monitor.SourceName;
+            factory.CommandMonitor = serviceProvider.GetService<ICommandMonitorService>();
+            return factory;
         });
         services.AddTransient<IRepositoryConfigurationLoader>(serviceProvider =>
         {
@@ -242,9 +256,6 @@ public static class MongoDbRegistrationExtensions
         //NOTE: Checks if the Connection Strings will arrive later. If so we cannot start all features of the database, it will be done later.
         var lateConnectionStrins = databaseOptions.Value.ReadyCallback != null;
 
-        //TODO: Have the option to open firewall when the connection strings arrive.
-        //TODO: Have the option to assure index when the connection strings arrive.
-
         var o = new UseMongoOptions
         {
             DatabaseUsage = new DatabaseUsage
@@ -315,11 +326,19 @@ public static class MongoDbRegistrationExtensions
         {
             var task = Task.Run(async () =>
             {
-                var monitor = app.Services.GetService<IDatabaseMonitor>();
-                await foreach (var collectionInfo in monitor.GetInstancesAsync().Where(x => x.Registration == Registration.Static))
+                try
                 {
-                    await monitor.RestoreIndexAsync(collectionInfo, false);
-                    o.Logger?.LogInformation("Restore index for configuration {Configuration}, database {DatabaseName}, collection {CollectionName}.", collectionInfo.ConfigurationName, collectionInfo.DatabaseName, collectionInfo.CollectionName);
+                    var monitor = app.Services.GetService<IDatabaseMonitor>();
+                    await foreach (var collectionInfo in monitor.GetInstancesAsync().Where(x => x.Registration == Registration.Static))
+                    {
+                        await monitor.RestoreIndexAsync(collectionInfo, false);
+                        o.Logger?.LogInformation("Restore index for configuration {Configuration}, database {DatabaseName}, collection {CollectionName}.", collectionInfo.ConfigurationName, collectionInfo.DatabaseName, collectionInfo.CollectionName);
+                    }
+                }
+                catch (Exception e)
+                {
+                    _actionEvent?.Invoke(new ActionEventArgs(new ActionEventArgs.ActionData { Message = e.Message, Level = LogLevel.Critical, Exception = e }, new ActionEventArgs.ContextData()));
+                    o.Logger?.LogError(e, "Index assurance failed.");
                 }
             });
 

@@ -17,6 +17,40 @@ internal class SampleCommands : ContainerCommandBase
         RegisterCommand<CountCommand>();
         RegisterCommand<ListCommand>();
         RegisterCommand<BurstCommand>();
+        RegisterCommand<MonitorInfoCommand>();
+    }
+}
+
+internal class MonitorInfoCommand : AsyncActionCommandBase
+{
+    private readonly Tharga.MongoDB.IDatabaseMonitor _monitor;
+
+    public MonitorInfoCommand(Tharga.MongoDB.IDatabaseMonitor monitor)
+        : base("Monitor")
+    {
+        _monitor = monitor;
+    }
+
+    public override async Task InvokeAsync(string[] param)
+    {
+        OutputInformation("=== Collections ===");
+        await foreach (var info in _monitor.GetInstancesAsync())
+        {
+            OutputInformation($"  {info.ConfigurationName}.{info.DatabaseName}.{info.CollectionName}");
+            OutputInformation($"    Registration: {info.Registration}, Discovery: {info.Discovery}");
+            OutputInformation($"    CollectionType: {info.CollectionType?.Name ?? "(null)"}");
+            OutputInformation($"    Stats: {(info.Stats != null ? $"Docs={info.Stats.DocumentCount:N0}, Size={info.Stats.Size:N0}" : "(null)")}");
+            OutputInformation($"    Index: {(info.Index?.Current != null ? $"{info.Index.Current.Length} current" : "(null)")} / {(info.Index?.Defined != null ? $"{info.Index.Defined.Length} defined" : "(null)")}");
+            OutputInformation($"    Clean: {(info.Clean != null ? $"Cleaned={info.Clean.DocumentsCleaned} at {info.Clean.CleanedAt}" : "(null)")}");
+        }
+
+        OutputInformation("");
+        OutputInformation("=== Calls ===");
+        var calls = _monitor.GetCalls(Tharga.MongoDB.CallType.Last).Take(5);
+        foreach (var call in calls)
+        {
+            OutputInformation($"  {call.FunctionName} on {call.Fingerprint.CollectionName} — {call.Elapsed?.TotalMilliseconds:N2}ms");
+        }
     }
 }
 

@@ -13,5 +13,6 @@ internal interface ICallLibrary : IDisposable
     IEnumerable<CallInfo> GetOngoingCalls();
     CallInfo GetCall(Guid key);
     IReadOnlyDictionary<string, int> GetCallCounts();
+    void IngestCall(CallInfo call);
     void ResetCalls();
 }

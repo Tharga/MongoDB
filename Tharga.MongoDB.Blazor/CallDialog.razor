@@ -1,5 +1,7 @@
-﻿@using Tharga.Blazor
+﻿@using Microsoft.JSInterop
+@using Tharga.Blazor
 @inject ICallLibrary CallLibrary
+@inject IJSRuntime JSRuntime
 
 @if (_model == null)
 {
@@ -84,6 +86,10 @@ else
                                       Visible="@(_explainJson == null)"
                                       ButtonStyle="ButtonStyle.Light"
                                       Click="LoadExplainAsync" Disabled="_loadingExplain"/>
+                        <RadzenButton Icon="content_copy" Size="ButtonSize.ExtraSmall"
+                                      Visible="@(_explainJson != null)"
+                                      ButtonStyle="ButtonStyle.Light"
+                                      Click="CopyExplainAsync" title="Copy to clipboard"/>
                     </RadzenColumn>
                 </RadzenRow>
                 @if (_loadingExplain)
@@ -127,5 +133,10 @@ else
         _explainJson = await _model.ExplainProvider(CancellationToken.None);
         _loadingExplain = false;
         StateHasChanged();
+    }
+
+    private async Task CopyExplainAsync()
+    {
+        await JSRuntime.InvokeVoidAsync("navigator.clipboard.writeText", _explainJson);
     }
 }

@@ -1,0 +1,37 @@
+@using Microsoft.Extensions.Options
+@using Tharga.MongoDB.Configuration
+@inject IDatabaseMonitor DatabaseMonitor;
+@inject NotificationService NotificationService
+@inject IOptions<DatabaseOptions> DatabaseOptions
+
+@if (DatabaseOptions.Value.Monitor.Enabled)
+{
+    <RadzenMenu>
+        <RadzenMenuItem Text="Reset Collection Cache" Icon="restart_alt" Click="ResetCollectionCacheAsync"
+                        title="Clears the collection cache in memory and removes persisted monitor state from the _monitor collection in the database." />
+        <RadzenMenuItem Text="Clear Call History" Icon="delete_sweep" Click="ClearCallHistoryAsync"
+                        title="Clears in-memory call history (recent, slow and ongoing calls). Does not affect the database." />
+    </RadzenMenu>
+}
+
+@code {
+    [Parameter]
+    public EventCallback OnCallsReset { get; set; }
+
+    [Parameter]
+    public EventCallback OnCacheReset { get; set; }
+
+    private async Task ClearCallHistoryAsync()
+    {
+        DatabaseMonitor.ResetCalls();
+        NotificationService.Notify(new NotificationMessage { Summary = "Call history cleared." });
+        await OnCallsReset.InvokeAsync();
+    }
+
+    private async Task ResetCollectionCacheAsync()
+    {
+        await DatabaseMonitor.ResetAsync();
+        NotificationService.Notify(new NotificationMessage { Summary = "Collection cache has been reset." });
+        await OnCacheReset.InvokeAsync();
+    }
+}

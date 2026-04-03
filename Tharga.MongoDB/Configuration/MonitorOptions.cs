@@ -24,4 +24,27 @@ public record MonitorOptions
     /// Default is Database.
     /// </summary>
     public MonitorStorageMode StorageMode { get; set; } = MonitorStorageMode.Database;
+
+    /// <summary>
+    /// Identifies the source of monitoring data. Used to distinguish data from different
+    /// applications or agents in a distributed monitoring scenario.
+    /// Defaults to "{MachineName}/{EntryAssemblyName}" when not configured.
+    /// </summary>
+    public string SourceName { get; set; }
+
+    /// <summary>
+    /// URL of the central monitor server to forward monitoring data to.
+    /// When set, the Tharga.MongoDB.Monitor.Client package must be referenced
+    /// and <see cref="SendTo"/> is used as the Tharga.Communication server address.
+    /// When null or empty, no forwarding is configured.
+    /// </summary>
+    public string SendTo { get; set; }
+
+    /// <summary>
+    /// Enable MongoDB driver command monitoring. When enabled, driver-level command durations
+    /// are captured and surfaced in call step data, allowing operators to distinguish slow
+    /// server execution from thread pool starvation. Default is false.
+    /// Should NOT be always-on in production due to volume.
+    /// </summary>
+    public bool EnableCommandMonitoring { get; set; }
 }

@@ -91,7 +91,7 @@ internal class ExecuteLimiter : IExecuteLimiter, IQueueMonitor
 
             if (executingCount >= maxConcurrent)
             {
-                _logger?.LogWarning("The maximum number of {count} concurrent executions for {serverKey} has been reached.", executingCount, serverKey);
+                _logger?.LogWarning("The maximum number of {count} concurrent executions for {serverKey} has been reached. {queueCount} operations waiting in queue.", executingCount, serverKey, state.GetQueued());
             }
 
             // Update last wait time atomically (take the max)

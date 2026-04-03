@@ -7,6 +7,12 @@
         "Tharga.TemplateBlazor.Web": {}
       }
     },
+    "Blazor & Console": {
+      "Projects": {
+        "Tharga.TemplateBlazor.Web": {},
+        "ConsoleSample": {}
+      }
+    },
     "Host Sample": {
       "Projects": {
         "HostSample": {}

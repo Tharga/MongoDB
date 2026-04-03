@@ -30,8 +30,6 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
     private static readonly ConcurrentDictionary<string, SemaphoreSlim> _fetchLocks = new();
     private int? _autoFetchSize;
 
-    //TODO: Implement GetDerived or GetGeneric that loads T where TEntity is the base class.
-
     /// <summary>
     /// Override this constructor for static collections.
     /// </summary>
@@ -77,9 +75,13 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             {
                 steps.Add(new StepResponse { Timestamp = Stopwatch.GetTimestamp(), Step = "Queue" });
 
+                var commandMonitor = ((MongoDbServiceFactory)_mongoDbServiceFactory).CommandMonitor;
+
                 //NOTE: Fetch collection
+                var fetchStartTimestamp = Stopwatch.GetTimestamp();
                 var fetchCollectionStep = await FetchCollectionAsync();
-                steps.Add(fetchCollectionStep);
+                var fetchMessage = FormatDriverCommands(commandMonitor, fetchStartTimestamp, Stopwatch.GetTimestamp());
+                steps.Add(fetchMessage != null ? fetchCollectionStep with { Message = fetchMessage } : fetchCollectionStep);
                 var collection = fetchCollectionStep.Value;
 
                 //NOTE: Capture filter render and explain as lazy delegates — no allocation until the value is read
@@ -114,14 +116,21 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                 }
 
                 //NOTE: Handle index depending on operation
-                steps.Add(await OperationIndexManagement(operation, collection));
+                var indexStartTimestamp = Stopwatch.GetTimestamp();
+                var indexStep = await OperationIndexManagement(operation, collection);
+                var indexMessage = FormatDriverCommands(commandMonitor, indexStartTimestamp, Stopwatch.GetTimestamp());
+                steps.Add(indexMessage != null ? indexStep with { Message = indexMessage } : indexStep);
 
                 //NOTE: Set collection context for FlexibleGuidSerializer warnings
                 FlexibleGuidSerializer.CollectionContext = ProtectedCollectionName;
 
                 //NOTE: Perform action
+                var actionStartTimestamp = Stopwatch.GetTimestamp();
                 var response = await action.Invoke(collection, ct);
-                steps.Add(new StepResponse { Timestamp = Stopwatch.GetTimestamp(), Step = "Action" });
+                var actionEndTimestamp = Stopwatch.GetTimestamp();
+                var actionMessage = FormatDriverCommands(commandMonitor, actionStartTimestamp, actionEndTimestamp);
+
+                steps.Add(new StepResponse { Timestamp = actionEndTimestamp, Step = "Action", Message = actionMessage });
 
                 if (operation == Operation.Delete) await DropEmptyAsync(collection);
 
@@ -186,7 +195,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
     private StepResponse FireCallStartEvent(string functionName, Operation operation, Guid callKey)
     {
         var fingerprint = new CollectionFingerprint { ConfigurationName = ConfigurationName ?? Constants.DefaultConfigurationName, DatabaseName = DatabaseName, CollectionName = CollectionName };
-        ((MongoDbServiceFactory)_mongoDbServiceFactory).OnCallStart(this, new CallStartEventArgs(callKey, fingerprint, functionName, operation));
+        ((MongoDbServiceFactory)_mongoDbServiceFactory).OnCallStart(this, new CallStartEventArgs(callKey, fingerprint, functionName, operation, _mongoDbServiceFactory.SourceName));
 
         return new StepResponse
         {
@@ -1100,15 +1109,6 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         return false;
     }
 
-    //internal async Task<IEnumerable<string[]>> GetIndexBlockers(IMongoCollection<TEntity> collection, string indexName)
-    //{
-    //    BsonDocument index = (await collection.Indexes.ListAsync()).ToList().FirstOrDefault(x => x.GetValue("name").AsString == indexName);
-
-    //    //TODO: Build a list of Ids of documents that blocks the index.
-    //    //Example of returns: [["Id1","Id2","Id3"], ["Id11", "Id12"]]
-
-    //    throw new InvalidOperationException();
-    //}
     internal async Task<IEnumerable<string[]>> GetIndexBlockers(IMongoCollection<TEntity> collection, string indexName)
     {
         var indices = (CoreIndices?.ToArray() ?? Array.Empty<CreateIndexModel<TEntity>>())
@@ -1135,6 +1135,17 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                 {
                     var renderedKeys = x.Keys.Render(matchRenderArgs);
                     return renderedKeys.Equals(existingKeys);
+                });
+            }
+            else
+            {
+                // Index doesn't exist on the server (e.g. creation failed due to duplicates).
+                // Match by the auto-generated name derived from rendered key fields.
+                index = indices.FirstOrDefault(x =>
+                {
+                    var renderedKeys = x.Keys.Render(matchRenderArgs);
+                    var autoName = string.Join("_", renderedKeys.Elements.Select(e => $"{e.Name}_{e.Value}"));
+                    return autoName == indexName;
                 });
             }
         }
@@ -1725,6 +1736,23 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
     private static TimeSpan GetElapsed(long from, long to)
     {
         return TimeSpan.FromSeconds((to - from) / (double)Stopwatch.Frequency);
+    }
+
+    private static string FormatDriverCommands(ICommandMonitorService commandMonitor, long sinceTimestamp, long untilTimestamp)
+    {
+        var commands = commandMonitor?.TakeSince(sinceTimestamp);
+        if (commands == null || commands.Length == 0) return null;
+
+        var stepDuration = GetElapsed(sinceTimestamp, untilTimestamp);
+        var driverTotal = TimeSpan.FromTicks(commands.Sum(c => c.Duration.Ticks));
+        var overhead = stepDuration - driverTotal;
+
+        var parts = commands.Select(c =>
+            $"{c.CommandName} {c.Duration.TotalMilliseconds:N2}ms{(c.Failed ? " FAILED" : "")}");
+
+        return commands.Length == 1
+            ? $"Driver: {string.Join(", ", parts)} | Other: {overhead.TotalMilliseconds:N2}ms"
+            : $"Driver ({commands.Length}): {string.Join(", ", parts)} | Other: {overhead.TotalMilliseconds:N2}ms";
     }
 
     private static ProjectionDefinition<TEntity, T> BuildProjection<T>()

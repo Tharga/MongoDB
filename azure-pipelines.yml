@@ -8,7 +8,7 @@ pool:
 variables:
   buildPlatform: 'Any CPU'
   buildConfiguration: 'Release'
-  majorMinor: '2.9'
+  majorMinor: '2.10'
 
 stages:
 - stage: Build
@@ -97,6 +97,24 @@ stages:
       inputs:
         command: 'pack'
         packagesToPack: '**/Tharga.MongoDB.Blazor.csproj'
+        versioningScheme: 'byEnvVar'
+        versionEnvVar: 'BUILD_BUILDNUMBER'
+        arguments: '--configuration Release /p:IncludeSymbols=true /p:IncludeSource=true /p:SymbolPackageFormat=snupkg /p:ContinuousIntegrationBuild=true'
+
+    - task: DotNetCoreCLI@2
+      displayName: 'Pack Tharga.MongoDB.Monitor.Client'
+      inputs:
+        command: 'pack'
+        packagesToPack: '**/Tharga.MongoDB.Monitor.Client.csproj'
+        versioningScheme: 'byEnvVar'
+        versionEnvVar: 'BUILD_BUILDNUMBER'
+        arguments: '--configuration Release /p:IncludeSymbols=true /p:IncludeSource=true /p:SymbolPackageFormat=snupkg /p:ContinuousIntegrationBuild=true'
+
+    - task: DotNetCoreCLI@2
+      displayName: 'Pack Tharga.MongoDB.Monitor.Server'
+      inputs:
+        command: 'pack'
+        packagesToPack: '**/Tharga.MongoDB.Monitor.Server.csproj'
         versioningScheme: 'byEnvVar'
         versionEnvVar: 'BUILD_BUILDNUMBER'
         arguments: '--configuration Release /p:IncludeSymbols=true /p:IncludeSource=true /p:SymbolPackageFormat=snupkg /p:ContinuousIntegrationBuild=true'

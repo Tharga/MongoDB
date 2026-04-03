@@ -21,6 +21,13 @@ public interface IDatabaseMonitor
     Task<IEnumerable<string[]>> GetIndexBlockersAsync(CollectionInfo collectionInfo, string indexName);
     Task<CleanInfo> CleanAsync(CollectionInfo collectionInfo, bool cleanGuids);
     IEnumerable<CallInfo> GetCalls(CallType callType);
+
+    /// <summary>
+    /// Ingest an externally produced call (e.g. from a remote agent) into the monitor pipeline.
+    /// The call will appear in GetCalls, summaries, and Blazor components.
+    /// </summary>
+    void IngestCall(CallDto call);
+
     void ResetCalls();
     Task ResetAsync();
 
@@ -60,4 +67,58 @@ public interface IDatabaseMonitor
     /// Get aggregate connection pool state.
     /// </summary>
     ConnectionPoolStateDto GetConnectionPoolState();
+
+    // --- Remote client management ---
+
+    /// <summary>
+    /// Raised when the list of connected monitoring agents changes.
+    /// </summary>
+    event EventHandler MonitorClientsChanged;
+
+    /// <summary>
+    /// Get all known monitoring agents (connected and recently disconnected).
+    /// </summary>
+    IEnumerable<MonitorClientDto> GetMonitorClients();
+
+    /// <summary>
+    /// Register a connected monitoring agent.
+    /// </summary>
+    void IngestClientConnected(MonitorClientDto client);
+
+    /// <summary>
+    /// Mark a monitoring agent as disconnected.
+    /// </summary>
+    void IngestClientDisconnected(string connectionId);
+
+    /// <summary>
+    /// Ingest collection metadata from a remote agent.
+    /// </summary>
+    void IngestCollectionInfo(RemoteCollectionInfoDto collectionInfo, string connectionId = null);
+
+    /// <summary>
+    /// Get the source names that have reported a given collection (by fingerprint key).
+    /// </summary>
+    IReadOnlyCollection<string> GetCollectionSources(string fingerprintKey);
+
+    /// <summary>
+    /// Find the SignalR connection ID of a connected agent by source name.
+    /// Returns null if no connected agent matches.
+    /// </summary>
+    string FindConnectionIdBySource(string sourceName);
+
+    /// <summary>
+    /// Get active subscriptions and their subscriber counts.
+    /// Keys are topic names (e.g. "LiveMonitoringMarker"), values are subscriber counts.
+    /// </summary>
+    IReadOnlyDictionary<string, int> GetSubscriptions();
+
+    /// <summary>
+    /// Ingest a queue metric snapshot from a remote agent.
+    /// </summary>
+    void IngestQueueMetric(string sourceName, int queueCount, int executingCount, double? waitTimeMs);
+
+    /// <summary>
+    /// Get per-source queue state for all known sources (local + remote).
+    /// </summary>
+    IReadOnlyDictionary<string, ConnectionPoolStateDto> GetPerSourceQueueState();
 }

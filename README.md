@@ -421,6 +421,134 @@ services.AddMongoDB(o =>
 });
 ```
 
+### Source identification
+All monitoring data is tagged with a source name to identify where it originates from. This is useful when multiple applications share the same database or when preparing for distributed monitoring.
+
+By default the source name is `{MachineName}/{AssemblyName}`. To override:
+
+```json
+"MongoDB": {
+  "Monitor": {
+    "SourceName": "OrderService-Prod"
+  }
+}
+```
+
+Or by code:
+```csharp
+services.AddMongoDB(o =>
+{
+    o.Monitor.SourceName = "OrderService-Prod";
+});
+```
+
+The Blazor call view automatically shows a Source column and filter when calls from multiple sources are present.
+
+### Command monitoring
+Enable driver-level command monitoring to see how much of the "Action" step is actual MongoDB server time vs thread pool wait. Disabled by default.
+
+```json
+"MongoDB": {
+  "Monitor": {
+    "EnableCommandMonitoring": true
+  }
+}
+```
+
+When enabled, steps that involve MongoDB driver calls include a breakdown of driver time vs other overhead (serialization, thread pool wait, etc.):
+
+- **FetchCollection**: `Driver: listIndexes 2.10ms | Other: 0.45ms`
+- **OperationIndexManagement**: `Driver (2): createIndexes 8.50ms, listIndexes 1.20ms | Other: 0.30ms`
+- **Action**: `Driver: find 12.34ms | Other: 3.21ms`
+
+This helps diagnose whether slow operations are caused by the database, serialization, or application-side contention.
+
+### Remote forwarding
+Install the `Tharga.MongoDB.Monitor.Client` package to forward monitoring data from a remote agent to a central server via [Tharga.Communication](https://www.nuget.org/packages/Tharga.Communication).
+
+```csharp
+builder.AddMongoDB();
+builder.AddMongoDbMonitorClient(sendTo: "https://monitor-server");
+```
+
+The forwarder subscribes to call events and sends `CallDto` via fire-and-forget. When the server is unavailable or not configured, there is zero overhead. The hub endpoint defaults to `/mongodb-monitor`.
+
+### Receiving remote monitoring data
+Install the `Tharga.MongoDB.Monitor.Server` package on the central server (typically the Blazor dashboard app) to receive monitoring data from remote agents.
+
+```csharp
+builder.AddMongoDB();
+builder.AddMongoDbMonitorServer();
+
+app.UseMongoDB();
+app.UseMongoDbMonitorServer();
+```
+
+The hub is mapped at `/mongodb-monitor` by default. Both client and server accept an optional pattern override if needed.
+
+Remote calls are ingested into the local `IDatabaseMonitor` and appear automatically in Blazor components, REST API endpoints, and summaries alongside local data. The Source column and filter appear when calls from multiple sources are present.
+
+### Securing the monitor hub
+Both client and server support API key authentication via [Tharga.Communication](https://www.nuget.org/packages/Tharga.Communication). When keys are configured, unauthorized agents are rejected. When no keys are configured, all connections are accepted (backwards compatible).
+
+```csharp
+// Agent
+builder.AddMongoDbMonitorClient(sendTo: "https://monitor-server", apiKey: "my-secret-key");
+
+// Server
+builder.AddMongoDbMonitorServer(primaryApiKey: "my-secret-key");
+```
+
+For zero-downtime key rotation, configure both primary and secondary keys on the server — either key is accepted:
+
+```csharp
+builder.AddMongoDbMonitorServer(primaryApiKey: "new-key", secondaryApiKey: "old-key");
+```
+
+API keys can also be provided via `appsettings.json` or [User Secrets](https://learn.microsoft.com/en-us/aspnet/core/security/app-secrets) (recommended for development):
+
+**Agent** (`appsettings.json` or User Secrets):
+```json
+{
+  "Tharga": {
+    "Communication": {
+      "ApiKey": "my-secret-key"
+    }
+  }
+}
+```
+
+**Server** (`appsettings.json` or User Secrets):
+```json
+{
+  "Tharga": {
+    "Communication": {
+      "PrimaryApiKey": "my-secret-key",
+      "SecondaryApiKey": "old-key-during-rotation"
+    }
+  }
+}
+```
+
+To use User Secrets in development (keys stay out of source control):
+```bash
+# Agent
+dotnet user-secrets set "Tharga:Communication:ApiKey" "my-secret-key"
+
+# Server
+dotnet user-secrets set "Tharga:Communication:PrimaryApiKey" "my-secret-key"
+```
+
+### Remote action delegation
+When the server dashboard displays collections from remote agents, actions like Touch, Drop Index, Restore Index, and Clean are automatically delegated to the connected agent that owns the collection. No additional configuration is needed — if the `Tharga.MongoDB.Monitor.Client` and `Tharga.MongoDB.Monitor.Server` packages are installed, delegation works out of the box.
+
+- **Local collections**: actions execute directly on the server (existing behavior)
+- **Remote-only collections**: actions are forwarded to the connected agent via `IServerCommunication.SendMessageAsync`
+- **No agent connected**: an error is returned to the UI
+
+### Subscription-based live monitoring
+Live monitoring data (queue metrics, ongoing calls) is only sent by remote agents when someone is actively viewing the Queue or Ongoing tab. This is automatic — Blazor components subscribe on mount and unsubscribe when the tab closes. Collection metadata and completed calls are always sent regardless of subscriptions.
+
 ### Reset
 Call `IDatabaseMonitor.ResetAsync()` to clear all cached monitor state (both in-memory and persisted).
 The Blazor admin UI (`CollectionView`) includes a Reset button that triggers this.

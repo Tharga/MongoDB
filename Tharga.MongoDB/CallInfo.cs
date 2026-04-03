@@ -10,6 +10,7 @@ public record CallInfo
 {
     public required Guid Key { get; init; }
     public required DateTime StartTime { get; init; }
+    public required string SourceName { get; init; }
     public required CollectionFingerprint Fingerprint { get; init; }
     public required string FunctionName { get; init; }
     public required Operation Operation { get; set; }

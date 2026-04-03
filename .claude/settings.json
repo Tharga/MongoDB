@@ -1,24 +1,22 @@
 {
-  "attribution": {
-    "commit": "",
-    "pr": ""
-  },  
   "permissions": {
     "allow": [
-      "Bash(git status:*)",
-      "Bash(git diff:*)",
-      "Bash(git add:*)",
-      "Bash(git commit:*)",
-      "Bash(git checkout:*)",
-      "Bash(npm run:*)",
-      "Read",
+      "Bash(cp *)",
+      "Bash(dotnet *)",
+      "Bash(git *)",
+      "Bash(ls *)",
+      "Bash(mkdir *)",
+      "Bash(rm *)",
+      "Bash(test *)",
       "Glob",
       "Grep",
-      "Bash(dotnet test:*)"
+      "Read"
     ],
     "deny": [
-      "Bash(rm -rf:*)",
-      "Bash(sudo:*)"
+      "Bash(git push *)",
+      "Bash(git reset --hard *)",
+      "Bash(rm -rf *)",
+      "Bash(sudo *)"
     ]
   }
-}	
+}

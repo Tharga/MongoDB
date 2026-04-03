@@ -29,9 +29,15 @@ internal class DatabaseMonitor : IDatabaseMonitor
     private Dictionary<string, DynColInfo> _dynamicLookup;
     private readonly SemaphoreSlim _lookupLock = new(1, 1);
     private bool _started;
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, MonitorClientDto> _monitorClients = new();
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, CollectionInfo> _remoteCollections = new();
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, System.Collections.Concurrent.ConcurrentDictionary<string, bool>> _collectionSources = new();
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> _sourceToConnectionId = new();
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, RemoteQueueState> _remoteQueueStates = new();
 
     public event EventHandler<CollectionInfoChangedEventArgs> CollectionInfoChangedEvent;
     public event EventHandler<CollectionDroppedEventArgs> CollectionDroppedEvent;
+    public event EventHandler MonitorClientsChanged;
 
     public DatabaseMonitor(IMongoDbServiceFactory mongoDbServiceFactory, IMongoDbInstance mongoDbInstance, IServiceProvider serviceProvider, IRepositoryConfiguration repositoryConfiguration, ICollectionProvider collectionProvider, ICallLibrary callLibrary, ICollectionCache cache, IQueueMonitor queueMonitor, IOptions<DatabaseOptions> options, ILogger<DatabaseMonitor> logger)
     {
@@ -247,6 +253,14 @@ internal class DatabaseMonitor : IDatabaseMonitor
     {
         if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
 
+        // Check remote collections first — they have no local CollectionType
+        if (_remoteCollections.TryGetValue(fingerprint.Key, out var remote))
+        {
+            _logger?.LogDebug("GetInstanceAsync: Found remote collection {Key}, Stats={HasStats}, Index={HasIndex}",
+                fingerprint.Key, remote.Stats != null, remote.Index != null);
+            return remote;
+        }
+
         if (_cache.TryGet(fingerprint.Key, out var cached))
         {
             var mongoDbService = GetMongoDbService(fingerprint);
@@ -293,6 +307,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
         var visited = new HashSet<string>();
         var index = 0;
         var total = contexts.Length;
+        var localSource = _mongoDbServiceFactory.SourceName;
 
         foreach (var context in contexts)
         {
@@ -305,25 +320,46 @@ internal class DatabaseMonitor : IDatabaseMonitor
                 {
                     if (filter != null && !database.ProtectCollectionName().Contains(filter)) continue;
                     await foreach (var info in GetCollectionsFromDb(mongoDbService, database, filter, currentDbKeys, visited, sw))
+                    {
+                        var sources = _collectionSources.GetOrAdd(info.Key, _ => new System.Collections.Concurrent.ConcurrentDictionary<string, bool>());
+                        sources[localSource] = true;
                         yield return info;
+                    }
                 }
             }
             else
             {
                 await foreach (var info in GetCollectionsFromDb(mongoDbService, null, filter, currentDbKeys, visited, sw))
+                {
+                    var sources = _collectionSources.GetOrAdd(info.Key, _ => new System.Collections.Concurrent.ConcurrentDictionary<string, bool>());
+                    sources[localSource] = true;
                     yield return info;
+                }
             }
         }
 
         // Remove stale cache entries for collections no longer in DB
         foreach (var key in _cache.GetKeys().Where(k => !currentDbKeys.Contains(k)).ToList())
             _cache.TryRemove(key, out _);
+
+        // Append remote collections not already present locally
+        foreach (var remote in _remoteCollections.Values)
+        {
+            if (!currentDbKeys.Contains(remote.Key))
+            {
+                yield return remote;
+            }
+        }
     }
 
     public async Task RefreshStatsAsync(CollectionFingerprint fingerprint)
     {
         if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
         if (fingerprint == null) throw new ArgumentNullException(nameof(fingerprint));
+
+        // Remote-only collections don't have local DB access — stats come from the agent
+        if (_remoteCollections.ContainsKey(fingerprint.Key) && !_cache.TryGet(fingerprint.Key, out _))
+            return;
 
         var mongoDbService = GetMongoDbService(fingerprint);
         var meta = await mongoDbService
@@ -366,7 +402,22 @@ internal class DatabaseMonitor : IDatabaseMonitor
     {
         if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
         if (collectionInfo == null) throw new ArgumentNullException(nameof(collectionInfo));
-        if (collectionInfo.Registration == Registration.NotInCode) throw new InvalidOperationException($"{nameof(RestoreIndexAsync)} does not support {nameof(Registration)} {collectionInfo.Registration}.");
+
+        if (collectionInfo.CollectionType == null)
+        {
+            _logger?.LogDebug("TouchAsync: Remote collection detected — {Key}", collectionInfo.Key);
+            var dispatcher = TryGetRemoteDispatcher(collectionInfo);
+            if (dispatcher.Dispatcher != null)
+            {
+                _logger?.LogDebug("TouchAsync: Delegating to agent via connection {ConnectionId}", dispatcher.ConnectionId);
+                await dispatcher.Dispatcher.TouchAsync(dispatcher.ConnectionId, collectionInfo);
+                _logger?.LogDebug("TouchAsync: Remote delegation completed.");
+                return;
+            }
+            throw new InvalidOperationException("Collection is remote-only but no connected agent was found.");
+        }
+
+        if (collectionInfo.Registration == Registration.NotInCode) throw new InvalidOperationException($"{nameof(TouchAsync)} does not support {nameof(Registration)} {collectionInfo.Registration}.");
 
         var collection = _collectionProvider.GetCollection(collectionInfo.CollectionType, collectionInfo.Registration == Registration.Dynamic ? collectionInfo.ToDatabaseContext() : null);
 
@@ -400,7 +451,16 @@ internal class DatabaseMonitor : IDatabaseMonitor
     {
         if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
         if (collectionInfo == null) throw new ArgumentNullException(nameof(collectionInfo));
-        if (collectionInfo.Registration == Registration.NotInCode) throw new InvalidOperationException($"{nameof(RestoreIndexAsync)} does not support {nameof(Registration)} {collectionInfo.Registration}.");
+
+        if (collectionInfo.CollectionType == null)
+        {
+            var dispatcher = TryGetRemoteDispatcher(collectionInfo);
+            if (dispatcher.Dispatcher != null)
+                return await dispatcher.Dispatcher.DropIndexAsync(dispatcher.ConnectionId, collectionInfo);
+            throw new InvalidOperationException("Collection is remote-only but no connected agent was found.");
+        }
+
+        if (collectionInfo.Registration == Registration.NotInCode) throw new InvalidOperationException($"{nameof(DropIndexAsync)} does not support {nameof(Registration)} {collectionInfo.Registration}.");
 
         var collection = _collectionProvider.GetCollection(collectionInfo.CollectionType, collectionInfo.Registration == Registration.Dynamic ? collectionInfo.ToDatabaseContext() : null);
 
@@ -421,6 +481,18 @@ internal class DatabaseMonitor : IDatabaseMonitor
     {
         if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
         if (collectionInfo == null) throw new ArgumentNullException(nameof(collectionInfo));
+
+        if (collectionInfo.CollectionType == null)
+        {
+            var dispatcher = TryGetRemoteDispatcher(collectionInfo);
+            if (dispatcher.Dispatcher != null)
+            {
+                await dispatcher.Dispatcher.RestoreIndexAsync(dispatcher.ConnectionId, collectionInfo, force);
+                return;
+            }
+            throw new InvalidOperationException("Collection is remote-only but no connected agent was found.");
+        }
+
         if (collectionInfo.Registration == Registration.NotInCode) throw new InvalidOperationException($"{nameof(RestoreIndexAsync)} does not support {nameof(Registration)} {collectionInfo.Registration}.");
 
         var collection = _collectionProvider.GetCollection(collectionInfo.CollectionType, collectionInfo.Registration == Registration.Dynamic ? collectionInfo.ToDatabaseContext() : null);
@@ -440,7 +512,16 @@ internal class DatabaseMonitor : IDatabaseMonitor
     {
         if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
         if (collectionInfo == null) throw new ArgumentNullException(nameof(collectionInfo));
-        if (collectionInfo.Registration == Registration.NotInCode) throw new InvalidOperationException($"{nameof(RestoreIndexAsync)} does not support {nameof(Registration)} {collectionInfo.Registration}.");
+
+        if (collectionInfo.CollectionType == null)
+        {
+            var dispatcher = TryGetRemoteDispatcher(collectionInfo);
+            if (dispatcher.Dispatcher != null)
+                return await dispatcher.Dispatcher.GetIndexBlockersAsync(dispatcher.ConnectionId, collectionInfo, indexName);
+            throw new InvalidOperationException("Collection is remote-only but no connected agent was found.");
+        }
+
+        if (collectionInfo.Registration == Registration.NotInCode) throw new InvalidOperationException($"{nameof(GetIndexBlockersAsync)} does not support {nameof(Registration)} {collectionInfo.Registration}.");
 
         var collection = _collectionProvider.GetCollection(collectionInfo.CollectionType, collectionInfo.Registration == Registration.Dynamic ? collectionInfo.ToDatabaseContext() : null);
 
@@ -469,6 +550,15 @@ internal class DatabaseMonitor : IDatabaseMonitor
     {
         if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
         if (collectionInfo == null) throw new ArgumentNullException(nameof(collectionInfo));
+
+        if (collectionInfo.CollectionType == null)
+        {
+            var dispatcher = TryGetRemoteDispatcher(collectionInfo);
+            if (dispatcher.Dispatcher != null)
+                return await dispatcher.Dispatcher.CleanAsync(dispatcher.ConnectionId, collectionInfo, cleanGuids);
+            throw new InvalidOperationException("Collection is remote-only but no connected agent was found.");
+        }
+
         if (collectionInfo.Registration == Registration.NotInCode) throw new InvalidOperationException($"{nameof(CleanAsync)} does not support {nameof(Registration)} {collectionInfo.Registration}.");
 
         var collection = _collectionProvider.GetCollection(collectionInfo.CollectionType, collectionInfo.Registration == Registration.Dynamic ? collectionInfo.ToDatabaseContext() : null);
@@ -510,9 +600,148 @@ internal class DatabaseMonitor : IDatabaseMonitor
         };
     }
 
+    public void IngestCall(CallDto call)
+    {
+        _callLibrary.IngestCall(FromCallDto(call));
+    }
+
     public void ResetCalls()
     {
         _callLibrary.ResetCalls();
+
+        // Broadcast to remote agents
+        var dispatcher = _serviceProvider.GetService(typeof(IRemoteActionDispatcher)) as IRemoteActionDispatcher;
+        if (dispatcher != null)
+            _ = dispatcher.ClearCallHistoryAllAsync();
+    }
+
+    // --- Remote client management ---
+
+    public IEnumerable<MonitorClientDto> GetMonitorClients()
+    {
+        return _monitorClients.Values;
+    }
+
+    public void IngestClientConnected(MonitorClientDto client)
+    {
+        _monitorClients[client.Instance] = client;
+        MonitorClientsChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void IngestClientDisconnected(string connectionId)
+    {
+        var entry = _monitorClients.Values.FirstOrDefault(x => x.ConnectionId == connectionId);
+        if (entry != null)
+        {
+            _monitorClients[entry.Instance] = entry with { IsConnected = false, DisconnectTime = DateTime.UtcNow };
+            MonitorClientsChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    public void IngestCollectionInfo(RemoteCollectionInfoDto dto, string connectionId = null)
+    {
+        Enum.TryParse<Discovery>(dto.Discovery, out var discovery);
+        Enum.TryParse<Registration>(dto.Registration, out var registration);
+        var info = new CollectionInfo
+        {
+            ConfigurationName = dto.ConfigurationName,
+            DatabaseName = dto.DatabaseName,
+            CollectionName = dto.CollectionName,
+            Server = dto.Server,
+            DatabasePart = dto.DatabasePart,
+            Discovery = discovery,
+            Registration = registration,
+            EntityTypes = dto.EntityTypes ?? [],
+            CollectionType = null,
+            Stats = dto.Stats,
+            Index = dto.Index,
+            Clean = dto.Clean,
+        };
+
+        var key = info.Key;
+        _remoteCollections[key] = info;
+
+        // Track source
+        var sources = _collectionSources.GetOrAdd(key, _ => new System.Collections.Concurrent.ConcurrentDictionary<string, bool>());
+        sources[dto.SourceName] = true;
+
+        // Map source to connection for action delegation
+        if (!string.IsNullOrEmpty(connectionId) && !string.IsNullOrEmpty(dto.SourceName))
+        {
+            _sourceToConnectionId[dto.SourceName] = connectionId;
+
+            // Update client SourceName if known
+            var client = _monitorClients.Values.FirstOrDefault(x => x.ConnectionId == connectionId);
+            if (client != null)
+                _monitorClients[client.Instance] = client with { SourceName = dto.SourceName };
+        }
+
+        CollectionInfoChangedEvent?.Invoke(this, new CollectionInfoChangedEventArgs(info));
+    }
+
+    public IReadOnlyCollection<string> GetCollectionSources(string fingerprintKey)
+    {
+        if (_collectionSources.TryGetValue(fingerprintKey, out var sources))
+            return sources.Keys.ToArray();
+        return [];
+    }
+
+    public string FindConnectionIdBySource(string sourceName)
+    {
+        if (string.IsNullOrEmpty(sourceName)) return null;
+        if (!_sourceToConnectionId.TryGetValue(sourceName, out var connectionId)) return null;
+
+        // Verify the client is still connected
+        var client = _monitorClients.Values.FirstOrDefault(x => x.ConnectionId == connectionId && x.IsConnected);
+        return client != null ? connectionId : null;
+    }
+
+    public IReadOnlyDictionary<string, int> GetSubscriptions()
+    {
+        var subscription = _serviceProvider.GetService(typeof(ILiveMonitoringSubscription)) as ILiveMonitoringSubscription;
+        return subscription?.GetSubscriptions() ?? new Dictionary<string, int>();
+    }
+
+    public void IngestQueueMetric(string sourceName, int queueCount, int executingCount, double? waitTimeMs)
+    {
+        _remoteQueueStates[sourceName] = new RemoteQueueState
+        {
+            QueueCount = queueCount,
+            ExecutingCount = executingCount,
+            LastWaitTimeMs = waitTimeMs ?? 0,
+            Timestamp = DateTime.UtcNow,
+        };
+    }
+
+    public IReadOnlyDictionary<string, ConnectionPoolStateDto> GetPerSourceQueueState()
+    {
+        var result = new Dictionary<string, ConnectionPoolStateDto>();
+
+        // Local
+        var localSource = _mongoDbServiceFactory.SourceName;
+        result[localSource] = GetConnectionPoolState();
+
+        // Remote
+        foreach (var (source, state) in _remoteQueueStates)
+        {
+            result[source] = new ConnectionPoolStateDto
+            {
+                QueueCount = state.QueueCount,
+                ExecutingCount = state.ExecutingCount,
+                LastWaitTimeMs = state.LastWaitTimeMs,
+                RecentMetrics = [],
+            };
+        }
+
+        return result;
+    }
+
+    private record RemoteQueueState
+    {
+        public int QueueCount { get; init; }
+        public int ExecutingCount { get; init; }
+        public double LastWaitTimeMs { get; init; }
+        public DateTime Timestamp { get; init; }
     }
 
     // --- API-friendly methods ---
@@ -527,8 +756,19 @@ internal class DatabaseMonitor : IDatabaseMonitor
         if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
 
         var call = _callLibrary.GetCall(callKey);
-        if (call?.ExplainProvider == null) return null;
-        return await call.ExplainProvider(cancellationToken);
+        if (call?.ExplainProvider != null)
+            return await call.ExplainProvider(cancellationToken);
+
+        // Remote call — delegate to the agent that produced it
+        if (call?.SourceName != null)
+        {
+            var connectionId = FindConnectionIdBySource(call.SourceName);
+            var dispatcher = _serviceProvider.GetService(typeof(IRemoteActionDispatcher)) as IRemoteActionDispatcher;
+            if (connectionId != null && dispatcher != null)
+                return await dispatcher.GetExplainAsync(connectionId, callKey, cancellationToken);
+        }
+
+        return null;
     }
 
     public IReadOnlyDictionary<string, int> GetCallCounts()
@@ -544,12 +784,13 @@ internal class DatabaseMonitor : IDatabaseMonitor
 
         return _callLibrary.GetLastCalls()
             .Where(c => c.Elapsed.HasValue)
-            .GroupBy(c => (c.Fingerprint.ConfigurationName.Value, c.Fingerprint.DatabaseName, c.Fingerprint.CollectionName, c.FunctionName))
+            .GroupBy(c => (c.SourceName, c.Fingerprint.ConfigurationName.Value, c.Fingerprint.DatabaseName, c.Fingerprint.CollectionName, c.FunctionName))
             .Select(g =>
             {
                 var elapsed = g.Select(c => c.Elapsed.Value.TotalMilliseconds).ToArray();
                 return new CallSummaryDto
                 {
+                    SourceName = g.Key.SourceName,
                     ConfigurationName = g.Key.Value,
                     DatabaseName = g.Key.DatabaseName,
                     CollectionName = g.Key.CollectionName,
@@ -570,9 +811,10 @@ internal class DatabaseMonitor : IDatabaseMonitor
 
         return _callLibrary.GetLastCalls()
             .Where(c => c.Exception != null)
-            .GroupBy(c => (c.Fingerprint.ConfigurationName.Value, c.Fingerprint.DatabaseName, c.Fingerprint.CollectionName, ExceptionType: c.Exception.GetType().Name))
+            .GroupBy(c => (c.SourceName, c.Fingerprint.ConfigurationName.Value, c.Fingerprint.DatabaseName, c.Fingerprint.CollectionName, ExceptionType: c.Exception.GetType().Name))
             .Select(g => new ErrorSummaryDto
             {
+                SourceName = g.Key.SourceName,
                 ConfigurationName = g.Key.Value,
                 DatabaseName = g.Key.DatabaseName,
                 CollectionName = g.Key.CollectionName,
@@ -640,12 +882,41 @@ internal class DatabaseMonitor : IDatabaseMonitor
         };
     }
 
+    private static CallInfo FromCallDto(CallDto dto)
+    {
+        Enum.TryParse<Operation>(dto.Operation, out var operation);
+        return new CallInfo
+        {
+            Key = dto.Key,
+            StartTime = dto.StartTime,
+            SourceName = dto.SourceName,
+            Fingerprint = new CollectionFingerprint
+            {
+                ConfigurationName = dto.ConfigurationName,
+                DatabaseName = dto.DatabaseName,
+                CollectionName = dto.CollectionName,
+            },
+            FunctionName = dto.FunctionName,
+            Operation = operation,
+            Elapsed = dto.ElapsedMs.HasValue ? TimeSpan.FromMilliseconds(dto.ElapsedMs.Value) : null,
+            Count = dto.Count,
+            Final = dto.Final,
+            Steps = dto.Steps?.Select(s => new CallStepInfo
+            {
+                Step = s.Step,
+                Delta = TimeSpan.FromMilliseconds(s.DeltaMs),
+                Message = s.Message
+            }).ToArray()
+        };
+    }
+
     private static CallDto ToCallDto(CallInfo call)
     {
         return new CallDto
         {
             Key = call.Key,
             StartTime = call.StartTime,
+            SourceName = call.SourceName,
             ConfigurationName = call.Fingerprint.ConfigurationName.Value,
             DatabaseName = call.Fingerprint.DatabaseName,
             CollectionName = call.Fingerprint.CollectionName,
@@ -666,6 +937,28 @@ internal class DatabaseMonitor : IDatabaseMonitor
     }
 
     // --- Private helpers ---
+
+    private (IRemoteActionDispatcher Dispatcher, string ConnectionId) TryGetRemoteDispatcher(CollectionInfo collectionInfo)
+    {
+        var dispatcher = _serviceProvider.GetService(typeof(IRemoteActionDispatcher)) as IRemoteActionDispatcher;
+        if (dispatcher == null)
+        {
+            _logger?.LogDebug("TryGetRemoteDispatcher: IRemoteActionDispatcher not registered.");
+            return (null, null);
+        }
+
+        var sources = GetCollectionSources(collectionInfo.Key);
+        _logger?.LogDebug("TryGetRemoteDispatcher: Collection {Key} has {Count} sources: [{Sources}]", collectionInfo.Key, sources.Count, string.Join(", ", sources));
+
+        foreach (var source in sources)
+        {
+            var connectionId = FindConnectionIdBySource(source);
+            _logger?.LogDebug("TryGetRemoteDispatcher: Source {Source} → ConnectionId {ConnectionId}", source, connectionId ?? "(null)");
+            if (connectionId != null) return (dispatcher, connectionId);
+        }
+
+        return (null, null);
+    }
 
     private async Task<CollectionInfo> LoadAndCacheAsync(CollectionFingerprint fingerprint)
     {
@@ -708,7 +1001,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
                 CollectionName = fingerprint.CollectionName,
                 Server = server ?? string.Empty,
                 DatabasePart = databasePart.NullIfEmpty(),
-                Source = reg.Source | Source.Database,
+                Discovery = reg.Discovery | Discovery.Database,
                 Registration = reg.Registration,
                 EntityTypes = reg.EntityTypes,
                 CollectionType = reg.CollectionType,
@@ -726,7 +1019,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
                 CollectionName = fingerprint.CollectionName,
                 Server = server ?? string.Empty,
                 DatabasePart = databasePart.NullIfEmpty(),
-                Source = dyn.Source | Source.Database,
+                Discovery = dyn.Discovery | Discovery.Database,
                 Registration = Registration.Dynamic,
                 EntityTypes = [entityTypeName],
                 CollectionType = dyn.CollectionType,
@@ -742,7 +1035,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
             CollectionName = fingerprint.CollectionName,
             Server = server ?? string.Empty,
             DatabasePart = databasePart.NullIfEmpty(),
-            Source = Source.Database,
+            Discovery = Discovery.Database,
             Registration = Registration.NotInCode,
             EntityTypes = entityTypeName != null ? [entityTypeName] : [],
             CollectionType = null,
@@ -779,6 +1072,11 @@ internal class DatabaseMonitor : IDatabaseMonitor
     {
         if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
         await _cache.ResetAsync();
+
+        // Broadcast to remote agents
+        var dispatcher = _serviceProvider.GetService(typeof(IRemoteActionDispatcher)) as IRemoteActionDispatcher;
+        if (dispatcher != null)
+            await dispatcher.ResetCacheAllAsync();
     }
 
     private static string ComputeSchemaFingerprint(Type collectionType)
@@ -858,7 +1156,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
                             ? new IndexInfo { Current = cached.Index.Current, Defined = codeEntry.Index?.Defined ?? cached.Index.Defined, UpdatedAt = cached.Index.UpdatedAt }
                             : codeEntry.Index,
                         Registration = codeEntry.Registration != Registration.NotInCode ? codeEntry.Registration : cached.Registration,
-                        Source = cached.Source | codeEntry.Source,
+                        Discovery = cached.Discovery | codeEntry.Discovery,
                     };
                 }
 
@@ -939,7 +1237,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
 
                 yield return new StatColInfo
                 {
-                    Source = Source.Registration,
+                    Discovery = Discovery.Registration,
                     ConfigurationName = instance.ConfigurationName,
                     CollectionName = instance.CollectionName,
                     EntityTypes = [genericParam?.Name],
@@ -980,7 +1278,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
                     {
                         yield return new DynColInfo
                         {
-                            Source = Source.Registration,
+                            Discovery = Discovery.Registration,
                             Type = genericParam.Name,
                             CollectionType = registeredCollection.Key,
                             DefinedIndices = collection.BuildIndexMetas().ToArray(),
@@ -998,7 +1296,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
 
     internal abstract record ColInfo
     {
-        public required Source Source { get; init; }
+        public required Discovery Discovery { get; init; }
         public required Type CollectionType { get; init; }
         public required IndexMeta[] DefinedIndices { get; init; }
         public Type EntityType { get; init; }

@@ -1,36 +1,47 @@
-@implements IDisposable
+@implements IAsyncDisposable
 @inject IQueueMonitor QueueMonitor
+@inject IDatabaseMonitor DatabaseMonitor
+@inject IServiceProvider ServiceProvider
 
 <RadzenStack Orientation="Orientation.Vertical" Gap="16px">
     <RadzenRow AlignItems="AlignItems.Center" Gap="16px">
-        <RadzenColumn Size="2">
-            <RadzenText TextStyle="TextStyle.Subtitle1" Text="Current Queue" />
-            <RadzenText TextStyle="TextStyle.H3" Text="@_currentQueue.ToString()" />
-        </RadzenColumn>
+        @foreach (var source in _sourceStates)
+        {
+            <RadzenColumn Size="2">
+                <RadzenText TextStyle="TextStyle.Caption" Text="@source.Key" />
+                <RadzenText TextStyle="TextStyle.Subtitle1" Text="@($"Queue: {source.Value.QueueCount}  Exec: {source.Value.ExecutingCount}")" />
+            </RadzenColumn>
+        }
     </RadzenRow>
 
     <RadzenText TextStyle="TextStyle.Subtitle1" Text="Queue Depth" />
     <RadzenChart Style="height: 250px;">
-        <RadzenLineSeries Data="@_slots" CategoryProperty="SlotIndex" ValueProperty="QueueCount" LineType="LineType.Solid" Smooth="true">
-            <RadzenMarkers MarkerType="MarkerType.None" />
-        </RadzenLineSeries>
+        @foreach (var source in _sourceSlots)
+        {
+            <RadzenLineSeries Data="@source.Value" CategoryProperty="SlotIndex" ValueProperty="QueueCount" Title="@source.Key" LineType="LineType.Solid" Smooth="true">
+                <RadzenMarkers MarkerType="MarkerType.None" />
+            </RadzenLineSeries>
+        }
         <RadzenCategoryAxis Step="@AxisStep" FormatString="{0}" />
         <RadzenValueAxis Min="0">
             <RadzenGridLines Visible="true" />
         </RadzenValueAxis>
-        <RadzenLegend Visible="false" />
+        <RadzenLegend Visible="@(_sourceSlots.Count > 1)" />
     </RadzenChart>
 
     <RadzenText TextStyle="TextStyle.Subtitle1" Text="Wait Time (s)" />
     <RadzenChart Style="height: 250px;">
-        <RadzenLineSeries Data="@_slots" CategoryProperty="SlotIndex" ValueProperty="WaitTimeSec" LineType="LineType.Solid" Smooth="true">
-            <RadzenMarkers MarkerType="MarkerType.None" />
-        </RadzenLineSeries>
+        @foreach (var source in _sourceSlots)
+        {
+            <RadzenLineSeries Data="@source.Value" CategoryProperty="SlotIndex" ValueProperty="WaitTimeSec" Title="@source.Key" LineType="LineType.Solid" Smooth="true">
+                <RadzenMarkers MarkerType="MarkerType.None" />
+            </RadzenLineSeries>
+        }
         <RadzenCategoryAxis Step="@AxisStep" FormatString="{0}" />
         <RadzenValueAxis Min="0">
             <RadzenGridLines Visible="true" />
         </RadzenValueAxis>
-        <RadzenLegend Visible="false" />
+        <RadzenLegend Visible="@(_sourceSlots.Count > 1)" />
     </RadzenChart>
 
 </RadzenStack>
@@ -39,24 +50,31 @@
     private const int TotalSlots = 120;
     private const int AxisStep = 20;
     private const int SampleIntervalMs = 500;
-    private readonly int[] _ring = new int[TotalSlots];
-    private readonly double[] _waitRing = new double[TotalSlots];
-    private int _head;
-    private int _currentQueue;
     private Timer _timer;
     private bool _disposed;
-    private List<Slot> _slots = new();
+    private IAsyncDisposable _subscription;
 
-    protected override void OnInitialized()
+    private readonly Dictionary<string, RingBuffer> _rings = new();
+    private Dictionary<string, List<Slot>> _sourceSlots = new();
+    private Dictionary<string, ConnectionPoolStateDto> _sourceStates = new();
+
+    protected override async Task OnInitializedAsync()
     {
-        BuildSlots();
+        BuildAllSlots();
+
+        var liveMonitoring = ServiceProvider.GetService(typeof(ILiveMonitoringSubscription)) as ILiveMonitoringSubscription;
+        if (liveMonitoring != null)
+            _subscription = await liveMonitoring.SubscribeAsync();
+
         _timer = new Timer(OnTick, null, SampleIntervalMs, SampleIntervalMs);
     }
 
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
         _disposed = true;
         _timer?.Dispose();
+        if (_subscription != null)
+            await _subscription.DisposeAsync();
     }
 
     private async void OnTick(object state)
@@ -65,38 +83,73 @@
 
         try
         {
-            // Poll current state — no events, no threading concerns
-            var (queueCount, _, lastWaitTimeMs) = QueueMonitor.GetCurrentState();
+            var perSource = DatabaseMonitor.GetPerSourceQueueState();
 
             await InvokeAsync(() =>
             {
-                _currentQueue = queueCount;
-                _ring[_head] = queueCount;
-                _waitRing[_head] = lastWaitTimeMs;
-                _head = (_head + 1) % TotalSlots;
+                _sourceStates = new Dictionary<string, ConnectionPoolStateDto>(perSource);
 
-                BuildSlots();
+                foreach (var (source, poolState) in perSource)
+                {
+                    if (!_rings.ContainsKey(source))
+                        _rings[source] = new RingBuffer(TotalSlots);
+
+                    _rings[source].Add(poolState.QueueCount, poolState.LastWaitTimeMs);
+                }
+
+                BuildAllSlots();
                 StateHasChanged();
             });
         }
         catch (ObjectDisposedException) { }
     }
 
-    private void BuildSlots()
+    private void BuildAllSlots()
     {
-        var list = new List<Slot>(TotalSlots);
-        for (var i = 0; i < TotalSlots; i++)
+        var result = new Dictionary<string, List<Slot>>();
+        foreach (var (source, ring) in _rings)
         {
-            // i=0 → newest (head-1), i=119 → oldest (head)
-            var ringIdx = (_head - 1 - i + TotalSlots) % TotalSlots;
-            list.Add(new Slot
-            {
-                SlotIndex = i,
-                QueueCount = _ring[ringIdx],
-                WaitTimeSec = _waitRing[ringIdx] / 1000.0,
-            });
+            result[source] = ring.BuildSlots();
         }
-        _slots = list;
+        _sourceSlots = result;
+    }
+
+    private class RingBuffer
+    {
+        private readonly int[] _queue;
+        private readonly double[] _wait;
+        private readonly int _size;
+        private int _head;
+
+        public RingBuffer(int size)
+        {
+            _size = size;
+            _queue = new int[size];
+            _wait = new double[size];
+        }
+
+        public void Add(int queueCount, double waitTimeMs)
+        {
+            _queue[_head] = queueCount;
+            _wait[_head] = waitTimeMs;
+            _head = (_head + 1) % _size;
+        }
+
+        public List<Slot> BuildSlots()
+        {
+            var list = new List<Slot>(_size);
+            for (var i = 0; i < _size; i++)
+            {
+                var ringIdx = (_head - 1 - i + _size) % _size;
+                list.Add(new Slot
+                {
+                    SlotIndex = i,
+                    QueueCount = _queue[ringIdx],
+                    WaitTimeSec = _wait[ringIdx] / 1000.0,
+                });
+            }
+            return list;
+        }
     }
 
     private class Slot
