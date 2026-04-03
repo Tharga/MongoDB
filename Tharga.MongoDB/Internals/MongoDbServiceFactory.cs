@@ -51,7 +51,6 @@ internal class MongoDbServiceFactory : IMongoDbServiceFactory
         var mongoUrl = configuration.GetDatabaseUrl();
         var cacheKey = mongoUrl.Url;
 
-        //TODO: Should cache be used here or not?
         var useCache = true;
 
         if (useCache && _databaseDbServices.TryGetValue(cacheKey, out var dbService)) return dbService;

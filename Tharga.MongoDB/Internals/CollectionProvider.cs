@@ -29,7 +29,6 @@ internal class CollectionProvider : ICollectionProvider
         if (typeof(TEntity).IsInterface) throw new NotSupportedException($"{nameof(GetGenericDiskCollection)} is not supported for interface '{typeof(TEntity).Name}'. Create a custom collection that implements '{nameof(IRepositoryCollection<TEntity, TKey>)}<{typeof(TEntity).Name},{typeof(TKey).Name}>' and call '{nameof(GetCollection)}' instead.");
         if (typeof(TEntity).IsAbstract) throw new NotSupportedException($"{nameof(GetGenericDiskCollection)} is not supported for abstract type '{typeof(TEntity).Name}'. Create a custom collection that implements '{nameof(IRepositoryCollection<TEntity, TKey>)}<{typeof(TEntity).Name},{typeof(TKey).Name}>' and call '{nameof(GetCollection)}' instead.");
 
-        //TODO: Try to replace with ICollectionPool
         return _collectionProviderCache.GetCollection(databaseContext, dc =>
         {
             var logger = _serviceLoader(typeof(ILogger<RepositoryCollectionBase<TEntity, TKey>>)) as ILogger<RepositoryCollectionBase<TEntity, TKey>>;

@@ -1,35 +1,22 @@
 {
-  "attribution": {
-    "commit": "",
-    "pr": ""
-  },  
   "permissions": {
     "allow": [
-      "Read",
+      "Bash(cp *)",
+      "Bash(dotnet *)",
+      "Bash(git *)",
+      "Bash(ls *)",
+      "Bash(mkdir *)",
+      "Bash(rm *)",
+      "Bash(test *)",
       "Glob",
       "Grep",
-      "Bash(git status:*)",
-      "Bash(git diff:*)",
-      "Bash(git log:*)",
-      "Bash(git add:*)",
-      "Bash(git commit:*)",
-      "Bash(git checkout:*)",
-      "Bash(git merge:*)",
-      "Bash(git branch:*)",
-      "Bash(git mv:*)",
-      "Bash(git rm:*)",
-      "Bash(dotnet build:*)",
-      "Bash(dotnet test:*)",
-      "Bash(cp .claude/feature.md .claude/features-done/*)",
-      "Bash(rm .claude/feature.md)",
-      "Bash(rm .claude/plan.md)",
-      "Bash(rm .claude/features-planned/*)"
+      "Read"
     ],
     "deny": [
-      "Bash(rm -rf:*)",
-      "Bash(sudo:*)",
-      "Bash(git push:*)",
-      "Bash(git reset --hard:*)"
+      "Bash(git push *)",
+      "Bash(git reset --hard *)",
+      "Bash(rm -rf *)",
+      "Bash(sudo *)"
     ]
   }
 }

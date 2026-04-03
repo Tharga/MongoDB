@@ -30,8 +30,6 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
     private static readonly ConcurrentDictionary<string, SemaphoreSlim> _fetchLocks = new();
     private int? _autoFetchSize;
 
-    //TODO: Implement GetDerived or GetGeneric that loads T where TEntity is the base class.
-
     /// <summary>
     /// Override this constructor for static collections.
     /// </summary>
@@ -1111,15 +1109,6 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         return false;
     }
 
-    //internal async Task<IEnumerable<string[]>> GetIndexBlockers(IMongoCollection<TEntity> collection, string indexName)
-    //{
-    //    BsonDocument index = (await collection.Indexes.ListAsync()).ToList().FirstOrDefault(x => x.GetValue("name").AsString == indexName);
-
-    //    //TODO: Build a list of Ids of documents that blocks the index.
-    //    //Example of returns: [["Id1","Id2","Id3"], ["Id11", "Id12"]]
-
-    //    throw new InvalidOperationException();
-    //}
     internal async Task<IEnumerable<string[]>> GetIndexBlockers(IMongoCollection<TEntity> collection, string indexName)
     {
         var indices = (CoreIndices?.ToArray() ?? Array.Empty<CreateIndexModel<TEntity>>())

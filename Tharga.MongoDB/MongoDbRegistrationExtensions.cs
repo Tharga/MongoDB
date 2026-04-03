@@ -256,9 +256,6 @@ public static class MongoDbRegistrationExtensions
         //NOTE: Checks if the Connection Strings will arrive later. If so we cannot start all features of the database, it will be done later.
         var lateConnectionStrins = databaseOptions.Value.ReadyCallback != null;
 
-        //TODO: Have the option to open firewall when the connection strings arrive.
-        //TODO: Have the option to assure index when the connection strings arrive.
-
         var o = new UseMongoOptions
         {
             DatabaseUsage = new DatabaseUsage

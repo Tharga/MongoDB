@@ -505,7 +505,39 @@ For zero-downtime key rotation, configure both primary and secondary keys on the
 builder.AddMongoDbMonitorServer(primaryApiKey: "new-key", secondaryApiKey: "old-key");
 ```
 
-API keys can also be provided via `appsettings.json` under `Tharga:Communication`.
+API keys can also be provided via `appsettings.json` or [User Secrets](https://learn.microsoft.com/en-us/aspnet/core/security/app-secrets) (recommended for development):
+
+**Agent** (`appsettings.json` or User Secrets):
+```json
+{
+  "Tharga": {
+    "Communication": {
+      "ApiKey": "my-secret-key"
+    }
+  }
+}
+```
+
+**Server** (`appsettings.json` or User Secrets):
+```json
+{
+  "Tharga": {
+    "Communication": {
+      "PrimaryApiKey": "my-secret-key",
+      "SecondaryApiKey": "old-key-during-rotation"
+    }
+  }
+}
+```
+
+To use User Secrets in development (keys stay out of source control):
+```bash
+# Agent
+dotnet user-secrets set "Tharga:Communication:ApiKey" "my-secret-key"
+
+# Server
+dotnet user-secrets set "Tharga:Communication:PrimaryApiKey" "my-secret-key"
+```
 
 ### Remote action delegation
 When the server dashboard displays collections from remote agents, actions like Touch, Drop Index, Restore Index, and Clean are automatically delegated to the connected agent that owns the collection. No additional configuration is needed — if the `Tharga.MongoDB.Monitor.Client` and `Tharga.MongoDB.Monitor.Server` packages are installed, delegation works out of the box.
