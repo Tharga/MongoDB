@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Tharga.Communication.Server.Communication;
@@ -90,5 +91,49 @@ internal sealed class RemoteActionDispatcher : IRemoteActionDispatcher
             throw new InvalidOperationException($"Remote clean failed: {response.Value.Error}");
 
         return response.Value.CleanInfo;
+    }
+
+    public async Task<IEnumerable<string[]>> GetIndexBlockersAsync(string connectionId, CollectionInfo collectionInfo, string indexName, CancellationToken cancellationToken = default)
+    {
+        var response = await _serverCommunication.SendMessageAsync<GetIndexBlockersRequest, GetIndexBlockersResponse>(
+            connectionId,
+            new GetIndexBlockersRequest
+            {
+                ConfigurationName = collectionInfo.ConfigurationName.Value,
+                DatabaseName = collectionInfo.DatabaseName,
+                CollectionName = collectionInfo.CollectionName,
+                IndexName = indexName,
+            });
+
+        if (!response.IsSuccess)
+            throw new InvalidOperationException($"Remote get index blockers failed: {response.Message}");
+        if (!response.Value.Success)
+            throw new InvalidOperationException($"Remote get index blockers failed: {response.Value.Error}");
+
+        return response.Value.Blockers;
+    }
+
+    public async Task<string> GetExplainAsync(string connectionId, Guid callKey, CancellationToken cancellationToken = default)
+    {
+        var response = await _serverCommunication.SendMessageAsync<ExplainRequest, ExplainResponse>(
+            connectionId,
+            new ExplainRequest { CallKey = callKey });
+
+        if (!response.IsSuccess)
+            throw new InvalidOperationException($"Remote explain failed: {response.Message}");
+        if (!response.Value.Success)
+            throw new InvalidOperationException($"Remote explain failed: {response.Value.Error}");
+
+        return response.Value.ExplainJson;
+    }
+
+    public async Task ResetCacheAllAsync(CancellationToken cancellationToken = default)
+    {
+        await _serverCommunication.PostToAllAsync(new ResetCacheRequest());
+    }
+
+    public async Task ClearCallHistoryAllAsync(CancellationToken cancellationToken = default)
+    {
+        await _serverCommunication.PostToAllAsync(new ClearCallHistoryRequest());
     }
 }

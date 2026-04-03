@@ -353,6 +353,10 @@ internal class DatabaseMonitor : IDatabaseMonitor
         if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
         if (fingerprint == null) throw new ArgumentNullException(nameof(fingerprint));
 
+        // Remote-only collections don't have local DB access — stats come from the agent
+        if (_remoteCollections.ContainsKey(fingerprint.Key) && !_cache.TryGet(fingerprint.Key, out _))
+            return;
+
         var mongoDbService = GetMongoDbService(fingerprint);
         var meta = await mongoDbService
             .GetCollectionsWithMetaAsync(fingerprint.DatabaseName, collectionNameFilter: fingerprint.CollectionName, includeDetails: true)
@@ -501,7 +505,16 @@ internal class DatabaseMonitor : IDatabaseMonitor
     {
         if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
         if (collectionInfo == null) throw new ArgumentNullException(nameof(collectionInfo));
-        if (collectionInfo.Registration == Registration.NotInCode) throw new InvalidOperationException($"{nameof(RestoreIndexAsync)} does not support {nameof(Registration)} {collectionInfo.Registration}.");
+
+        if (collectionInfo.CollectionType == null)
+        {
+            var dispatcher = TryGetRemoteDispatcher(collectionInfo);
+            if (dispatcher.Dispatcher != null)
+                return await dispatcher.Dispatcher.GetIndexBlockersAsync(dispatcher.ConnectionId, collectionInfo, indexName);
+            throw new InvalidOperationException("Collection is remote-only but no connected agent was found.");
+        }
+
+        if (collectionInfo.Registration == Registration.NotInCode) throw new InvalidOperationException($"{nameof(GetIndexBlockersAsync)} does not support {nameof(Registration)} {collectionInfo.Registration}.");
 
         var collection = _collectionProvider.GetCollection(collectionInfo.CollectionType, collectionInfo.Registration == Registration.Dynamic ? collectionInfo.ToDatabaseContext() : null);
 
@@ -588,6 +601,11 @@ internal class DatabaseMonitor : IDatabaseMonitor
     public void ResetCalls()
     {
         _callLibrary.ResetCalls();
+
+        // Broadcast to remote agents
+        var dispatcher = _serviceProvider.GetService(typeof(IRemoteActionDispatcher)) as IRemoteActionDispatcher;
+        if (dispatcher != null)
+            _ = dispatcher.ClearCallHistoryAllAsync();
     }
 
     // --- Remote client management ---
@@ -731,8 +749,19 @@ internal class DatabaseMonitor : IDatabaseMonitor
         if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
 
         var call = _callLibrary.GetCall(callKey);
-        if (call?.ExplainProvider == null) return null;
-        return await call.ExplainProvider(cancellationToken);
+        if (call?.ExplainProvider != null)
+            return await call.ExplainProvider(cancellationToken);
+
+        // Remote call — delegate to the agent that produced it
+        if (call?.SourceName != null)
+        {
+            var connectionId = FindConnectionIdBySource(call.SourceName);
+            var dispatcher = _serviceProvider.GetService(typeof(IRemoteActionDispatcher)) as IRemoteActionDispatcher;
+            if (connectionId != null && dispatcher != null)
+                return await dispatcher.GetExplainAsync(connectionId, callKey, cancellationToken);
+        }
+
+        return null;
     }
 
     public IReadOnlyDictionary<string, int> GetCallCounts()
@@ -1029,6 +1058,11 @@ internal class DatabaseMonitor : IDatabaseMonitor
     {
         if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
         await _cache.ResetAsync();
+
+        // Broadcast to remote agents
+        var dispatcher = _serviceProvider.GetService(typeof(IRemoteActionDispatcher)) as IRemoteActionDispatcher;
+        if (dispatcher != null)
+            await dispatcher.ResetCacheAllAsync();
     }
 
     private static string ComputeSchemaFingerprint(Type collectionType)

@@ -38,6 +38,10 @@ public static class MonitorClientRegistration
         builder.Services.AddTransient<DropIndexHandler>();
         builder.Services.AddTransient<RestoreIndexHandler>();
         builder.Services.AddTransient<CleanCollectionHandler>();
+        builder.Services.AddTransient<GetIndexBlockersHandler>();
+        builder.Services.AddTransient<ExplainHandler>();
+        builder.Services.AddTransient<ResetCacheHandler>();
+        builder.Services.AddTransient<ClearCallHistoryHandler>();
 
         return builder;
     }
