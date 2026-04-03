@@ -16,6 +16,6 @@ internal class SampleRepositoryCollection : DiskRepositoryCollectionBase<SampleE
     public override IEnumerable<CreateIndexModel<SampleEntity>> Indices =>
     [
         new(Builders<SampleEntity>.IndexKeys.Ascending(x => x.Name),
-            new CreateIndexOptions { Name = nameof(SampleEntity.Name), Unique = true })
+            new CreateIndexOptions { Name = nameof(SampleEntity.Name), Unique = false })
     ];
 }
