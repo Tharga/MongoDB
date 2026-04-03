@@ -253,6 +253,14 @@ internal class DatabaseMonitor : IDatabaseMonitor
     {
         if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
 
+        // Check remote collections first — they have no local CollectionType
+        if (_remoteCollections.TryGetValue(fingerprint.Key, out var remote))
+        {
+            _logger?.LogDebug("GetInstanceAsync: Found remote collection {Key}, Stats={HasStats}, Index={HasIndex}",
+                fingerprint.Key, remote.Stats != null, remote.Index != null);
+            return remote;
+        }
+
         if (_cache.TryGet(fingerprint.Key, out var cached))
         {
             var mongoDbService = GetMongoDbService(fingerprint);
@@ -262,10 +270,6 @@ internal class DatabaseMonitor : IDatabaseMonitor
             _cache.TryRemove(fingerprint.Key, out _);
             return null;
         }
-
-        // Check remote collections
-        if (_remoteCollections.TryGetValue(fingerprint.Key, out var remote))
-            return remote;
 
         return await LoadAndCacheAsync(fingerprint);
     }

@@ -175,6 +175,70 @@ public class RemoteActionDelegationTests
     }
 
     [Fact]
+    public async Task GetInstanceAsync_ReturnsRemoteCollection_WithStats()
+    {
+        // Ingest with stats
+        _monitor.IngestCollectionInfo(new RemoteCollectionInfoDto
+        {
+            ConfigurationName = "Default",
+            DatabaseName = "TestDb",
+            CollectionName = "WithStats",
+            SourceName = "Agent-1/OrderService",
+            Server = "remote-server:27017",
+            Discovery = Discovery.Database.ToString(),
+            Registration = Registration.Static.ToString(),
+            EntityTypes = ["TestEntity"],
+            Stats = new CollectionStats { DocumentCount = 100, Size = 4096, UpdatedAt = DateTime.UtcNow },
+        }, "conn-123");
+
+        _monitor.IngestClientConnected(new MonitorClientDto
+        {
+            Instance = Guid.NewGuid(),
+            ConnectionId = "conn-123",
+            Machine = "Agent-Machine",
+            Type = "TestAgent",
+            Version = "1.0",
+            IsConnected = true,
+            ConnectTime = DateTime.UtcNow,
+        });
+
+        var fingerprint = new CollectionFingerprint
+        {
+            ConfigurationName = "Default",
+            DatabaseName = "TestDb",
+            CollectionName = "WithStats",
+        };
+
+        var result = await _monitor.GetInstanceAsync(fingerprint);
+
+        result.Should().NotBeNull();
+        result.Stats.Should().NotBeNull();
+        result.Stats.DocumentCount.Should().Be(100);
+        result.Stats.Size.Should().Be(4096);
+    }
+
+    [Fact]
+    public async Task GetInstanceAsync_ReturnsRemote_EvenWhenConfigExistsLocally()
+    {
+        // This tests the scenario where the remote collection uses config name "Default"
+        // which also exists locally. The remote check should happen first.
+        var collection = CreateRemoteCollection(configName: "Default");
+        IngestRemoteCollectionWithAgent(collection, "Agent-1/OrderService", "conn-123");
+
+        var fingerprint = new CollectionFingerprint
+        {
+            ConfigurationName = "Default",
+            DatabaseName = collection.DatabaseName,
+            CollectionName = collection.CollectionName,
+        };
+
+        var result = await _monitor.GetInstanceAsync(fingerprint);
+
+        result.Should().NotBeNull();
+        result.CollectionType.Should().BeNull(); // Confirms remote, not local
+    }
+
+    [Fact]
     public async Task TouchAsync_DelegatesToRemoteDispatcher_ForRemoteCollection()
     {
         var collection = CreateRemoteCollection();
