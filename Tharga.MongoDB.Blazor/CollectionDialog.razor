@@ -1,9 +1,11 @@
 @using Tharga.Blazor.Framework.Buttons
 @using Tharga.Toolkit
+@using Microsoft.Extensions.Logging
 @implements IDisposable
 @inject IDatabaseMonitor DatabaseMonitor
 @inject NotificationService NotificationService
 @inject DialogService DialogService
+@inject ILogger<CollectionDialog> Logger
 
 @if (_model == null)
 {
@@ -152,6 +154,8 @@ else
 
     private async Task TouchCollection()
     {
+        Logger.LogWarning("TouchCollection called. IsRemote={IsRemote}, CollectionType={CollectionType}, Key={Key}",
+            IsRemote, _model?.CollectionType?.Name ?? "(null)", _model?.Key);
         _busy = true;
         StateHasChanged();
         try
@@ -163,6 +167,7 @@ else
         }
         catch (Exception e)
         {
+            Logger.LogError(e, "TouchCollection failed.");
             await ReloadDataAsync();
             NotificationService.Notify(new NotificationMessage { Summary = e.Message, Detail = $"{e.StackTrace}", Severity = NotificationSeverity.Error });
         }
