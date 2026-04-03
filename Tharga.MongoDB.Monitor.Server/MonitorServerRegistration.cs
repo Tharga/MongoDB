@@ -42,6 +42,9 @@ public static class MonitorServerRegistration
         // Enable remote action delegation
         builder.Services.AddSingleton<IRemoteActionDispatcher, RemoteActionDispatcher>();
 
+        // Enable subscription-based live monitoring
+        builder.Services.AddSingleton<ILiveMonitoringSubscription, LiveMonitoringSubscriptionService>();
+
         return builder;
     }
 

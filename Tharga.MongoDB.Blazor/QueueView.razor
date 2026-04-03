@@ -1,6 +1,7 @@
-@implements IDisposable
+@implements IAsyncDisposable
 @inject IQueueMonitor QueueMonitor
 @inject IDatabaseMonitor DatabaseMonitor
+@inject IServiceProvider ServiceProvider
 
 <RadzenStack Orientation="Orientation.Vertical" Gap="16px">
     <RadzenRow AlignItems="AlignItems.Center" Gap="16px">
@@ -51,21 +52,29 @@
     private const int SampleIntervalMs = 500;
     private Timer _timer;
     private bool _disposed;
+    private IAsyncDisposable _subscription;
 
     private readonly Dictionary<string, RingBuffer> _rings = new();
     private Dictionary<string, List<Slot>> _sourceSlots = new();
     private Dictionary<string, ConnectionPoolStateDto> _sourceStates = new();
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
         BuildAllSlots();
+
+        var liveMonitoring = ServiceProvider.GetService(typeof(ILiveMonitoringSubscription)) as ILiveMonitoringSubscription;
+        if (liveMonitoring != null)
+            _subscription = await liveMonitoring.SubscribeAsync();
+
         _timer = new Timer(OnTick, null, SampleIntervalMs, SampleIntervalMs);
     }
 
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
         _disposed = true;
         _timer?.Dispose();
+        if (_subscription != null)
+            await _subscription.DisposeAsync();
     }
 
     private async void OnTick(object state)

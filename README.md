@@ -514,6 +514,9 @@ When the server dashboard displays collections from remote agents, actions like 
 - **Remote-only collections**: actions are forwarded to the connected agent via `IServerCommunication.SendMessageAsync`
 - **No agent connected**: an error is returned to the UI
 
+### Subscription-based live monitoring
+Live monitoring data (queue metrics, ongoing calls) is only sent by remote agents when someone is actively viewing the Queue or Ongoing tab. This is automatic — Blazor components subscribe on mount and unsubscribe when the tab closes. Collection metadata and completed calls are always sent regardless of subscriptions.
+
 ### Reset
 Call `IDatabaseMonitor.ResetAsync()` to clear all cached monitor state (both in-memory and persisted).
 The Blazor admin UI (`CollectionView`) includes a Reset button that triggers this.
