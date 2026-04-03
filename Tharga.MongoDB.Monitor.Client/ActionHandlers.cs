@@ -129,3 +129,98 @@ public sealed class CleanCollectionHandler : SendMessageHandlerBase<CleanCollect
         }
     }
 }
+
+/// <summary>
+/// Handles find duplicates requests from the central server by executing locally.
+/// </summary>
+public sealed class GetIndexBlockersHandler : SendMessageHandlerBase<GetIndexBlockersRequest, GetIndexBlockersResponse>
+{
+    private readonly IDatabaseMonitor _monitor;
+
+    public GetIndexBlockersHandler(IDatabaseMonitor monitor)
+    {
+        _monitor = monitor;
+    }
+
+    public override async Task<GetIndexBlockersResponse> Handle(GetIndexBlockersRequest message)
+    {
+        try
+        {
+            var instance = await _monitor.GetInstancesAsync()
+                .FirstOrDefaultAsync(x => x.ConfigurationName.Value == message.ConfigurationName && x.DatabaseName == message.DatabaseName && x.CollectionName == message.CollectionName);
+            if (instance == null) return new GetIndexBlockersResponse { Error = "Collection not found locally." };
+
+            var result = await _monitor.GetIndexBlockersAsync(instance, message.IndexName);
+            return new GetIndexBlockersResponse { Success = true, Blockers = result.Select(x => x.ToArray()).ToArray() };
+        }
+        catch (Exception e)
+        {
+            return new GetIndexBlockersResponse { Error = e.Message };
+        }
+    }
+}
+
+/// <summary>
+/// Handles explain requests from the central server by executing locally.
+/// </summary>
+public sealed class ExplainHandler : SendMessageHandlerBase<ExplainRequest, ExplainResponse>
+{
+    private readonly IDatabaseMonitor _monitor;
+
+    public ExplainHandler(IDatabaseMonitor monitor)
+    {
+        _monitor = monitor;
+    }
+
+    public override async Task<ExplainResponse> Handle(ExplainRequest message)
+    {
+        try
+        {
+            var json = await _monitor.GetExplainAsync(message.CallKey);
+            if (json == null) return new ExplainResponse { Error = "Call not found or explain not available." };
+
+            return new ExplainResponse { Success = true, ExplainJson = json };
+        }
+        catch (Exception e)
+        {
+            return new ExplainResponse { Error = e.Message };
+        }
+    }
+}
+
+/// <summary>
+/// Handles reset cache requests from the central server by executing locally.
+/// </summary>
+public sealed class ResetCacheHandler : PostMessageHandlerBase<ResetCacheRequest>
+{
+    private readonly IDatabaseMonitor _monitor;
+
+    public ResetCacheHandler(IDatabaseMonitor monitor)
+    {
+        _monitor = monitor;
+    }
+
+    public override async Task Handle(ResetCacheRequest message)
+    {
+        await _monitor.ResetAsync();
+    }
+}
+
+/// <summary>
+/// Handles clear call history requests from the central server by executing locally.
+/// </summary>
+public sealed class ClearCallHistoryHandler : PostMessageHandlerBase<ClearCallHistoryRequest>
+{
+    private readonly IDatabaseMonitor _monitor;
+
+    public ClearCallHistoryHandler(IDatabaseMonitor monitor)
+    {
+        _monitor = monitor;
+    }
+
+    public override Task Handle(ClearCallHistoryRequest message)
+    {
+        _monitor.ResetCalls();
+        return Task.CompletedTask;
+    }
+}

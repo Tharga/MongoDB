@@ -109,11 +109,13 @@ else
     private CollectionInfo _model;
     private IndexModel[] _indexModel;
     private bool _disposed;
+    private bool _busy;
 
     [Parameter]
     public CollectionFingerprint Fingerprint { get; set; }
 
-    private bool CanTouch => _model != null && _model.Registration != Registration.NotInCode;
+    private bool IsRemote => _model?.CollectionType == null;
+    private bool CanTouch => _model != null && !_busy && (_model.Registration != Registration.NotInCode || IsRemote);
     private bool CanDrop => CanTouch && (_model.Index?.Current?.Any() ?? false);
     private bool CanRestore => CanTouch && _indexModel.Any(x => !x.EqualFields);
     private bool CanClean => CanTouch;
@@ -134,7 +136,8 @@ else
     protected override async Task OnParametersSetAsync()
     {
         await ReloadDataAsync();
-        _ = Task.Run(() => DatabaseMonitor.RefreshStatsAsync(Fingerprint));
+        if (!IsRemote)
+            _ = Task.Run(() => DatabaseMonitor.RefreshStatsAsync(Fingerprint));
         await base.OnParametersSetAsync();
     }
 
@@ -149,6 +152,8 @@ else
 
     private async Task TouchCollection()
     {
+        _busy = true;
+        StateHasChanged();
         try
         {
             await DatabaseMonitor.TouchAsync(_model);
@@ -161,10 +166,13 @@ else
             await ReloadDataAsync();
             NotificationService.Notify(new NotificationMessage { Summary = e.Message, Detail = $"{e.StackTrace}", Severity = NotificationSeverity.Error });
         }
+        finally { _busy = false; StateHasChanged(); }
     }
 
     private async Task DropIndex()
     {
+        _busy = true;
+        StateHasChanged();
         try
         {
             var response = await DatabaseMonitor.DropIndexAsync(_model);
@@ -178,10 +186,13 @@ else
             await ReloadDataAsync();
             NotificationService.Notify(new NotificationMessage { Summary = e.Message, Detail = $"{e.StackTrace}", Severity = NotificationSeverity.Error });
         }
+        finally { _busy = false; StateHasChanged(); }
     }
 
     private async Task RestoreIndex()
     {
+        _busy = true;
+        StateHasChanged();
         try
         {
             await DatabaseMonitor.RestoreIndexAsync(_model, true);
@@ -194,6 +205,7 @@ else
             await ReloadDataAsync();
             NotificationService.Notify(new NotificationMessage { Summary = e.Message, Detail = $"{e.StackTrace}", Severity = NotificationSeverity.Error });
         }
+        finally { _busy = false; StateHasChanged(); }
     }
 
     private async Task CleanCollection()
@@ -202,6 +214,9 @@ else
         {
             var result = await DialogService.Confirm($"All {(_model.Stats != null ? $"{_model.Stats.DocumentCount:N0}" : "unknown number of")} documents in the collection will be cleaned (including GUID format). This might take time to perform.", "Confirm clean collection");
             if (result != true) return;
+
+            _busy = true;
+            StateHasChanged();
 
             var cleanInfo = await DatabaseMonitor.CleanAsync(_model, cleanGuids: true);
 
@@ -213,6 +228,7 @@ else
             await ReloadDataAsync();
             NotificationService.Notify(new NotificationMessage { Summary = e.Message, Detail = $"{e.StackTrace}", Severity = NotificationSeverity.Error });
         }
+        finally { _busy = false; StateHasChanged(); }
     }
 
     private async Task ReloadDataAsync()

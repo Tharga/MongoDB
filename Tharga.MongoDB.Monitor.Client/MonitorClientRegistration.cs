@@ -1,6 +1,8 @@
+using System.Linq;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Tharga.Communication.Client;
+using Tharga.Communication.MessageHandler;
 
 namespace Tharga.MongoDB.Monitor.Client;
 
@@ -23,6 +25,13 @@ public static class MonitorClientRegistration
         var serverAddress = sendTo;
         if (string.IsNullOrWhiteSpace(serverAddress)) return builder;
 
+        // Pre-scan our assembly for handler types. The default scan inside
+        // AddThargaCommunicationClient only covers the entry assembly's namespace,
+        // which may not include Tharga.MongoDB.Monitor.Client handlers.
+        var ourHandlers = HandlerTypeService.GetHandlerTypes(
+            builder.Services,
+            [typeof(MonitorClientRegistration).Assembly]);
+
         builder.AddThargaCommunicationClient(o =>
         {
             o.ServerAddress = serverAddress;
@@ -31,13 +40,18 @@ public static class MonitorClientRegistration
                 o.ApiKey = apiKey;
         });
 
-        builder.Services.AddHostedService<MonitorForwarder>();
+        // Replace the handler type service with a merged one that includes our handlers.
+        // AddThargaCommunicationClient registered its own IHandlerTypeService — we override it.
+        var defaultHandlers = HandlerTypeService.GetHandlerTypes(builder.Services);
+        foreach (var kvp in ourHandlers)
+            defaultHandlers.TryAdd(kvp.Key, kvp.Value);
 
-        // Register action handlers for remote delegation
-        builder.Services.AddTransient<TouchCollectionHandler>();
-        builder.Services.AddTransient<DropIndexHandler>();
-        builder.Services.AddTransient<RestoreIndexHandler>();
-        builder.Services.AddTransient<CleanCollectionHandler>();
+        // Remove existing registration and add merged one
+        var existing = builder.Services.FirstOrDefault(d => d.ServiceType == typeof(IHandlerTypeService));
+        if (existing != null) builder.Services.Remove(existing);
+        builder.Services.AddSingleton<IHandlerTypeService>(new HandlerTypeService(defaultHandlers));
+
+        builder.Services.AddHostedService<MonitorForwarder>();
 
         return builder;
     }

@@ -64,10 +64,33 @@ internal sealed class MonitorForwarder : IHostedService, IDisposable
 
             if (!_clientCommunication.IsConnected) return;
 
-            await foreach (var info in _databaseMonitor.GetInstancesAsync().WithCancellation(cancellationToken))
+            // Collect fingerprints first, then refresh stats for each.
+            // GetInstancesAsync uses includeDetails: false so stats are null.
+            var collections = await _databaseMonitor.GetInstancesAsync().ToListAsync(cancellationToken);
+
+            foreach (var info in collections)
             {
-                var message = BuildCollectionInfoMessage(info);
-                await ForwardCollectionInfoAsync(message);
+                try
+                {
+                    await _databaseMonitor.RefreshStatsAsync(info);
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogDebug(ex, "Failed to refresh stats for {Collection} during initial sync.", info.CollectionName);
+                }
+            }
+
+            // Re-fetch after stats refresh — CollectionInfoChangedEvent will have
+            // updated the cache, and the event handler sends each one individually.
+            // But in case events didn't fire, send explicitly.
+            foreach (var info in collections)
+            {
+                var refreshed = await _databaseMonitor.GetInstanceAsync(info);
+                if (refreshed != null)
+                {
+                    var message = BuildCollectionInfoMessage(refreshed);
+                    await ForwardCollectionInfoAsync(message);
+                }
             }
         }
         catch (OperationCanceledException) { }
