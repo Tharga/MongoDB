@@ -1,6 +1,8 @@
+using System.Linq;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Tharga.Communication.Client;
+using Tharga.Communication.MessageHandler;
 
 namespace Tharga.MongoDB.Monitor.Client;
 
@@ -23,16 +25,12 @@ public static class MonitorClientRegistration
         var serverAddress = sendTo;
         if (string.IsNullOrWhiteSpace(serverAddress)) return builder;
 
-        // Register action handlers BEFORE AddThargaCommunicationClient so they are
-        // discoverable during handler type scanning inside the Communication registration.
-        builder.Services.AddTransient<TouchCollectionHandler>();
-        builder.Services.AddTransient<DropIndexHandler>();
-        builder.Services.AddTransient<RestoreIndexHandler>();
-        builder.Services.AddTransient<CleanCollectionHandler>();
-        builder.Services.AddTransient<GetIndexBlockersHandler>();
-        builder.Services.AddTransient<ExplainHandler>();
-        builder.Services.AddTransient<ResetCacheHandler>();
-        builder.Services.AddTransient<ClearCallHistoryHandler>();
+        // Pre-scan our assembly for handler types. The default scan inside
+        // AddThargaCommunicationClient only covers the entry assembly's namespace,
+        // which may not include Tharga.MongoDB.Monitor.Client handlers.
+        var ourHandlers = HandlerTypeService.GetHandlerTypes(
+            builder.Services,
+            [typeof(MonitorClientRegistration).Assembly]);
 
         builder.AddThargaCommunicationClient(o =>
         {
@@ -41,6 +39,17 @@ public static class MonitorClientRegistration
             if (!string.IsNullOrWhiteSpace(apiKey))
                 o.ApiKey = apiKey;
         });
+
+        // Replace the handler type service with a merged one that includes our handlers.
+        // AddThargaCommunicationClient registered its own IHandlerTypeService — we override it.
+        var defaultHandlers = HandlerTypeService.GetHandlerTypes(builder.Services);
+        foreach (var kvp in ourHandlers)
+            defaultHandlers.TryAdd(kvp.Key, kvp.Value);
+
+        // Remove existing registration and add merged one
+        var existing = builder.Services.FirstOrDefault(d => d.ServiceType == typeof(IHandlerTypeService));
+        if (existing != null) builder.Services.Remove(existing);
+        builder.Services.AddSingleton<IHandlerTypeService>(new HandlerTypeService(defaultHandlers));
 
         builder.Services.AddHostedService<MonitorForwarder>();
 
