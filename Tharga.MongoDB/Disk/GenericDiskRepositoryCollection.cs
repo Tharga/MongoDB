@@ -10,7 +10,7 @@ internal class GenericDiskRepositoryCollection<TEntity, TKey> : DiskRepositoryCo
 {
     private readonly RepositoryCollectionBase<TEntity, TKey> _proxy;
 
-    public GenericDiskRepositoryCollection(IMongoDbServiceFactory mongoDbServiceFactory, DatabaseContext databaseContext, ILogger<RepositoryCollectionBase<TEntity, TKey>> logger, RepositoryCollectionBase<TEntity, TKey> proxy)
+    public GenericDiskRepositoryCollection(IMongoDbServiceFactory mongoDbServiceFactory, DatabaseContext databaseContext, ILogger logger, RepositoryCollectionBase<TEntity, TKey> proxy)
         : base(mongoDbServiceFactory, logger, databaseContext)
     {
         _proxy = proxy;

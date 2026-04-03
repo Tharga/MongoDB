@@ -31,7 +31,8 @@ internal class CollectionProvider : ICollectionProvider
 
         return _collectionProviderCache.GetCollection(databaseContext, dc =>
         {
-            var logger = _serviceLoader(typeof(ILogger<RepositoryCollectionBase<TEntity, TKey>>)) as ILogger<RepositoryCollectionBase<TEntity, TKey>>;
+            var loggerFactory = _serviceLoader(typeof(ILoggerFactory)) as ILoggerFactory;
+            var logger = loggerFactory?.CreateLogger(typeof(GenericDiskRepositoryCollection<TEntity, TKey>));
             var collection = new GenericDiskRepositoryCollection<TEntity, TKey>(_mongoDbServiceFactory, dc, logger, null);
             return collection;
         });
