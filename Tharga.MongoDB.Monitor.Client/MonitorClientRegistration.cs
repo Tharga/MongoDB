@@ -23,6 +23,17 @@ public static class MonitorClientRegistration
         var serverAddress = sendTo;
         if (string.IsNullOrWhiteSpace(serverAddress)) return builder;
 
+        // Register action handlers BEFORE AddThargaCommunicationClient so they are
+        // discoverable during handler type scanning inside the Communication registration.
+        builder.Services.AddTransient<TouchCollectionHandler>();
+        builder.Services.AddTransient<DropIndexHandler>();
+        builder.Services.AddTransient<RestoreIndexHandler>();
+        builder.Services.AddTransient<CleanCollectionHandler>();
+        builder.Services.AddTransient<GetIndexBlockersHandler>();
+        builder.Services.AddTransient<ExplainHandler>();
+        builder.Services.AddTransient<ResetCacheHandler>();
+        builder.Services.AddTransient<ClearCallHistoryHandler>();
+
         builder.AddThargaCommunicationClient(o =>
         {
             o.ServerAddress = serverAddress;
@@ -32,16 +43,6 @@ public static class MonitorClientRegistration
         });
 
         builder.Services.AddHostedService<MonitorForwarder>();
-
-        // Register action handlers for remote delegation
-        builder.Services.AddTransient<TouchCollectionHandler>();
-        builder.Services.AddTransient<DropIndexHandler>();
-        builder.Services.AddTransient<RestoreIndexHandler>();
-        builder.Services.AddTransient<CleanCollectionHandler>();
-        builder.Services.AddTransient<GetIndexBlockersHandler>();
-        builder.Services.AddTransient<ExplainHandler>();
-        builder.Services.AddTransient<ResetCacheHandler>();
-        builder.Services.AddTransient<ClearCallHistoryHandler>();
 
         return builder;
     }
