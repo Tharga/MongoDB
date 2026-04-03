@@ -211,6 +211,7 @@ public class MonitorServerPipelineTests
         public void IngestCollectionInfo(RemoteCollectionInfoDto collectionInfo, string connectionId = null) => throw new NotImplementedException();
         public System.Collections.Generic.IReadOnlyCollection<string> GetCollectionSources(string fingerprintKey) => throw new NotImplementedException();
         public string FindConnectionIdBySource(string sourceName) => null;
+        public System.Collections.Generic.IReadOnlyDictionary<string, int> GetSubscriptions() => new System.Collections.Generic.Dictionary<string, int>();
         public void IngestQueueMetric(string sourceName, int queueCount, int executingCount, double? waitTimeMs) { }
         public System.Collections.Generic.IReadOnlyDictionary<string, ConnectionPoolStateDto> GetPerSourceQueueState() => new System.Collections.Generic.Dictionary<string, ConnectionPoolStateDto>();
     }

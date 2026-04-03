@@ -107,6 +107,12 @@ public interface IDatabaseMonitor
     string FindConnectionIdBySource(string sourceName);
 
     /// <summary>
+    /// Get active subscriptions and their subscriber counts.
+    /// Keys are topic names (e.g. "LiveMonitoringMarker"), values are subscriber counts.
+    /// </summary>
+    IReadOnlyDictionary<string, int> GetSubscriptions();
+
+    /// <summary>
     /// Ingest a queue metric snapshot from a remote agent.
     /// </summary>
     void IngestQueueMetric(string sourceName, int queueCount, int executingCount, double? waitTimeMs);

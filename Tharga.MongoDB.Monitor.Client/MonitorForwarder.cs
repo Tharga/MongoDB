@@ -151,6 +151,7 @@ internal sealed class MonitorForwarder : IHostedService, IDisposable
         try
         {
             if (!_clientCommunication.IsConnected) return;
+            if (!_clientCommunication.HasSubscribers<LiveMonitoringMarker>()) return;
 
             var (queueCount, executingCount, lastWaitTimeMs) = _queueMonitor.GetCurrentState();
 

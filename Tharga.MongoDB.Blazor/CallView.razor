@@ -3,11 +3,12 @@
 @using Tharga.Blazor.Framework.Buttons
 @using Tharga.MongoDB.Configuration
 @using Tharga.MongoDB.Disk
-@implements IDisposable
+@implements IAsyncDisposable
 @inject IDatabaseMonitor DatabaseMonitor;
 @inject IOptions<DatabaseOptions> DatabaseOptions
 @inject DialogService DialogService
 @inject ICallLibrary CallLibrary
+@inject IServiceProvider ServiceProvider
 
 @if (!DatabaseOptions.Value.Monitor.Enabled)
 {
@@ -150,11 +151,29 @@ else
         _ => CallType.Last
     };
 
+    private IAsyncDisposable _liveSubscription;
+
     private async Task OnTabChanged()
     {
-        if (SelectedTab != "Queue")
+        if (SelectedTab == "Ongoing")
         {
+            if (_liveSubscription == null)
+            {
+                var liveMonitoring = ServiceProvider.GetService(typeof(ILiveMonitoringSubscription)) as ILiveMonitoringSubscription;
+                if (liveMonitoring != null)
+                    _liveSubscription = await liveMonitoring.SubscribeAsync();
+            }
             await ReloadDataAsync();
+        }
+        else
+        {
+            if (_liveSubscription != null)
+            {
+                await _liveSubscription.DisposeAsync();
+                _liveSubscription = null;
+            }
+            if (SelectedTab != "Queue")
+                await ReloadDataAsync();
         }
     }
 
@@ -164,10 +183,12 @@ else
         await base.OnInitializedAsync();
     }
 
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
         _disposed = true;
         CallLibrary.CallChanged -= OnCallChanged;
+        if (_liveSubscription != null)
+            await _liveSubscription.DisposeAsync();
     }
 
     private async void OnCallChanged(object sender, EventArgs e)
