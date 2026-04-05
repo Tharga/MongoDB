@@ -30,14 +30,12 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
     private static readonly ConcurrentDictionary<string, SemaphoreSlim> _fetchLocks = new();
     private int? _autoFetchSize;
 
-    //TODO: Implement GetDerived or GetGeneric that loads T where TEntity is the base class.
-
     /// <summary>
     /// Override this constructor for static collections.
     /// </summary>
     /// <param name="mongoDbServiceFactory"></param>
     /// <param name="logger"></param>
-	protected DiskRepositoryCollectionBase(IMongoDbServiceFactory mongoDbServiceFactory, ILogger<RepositoryCollectionBase<TEntity, TKey>> logger = null)
+	protected DiskRepositoryCollectionBase(IMongoDbServiceFactory mongoDbServiceFactory, ILogger logger = null)
 	    : this(mongoDbServiceFactory, logger, null)
     {
     }
@@ -48,7 +46,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
     /// <param name="mongoDbServiceFactory"></param>
     /// <param name="logger"></param>
     /// <param name="databaseContext"></param>
-    protected DiskRepositoryCollectionBase(IMongoDbServiceFactory mongoDbServiceFactory, ILogger<RepositoryCollectionBase<TEntity, TKey>> logger, DatabaseContext databaseContext)
+    protected DiskRepositoryCollectionBase(IMongoDbServiceFactory mongoDbServiceFactory, ILogger logger, DatabaseContext databaseContext)
         : base(mongoDbServiceFactory, logger, databaseContext)
     {
         _databaseExecutor = ((MongoDbService)_mongoDbService).ExecuteLimiter;
@@ -1111,15 +1109,6 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         return false;
     }
 
-    //internal async Task<IEnumerable<string[]>> GetIndexBlockers(IMongoCollection<TEntity> collection, string indexName)
-    //{
-    //    BsonDocument index = (await collection.Indexes.ListAsync()).ToList().FirstOrDefault(x => x.GetValue("name").AsString == indexName);
-
-    //    //TODO: Build a list of Ids of documents that blocks the index.
-    //    //Example of returns: [["Id1","Id2","Id3"], ["Id11", "Id12"]]
-
-    //    throw new InvalidOperationException();
-    //}
     internal async Task<IEnumerable<string[]>> GetIndexBlockers(IMongoCollection<TEntity> collection, string indexName)
     {
         var indices = (CoreIndices?.ToArray() ?? Array.Empty<CreateIndexModel<TEntity>>())
@@ -1780,7 +1769,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 public abstract class DiskRepositoryCollectionBase<TEntity> : DiskRepositoryCollectionBase<TEntity, ObjectId>
     where TEntity : EntityBase
 {
-    protected DiskRepositoryCollectionBase(IMongoDbServiceFactory mongoDbServiceFactory, ILogger<RepositoryCollectionBase<TEntity, ObjectId>> logger = null, DatabaseContext databaseContext = null)
+    protected DiskRepositoryCollectionBase(IMongoDbServiceFactory mongoDbServiceFactory, ILogger logger = null, DatabaseContext databaseContext = null)
         : base(mongoDbServiceFactory, logger, databaseContext)
     {
     }

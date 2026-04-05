@@ -30,12 +30,12 @@ public abstract class RepositoryCollectionBase<TEntity, TKey> : RepositoryCollec
     where TEntity : EntityBase<TKey>
 {
     protected readonly IMongoDbServiceFactory _mongoDbServiceFactory;
-    protected readonly ILogger<RepositoryCollectionBase<TEntity, TKey>> _logger;
+    protected readonly ILogger _logger;
     protected readonly DatabaseContext _databaseContext;
     protected readonly IMongoDbService _mongoDbService;
     private readonly Lazy<ActionEventArgs.ContextData> _contextData;
 
-    protected RepositoryCollectionBase(IMongoDbServiceFactory mongoDbServiceFactory, ILogger<RepositoryCollectionBase<TEntity, TKey>> logger, DatabaseContext databaseContext = null)
+    protected RepositoryCollectionBase(IMongoDbServiceFactory mongoDbServiceFactory, ILogger logger, DatabaseContext databaseContext = null)
     {
         _mongoDbServiceFactory = mongoDbServiceFactory;
         _logger = logger;

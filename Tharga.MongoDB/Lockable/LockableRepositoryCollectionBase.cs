@@ -21,7 +21,7 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
     // ReSharper disable once StaticMemberInGenericType
     private static readonly AutoResetEvent _releaseEvent = new(false);
 
-    protected LockableRepositoryCollectionBase(IMongoDbServiceFactory mongoDbServiceFactory, ILogger<LockableRepositoryCollectionBase<TEntity, TKey>> logger = null, DatabaseContext databaseContext = null)
+    protected LockableRepositoryCollectionBase(IMongoDbServiceFactory mongoDbServiceFactory, ILogger logger = null, DatabaseContext databaseContext = null)
         : base(mongoDbServiceFactory, logger, databaseContext)
     {
     }
@@ -816,7 +816,7 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
 public class LockableRepositoryCollectionBase<TEntity> : LockableRepositoryCollectionBase<TEntity, ObjectId>
     where TEntity : LockableEntityBase
 {
-    protected LockableRepositoryCollectionBase(IMongoDbServiceFactory mongoDbServiceFactory, ILogger<LockableRepositoryCollectionBase<TEntity, ObjectId>> logger = null, DatabaseContext databaseContext = null)
+    protected LockableRepositoryCollectionBase(IMongoDbServiceFactory mongoDbServiceFactory, ILogger logger = null, DatabaseContext databaseContext = null)
         : base(mongoDbServiceFactory, logger, databaseContext)
     {
     }
