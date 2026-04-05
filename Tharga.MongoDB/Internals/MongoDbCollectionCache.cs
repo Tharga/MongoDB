@@ -127,8 +127,9 @@ internal class MongoDbCollectionCache : ICollectionCache
     {
         try
         {
-            var svc = _factory.GetMongoDbService(() => new DatabaseContext { ConfigurationName = configName ?? _options.DefaultConfigurationName }) as IMongoDbServiceInternal;
-            return svc?.BaseMongoDatabase;
+            var svc = _factory.GetMongoDbService(() => new DatabaseContext { ConfigurationName = configName ?? _options.DefaultConfigurationName });
+            svc.AssureFirewallAccessAsync().AsTask().GetAwaiter().GetResult();
+            return (svc as IMongoDbServiceInternal)?.BaseMongoDatabase;
         }
         catch
         {

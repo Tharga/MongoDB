@@ -266,21 +266,27 @@ public static class MongoDbRegistrationExtensions
         };
         options?.Invoke(o);
 
-        if (databaseOptions.Value.Monitor?.Enabled ?? false)
-        {
-            var monitor = app.Services.GetService<IDatabaseMonitor>() as DatabaseMonitor;
-            monitor?.Start(app.Services);
-        }
-
+        //NOTE: Firewall must be opened BEFORE the monitor starts, because the monitor
+        //      reads the _monitor collection which requires database access.
         if (o.OpenFirewall && !lateConnectionStrins)
         {
-            _actionEvent?.Invoke(new ActionEventArgs(new ActionEventArgs.ActionData { Message = $"Found {o.DatabaseUsage.FirewallConfigurationNames.Length} database configurations. ({string.Join(", ", o.DatabaseUsage.FirewallConfigurationNames)})", Level = LogLevel.Debug }, new ActionEventArgs.ContextData()));
+            var configCount = o.DatabaseUsage.FirewallConfigurationNames.Length;
+            o.Logger?.LogInformation("Opening firewall for {count} database configuration(s): [{configs}]",
+                configCount, string.Join(", ", o.DatabaseUsage.FirewallConfigurationNames));
 
             var mongoDbFirewallStateService = app.Services.GetService<IMongoDbFirewallStateService>();
             var mongoDbServiceFactory = app.Services.GetService<IMongoDbServiceFactory>();
 
+            var monitorEnabled = databaseOptions.Value.Monitor?.Enabled ?? false;
+            var mustWait = o.WaitToComplete || monitorEnabled;
+
             var task = Task.Run(async () =>
             {
+                var opened = 0;
+                var alreadyOpen = 0;
+                var skipped = 0;
+                var failed = 0;
+
                 try
                 {
                     foreach (var configurationName in o.DatabaseUsage.FirewallConfigurationNames)
@@ -292,34 +298,53 @@ public static class MongoDbRegistrationExtensions
                             var databaseHostName = mongoDbService.GetDatabaseHostName();
                             if (!databaseHostName.Contains("localhost", StringComparison.InvariantCultureIgnoreCase))
                             {
-                                var message = await mongoDbFirewallStateService.AssureFirewallAccessAsync(configuration.AccessInfo);
-                                _actionEvent?.Invoke(new ActionEventArgs(new ActionEventArgs.ActionData { Message = message, Level = LogLevel.Information }, new ActionEventArgs.ContextData()));
-                                o.Logger?.LogInformation(message);
+                                try
+                                {
+                                    var message = await mongoDbFirewallStateService.AssureFirewallAccessAsync(configuration.AccessInfo);
+                                    _actionEvent?.Invoke(new ActionEventArgs(new ActionEventArgs.ActionData { Message = message, Level = LogLevel.Information }, new ActionEventArgs.ContextData()));
+                                    o.Logger?.LogInformation("Firewall for {config} ({host}): {message}", configurationName, databaseHostName, message);
+                                    if (message.Contains("already", StringComparison.OrdinalIgnoreCase))
+                                        alreadyOpen++;
+                                    else
+                                        opened++;
+                                }
+                                catch (Exception e)
+                                {
+                                    failed++;
+                                    o.Logger?.LogError(e, "Firewall open FAILED for {config} ({host}).", configurationName, databaseHostName);
+                                    _actionEvent?.Invoke(new ActionEventArgs(new ActionEventArgs.ActionData { Message = $"Firewall open FAILED for {configurationName}: {e.Message}", Level = LogLevel.Error, Exception = e }, new ActionEventArgs.ContextData()));
+                                }
                             }
                             else
                             {
-                                _actionEvent?.Invoke(new ActionEventArgs(new ActionEventArgs.ActionData { Message = $"Ignore firewall for {databaseHostName}.", Level = LogLevel.Information }, new ActionEventArgs.ContextData()));
-                                o.Logger?.LogInformation("Ignore firewall for {hostname}.", databaseHostName);
+                                skipped++;
+                                o.Logger?.LogInformation("Firewall skipped for {config} ({host}): localhost.", configurationName, databaseHostName);
                             }
                         }
                         else
                         {
-                            _actionEvent?.Invoke(new ActionEventArgs(new ActionEventArgs.ActionData { Message = $"No firewall information for database configuration '{configurationName}'.", Level = LogLevel.Information }, new ActionEventArgs.ContextData()));
-                            o.Logger?.LogInformation("No firewall information for database configuration '{configurationName}'.", configurationName);
+                            skipped++;
+                            o.Logger?.LogInformation("Firewall skipped for {config}: no API access info.", configurationName);
                         }
                     }
                 }
                 catch (Exception e)
                 {
                     _actionEvent?.Invoke(new ActionEventArgs(new ActionEventArgs.ActionData { Message = e.Message, Level = LogLevel.Critical, Exception = e }, new ActionEventArgs.ContextData()));
-                    o.Logger?.LogError(e, e.Message);
+                    o.Logger?.LogError(e, "Firewall open process failed.");
                 }
 
-                _actionEvent?.Invoke(new ActionEventArgs(new ActionEventArgs.ActionData { Message = "Firewall open process complete.", Level = LogLevel.Debug }, new ActionEventArgs.ContextData()));
-                o.Logger?.LogDebug("Firewall open process complete.");
+                o.Logger?.LogInformation("Firewall summary: {opened} opened, {alreadyOpen} already open, {skipped} skipped, {failed} failed.",
+                    opened, alreadyOpen, skipped, failed);
             });
 
-            if (o.WaitToComplete) Task.WaitAll(task);
+            if (mustWait) Task.WaitAll(task);
+        }
+
+        if (databaseOptions.Value.Monitor?.Enabled ?? false)
+        {
+            var monitor = app.Services.GetService<IDatabaseMonitor>() as DatabaseMonitor;
+            monitor?.Start(app.Services);
         }
 
         if (o.AssureIndex && !lateConnectionStrins)
