@@ -383,6 +383,24 @@ To create a key-pair, select *Access Manager* for the *organization*. Then Selec
 The *GroupId* can be found as part of the URL on the *Atlas MongoDB* website.
 Example. `https://cloud.mongodb.com/v2/[GroupId]`
 
+## Tracking external collections
+
+When an external NuGet package registers its own collection types via DI (e.g. `services.AddTransient<IMyCollection, MyCollection>()`), the database monitor may show them as "NotInCode" because they were not discovered by the auto-registration scan.
+
+Use `TrackMongoCollection` to tell the monitor about them without duplicating the DI registration:
+
+```csharp
+// Non-generic — useful when types are constructed at runtime via MakeGenericType()
+services.TrackMongoCollection(typeof(IMyCollection), typeof(MyCollection));
+
+// Generic — when types are known at compile time
+services.TrackMongoCollection<IMyCollection, MyCollection>();
+```
+
+This only affects monitor visibility — it does **not** register the type in DI. The call can be placed before or after `AddMongoDB`; the actual merge happens in `UseMongoDB`.
+
+This is intended for library authors whose collection implementation types are `internal`. Consumers of the library don't need to do anything.
+
 ## Monitor
 The built-in monitor tracks collection metadata such as document counts, sizes, indexes and clean status.
 By default the monitor persists its state to a `_monitor` collection in MongoDB so that data survives application restarts and is shared across instances.

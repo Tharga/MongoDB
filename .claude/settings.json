@@ -1,6 +1,7 @@
 {
   "permissions": {
     "allow": [
+      "Bash(cd *)",
       "Bash(cp *)",
       "Bash(dotnet *)",
       "Bash(git *)",
@@ -8,9 +9,11 @@
       "Bash(mkdir *)",
       "Bash(rm *)",
       "Bash(test *)",
+      "Edit",
       "Glob",
       "Grep",
-      "Read"
+      "Read",
+      "Write"
     ],
     "deny": [
       "Bash(git push *)",
