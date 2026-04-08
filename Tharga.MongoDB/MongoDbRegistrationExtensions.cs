@@ -250,6 +250,12 @@ public static class MongoDbRegistrationExtensions
         var mongoDbInstance = app.Services.GetService<IMongoDbInstance>();
         if (mongoDbInstance == null) throw new InvalidOperationException($"Tharga MongoDB has not been registered. Call {nameof(AddMongoDB)} first.");
 
+        // Merge externally tracked collections into RegisteredCollections
+        foreach (var tracked in app.Services.GetServices<TrackedCollectionEntry>())
+        {
+            mongoDbInstance.RegisteredCollections.TryAdd(tracked.ServiceType, tracked.ImplementationType);
+        }
+
         //NOTE: Set up default configuration
         var repositoryConfiguration = app.Services.GetService<IRepositoryConfiguration>();
 
