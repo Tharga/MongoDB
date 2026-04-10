@@ -4,7 +4,9 @@
 1. Run `git status` to check for uncommitted changes
    - If uncommitted changes exist, alert me immediately and stop
    - Do not proceed until I have confirmed how to handle them (commit, stash, or discard)
-2. Check if `.claude/mission.md` exists and read the project mission and context.
+2. Check if `.claude/mission.md` exists and read it.
+   - Follow **all** file references listed under "External References" — read each one (shared-instructions, backlog, incoming requests, etc.)
+   - If a path uses `$DOC_ROOT`, resolve it via the environment variable defined in `~/.claude/settings.json`.
 3. Check if `plan/` exists in the project root.
    - If `plan/plan.md` exists, summarize what has been done and what the next step is.
    - If `plan/feature.md` exists, read the current feature scope.
