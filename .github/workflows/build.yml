@@ -1,0 +1,202 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+env:
+  MAJOR_MINOR: '2.10'
+
+permissions:
+  contents: write
+  security-events: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            9.0.x
+            10.0.x
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build -c Release --no-restore 2>&1 | tee build.log
+
+      - name: Check warnings
+        run: |
+          WARNING_COUNT=$(grep -c " warning " build.log || true)
+          echo "Build warnings: $WARNING_COUNT"
+          if [ "$WARNING_COUNT" -gt 20 ]; then
+            echo "::error::Build has $WARNING_COUNT warnings (threshold: 20)"
+            exit 1
+          fi
+
+      - name: Test with coverage
+        run: dotnet test -c Release --no-build --verbosity normal --filter "Category!=Database" --collect:"XPlat Code Coverage" --results-directory ./coverage
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          directory: ./coverage
+          fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Compute version
+        id: version
+        run: |
+          LATEST_TAG=$(git tag -l "${MAJOR_MINOR}.*" --sort=-v:refname \
+            | grep -E "^${MAJOR_MINOR}\.[0-9]+$" \
+            | head -1)
+
+          if [ -z "$LATEST_TAG" ]; then
+            PATCH=0
+          else
+            PATCH=$(echo "$LATEST_TAG" | sed "s/${MAJOR_MINOR}\.\([0-9]*\)/\1/")
+            PATCH=$((PATCH + 1))
+          fi
+
+          VERSION="${MAJOR_MINOR}.${PATCH}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "previous_tag=$LATEST_TAG" >> "$GITHUB_OUTPUT"
+          echo "Computed version: $VERSION (previous: $LATEST_TAG)"
+
+      - name: Pack
+        run: |
+          dotnet pack Tharga.MongoDB/Tharga.MongoDB.csproj -c Release --no-build -o ./artifacts /p:PackageVersion=${{ steps.version.outputs.version }}
+          dotnet pack Tharga.MongoDB.Blazor/Tharga.MongoDB.Blazor.csproj -c Release --no-build -o ./artifacts /p:PackageVersion=${{ steps.version.outputs.version }}
+          dotnet pack Tharga.MongoDB.Monitor.Client/Tharga.MongoDB.Monitor.Client.csproj -c Release --no-build -o ./artifacts /p:PackageVersion=${{ steps.version.outputs.version }}
+          dotnet pack Tharga.MongoDB.Monitor.Server/Tharga.MongoDB.Monitor.Server.csproj -c Release --no-build -o ./artifacts /p:PackageVersion=${{ steps.version.outputs.version }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: nuget-packages
+          path: ./artifacts/
+
+  security:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: csharp
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            9.0.x
+            10.0.x
+
+      - name: Build for CodeQL
+        run: dotnet build -c Release
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+
+  publish:
+    needs: [build, security]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    environment: ${{ github.ref == 'refs/heads/master' && 'release' || 'prerelease' }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: nuget-packages
+          path: ./artifacts/
+
+      - name: Compute version
+        id: version
+        run: |
+          LATEST_TAG=$(git tag -l "${MAJOR_MINOR}.*" --sort=-v:refname \
+            | grep -E "^${MAJOR_MINOR}\.[0-9]+$" \
+            | head -1)
+
+          if [ -z "$LATEST_TAG" ]; then
+            PATCH=0
+          else
+            PATCH=$(echo "$LATEST_TAG" | sed "s/${MAJOR_MINOR}\.\([0-9]*\)/\1/")
+            PATCH=$((PATCH + 1))
+          fi
+
+          VERSION="${MAJOR_MINOR}.${PATCH}"
+
+          if [ "${{ github.ref }}" != "refs/heads/master" ]; then
+            PRE_BASE="${VERSION}-pre"
+            LATEST_PRE=$(git tag -l "${PRE_BASE}.*" --sort=-v:refname | head -1)
+
+            if [ -z "$LATEST_PRE" ]; then
+              COUNTER=1
+            else
+              COUNTER=$(echo "$LATEST_PRE" | sed "s/.*-pre\.\([0-9]*\)/\1/")
+              COUNTER=$((COUNTER + 1))
+            fi
+
+            VERSION="${PRE_BASE}.${COUNTER}"
+          fi
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "previous_tag=$LATEST_TAG" >> "$GITHUB_OUTPUT"
+          echo "Computed version: $VERSION"
+
+      - name: Push to NuGet
+        run: |
+          for pkg in ./artifacts/*.nupkg; do
+            echo "Pushing $pkg..."
+            dotnet nuget push "$pkg" --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate || true
+          done
+
+      - name: Create GitHub Release
+        if: github.ref == 'refs/heads/master'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          NOTES_FLAG=""
+          if [ -n "${{ steps.version.outputs.previous_tag }}" ]; then
+            NOTES_FLAG="--notes-start-tag ${{ steps.version.outputs.previous_tag }}"
+          fi
+          gh release create "${{ steps.version.outputs.version }}" \
+            --title "v${{ steps.version.outputs.version }}" \
+            --generate-notes \
+            $NOTES_FLAG \
+            ./artifacts/*.nupkg
+
+      - name: Create GitHub Pre-release
+        if: github.ref != 'refs/heads/master'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ steps.version.outputs.version }}" \
+            --title "v${{ steps.version.outputs.version }} (pre-release)" \
+            --notes "Pre-release from \`${{ github.head_ref }}\` branch." \
+            --prerelease \
+            ./artifacts/*.nupkg
