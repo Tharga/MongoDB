@@ -11,6 +11,7 @@ env:
 
 permissions:
   contents: write
+  pull-requests: write
   security-events: write
 
 jobs:
@@ -74,12 +75,32 @@ jobs:
           echo "previous_tag=$LATEST_TAG" >> "$GITHUB_OUTPUT"
           echo "Computed version: $VERSION (previous: $LATEST_TAG)"
 
+      - name: Compute pre-release version
+        id: preversion
+        if: github.ref != 'refs/heads/master'
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          PRE_BASE="${VERSION}-pre"
+
+          LATEST_PRE=$(git tag -l "${PRE_BASE}.*" --sort=-v:refname | head -1)
+
+          if [ -z "$LATEST_PRE" ]; then
+            COUNTER=1
+          else
+            COUNTER=$(echo "$LATEST_PRE" | sed "s/.*-pre\.\([0-9]*\)/\1/")
+            COUNTER=$((COUNTER + 1))
+          fi
+
+          PRE_VERSION="${PRE_BASE}.${COUNTER}"
+          echo "version=$PRE_VERSION" >> "$GITHUB_OUTPUT"
+          echo "Computed pre-release version: $PRE_VERSION"
+
       - name: Pack
         run: |
-          dotnet pack Tharga.MongoDB/Tharga.MongoDB.csproj -c Release --no-build -o ./artifacts /p:PackageVersion=${{ steps.version.outputs.version }}
-          dotnet pack Tharga.MongoDB.Blazor/Tharga.MongoDB.Blazor.csproj -c Release --no-build -o ./artifacts /p:PackageVersion=${{ steps.version.outputs.version }}
-          dotnet pack Tharga.MongoDB.Monitor.Client/Tharga.MongoDB.Monitor.Client.csproj -c Release --no-build -o ./artifacts /p:PackageVersion=${{ steps.version.outputs.version }}
-          dotnet pack Tharga.MongoDB.Monitor.Server/Tharga.MongoDB.Monitor.Server.csproj -c Release --no-build -o ./artifacts /p:PackageVersion=${{ steps.version.outputs.version }}
+          dotnet pack Tharga.MongoDB/Tharga.MongoDB.csproj -c Release --no-build -o ./artifacts -p:PackageVersion=${{ steps.version.outputs.version }}
+          dotnet pack Tharga.MongoDB.Blazor/Tharga.MongoDB.Blazor.csproj -c Release --no-build -o ./artifacts -p:PackageVersion=${{ steps.version.outputs.version }}
+          dotnet pack Tharga.MongoDB.Monitor.Client/Tharga.MongoDB.Monitor.Client.csproj -c Release --no-build -o ./artifacts -p:PackageVersion=${{ steps.version.outputs.version }}
+          dotnet pack Tharga.MongoDB.Monitor.Server/Tharga.MongoDB.Monitor.Server.csproj -c Release --no-build -o ./artifacts -p:PackageVersion=${{ steps.version.outputs.version }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -112,11 +133,11 @@ jobs:
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v3
 
-  publish:
+  release:
     needs: [build, security]
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' || github.event_name == 'pull_request'
-    environment: ${{ github.ref == 'refs/heads/master' && 'release' || 'prerelease' }}
+    if: github.ref == 'refs/heads/master' && github.event_name == 'push'
+    environment: release
 
     steps:
       - uses: actions/checkout@v4
@@ -149,24 +170,8 @@ jobs:
           fi
 
           VERSION="${MAJOR_MINOR}.${PATCH}"
-
-          if [ "${{ github.ref }}" != "refs/heads/master" ]; then
-            PRE_BASE="${VERSION}-pre"
-            LATEST_PRE=$(git tag -l "${PRE_BASE}.*" --sort=-v:refname | head -1)
-
-            if [ -z "$LATEST_PRE" ]; then
-              COUNTER=1
-            else
-              COUNTER=$(echo "$LATEST_PRE" | sed "s/.*-pre\.\([0-9]*\)/\1/")
-              COUNTER=$((COUNTER + 1))
-            fi
-
-            VERSION="${PRE_BASE}.${COUNTER}"
-          fi
-
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "previous_tag=$LATEST_TAG" >> "$GITHUB_OUTPUT"
-          echo "Computed version: $VERSION"
 
       - name: Push to NuGet
         run: |
@@ -176,7 +181,6 @@ jobs:
           done
 
       - name: Create GitHub Release
-        if: github.ref == 'refs/heads/master'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -190,8 +194,76 @@ jobs:
             $NOTES_FLAG \
             ./artifacts/*.nupkg
 
+      - name: Comment released version on merged PR
+        if: always()
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_NUMBER=$(echo "${{ github.event.head_commit.message }}" | grep -oP 'Merge pull request #\K\d+' | head -1)
+          if [ -n "$PR_NUMBER" ]; then
+            gh pr comment "$PR_NUMBER" --body "Released as **v${{ steps.version.outputs.version }}** — https://github.com/${{ github.repository }}/releases/tag/${{ steps.version.outputs.version }}"
+          else
+            echo "No PR number found in commit message — skipping PR comment."
+          fi
+
+  prerelease:
+    needs: [build, security]
+    runs-on: ubuntu-latest
+    if: github.ref != 'refs/heads/master' && github.event_name == 'pull_request'
+    environment: prerelease
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: nuget-packages
+          path: ./artifacts/
+
+      - name: Compute pre-release version
+        id: version
+        run: |
+          LATEST_TAG=$(git tag -l "${MAJOR_MINOR}.*" --sort=-v:refname \
+            | grep -E "^${MAJOR_MINOR}\.[0-9]+$" \
+            | head -1)
+
+          if [ -z "$LATEST_TAG" ]; then
+            PATCH=0
+          else
+            PATCH=$(echo "$LATEST_TAG" | sed "s/${MAJOR_MINOR}\.\([0-9]*\)/\1/")
+            PATCH=$((PATCH + 1))
+          fi
+
+          PRE_BASE="${MAJOR_MINOR}.${PATCH}-pre"
+          LATEST_PRE=$(git tag -l "${PRE_BASE}.*" --sort=-v:refname | head -1)
+
+          if [ -z "$LATEST_PRE" ]; then
+            COUNTER=1
+          else
+            COUNTER=$(echo "$LATEST_PRE" | sed "s/.*-pre\.\([0-9]*\)/\1/")
+            COUNTER=$((COUNTER + 1))
+          fi
+
+          VERSION="${PRE_BASE}.${COUNTER}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Push to NuGet
+        run: |
+          for pkg in ./artifacts/*.nupkg; do
+            echo "Pushing $pkg..."
+            dotnet nuget push "$pkg" --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate || true
+          done
+
       - name: Create GitHub Pre-release
-        if: github.ref != 'refs/heads/master'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
