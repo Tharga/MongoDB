@@ -101,6 +101,7 @@ jobs:
           dotnet pack Tharga.MongoDB.Blazor/Tharga.MongoDB.Blazor.csproj -c Release --no-build -o ./artifacts -p:PackageVersion=${{ steps.version.outputs.version }}
           dotnet pack Tharga.MongoDB.Monitor.Client/Tharga.MongoDB.Monitor.Client.csproj -c Release --no-build -o ./artifacts -p:PackageVersion=${{ steps.version.outputs.version }}
           dotnet pack Tharga.MongoDB.Monitor.Server/Tharga.MongoDB.Monitor.Server.csproj -c Release --no-build -o ./artifacts -p:PackageVersion=${{ steps.version.outputs.version }}
+          dotnet pack Tharga.MongoDB.Mcp/Tharga.MongoDB.Mcp.csproj -c Release --no-build -o ./artifacts -p:PackageVersion=${{ steps.version.outputs.version }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
