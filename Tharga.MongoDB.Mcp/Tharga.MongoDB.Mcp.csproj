@@ -24,7 +24,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Tharga.Mcp" Version="0.1.*" />
     <PackageReference Include="Microsoft.SourceLink.GitHub" Version="10.0.202">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
@@ -33,6 +32,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Tharga.MongoDB\Tharga.MongoDB.csproj" />
+    <ProjectReference Include="..\..\Mcp\Tharga.Mcp\Tharga.Mcp.csproj" />
   </ItemGroup>
 
   <ItemGroup>
