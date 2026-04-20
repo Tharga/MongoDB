@@ -3,6 +3,8 @@ using Radzen;
 using Tharga.Blazor.Framework;
 using Tharga.MongoDB;
 using Tharga.MongoDB.Configuration;
+using Tharga.Mcp;
+using Tharga.MongoDB.Mcp;
 using Tharga.MongoDB.Monitor.Server;
 using Tharga.TemplateBlazor.Web.Components;
 using Tharga.TemplateBlazor.Web.Framework;
@@ -35,6 +37,12 @@ builder.AddMongoDB(o =>
 });
 
 builder.AddMongoDbMonitorServer();
+
+builder.Services.AddThargaMcp(mcp =>
+{
+    mcp.Options.RequireAuth = false;
+    mcp.AddMongoDB();
+});
 
 builder.Services.AddCors(options =>
 {
@@ -72,6 +80,8 @@ app.MapRazorComponents<App>()
 
 app.UseMongoDB();
 app.UseMongoDbMonitorServer();
+
+app.MapMcp();
 
 app.MapGet("/api/monitor/clients", async (MonitorClientStateService svc) =>
 {

@@ -10,6 +10,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Tharga.TemplateBlazor.Web.Client\Tharga.TemplateBlazor.Web.Client.csproj" />
     <ProjectReference Include="..\..\Tharga.MongoDB.Monitor.Server\Tharga.MongoDB.Monitor.Server.csproj" />
+    <ProjectReference Include="..\..\Tharga.MongoDB.Mcp\Tharga.MongoDB.Mcp.csproj" />
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.Server" Version="10.0.6" />
   </ItemGroup>
 

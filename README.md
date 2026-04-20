@@ -615,6 +615,34 @@ app.MapGet("/api/monitor/pool", (IDatabaseMonitor m) => m.GetConnectionPoolState
 
 ---
 
+## MCP (Model Context Protocol)
+
+The `Tharga.MongoDB.Mcp` package exposes MongoDB monitoring data and admin actions via MCP, so AI agents can query collections, inspect monitoring data, and trigger actions.
+
+Install `Tharga.MongoDB.Mcp` and register inside the `AddThargaMcp` callback:
+
+```csharp
+services.AddThargaMcp(mcp =>
+{
+    mcp.AddMongoDB();
+});
+
+app.MapMcp();
+```
+
+### Resources (System scope)
+- `mongodb://collections` — list of collections with stats, index info, and clean status
+- `mongodb://monitoring` — recent and slow calls, summaries, error summary, connection pool state
+- `mongodb://clients` — connected remote monitoring agents
+
+### Tools (System scope)
+- `mongodb.touch` — refresh collection stats (args: `databaseName`, `collectionName`, optional `configurationName`)
+- `mongodb.rebuild_index` — restore/rebuild indexes (args: `databaseName`, `collectionName`, optional `configurationName`, `force`)
+
+Provides are registered with `McpScope.System`, so they are only exposed on the system-level MCP endpoint.
+
+---
+
 ## Aggregation Queries
 
 Server-side aggregation methods let you compute values without loading documents into memory.
