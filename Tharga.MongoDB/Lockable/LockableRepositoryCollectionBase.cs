@@ -243,6 +243,11 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
         return Disk.ExecuteAsync(execute, operation, cancellationToken);
     }
 
+    public override IAsyncEnumerable<T> ExecuteManyAsync<T>(Func<IMongoCollection<TEntity>, CancellationToken, Task<IAsyncCursor<T>>> queryFactory, CancellationToken cancellationToken = default)
+    {
+        return Disk.ExecuteManyAsync(queryFactory, cancellationToken);
+    }
+
     public override IAsyncEnumerable<TEntity> GetDirtyAsync()
     {
         return Disk.GetDirtyAsync();

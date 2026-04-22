@@ -668,7 +668,57 @@ var max = await collection.MaxAsync<decimal>(x => x.Amount);
 
 All methods accept an optional `predicate` to filter documents before aggregation, and a `CancellationToken`.
 
-For arbitrary aggregation pipelines, use `ExecuteAsync` which gives direct access to `IMongoCollection<T>`.
+For arbitrary aggregation pipelines, use `ExecuteAsync` (materialising) or `ExecuteManyAsync` (streaming) which both give direct access to `IMongoCollection<T>`.
+
+---
+
+## Custom queries
+
+Two methods hand you the underlying `IMongoCollection<T>` so you can write queries the repository doesn't expose directly — projections, aggregation pipelines, etc. Both run through the library's index management, concurrency limiter, and admin-UI call tracking.
+
+### `ExecuteAsync` — materialised result
+Use when the result fits comfortably in memory.
+```csharp
+var names = await collection.ExecuteAsync(
+    c => c.Find(Builders<MyEntity>.Filter.Empty)
+          .Project(x => x.Name)
+          .ToListAsync(),
+    Operation.Read);
+```
+
+### `ExecuteManyAsync` — streaming cursor
+Use when the result may be large. Returns `IAsyncEnumerable<T>` so the caller iterates without materialising the whole set. The factory returns an `IAsyncCursor<T>`; the library takes a limiter slot around the initial open and around each `MoveNextAsync` (batch fetch) so the driver connection pool isn't oversubscribed by long-running streams. Batch size is controlled by the caller on the query itself (`BatchSize` in `FindOptions`/`AggregateOptions`). Always a read — no `Operation` parameter.
+
+Find with projection:
+```csharp
+await foreach (var name in collection.ExecuteManyAsync(
+    (c, ct) => c.FindAsync(
+        Builders<MyEntity>.Filter.Empty,
+        new FindOptions<MyEntity, string>
+        {
+            Projection = Builders<MyEntity>.Projection.Expression(x => x.Name),
+            BatchSize = 500
+        },
+        ct),
+    cancellationToken))
+{
+    Process(name);
+}
+```
+
+Aggregation pipeline:
+```csharp
+var pipeline = PipelineDefinition<MyEntity, BsonDocument>.Create(
+    "{ $match: { Active: true } }",
+    "{ $group: { _id: '$Category', count: { $sum: 1 } } }");
+
+await foreach (var doc in collection.ExecuteManyAsync(
+    (c, ct) => c.AggregateAsync(pipeline, new AggregateOptions { BatchSize = 500 }, ct),
+    cancellationToken))
+{
+    Process(doc);
+}
+```
 
 ---
 
