@@ -759,7 +759,7 @@ builder.AddMongoDB(o =>
 
 ## MongoDB Result Limit
 It is possible to se t a hard limit for the number of documents returned. If the limit is reached `ResultLimitException` is thrown.
-For large result-sets, use the method `GetPageAsync` to get the `ResultLimit` on each page of the result.
+For large result-sets, use `GetManyAsync` with an explicit `Limit` to fetch a bounded page, or stream through `GetAsync` / `GetProjectionAsync` / `ExecuteManyAsync` — all three use a driver cursor under the hood and stream batches without paying a skip penalty.
 
 ```
 {
