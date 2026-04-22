@@ -25,4 +25,5 @@ public interface IRepositoryCollection<TEntity, TKey> : IReadOnlyRepositoryColle
 
     Task<T> ExecuteAsync<T>(Func<IMongoCollection<TEntity>, Task<T>> execute, Operation operation);
     Task<T> ExecuteAsync<T>(Func<IMongoCollection<TEntity>, CancellationToken, Task<T>> execute, Operation operation, CancellationToken cancellationToken);
+    IAsyncEnumerable<T> ExecuteManyAsync<T>(Func<IMongoCollection<TEntity>, CancellationToken, Task<IAsyncCursor<T>>> queryFactory, CancellationToken cancellationToken = default);
 }

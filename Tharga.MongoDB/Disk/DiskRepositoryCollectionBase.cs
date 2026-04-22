@@ -916,6 +916,133 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         return response;
     }
 
+    public override async IAsyncEnumerable<T> ExecuteManyAsync<T>(Func<IMongoCollection<TEntity>, CancellationToken, Task<IAsyncCursor<T>>> queryFactory, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        const string functionName = nameof(ExecuteManyAsync);
+        var callKey = Guid.NewGuid();
+        var startAt = Stopwatch.GetTimestamp();
+        var steps = new List<StepResponse>();
+        var count = 0;
+        Exception exception = null;
+
+        steps.Add(FireCallStartEvent(functionName, Operation.Read, callKey));
+
+        IAsyncCursor<T> cursor = null;
+        try
+        {
+            try
+            {
+                cursor = await OpenCursorWithinLimiterAsync(queryFactory, steps, cancellationToken);
+            }
+            catch (Exception e)
+            {
+                exception = e;
+                HandleExecuteManyException(functionName, e);
+                throw;
+            }
+
+            while (true)
+            {
+                bool hasMore;
+                try
+                {
+                    hasMore = await MoveNextWithinLimiterAsync(cursor, cancellationToken);
+                }
+                catch (Exception e)
+                {
+                    exception = e;
+                    HandleExecuteManyException(functionName, e);
+                    throw;
+                }
+
+                if (!hasMore) break;
+
+                foreach (var item in cursor.Current)
+                {
+                    count++;
+                    yield return item;
+                }
+            }
+        }
+        finally
+        {
+            try { cursor?.Dispose(); }
+            catch (Exception disposeEx)
+            {
+                _logger?.LogWarning(disposeEx, "Failed to dispose cursor in {functionName}.", functionName);
+            }
+
+            var endTimestamp = Stopwatch.GetTimestamp();
+            var elapsed = GetElapsed(startAt, endTimestamp);
+            steps.Add(new StepResponse { Timestamp = endTimestamp, Step = "Finalize" });
+
+            var callSteps = steps.Select((x, index) =>
+            {
+                var from = index == 0 ? startAt : steps[index - 1].Timestamp;
+                var delta = GetElapsed(from, x.Timestamp);
+                return new CallStepInfo { Step = x.Step, Delta = delta, Message = x.Message };
+            }).ToList();
+
+            ((MongoDbServiceFactory)_mongoDbServiceFactory).OnCallEnd(this, new CallEndEventArgs(callKey, elapsed, exception, count, callSteps, null, null));
+        }
+    }
+
+    private async Task<IAsyncCursor<T>> OpenCursorWithinLimiterAsync<T>(Func<IMongoCollection<TEntity>, CancellationToken, Task<IAsyncCursor<T>>> queryFactory, List<StepResponse> steps, CancellationToken cancellationToken)
+    {
+        var response = await _databaseExecutor.ExecuteAsync(async ct =>
+        {
+            steps.Add(new StepResponse { Timestamp = Stopwatch.GetTimestamp(), Step = "Queue" });
+
+            var commandMonitor = ((MongoDbServiceFactory)_mongoDbServiceFactory).CommandMonitor;
+
+            var fetchStartTimestamp = Stopwatch.GetTimestamp();
+            var fetchCollectionStep = await FetchCollectionAsync();
+            var fetchMessage = FormatDriverCommands(commandMonitor, fetchStartTimestamp, Stopwatch.GetTimestamp());
+            steps.Add(fetchMessage != null ? fetchCollectionStep with { Message = fetchMessage } : fetchCollectionStep);
+            var c = fetchCollectionStep.Value;
+
+            FlexibleGuidSerializer.CollectionContext = ProtectedCollectionName;
+
+            var openStartTimestamp = Stopwatch.GetTimestamp();
+            var cur = await queryFactory.Invoke(c, ct);
+            var openEndTimestamp = Stopwatch.GetTimestamp();
+            var openMessage = FormatDriverCommands(commandMonitor, openStartTimestamp, openEndTimestamp);
+
+            steps.Add(new StepResponse { Timestamp = openEndTimestamp, Step = "OpenCursor", Message = openMessage });
+
+            return cur;
+        }, _mongoDbService.GetServerKey(), _mongoDbService.GetMaxConnectionPoolSize(), cancellationToken);
+
+        return response.Result;
+    }
+
+    private async Task<bool> MoveNextWithinLimiterAsync<T>(IAsyncCursor<T> cursor, CancellationToken cancellationToken)
+    {
+        var response = await _databaseExecutor.ExecuteAsync(ct => cursor.MoveNextAsync(ct), _mongoDbService.GetServerKey(), _mongoDbService.GetMaxConnectionPoolSize(), cancellationToken);
+        return response.Result;
+    }
+
+    private void HandleExecuteManyException(string functionName, Exception e)
+    {
+        if (e is MongoConnectionException || e is TimeoutException || e is MongoConnectionPoolPausedException)
+        {
+            _logger?.LogWarning(e, $"{e.GetType().Name} {{repositoryType}}. [action: Database, operation: {functionName}]", "DiskRepository");
+        }
+        else if (e is MongoWaitQueueFullException mwqe)
+        {
+            mwqe.Data["Configuration"] = ConfigurationName ?? Constants.DefaultConfigurationName;
+            mwqe.Data["Database"] = DatabaseName;
+            mwqe.Data["Collection"] = CollectionName;
+            _logger?.LogError(e, $"{e.GetType().Name} {{repositoryType}}. [action: Database, operation: {functionName}]", "DiskRepository");
+        }
+        else
+        {
+            _logger?.LogError(e, $"{e.GetType().Name} {{repositoryType}}. [action: Database, operation: {functionName}]", "DiskRepository");
+        }
+
+        InvokeAction(new ActionEventArgs.ActionData { Operation = functionName, Exception = e });
+    }
+
     public override async Task DropCollectionAsync()
     {
         await _mongoDbService.DropCollectionAsync(ProtectedCollectionName);

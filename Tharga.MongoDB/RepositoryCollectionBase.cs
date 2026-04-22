@@ -102,6 +102,7 @@ public abstract class RepositoryCollectionBase<TEntity, TKey> : RepositoryCollec
 
     public abstract Task<T> ExecuteAsync<T>(Func<IMongoCollection<TEntity>, Task<T>> execute, Operation operation);
     public abstract Task<T> ExecuteAsync<T>(Func<IMongoCollection<TEntity>, CancellationToken, Task<T>> execute, Operation operation, CancellationToken cancellationToken);
+    public abstract IAsyncEnumerable<T> ExecuteManyAsync<T>(Func<IMongoCollection<TEntity>, CancellationToken, Task<IAsyncCursor<T>>> queryFactory, CancellationToken cancellationToken = default);
 
     public abstract IAsyncEnumerable<TEntity> GetDirtyAsync();
     public abstract IEnumerable<(IndexFailOperation Operation, string Name)> GetFailedIndices();
