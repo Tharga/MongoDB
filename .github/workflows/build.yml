@@ -95,13 +95,23 @@ jobs:
           echo "version=$PRE_VERSION" >> "$GITHUB_OUTPUT"
           echo "Computed pre-release version: $PRE_VERSION"
 
-      - name: Pack
+      - name: Pack (stable — push to master)
+        if: github.ref == 'refs/heads/master' && github.event_name == 'push'
         run: |
           dotnet pack Tharga.MongoDB/Tharga.MongoDB.csproj -c Release --no-build -o ./artifacts -p:PackageVersion=${{ steps.version.outputs.version }}
           dotnet pack Tharga.MongoDB.Blazor/Tharga.MongoDB.Blazor.csproj -c Release --no-build -o ./artifacts -p:PackageVersion=${{ steps.version.outputs.version }}
           dotnet pack Tharga.MongoDB.Monitor.Client/Tharga.MongoDB.Monitor.Client.csproj -c Release --no-build -o ./artifacts -p:PackageVersion=${{ steps.version.outputs.version }}
           dotnet pack Tharga.MongoDB.Monitor.Server/Tharga.MongoDB.Monitor.Server.csproj -c Release --no-build -o ./artifacts -p:PackageVersion=${{ steps.version.outputs.version }}
           dotnet pack Tharga.MongoDB.Mcp/Tharga.MongoDB.Mcp.csproj -c Release --no-build -o ./artifacts -p:PackageVersion=${{ steps.version.outputs.version }}
+
+      - name: Pack (pre-release — pull request)
+        if: github.event_name == 'pull_request'
+        run: |
+          dotnet pack Tharga.MongoDB/Tharga.MongoDB.csproj -c Release --no-build -o ./artifacts -p:PackageVersion=${{ steps.preversion.outputs.version }}
+          dotnet pack Tharga.MongoDB.Blazor/Tharga.MongoDB.Blazor.csproj -c Release --no-build -o ./artifacts -p:PackageVersion=${{ steps.preversion.outputs.version }}
+          dotnet pack Tharga.MongoDB.Monitor.Client/Tharga.MongoDB.Monitor.Client.csproj -c Release --no-build -o ./artifacts -p:PackageVersion=${{ steps.preversion.outputs.version }}
+          dotnet pack Tharga.MongoDB.Monitor.Server/Tharga.MongoDB.Monitor.Server.csproj -c Release --no-build -o ./artifacts -p:PackageVersion=${{ steps.preversion.outputs.version }}
+          dotnet pack Tharga.MongoDB.Mcp/Tharga.MongoDB.Mcp.csproj -c Release --no-build -o ./artifacts -p:PackageVersion=${{ steps.preversion.outputs.version }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
