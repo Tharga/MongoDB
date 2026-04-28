@@ -112,6 +112,41 @@ public static void AddMyFeature(this DatabaseOptions options)
 }
 ```
 
+#### Collections that take `DatabaseContext`
+Auto-registration treats `DatabaseContext` as a runtime parameter. The behavior depends on which constructors a collection exposes:
+
+| Constructor shape | Auto-registered in DI? | How to resolve |
+|---|---|---|
+| At least one constructor **without** `DatabaseContext` | ✅ Yes | Inject the interface directly, or resolve via `ICollectionProvider` |
+| **All** constructors require `DatabaseContext` | ❌ No (by design) | Resolve via `ICollectionProvider.GetCollection<T>(databaseContext)` |
+
+A collection that should support both patterns — direct injection (default context) and per-tenant resolution — must make the `DatabaseContext` parameter optional:
+```csharp
+public class WeatherRepositoryCollection : DiskRepositoryCollectionBase<WeatherEntity>, IWeatherRepositoryCollection
+{
+    public WeatherRepositoryCollection(IMongoDbServiceFactory factory, ILogger<WeatherRepositoryCollection> logger,
+        DatabaseContext databaseContext = null)        // <-- optional
+        : base(factory, logger, databaseContext)
+    {
+    }
+}
+```
+
+**Multi-tenant collections** that should always be resolved per-context (i.e. only have constructors that require `DatabaseContext`) are deliberately skipped during auto-registration. Use `ICollectionProvider`:
+```csharp
+public class WeatherService(ICollectionProvider provider)
+{
+    public async Task<int> CountAsync(string tenantId)
+    {
+        var collection = provider.GetCollection<IWeatherRepositoryCollection>(
+            new DatabaseContext { DatabasePart = tenantId });
+        return (int)await collection.CountAsync();
+    }
+}
+```
+
+**Do not register these collections manually with `AddTransient`** — `DatabaseContext` is not in DI, so resolution fails at startup.
+
 The pattern is built up like this.
 The *repository* holds the *collection* inside.
 The *repository* exposes the functions, that you create, protecting any operation to be used directly.
