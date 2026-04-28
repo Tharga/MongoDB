@@ -5,7 +5,7 @@
 		<IsPackable>false</IsPackable>
 	</PropertyGroup>
 	<PropertyGroup>
-		<NoWarn>1701;1702;CS1591;CS0809</NoWarn>
+		<NoWarn>1701;1702;CS1591;CS0809;xUnit1051</NoWarn>
 	</PropertyGroup>
 	<ItemGroup>
 		<PackageReference Include="AutoBogus" Version="2.13.1" />
@@ -15,7 +15,6 @@
 		<PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.7" />
 		<PackageReference Include="Moq.AutoMock" Version="4.0.2" />
 		<PackageReference Include="Tharga.Test.Toolkit" Version="1.14.7" />
-		<PackageReference Include="xunit" Version="2.9.3" />
 		<PackageReference Include="xunit.runner.visualstudio" Version="3.1.5">
 			<PrivateAssets>all</PrivateAssets>
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
@@ -28,6 +27,7 @@
 			<PrivateAssets>all</PrivateAssets>
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 		</PackageReference>
+		<PackageReference Include="xunit.v3" Version="3.2.2" />
 	</ItemGroup>
 
 	<ItemGroup>
