@@ -5,7 +5,7 @@
 		<IsPackable>false</IsPackable>
 	</PropertyGroup>
 	<PropertyGroup>
-		<NoWarn>1701;1702;CS1591;CS0809</NoWarn>
+		<NoWarn>1701;1702;CS1591;CS0809;xUnit1051</NoWarn>
 	</PropertyGroup>
 	<ItemGroup>
 		<PackageReference Include="AutoBogus" Version="2.13.1" />
