@@ -250,42 +250,25 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 
         await EnsureAutoFetchSizeAsync();
 
-        var skip = options.Skip ?? 0;
-        var totalLimit = options.Limit;
-        var batchSize = totalLimit ?? FetchSize ?? 1000;
-        var remaining = totalLimit;
-
-        var page = 0;
-        while (true)
+        var effectiveFilter = filter ?? FilterDefinition<TEntity>.Empty;
+        var findOptions = new FindOptions<TEntity, TEntity>
         {
-            var pageLimit = remaining.HasValue ? Math.Min(remaining.Value, batchSize) : batchSize;
-            var pageOptions = options with { Skip = skip, Limit = pageLimit };
-            var response = await GetManyAsync(filter, pageOptions, cancellationToken);
+            Sort = options.Sort,
+            Limit = options.Limit,
+            Skip = options.Skip,
+            BatchSize = options.FetchSize ?? FetchSize
+        };
+        if (options.Projection != null) findOptions.Projection = options.Projection;
 
-            foreach (var item in response.Items)
-            {
-                yield return item;
-            }
-
-            skip += response.Items.Length;
-
-            if (remaining.HasValue)
-            {
-                remaining -= response.Items.Length;
-                if (remaining.Value <= 0 || response.Items.Length == 0)
-                {
-                    break;
-                }
-            }
-            else if (skip >= response.TotalCount || response.Items.Length == 0)
-            {
-                break;
-            }
-
-            page++;
+        await foreach (var item in StreamCursorAsync<TEntity>(
+            nameof(GetAsync),
+            (c, ct) => c.FindAsync(effectiveFilter, findOptions, ct),
+            (c, item) => CleanEntityAsync(c, item),
+            filter,
+            cancellationToken))
+        {
+            yield return item;
         }
-
-        _logger?.LogDebug("Query on collection {collection} returned {pages} pages with items {count} each.", CollectionName, page, batchSize);
     }
 
     public override IAsyncEnumerable<T> GetProjectionAsync<T>(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default)
@@ -303,44 +286,24 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 
         await EnsureAutoFetchSizeAsync();
 
-        var skip = options.Skip ?? 0;
-        var totalLimit = options.Limit;
-        var batchSize = totalLimit ?? FetchSize ?? 1000;
-        var remaining = totalLimit;
-
-        var page = 0;
-        while (true)
+        var effectiveFilter = filter ?? FilterDefinition<TEntity>.Empty;
+        var findOptions = new FindOptions<TEntity, T>
         {
-            var pageLimit = remaining.HasValue ? Math.Min(remaining.Value, batchSize) : batchSize;
-            var pageOptions = options with { Skip = skip, Limit = pageLimit };
-            var response = await GetManyProjectionAsync<T>(filter, pageOptions, cancellationToken);
+            Projection = options.Projection ?? BuildProjection<T>(),
+            Sort = options.Sort,
+            Limit = options.Limit,
+            Skip = options.Skip,
+            BatchSize = options.FetchSize ?? FetchSize
+        };
 
-            foreach (var item in response.Items)
-            {
-                yield return item;
-            }
-
-            skip += response.Items.Length;
-
-            if (remaining.HasValue)
-            {
-                remaining -= response.Items.Length;
-                if (remaining.Value <= 0 || response.Items.Length == 0)
-                {
-                    break;
-                }
-            }
-            else if (skip >= response.TotalCount || response.Items.Length == 0)
-            {
-                break;
-            }
-
-            page++;
-        }
-
-        if (page >= 5)
+        await foreach (var item in StreamCursorAsync<T>(
+            nameof(GetProjectionAsync),
+            (c, ct) => c.FindAsync(effectiveFilter, findOptions, ct),
+            null,
+            filter,
+            cancellationToken))
         {
-            _logger?.LogWarning($"Query on collection {{collection}} returned {{pages}} pages with items {{count}} each. Consired using {nameof(GetManyProjectionAsync)}, limit the total response or increase the count for each page.", CollectionName, page, batchSize);
+            yield return item;
         }
     }
 
@@ -914,6 +877,197 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         }, operation, CancellationToken.None);
 
         return response;
+    }
+
+    public override IAsyncEnumerable<T> ExecuteManyAsync<T>(Func<IMongoCollection<TEntity>, CancellationToken, Task<IAsyncCursor<T>>> queryFactory, CancellationToken cancellationToken = default)
+    {
+        return StreamCursorAsync<T>(nameof(ExecuteManyAsync), queryFactory, null, null, cancellationToken);
+    }
+
+    private async IAsyncEnumerable<T> StreamCursorAsync<T>(
+        string functionName,
+        Func<IMongoCollection<TEntity>, CancellationToken, Task<IAsyncCursor<T>>> queryFactory,
+        Func<IMongoCollection<TEntity>, T, Task<T>> itemTransform,
+        FilterDefinition<TEntity> filterForObservability,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        var callKey = Guid.NewGuid();
+        var startAt = Stopwatch.GetTimestamp();
+        var steps = new List<StepResponse>();
+        var count = 0;
+        Exception exception = null;
+        Func<string> filterJsonProvider = null;
+        Func<CancellationToken, Task<string>> explainProvider = null;
+
+        steps.Add(FireCallStartEvent(functionName, Operation.Read, callKey));
+
+        IAsyncCursor<T> cursor = null;
+        IMongoCollection<TEntity> collection = null;
+        try
+        {
+            try
+            {
+                var setup = await OpenCursorWithinLimiterAsync(queryFactory, filterForObservability, steps, cancellationToken);
+                cursor = setup.Cursor;
+                collection = setup.Collection;
+                filterJsonProvider = setup.FilterJsonProvider;
+                explainProvider = setup.ExplainProvider;
+            }
+            catch (Exception e)
+            {
+                exception = e;
+                HandleStreamCursorException(functionName, e);
+                throw;
+            }
+
+            while (true)
+            {
+                bool hasMore;
+                try
+                {
+                    hasMore = await MoveNextWithinLimiterAsync(cursor, cancellationToken);
+                }
+                catch (Exception e)
+                {
+                    exception = e;
+                    HandleStreamCursorException(functionName, e);
+                    throw;
+                }
+
+                if (!hasMore) break;
+
+                foreach (var item in cursor.Current)
+                {
+                    T toYield;
+                    try
+                    {
+                        toYield = itemTransform == null ? item : await itemTransform(collection, item);
+                    }
+                    catch (Exception e)
+                    {
+                        exception = e;
+                        HandleStreamCursorException(functionName, e);
+                        throw;
+                    }
+                    count++;
+                    yield return toYield;
+                }
+            }
+        }
+        finally
+        {
+            try { cursor?.Dispose(); }
+            catch (Exception disposeEx)
+            {
+                _logger?.LogWarning(disposeEx, "Failed to dispose cursor in {functionName}.", functionName);
+            }
+
+            var endTimestamp = Stopwatch.GetTimestamp();
+            var elapsed = GetElapsed(startAt, endTimestamp);
+            steps.Add(new StepResponse { Timestamp = endTimestamp, Step = "Finalize" });
+
+            var callSteps = steps.Select((x, index) =>
+            {
+                var from = index == 0 ? startAt : steps[index - 1].Timestamp;
+                var delta = GetElapsed(from, x.Timestamp);
+                return new CallStepInfo { Step = x.Step, Delta = delta, Message = x.Message };
+            }).ToList();
+
+            ((MongoDbServiceFactory)_mongoDbServiceFactory).OnCallEnd(this, new CallEndEventArgs(callKey, elapsed, exception, count, callSteps, filterJsonProvider, explainProvider));
+        }
+    }
+
+    private async Task<(IAsyncCursor<T> Cursor, IMongoCollection<TEntity> Collection, Func<string> FilterJsonProvider, Func<CancellationToken, Task<string>> ExplainProvider)> OpenCursorWithinLimiterAsync<T>(
+        Func<IMongoCollection<TEntity>, CancellationToken, Task<IAsyncCursor<T>>> queryFactory,
+        FilterDefinition<TEntity> filterForObservability,
+        List<StepResponse> steps,
+        CancellationToken cancellationToken)
+    {
+        Func<string> filterJsonProvider = null;
+        Func<CancellationToken, Task<string>> explainProvider = null;
+
+        var response = await _databaseExecutor.ExecuteAsync(async ct =>
+        {
+            steps.Add(new StepResponse { Timestamp = Stopwatch.GetTimestamp(), Step = "Queue" });
+
+            var commandMonitor = ((MongoDbServiceFactory)_mongoDbServiceFactory).CommandMonitor;
+
+            var fetchStartTimestamp = Stopwatch.GetTimestamp();
+            var fetchCollectionStep = await FetchCollectionAsync();
+            var fetchMessage = FormatDriverCommands(commandMonitor, fetchStartTimestamp, Stopwatch.GetTimestamp());
+            steps.Add(fetchMessage != null ? fetchCollectionStep with { Message = fetchMessage } : fetchCollectionStep);
+            var c = fetchCollectionStep.Value;
+
+            if (filterForObservability != null)
+            {
+                var serializer = c.DocumentSerializer;
+                var registry = c.Settings.SerializerRegistry;
+                filterJsonProvider = () =>
+                {
+                    try { return filterForObservability.Render(new RenderArgs<TEntity>(serializer, registry)).ToJson(); }
+                    catch { return null; }
+                };
+                explainProvider = async ect =>
+                {
+                    try
+                    {
+                        var command = new BsonDocument
+                        {
+                            { "explain", new BsonDocument
+                                {
+                                    { "find", c.CollectionNamespace.CollectionName },
+                                    { "filter", filterForObservability.Render(new RenderArgs<TEntity>(serializer, registry)) }
+                                }
+                            },
+                            { "verbosity", "executionStats" }
+                        };
+                        var explanation = await c.Database.RunCommandAsync<BsonDocument>(command, cancellationToken: ect);
+                        return explanation.ToJson(new JsonWriterSettings { Indent = true });
+                    }
+                    catch { return null; }
+                };
+            }
+
+            FlexibleGuidSerializer.CollectionContext = ProtectedCollectionName;
+
+            var openStartTimestamp = Stopwatch.GetTimestamp();
+            var cur = await queryFactory.Invoke(c, ct);
+            var openEndTimestamp = Stopwatch.GetTimestamp();
+            var openMessage = FormatDriverCommands(commandMonitor, openStartTimestamp, openEndTimestamp);
+
+            steps.Add(new StepResponse { Timestamp = openEndTimestamp, Step = "OpenCursor", Message = openMessage });
+
+            return (cur, c);
+        }, _mongoDbService.GetServerKey(), _mongoDbService.GetMaxConnectionPoolSize(), cancellationToken);
+
+        return (response.Result.cur, response.Result.c, filterJsonProvider, explainProvider);
+    }
+
+    private async Task<bool> MoveNextWithinLimiterAsync<T>(IAsyncCursor<T> cursor, CancellationToken cancellationToken)
+    {
+        var response = await _databaseExecutor.ExecuteAsync(ct => cursor.MoveNextAsync(ct), _mongoDbService.GetServerKey(), _mongoDbService.GetMaxConnectionPoolSize(), cancellationToken);
+        return response.Result;
+    }
+
+    private void HandleStreamCursorException(string functionName, Exception e)
+    {
+        if (e is MongoConnectionException || e is TimeoutException || e is MongoConnectionPoolPausedException)
+        {
+            _logger?.LogWarning(e, $"{e.GetType().Name} {{repositoryType}}. [action: Database, operation: {functionName}]", "DiskRepository");
+        }
+        else if (e is MongoWaitQueueFullException mwqe)
+        {
+            mwqe.Data["Configuration"] = ConfigurationName ?? Constants.DefaultConfigurationName;
+            mwqe.Data["Database"] = DatabaseName;
+            mwqe.Data["Collection"] = CollectionName;
+            _logger?.LogError(e, $"{e.GetType().Name} {{repositoryType}}. [action: Database, operation: {functionName}]", "DiskRepository");
+        }
+        else
+        {
+            _logger?.LogError(e, $"{e.GetType().Name} {{repositoryType}}. [action: Database, operation: {functionName}]", "DiskRepository");
+        }
+
+        InvokeAction(new ActionEventArgs.ActionData { Operation = functionName, Exception = e });
     }
 
     public override async Task DropCollectionAsync()
