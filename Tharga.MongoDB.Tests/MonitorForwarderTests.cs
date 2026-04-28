@@ -38,12 +38,12 @@ public class MonitorForwarderTests : IAsyncLifetime
         _sut = new MonitorForwarder(_factoryMock.Object, _monitorMock.Object, _queueMonitorMock.Object, _clientMock.Object);
     }
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         await _sut.StartAsync(CancellationToken.None);
     }
 
-    public async Task DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         await _sut.StopAsync(CancellationToken.None);
         _sut.Dispose();
