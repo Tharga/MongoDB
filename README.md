@@ -112,6 +112,41 @@ public static void AddMyFeature(this DatabaseOptions options)
 }
 ```
 
+#### Collections that take `DatabaseContext`
+Auto-registration treats `DatabaseContext` as a runtime parameter. The behavior depends on which constructors a collection exposes:
+
+| Constructor shape | Auto-registered in DI? | How to resolve |
+|---|---|---|
+| At least one constructor **without** `DatabaseContext` | ✅ Yes | Inject the interface directly, or resolve via `ICollectionProvider` |
+| **All** constructors require `DatabaseContext` | ❌ No (by design) | Resolve via `ICollectionProvider.GetCollection<T>(databaseContext)` |
+
+A collection that should support both patterns — direct injection (default context) and per-tenant resolution — must make the `DatabaseContext` parameter optional:
+```csharp
+public class WeatherRepositoryCollection : DiskRepositoryCollectionBase<WeatherEntity>, IWeatherRepositoryCollection
+{
+    public WeatherRepositoryCollection(IMongoDbServiceFactory factory, ILogger<WeatherRepositoryCollection> logger,
+        DatabaseContext databaseContext = null)        // <-- optional
+        : base(factory, logger, databaseContext)
+    {
+    }
+}
+```
+
+**Multi-tenant collections** that should always be resolved per-context (i.e. only have constructors that require `DatabaseContext`) are deliberately skipped during auto-registration. Use `ICollectionProvider`:
+```csharp
+public class WeatherService(ICollectionProvider provider)
+{
+    public async Task<int> CountAsync(string tenantId)
+    {
+        var collection = provider.GetCollection<IWeatherRepositoryCollection>(
+            new DatabaseContext { DatabasePart = tenantId });
+        return (int)await collection.CountAsync();
+    }
+}
+```
+
+**Do not register these collections manually with `AddTransient`** — `DatabaseContext` is not in DI, so resolution fails at startup.
+
 The pattern is built up like this.
 The *repository* holds the *collection* inside.
 The *repository* exposes the functions, that you create, protecting any operation to be used directly.
@@ -668,7 +703,57 @@ var max = await collection.MaxAsync<decimal>(x => x.Amount);
 
 All methods accept an optional `predicate` to filter documents before aggregation, and a `CancellationToken`.
 
-For arbitrary aggregation pipelines, use `ExecuteAsync` which gives direct access to `IMongoCollection<T>`.
+For arbitrary aggregation pipelines, use `ExecuteAsync` (materialising) or `ExecuteManyAsync` (streaming) which both give direct access to `IMongoCollection<T>`.
+
+---
+
+## Custom queries
+
+Two methods hand you the underlying `IMongoCollection<T>` so you can write queries the repository doesn't expose directly — projections, aggregation pipelines, etc. Both run through the library's index management, concurrency limiter, and admin-UI call tracking.
+
+### `ExecuteAsync` — materialised result
+Use when the result fits comfortably in memory.
+```csharp
+var names = await collection.ExecuteAsync(
+    c => c.Find(Builders<MyEntity>.Filter.Empty)
+          .Project(x => x.Name)
+          .ToListAsync(),
+    Operation.Read);
+```
+
+### `ExecuteManyAsync` — streaming cursor
+Use when the result may be large. Returns `IAsyncEnumerable<T>` so the caller iterates without materialising the whole set. The factory returns an `IAsyncCursor<T>`; the library takes a limiter slot around the initial open and around each `MoveNextAsync` (batch fetch) so the driver connection pool isn't oversubscribed by long-running streams. Batch size is controlled by the caller on the query itself (`BatchSize` in `FindOptions`/`AggregateOptions`). Always a read — no `Operation` parameter.
+
+Find with projection:
+```csharp
+await foreach (var name in collection.ExecuteManyAsync(
+    (c, ct) => c.FindAsync(
+        Builders<MyEntity>.Filter.Empty,
+        new FindOptions<MyEntity, string>
+        {
+            Projection = Builders<MyEntity>.Projection.Expression(x => x.Name),
+            BatchSize = 500
+        },
+        ct),
+    cancellationToken))
+{
+    Process(name);
+}
+```
+
+Aggregation pipeline:
+```csharp
+var pipeline = PipelineDefinition<MyEntity, BsonDocument>.Create(
+    "{ $match: { Active: true } }",
+    "{ $group: { _id: '$Category', count: { $sum: 1 } } }");
+
+await foreach (var doc in collection.ExecuteManyAsync(
+    (c, ct) => c.AggregateAsync(pipeline, new AggregateOptions { BatchSize = 500 }, ct),
+    cancellationToken))
+{
+    Process(doc);
+}
+```
 
 ---
 
@@ -709,7 +794,7 @@ builder.AddMongoDB(o =>
 
 ## MongoDB Result Limit
 It is possible to se t a hard limit for the number of documents returned. If the limit is reached `ResultLimitException` is thrown.
-For large result-sets, use the method `GetPageAsync` to get the `ResultLimit` on each page of the result.
+For large result-sets, use `GetManyAsync` with an explicit `Limit` to fetch a bounded page, or stream through `GetAsync` / `GetProjectionAsync` / `ExecuteManyAsync` — all three use a driver cursor under the hood and stream batches without paying a skip penalty.
 
 ```
 {
