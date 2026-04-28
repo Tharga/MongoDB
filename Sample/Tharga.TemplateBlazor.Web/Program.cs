@@ -81,7 +81,7 @@ app.MapRazorComponents<App>()
 app.UseMongoDB();
 app.UseMongoDbMonitorServer();
 
-app.MapMcp();
+app.UseThargaMcp();
 
 app.MapGet("/api/monitor/clients", async (MonitorClientStateService svc) =>
 {
