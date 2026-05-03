@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using MongoDB.Bson;
 using MongoDB.Driver;
 using System.Collections.Generic;
 using System.Threading.Tasks;
@@ -9,6 +10,14 @@ namespace Tharga.MongoDB;
 public interface IMongoDbService
 {
     Task<IMongoCollection<T>> GetCollectionAsync<T>(string name);
+
+    /// <summary>
+    /// Returns the raw <see cref="IMongoCollection{BsonDocument}"/> for an arbitrary database name.
+    /// Used by document-inspection paths that operate on per-tenant databases (DatabasePart) without
+    /// rebuilding the whole <see cref="IMongoDbService"/> instance per database.
+    /// </summary>
+    Task<IMongoCollection<BsonDocument>> GetCollectionAsync(string databaseName, string collectionName);
+
     Task<IMongoCollection<T>> CreateCollectionAsync<T>(string name);
     string GetConfigurationName();
     string GetDatabaseName();

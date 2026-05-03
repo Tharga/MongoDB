@@ -65,6 +65,32 @@ internal class DatabaseNullMonitor : IDatabaseMonitor
         return Task.FromResult<CleanInfo>(null);
     }
 
+    public Task<DocumentDto> GetDocumentAsync(CollectionInfo collectionInfo, string idRaw, CancellationToken cancellationToken = default)
+    {
+        return Task.FromResult<DocumentDto>(null);
+    }
+
+    public Task<DocumentListDto> ListDocumentsAsync(CollectionInfo collectionInfo, DocumentListQuery query, CancellationToken cancellationToken = default)
+    {
+        return Task.FromResult(new DocumentListDto
+        {
+            Documents = Array.Empty<DocumentDto>(),
+            TotalReturned = 0,
+            Truncated = false,
+        });
+    }
+
+    public Task<SchemaComparisonDto> CompareSchemaAsync(CollectionInfo collectionInfo, int sampleSize, CancellationToken cancellationToken = default)
+    {
+        return Task.FromResult(new SchemaComparisonDto
+        {
+            SampleSize = sampleSize,
+            SampledCount = 0,
+            EntityTypes = Array.Empty<string>(),
+            Fields = Array.Empty<SchemaComparisonField>(),
+        });
+    }
+
     public IEnumerable<CallInfo> GetCalls(CallType callType)
     {
         yield break;

@@ -34,6 +34,27 @@ public interface IDatabaseMonitor
 
     Task<IEnumerable<string[]>> GetIndexBlockersAsync(CollectionInfo collectionInfo, string indexName);
     Task<CleanInfo> CleanAsync(CollectionInfo collectionInfo, bool cleanGuids);
+
+    /// <summary>
+    /// Fetch a single raw document by id. <paramref name="idRaw"/> is auto-detected as Guid → ObjectId → string.
+    /// Returns <c>null</c> when no document matches. Returned <see cref="DocumentDto.Json"/> is MongoDB Extended JSON.
+    /// </summary>
+    Task<DocumentDto> GetDocumentAsync(CollectionInfo collectionInfo, string idRaw, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// List up to <see cref="DocumentListQuery.Limit"/> raw documents from the collection.
+    /// <see cref="DocumentListQuery.FilterJson"/> and <see cref="DocumentListQuery.SortJson"/> are parsed via
+    /// <c>BsonDocument.Parse</c>; invalid JSON throws <see cref="System.FormatException"/>.
+    /// </summary>
+    Task<DocumentListDto> ListDocumentsAsync(CollectionInfo collectionInfo, DocumentListQuery query, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Sample up to <paramref name="sampleSize"/> documents and return a three-way diff between the C# entity type's
+    /// public properties, the registered entity-type names, and the field set observed in the sample.
+    /// Top-level fields only.
+    /// </summary>
+    Task<SchemaComparisonDto> CompareSchemaAsync(CollectionInfo collectionInfo, int sampleSize, CancellationToken cancellationToken = default);
+
     IEnumerable<CallInfo> GetCalls(CallType callType);
 
     /// <summary>

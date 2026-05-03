@@ -1,5 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using MongoDB.Bson;
+using MongoDB.Driver;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -634,6 +636,163 @@ internal class DatabaseMonitor : IDatabaseMonitor
         CollectionInfoChangedEvent?.Invoke(this, new CollectionInfoChangedEventArgs(updated));
 
         return result;
+    }
+
+    private const int DocumentListLimitCap = 200;
+    private const int DocumentListDefaultLimit = 20;
+    private const int CompareSchemaSampleCap = 500;
+    private const int CompareSchemaDefaultSample = 50;
+
+    public async Task<DocumentDto> GetDocumentAsync(CollectionInfo collectionInfo, string idRaw, CancellationToken cancellationToken = default)
+    {
+        if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
+        if (collectionInfo == null) throw new ArgumentNullException(nameof(collectionInfo));
+        if (string.IsNullOrEmpty(idRaw)) throw new ArgumentException("id is required.", nameof(idRaw));
+        if (collectionInfo.Registration == Registration.NotInCode)
+            throw new InvalidOperationException("Document inspection is not supported for remote-only / NotInCode collections in this release.");
+
+        var collection = await GetRawCollectionAsync(collectionInfo);
+
+        var idValue = ParseId(idRaw);
+        var filter = Builders<BsonDocument>.Filter.Eq("_id", idValue);
+        var doc = await collection.Find(filter).FirstOrDefaultAsync(cancellationToken);
+        if (doc == null) return null;
+
+        return new DocumentDto
+        {
+            Id = doc.TryGetValue("_id", out var idField) ? idField.ToString() : idRaw,
+            Json = doc.ToJson(),
+        };
+    }
+
+    public async Task<DocumentListDto> ListDocumentsAsync(CollectionInfo collectionInfo, DocumentListQuery query, CancellationToken cancellationToken = default)
+    {
+        if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
+        if (collectionInfo == null) throw new ArgumentNullException(nameof(collectionInfo));
+        if (query == null) query = new DocumentListQuery();
+        if (collectionInfo.Registration == Registration.NotInCode)
+            throw new InvalidOperationException("Document inspection is not supported for remote-only / NotInCode collections in this release.");
+
+        var collection = await GetRawCollectionAsync(collectionInfo);
+
+        var requested = query.Limit <= 0 ? DocumentListDefaultLimit : query.Limit;
+        var limit = Math.Min(requested, DocumentListLimitCap);
+        var skip = Math.Max(0, query.Skip);
+
+        FilterDefinition<BsonDocument> filter;
+        try
+        {
+            filter = string.IsNullOrWhiteSpace(query.FilterJson)
+                ? FilterDefinition<BsonDocument>.Empty
+                : new BsonDocumentFilterDefinition<BsonDocument>(BsonDocument.Parse(query.FilterJson));
+        }
+        catch (Exception e) when (e is FormatException || e is System.IO.IOException)
+        {
+            throw new FormatException($"Invalid filter JSON: {e.Message}", e);
+        }
+
+        SortDefinition<BsonDocument> sort = null;
+        if (!string.IsNullOrWhiteSpace(query.SortJson))
+        {
+            try
+            {
+                sort = new BsonDocumentSortDefinition<BsonDocument>(BsonDocument.Parse(query.SortJson));
+            }
+            catch (Exception e) when (e is FormatException || e is System.IO.IOException)
+            {
+                throw new FormatException($"Invalid sort JSON: {e.Message}", e);
+            }
+        }
+
+        var find = collection.Find(filter);
+        if (sort != null) find = find.Sort(sort);
+        var docs = await find.Skip(skip).Limit(limit).ToListAsync(cancellationToken);
+
+        return new DocumentListDto
+        {
+            Documents = docs.Select(d => new DocumentDto
+            {
+                Id = d.TryGetValue("_id", out var idField) ? idField.ToString() : null,
+                Json = d.ToJson(),
+            }).ToArray(),
+            TotalReturned = docs.Count,
+            Truncated = docs.Count == limit,
+        };
+    }
+
+    public async Task<SchemaComparisonDto> CompareSchemaAsync(CollectionInfo collectionInfo, int sampleSize, CancellationToken cancellationToken = default)
+    {
+        if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
+        if (collectionInfo == null) throw new ArgumentNullException(nameof(collectionInfo));
+        if (collectionInfo.Registration == Registration.NotInCode)
+            throw new InvalidOperationException("Document inspection is not supported for remote-only / NotInCode collections in this release.");
+
+        var requested = sampleSize <= 0 ? CompareSchemaDefaultSample : sampleSize;
+        var cap = Math.Min(requested, CompareSchemaSampleCap);
+
+        var collection = await GetRawCollectionAsync(collectionInfo);
+
+        var docs = await collection.Find(FilterDefinition<BsonDocument>.Empty).Limit(cap).ToListAsync(cancellationToken);
+
+        var coverage = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var doc in docs)
+        {
+            foreach (var name in doc.Names)
+            {
+                coverage.TryGetValue(name, out var c);
+                coverage[name] = c + 1;
+            }
+        }
+
+        var entityType = collectionInfo.CollectionType != null ? ResolveEntityType(collectionInfo.CollectionType) : null;
+        var entityProperties = entityType != null
+            ? entityType.GetProperties(BindingFlags.Public | BindingFlags.Instance).Select(p => p.Name).ToHashSet(StringComparer.Ordinal)
+            : new HashSet<string>(StringComparer.Ordinal);
+
+        var fieldNames = new HashSet<string>(coverage.Keys, StringComparer.Ordinal);
+        fieldNames.UnionWith(entityProperties);
+
+        var fields = fieldNames
+            .Select(name =>
+            {
+                coverage.TryGetValue(name, out var count);
+                var declared = entityProperties.Contains(name);
+                SchemaFieldClassification classification;
+                if (declared && count == docs.Count && docs.Count > 0) classification = SchemaFieldClassification.Full;
+                else if (declared && count == 0) classification = SchemaFieldClassification.EntityOnly;
+                else if (!declared && count > 0) classification = SchemaFieldClassification.DocumentOnly;
+                else classification = SchemaFieldClassification.Partial;
+                return new SchemaComparisonField
+                {
+                    Name = name,
+                    Classification = classification,
+                    CoverageCount = count,
+                    DeclaredOnEntity = declared,
+                };
+            })
+            .OrderBy(f => f.Name, StringComparer.Ordinal)
+            .ToArray();
+
+        return new SchemaComparisonDto
+        {
+            SampleSize = cap,
+            SampledCount = docs.Count,
+            EntityTypes = collectionInfo.EntityTypes ?? Array.Empty<string>(),
+            Fields = fields,
+        };
+    }
+
+    private async Task<IMongoCollection<BsonDocument>> GetRawCollectionAsync(CollectionInfo collectionInfo)
+    {
+        var mongoDbService = GetMongoDbService(collectionInfo);
+        return await mongoDbService.GetCollectionAsync(collectionInfo.DatabaseName, collectionInfo.CollectionName);
+    }
+
+    private static BsonValue ParseId(string idRaw)
+    {
+        if (Guid.TryParse(idRaw, out var g)) return new BsonBinaryData(g, GuidRepresentation.Standard);
+        if (ObjectId.TryParse(idRaw, out var o)) return o;
+        return new BsonString(idRaw);
     }
 
     public IEnumerable<CallInfo> GetCalls(CallType callType)
