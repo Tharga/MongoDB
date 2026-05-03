@@ -196,6 +196,9 @@ public class MonitorServerPipelineTests
         public Task<IndexAssureSummary> RestoreAllIndicesAsync(Func<CollectionInfo, bool> filter = null, IProgress<IndexAssureProgress> progress = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<System.Collections.Generic.IEnumerable<string[]>> GetIndexBlockersAsync(CollectionInfo collectionInfo, string indexName) => throw new NotImplementedException();
         public Task<CleanInfo> CleanAsync(CollectionInfo collectionInfo, bool cleanGuids) => throw new NotImplementedException();
+        public Task<DocumentDto> GetDocumentAsync(CollectionInfo collectionInfo, string idRaw, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<DocumentListDto> ListDocumentsAsync(CollectionInfo collectionInfo, DocumentListQuery query, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<SchemaComparisonDto> CompareSchemaAsync(CollectionInfo collectionInfo, int sampleSize, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public System.Collections.Generic.IEnumerable<CallInfo> GetCalls(CallType callType) => throw new NotImplementedException();
         public void ResetCalls() => throw new NotImplementedException();
         public Task ResetAsync() => throw new NotImplementedException();

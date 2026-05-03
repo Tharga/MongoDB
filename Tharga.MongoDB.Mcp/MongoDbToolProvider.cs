@@ -22,6 +22,9 @@ public sealed class MongoDbToolProvider : IMcpToolProvider
     private const string FindDuplicatesToolName = "mongodb.find_duplicates";
     private const string ExplainToolName = "mongodb.explain";
     private const string CleanToolName = "mongodb.clean";
+    private const string GetDocumentToolName = "mongodb.get_document";
+    private const string ListDocumentsToolName = "mongodb.list_documents";
+    private const string CompareSchemaToolName = "mongodb.compare_schema";
 
     private static readonly JsonElement CollectionArgSchema = JsonSerializer.Deserialize<JsonElement>("""
         {
@@ -101,6 +104,48 @@ public sealed class MongoDbToolProvider : IMcpToolProvider
         }
         """);
 
+    private static readonly JsonElement GetDocumentArgSchema = JsonSerializer.Deserialize<JsonElement>("""
+        {
+          "type": "object",
+          "properties": {
+            "configurationName": { "type": "string" },
+            "databaseName": { "type": "string" },
+            "collectionName": { "type": "string" },
+            "id": { "type": "string", "description": "Document _id. Auto-detected as Guid -> ObjectId -> string." }
+          },
+          "required": ["databaseName", "collectionName", "id"]
+        }
+        """);
+
+    private static readonly JsonElement ListDocumentsArgSchema = JsonSerializer.Deserialize<JsonElement>("""
+        {
+          "type": "object",
+          "properties": {
+            "configurationName": { "type": "string" },
+            "databaseName": { "type": "string" },
+            "collectionName": { "type": "string" },
+            "limit": { "type": "integer", "description": "Max docs to return (default 20, capped at 200)." },
+            "skip": { "type": "integer" },
+            "filter": { "type": "string", "description": "Mongo filter as JSON (e.g. {\"Status\":\"Active\"})." },
+            "sort": { "type": "string", "description": "Sort spec as JSON (e.g. {\"CreatedAt\":-1})." }
+          },
+          "required": ["databaseName", "collectionName"]
+        }
+        """);
+
+    private static readonly JsonElement CompareSchemaArgSchema = JsonSerializer.Deserialize<JsonElement>("""
+        {
+          "type": "object",
+          "properties": {
+            "configurationName": { "type": "string" },
+            "databaseName": { "type": "string" },
+            "collectionName": { "type": "string" },
+            "sampleSize": { "type": "integer", "description": "Documents to sample (default 50, capped at 500)." }
+          },
+          "required": ["databaseName", "collectionName"]
+        }
+        """);
+
     private static readonly McpToolDescriptor[] AllTools =
     [
         new McpToolDescriptor
@@ -157,6 +202,24 @@ public sealed class MongoDbToolProvider : IMcpToolProvider
             Description = "Remove orphaned/invalid documents from a collection (DataReadWrite — deletes data).",
             InputSchema = CleanArgSchema,
         },
+        new McpToolDescriptor
+        {
+            Name = GetDocumentToolName,
+            Description = "Fetch a single raw document by id, returned as MongoDB Extended JSON (DataRead). id is auto-detected as Guid -> ObjectId -> string.",
+            InputSchema = GetDocumentArgSchema,
+        },
+        new McpToolDescriptor
+        {
+            Name = ListDocumentsToolName,
+            Description = "List up to 'limit' raw documents (default 20, max 200). Optional filter/sort accept Mongo JSON. Returned docs are MongoDB Extended JSON (DataRead).",
+            InputSchema = ListDocumentsArgSchema,
+        },
+        new McpToolDescriptor
+        {
+            Name = CompareSchemaToolName,
+            Description = "Three-way diff between the C# entity properties, registered entity-type names, and the field set observed in sampled documents. Useful for schema-drift diagnosis (DataRead — samples real docs).",
+            InputSchema = CompareSchemaArgSchema,
+        },
     ];
 
     private static readonly IReadOnlyDictionary<string, DataAccessLevel> ToolLevels =
@@ -171,6 +234,9 @@ public sealed class MongoDbToolProvider : IMcpToolProvider
             [FindDuplicatesToolName] = DataAccessLevel.DataRead,
             [ExplainToolName] = DataAccessLevel.DataRead,
             [CleanToolName] = DataAccessLevel.DataReadWrite,
+            [GetDocumentToolName] = DataAccessLevel.DataRead,
+            [ListDocumentsToolName] = DataAccessLevel.DataRead,
+            [CompareSchemaToolName] = DataAccessLevel.DataRead,
         };
 
     private readonly IDatabaseMonitor _monitor;
@@ -216,6 +282,9 @@ public sealed class MongoDbToolProvider : IMcpToolProvider
                 FindDuplicatesToolName => await FindDuplicatesAsync(arguments, cancellationToken),
                 ExplainToolName => await ExplainAsync(arguments, cancellationToken),
                 CleanToolName => await CleanAsync(arguments, cancellationToken),
+                GetDocumentToolName => await GetDocumentAsync(arguments, cancellationToken),
+                ListDocumentsToolName => await ListDocumentsAsync(arguments, cancellationToken),
+                CompareSchemaToolName => await CompareSchemaAsync(arguments, cancellationToken),
                 _ => Error($"Unknown tool: {toolName}"),
             };
         }
@@ -345,6 +414,64 @@ public sealed class MongoDbToolProvider : IMcpToolProvider
             collection = collection.CollectionName,
             cleanGuids,
             cleaned = info,
+        });
+    }
+
+    private async Task<McpToolResult> GetDocumentAsync(JsonElement arguments, CancellationToken cancellationToken)
+    {
+        var collection = await FindCollectionAsync(arguments, cancellationToken);
+        if (collection == null) return Error("Collection not found.");
+
+        var id = arguments.GetProperty("id").GetString();
+        var doc = await _monitor.GetDocumentAsync(collection, id, cancellationToken);
+        if (doc == null) return Error($"No document found with id '{id}' in {collection.DatabaseName}.{collection.CollectionName}.");
+
+        return Ok(new
+        {
+            collection = collection.CollectionName,
+            id = doc.Id,
+            json = doc.Json,
+        });
+    }
+
+    private async Task<McpToolResult> ListDocumentsAsync(JsonElement arguments, CancellationToken cancellationToken)
+    {
+        var collection = await FindCollectionAsync(arguments, cancellationToken);
+        if (collection == null) return Error("Collection not found.");
+
+        var query = new DocumentListQuery
+        {
+            Limit = arguments.TryGetProperty("limit", out var l) && l.ValueKind == JsonValueKind.Number ? l.GetInt32() : 20,
+            Skip = arguments.TryGetProperty("skip", out var s) && s.ValueKind == JsonValueKind.Number ? s.GetInt32() : 0,
+            FilterJson = arguments.TryGetProperty("filter", out var f) ? f.GetString() : null,
+            SortJson = arguments.TryGetProperty("sort", out var so) ? so.GetString() : null,
+        };
+
+        var result = await _monitor.ListDocumentsAsync(collection, query, cancellationToken);
+        return Ok(new
+        {
+            collection = collection.CollectionName,
+            totalReturned = result.TotalReturned,
+            truncated = result.Truncated,
+            documents = result.Documents,
+        });
+    }
+
+    private async Task<McpToolResult> CompareSchemaAsync(JsonElement arguments, CancellationToken cancellationToken)
+    {
+        var collection = await FindCollectionAsync(arguments, cancellationToken);
+        if (collection == null) return Error("Collection not found.");
+
+        var sampleSize = arguments.TryGetProperty("sampleSize", out var ss) && ss.ValueKind == JsonValueKind.Number ? ss.GetInt32() : 50;
+        var result = await _monitor.CompareSchemaAsync(collection, sampleSize, cancellationToken);
+
+        return Ok(new
+        {
+            collection = collection.CollectionName,
+            sampleSize = result.SampleSize,
+            sampledCount = result.SampledCount,
+            entityTypes = result.EntityTypes,
+            fields = result.Fields,
         });
     }
 

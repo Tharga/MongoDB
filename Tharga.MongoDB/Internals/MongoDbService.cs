@@ -58,6 +58,24 @@ internal class MongoDbService : IMongoDbServiceInternal
         return collection;
     }
 
+    public async Task<IMongoCollection<BsonDocument>> GetCollectionAsync(string databaseName, string collectionName)
+    {
+        await AssureFirewallAccessAsync();
+
+        var mongoDatabase = string.IsNullOrEmpty(databaseName) ? _mongoDatabase : _mongoClient.GetDatabase(databaseName);
+        var collection = mongoDatabase.GetCollection<BsonDocument>(collectionName);
+        var databaseContext = _configuration.GetDatabaseContext();
+        var fingerprint = new CollectionFingerprint
+        {
+            ConfigurationName = databaseContext.ConfigurationName?.Value ?? _configuration.GetConfigurationName(),
+            DatabaseName = mongoDatabase.DatabaseNamespace.DatabaseName,
+            CollectionName = collectionName
+        };
+        CollectionAccessEvent?.Invoke(this, new CollectionAccessEventArgs(fingerprint, _mongoUrl.Url, typeof(BsonDocument), databaseContext.DatabasePart));
+
+        return collection;
+    }
+
     public async Task<IMongoCollection<T>> CreateCollectionAsync<T>(string name)
     {
         await _mongoDatabase.CreateCollectionAsync(name);

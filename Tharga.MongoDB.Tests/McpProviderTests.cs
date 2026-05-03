@@ -136,8 +136,8 @@ public class McpProviderTests
 
     [Theory]
     [InlineData(DataAccessLevel.Metadata, 6)]
-    [InlineData(DataAccessLevel.DataRead, 8)]
-    [InlineData(DataAccessLevel.DataReadWrite, 9)]
+    [InlineData(DataAccessLevel.DataRead, 11)]
+    [InlineData(DataAccessLevel.DataReadWrite, 12)]
     public async Task ToolProvider_ListTools_FiltersByAccessLevel(DataAccessLevel level, int expectedCount)
     {
         var provider = CreateToolProvider(level);
@@ -157,6 +157,9 @@ public class McpProviderTests
             "mongodb.find_duplicates",
             "mongodb.explain",
             "mongodb.clean",
+            "mongodb.get_document",
+            "mongodb.list_documents",
+            "mongodb.compare_schema",
         ]);
     }
 
@@ -406,6 +409,191 @@ public class McpProviderTests
         await provider.CallToolAsync("mongodb.clean", args, _contextMock.Object, CancellationToken.None);
 
         _monitorMock.Verify(m => m.CleanAsync(It.IsAny<CollectionInfo>(), true), Times.Once);
+    }
+
+    // ---------- Document inspection (new in this feature) ----------
+
+    [Fact]
+    public async Task ToolProvider_GetDocument_AtMetadata_ReturnsLevelError()
+    {
+        var provider = CreateToolProvider(DataAccessLevel.Metadata);
+        var args = JsonDocument.Parse("""{"databaseName":"test","collectionName":"users","id":"x"}""").RootElement;
+
+        var result = await provider.CallToolAsync("mongodb.get_document", args, _contextMock.Object, CancellationToken.None);
+
+        result.IsError.Should().BeTrue();
+        result.Content[0].Text.Should().Contain("DataAccessLevel.DataRead");
+    }
+
+    [Theory]
+    [InlineData("11111111-2222-3333-4444-555555555555")] // Guid
+    [InlineData("507f1f77bcf86cd799439011")]             // ObjectId
+    [InlineData("user-key-123")]                         // string
+    public async Task ToolProvider_GetDocument_HappyPath_DispatchesToMonitor(string idRaw)
+    {
+        var collection = CreateCollectionInfo("test", "users");
+        _monitorMock.Setup(m => m.GetInstancesAsync(false, null))
+            .Returns(AsyncEnumerable(collection));
+        _monitorMock.Setup(m => m.GetDocumentAsync(It.IsAny<CollectionInfo>(), idRaw, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new DocumentDto { Id = idRaw, Json = "{\"_id\":\"" + idRaw + "\"}" });
+
+        var provider = CreateToolProvider();
+        var args = JsonDocument.Parse($$$"""{"databaseName":"test","collectionName":"users","id":"{{{idRaw}}}"}""").RootElement;
+
+        var result = await provider.CallToolAsync("mongodb.get_document", args, _contextMock.Object, CancellationToken.None);
+
+        result.IsError.Should().BeFalse();
+        _monitorMock.Verify(m => m.GetDocumentAsync(It.IsAny<CollectionInfo>(), idRaw, It.IsAny<CancellationToken>()), Times.Once);
+        var doc = JsonDocument.Parse(result.Content[0].Text);
+        doc.RootElement.GetProperty("id").GetString().Should().Be(idRaw);
+    }
+
+    [Fact]
+    public async Task ToolProvider_GetDocument_Missing_ReturnsError()
+    {
+        var collection = CreateCollectionInfo("test", "users");
+        _monitorMock.Setup(m => m.GetInstancesAsync(false, null))
+            .Returns(AsyncEnumerable(collection));
+        _monitorMock.Setup(m => m.GetDocumentAsync(It.IsAny<CollectionInfo>(), "missing-id", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((DocumentDto)null);
+
+        var provider = CreateToolProvider();
+        var args = JsonDocument.Parse("""{"databaseName":"test","collectionName":"users","id":"missing-id"}""").RootElement;
+
+        var result = await provider.CallToolAsync("mongodb.get_document", args, _contextMock.Object, CancellationToken.None);
+
+        result.IsError.Should().BeTrue();
+        result.Content[0].Text.Should().Contain("No document found");
+    }
+
+    [Fact]
+    public async Task ToolProvider_ListDocuments_DefaultLimit_DispatchesToMonitor()
+    {
+        var collection = CreateCollectionInfo("test", "users");
+        _monitorMock.Setup(m => m.GetInstancesAsync(false, null))
+            .Returns(AsyncEnumerable(collection));
+        _monitorMock.Setup(m => m.ListDocumentsAsync(
+                It.IsAny<CollectionInfo>(),
+                It.Is<DocumentListQuery>(q => q.Limit == 20 && q.Skip == 0 && q.FilterJson == null && q.SortJson == null),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new DocumentListDto
+            {
+                Documents = [new DocumentDto { Id = "1", Json = "{}" }],
+                TotalReturned = 1,
+                Truncated = false,
+            });
+
+        var provider = CreateToolProvider();
+        var args = JsonDocument.Parse("""{"databaseName":"test","collectionName":"users"}""").RootElement;
+
+        var result = await provider.CallToolAsync("mongodb.list_documents", args, _contextMock.Object, CancellationToken.None);
+
+        result.IsError.Should().BeFalse();
+        var doc = JsonDocument.Parse(result.Content[0].Text);
+        doc.RootElement.GetProperty("totalReturned").GetInt32().Should().Be(1);
+        doc.RootElement.GetProperty("truncated").GetBoolean().Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task ToolProvider_ListDocuments_WithFilterAndSort_ForwardsArgs()
+    {
+        var collection = CreateCollectionInfo("test", "users");
+        _monitorMock.Setup(m => m.GetInstancesAsync(false, null))
+            .Returns(AsyncEnumerable(collection));
+        _monitorMock.Setup(m => m.ListDocumentsAsync(It.IsAny<CollectionInfo>(), It.IsAny<DocumentListQuery>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new DocumentListDto
+            {
+                Documents = Array.Empty<DocumentDto>(),
+                TotalReturned = 0,
+                Truncated = false,
+            });
+
+        var provider = CreateToolProvider();
+        var args = JsonDocument.Parse("""{"databaseName":"test","collectionName":"users","limit":50,"skip":10,"filter":"{\"Status\":\"Active\"}","sort":"{\"CreatedAt\":-1}"}""").RootElement;
+
+        await provider.CallToolAsync("mongodb.list_documents", args, _contextMock.Object, CancellationToken.None);
+
+        _monitorMock.Verify(m => m.ListDocumentsAsync(
+            It.IsAny<CollectionInfo>(),
+            It.Is<DocumentListQuery>(q =>
+                q.Limit == 50 && q.Skip == 10 &&
+                q.FilterJson == "{\"Status\":\"Active\"}" &&
+                q.SortJson == "{\"CreatedAt\":-1}"),
+            It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task ToolProvider_ListDocuments_InvalidFilter_PropagatesAsError()
+    {
+        var collection = CreateCollectionInfo("test", "users");
+        _monitorMock.Setup(m => m.GetInstancesAsync(false, null))
+            .Returns(AsyncEnumerable(collection));
+        _monitorMock.Setup(m => m.ListDocumentsAsync(It.IsAny<CollectionInfo>(), It.IsAny<DocumentListQuery>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new FormatException("Invalid filter JSON: nope"));
+
+        var provider = CreateToolProvider();
+        var args = JsonDocument.Parse("""{"databaseName":"test","collectionName":"users","filter":"not-json"}""").RootElement;
+
+        var result = await provider.CallToolAsync("mongodb.list_documents", args, _contextMock.Object, CancellationToken.None);
+
+        result.IsError.Should().BeTrue();
+        result.Content[0].Text.Should().Contain("Invalid filter JSON");
+    }
+
+    [Fact]
+    public async Task ToolProvider_CompareSchema_DispatchesToMonitor_AndReturnsFields()
+    {
+        var collection = CreateCollectionInfo("test", "users");
+        _monitorMock.Setup(m => m.GetInstancesAsync(false, null))
+            .Returns(AsyncEnumerable(collection));
+        _monitorMock.Setup(m => m.CompareSchemaAsync(It.IsAny<CollectionInfo>(), 50, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SchemaComparisonDto
+            {
+                SampleSize = 50,
+                SampledCount = 25,
+                EntityTypes = ["UserEntity"],
+                Fields =
+                [
+                    new SchemaComparisonField { Name = "Id", Classification = SchemaFieldClassification.Full, CoverageCount = 25, DeclaredOnEntity = true },
+                    new SchemaComparisonField { Name = "EMail", Classification = SchemaFieldClassification.Partial, CoverageCount = 12, DeclaredOnEntity = true },
+                    new SchemaComparisonField { Name = "MissingFromAll", Classification = SchemaFieldClassification.EntityOnly, CoverageCount = 0, DeclaredOnEntity = true },
+                    new SchemaComparisonField { Name = "ExtraField", Classification = SchemaFieldClassification.DocumentOnly, CoverageCount = 5, DeclaredOnEntity = false },
+                ],
+            });
+
+        var provider = CreateToolProvider();
+        var args = JsonDocument.Parse("""{"databaseName":"test","collectionName":"users"}""").RootElement;
+
+        var result = await provider.CallToolAsync("mongodb.compare_schema", args, _contextMock.Object, CancellationToken.None);
+
+        result.IsError.Should().BeFalse();
+        var doc = JsonDocument.Parse(result.Content[0].Text);
+        doc.RootElement.GetProperty("sampledCount").GetInt32().Should().Be(25);
+        doc.RootElement.GetProperty("fields").GetArrayLength().Should().Be(4);
+    }
+
+    [Fact]
+    public async Task ToolProvider_CompareSchema_DefaultsSampleSizeTo50()
+    {
+        var collection = CreateCollectionInfo("test", "users");
+        _monitorMock.Setup(m => m.GetInstancesAsync(false, null))
+            .Returns(AsyncEnumerable(collection));
+        _monitorMock.Setup(m => m.CompareSchemaAsync(It.IsAny<CollectionInfo>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SchemaComparisonDto
+            {
+                SampleSize = 50,
+                SampledCount = 0,
+                EntityTypes = [],
+                Fields = [],
+            });
+
+        var provider = CreateToolProvider();
+        var args = JsonDocument.Parse("""{"databaseName":"test","collectionName":"users"}""").RootElement;
+
+        await provider.CallToolAsync("mongodb.compare_schema", args, _contextMock.Object, CancellationToken.None);
+
+        _monitorMock.Verify(m => m.CompareSchemaAsync(It.IsAny<CollectionInfo>(), 50, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     // ---------- Helpers ----------
