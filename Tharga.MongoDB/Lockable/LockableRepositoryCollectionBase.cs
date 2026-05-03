@@ -429,19 +429,89 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
         return BuildLockScope(result.Entity, result.EntityLock, completeAction);
     }
 
-    public Task<DocumentLease<TEntity, TKey>> LockManyAsync(IEnumerable<TKey> ids, TimeSpan? timeout = null, string actor = null, CancellationToken cancellationToken = default)
+    public async Task<DocumentLease<TEntity, TKey>> LockManyAsync(IEnumerable<TKey> ids, TimeSpan? timeout = null, string actor = null, CancellationToken cancellationToken = default)
     {
-        throw new NotImplementedException();
+        if (ids == null) throw new ArgumentNullException(nameof(ids));
+
+        var sortedIds = ids.Distinct().OrderBy(id => id, Comparer<TKey>.Default).ToList();
+
+        if (sortedIds.Count == 0)
+        {
+            return new DocumentLease<TEntity, TKey>(Array.Empty<DocumentLeaseEntry<TEntity, TKey>>());
+        }
+
+        var entries = new List<DocumentLeaseEntry<TEntity, TKey>>();
+        try
+        {
+            foreach (var id in sortedIds)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                var result = await AcquireLockAsync(Builders<TEntity>.Filter.Eq(x => x.Id, id), timeout, actor, failIfLocked: true);
+                ThrowException(result.ErrorInfo);
+
+                if (result.Entity == null)
+                {
+                    throw new InvalidOperationException($"No document with id '{id}' was found.");
+                }
+
+                var entityLock = result.EntityLock;
+                Func<TEntity, CommitMode?, Exception, Task> releaseAction = (e, mode, exception) =>
+                {
+                    switch (mode)
+                    {
+                        case CommitMode.Update:
+                            return ReleaseAsync(e, entityLock, commit: true, exception, completeAction: null, PrepareCommitForUpdateAsync);
+                        case CommitMode.Delete:
+                            return ReleaseAsync(e, entityLock, commit: true, exception, completeAction: null, PerformCommitForDeleteAsync);
+                        case null:
+                            return ReleaseAsync(e, entityLock, commit: false, exception, completeAction: null, null);
+                        default:
+                            throw new ArgumentOutOfRangeException(nameof(mode), mode, null);
+                    }
+                };
+
+                entries.Add(new DocumentLeaseEntry<TEntity, TKey>(result.Entity, releaseAction));
+                _releaseEvent.Set();
+            }
+
+            return new DocumentLease<TEntity, TKey>(entries);
+        }
+        catch
+        {
+            await ReleaseAcquiredAsync(entries);
+            throw;
+        }
     }
 
-    public Task<DocumentLease<TEntity, TKey>> LockManyAsync(FilterDefinition<TEntity> filter, TimeSpan? timeout = null, string actor = null, CancellationToken cancellationToken = default)
+    public async Task<DocumentLease<TEntity, TKey>> LockManyAsync(FilterDefinition<TEntity> filter, TimeSpan? timeout = null, string actor = null, CancellationToken cancellationToken = default)
     {
-        throw new NotImplementedException();
+        if (filter == null) throw new ArgumentNullException(nameof(filter));
+
+        var ids = await GetAsync(filter).Select(e => e.Id).ToArrayAsync(cancellationToken);
+        return await LockManyAsync(ids, timeout, actor, cancellationToken);
     }
 
     public Task<DocumentLease<TEntity, TKey>> LockManyAsync(Expression<Func<TEntity, bool>> predicate, TimeSpan? timeout = null, string actor = null, CancellationToken cancellationToken = default)
     {
-        throw new NotImplementedException();
+        if (predicate == null) throw new ArgumentNullException(nameof(predicate));
+
+        return LockManyAsync(Builders<TEntity>.Filter.Where(predicate), timeout, actor, cancellationToken);
+    }
+
+    private static async Task ReleaseAcquiredAsync(IEnumerable<DocumentLeaseEntry<TEntity, TKey>> entries)
+    {
+        foreach (var entry in entries)
+        {
+            try
+            {
+                await entry.ReleaseAction.Invoke(entry.Entity, null, null);
+            }
+            catch
+            {
+                // Best-effort rollback — swallow to avoid hiding the original failure.
+            }
+        }
     }
 
     private LockScope<TEntity, TKey> BuildLockScope(TEntity entity, Lock entityLock, Func<CallbackResult<TEntity>, Task> completeAction)

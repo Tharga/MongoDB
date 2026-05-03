@@ -51,13 +51,13 @@
 - [x] Build clean; no test mock ripples (no mocks of `ILockableRepositoryCollection` in the codebase)
 - [x] Lockable regression: 128/128 still pass
 
-### Step 6: Implement multi-doc `LockManyAsync` + `DocumentLease`
-- [ ] `LockManyAsync(ids, ...)` sorts ids via `Comparer<TKey>.Default` and calls `AcquireLockAsync` per id. On any acquisition failure, release all already-acquired locks (call existing `AbandonAsync` per scope) and surface the original failure
-- [ ] Filter / predicate overloads resolve to id list first, then delegate
-- [ ] `DocumentLease` constructed from the list of acquired scopes; `Documents` returns the entities snapshot; mark methods stage decisions in a `Dictionary<TKey, (LockCommitMode? mode, TEntity updated)>`; throw `ArgumentException` when marking an unknown id
-- [ ] `CommitAsync` iterates staged decisions in mark order, dispatching to the same single-doc update/delete primitives from Step 4. Unmarked scopes go through `AbandonAsync`. Collects failures into `DocumentLeaseCommitSummary.Failures`. Returns the summary.
-- [ ] `DisposeAsync` releases anything not yet released
-- [ ] Build solution
+### Step 6: Implement multi-doc `LockManyAsync` + `DocumentLease` — DONE
+- [x] `LockManyAsync(IEnumerable<TKey> ids, ...)` deduplicates and sorts ids via `Comparer<TKey>.Default`, then calls `AcquireLockAsync` per id (failIfLocked=true). On any failure, releases already-acquired locks via the abandon path and rethrows. Empty id list returns an empty lease.
+- [x] Filter / predicate overloads resolve to an id list via `GetAsync(filter).Select(e => e.Id).ToArrayAsync(ct)` and delegate. The predicate overload converts to `Builders<TEntity>.Filter.Where(predicate)` first.
+- [x] `DocumentLease<T, TKey>` holds `IReadOnlyList<DocumentLeaseEntry<T, TKey>>` (internal record carrying entity + per-doc release-action delegate) and an id-keyed dictionary for fast lookup. Mark methods stage into `Dictionary<TKey, (CommitMode? Mode, T Updated)>` plus a parallel `List<TKey> _markOrder` to preserve insertion order. Throws `ArgumentException` when marking an unknown id; re-marking replaces the previous decision (last-write-wins, position preserved).
+- [x] `CommitAsync` iterates `_markOrder`, dispatches each to the per-entry release-action with the staged mode, increments the right counter (`Updated`/`Deleted`/`ReleasedUnchanged`) or appends to `Failures`. Unmarked entries are released-unchanged after the marked pass. Returns `DocumentLeaseCommitSummary<TKey>`. Honors cancellation between operations.
+- [x] `DisposeAsync` releases all entries if neither committed nor disposed (best-effort, swallows release errors). `Dispose` schedules `DisposeAsync` — same shape as `EntityScope`.
+- [x] Build clean (9 pre-existing warnings); 128/128 Lockable tests still pass.
 
 ### Step 7: Tests
 
