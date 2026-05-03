@@ -562,7 +562,15 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
         }
     }
 
-    private async Task<(EntityScope<TEntity, TKey> EntityScope, ErrorInfo errorInfo, bool ShouldWait)> CreateLockAsync(FilterDefinition<TEntity> filter, TimeSpan? timeout, string actor, CommitMode commitMode, Func<CallbackResult<TEntity>, Task> completeAction, bool failIfLocked)
+    /// <summary>
+    /// Pure lock-acquisition primitive. Atomically attempts to set the <see cref="LockableEntityBase{TKey}.Lock"/>
+    /// field on a document matching <paramref name="filter"/>. Returns the locked entity + the lock details on success.
+    /// On failure, returns either <c>(null, null, null, false)</c> when the filter matches no documents
+    /// (and <paramref name="failIfLocked"/> is <c>false</c>), or <c>(null, null, errorInfo, shouldWait)</c> when the
+    /// document exists but cannot be locked. Used by <see cref="CreateLockAsync"/> (legacy <c>Pick*</c> path)
+    /// and by <c>LockAsync</c> (commit-mode-at-commit-time path).
+    /// </summary>
+    private async Task<(TEntity Entity, Lock EntityLock, ErrorInfo ErrorInfo, bool ShouldWait)> AcquireLockAsync(FilterDefinition<TEntity> filter, TimeSpan? timeout, string actor, bool failIfLocked)
     {
         var timeoutTotUse = timeout ?? DefaultTimeout;
         if (timeoutTotUse.Ticks < 0) throw new ArgumentException($"{nameof(timeout)} cannot be less than zero. Provided or default value is {timeoutTotUse}.");
@@ -598,11 +606,11 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
         var result = await Disk.UpdateOneAsync(matchFilter, update, OneOption<TEntity>.FirstOrDefault); //Use FirstOrDefault since it is atomic safe.
         if (result.Before == null) //Document is missing or is already locked
         {
-            if (!failIfLocked) return (null, null, false); //No document matches the filter.
+            if (!failIfLocked) return (null, null, null, false); //No document matches the filter.
 
             var docs = await GetAsync(filter).ToArrayAsync();
 
-            if (!docs.Any()) return (null, null, false); //No document matches the filter.
+            if (!docs.Any()) return (null, null, null, false); //No document matches the filter.
 
             if (docs.Length == 1)
             {
@@ -612,7 +620,7 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
                     var timeString = doc.Lock == null ? null : $" for {doc.Lock.ExpireTime - now}";
                     var actorString = doc.Lock?.Actor == null ? null : $" by '{doc.Lock.Actor}'";
 
-                    return (null, new ErrorInfo
+                    return (null, null, new ErrorInfo
                     {
                         Message = $"Entity with id '{doc.Id}' is locked{actorString}{timeString}.",
                         Type = ErrorInfoType.Locked
@@ -621,21 +629,21 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
 
                 if (doc.Lock.ExceptionInfo != null)
                 {
-                    return (null, new ErrorInfo
+                    return (null, null, new ErrorInfo
                     {
                         Message = $"Entity with id '{doc.Id}' has an exception attached.",
                         Type = ErrorInfoType.Error
                     }, false);
                 }
 
-                return (null, new ErrorInfo
+                return (null, null, new ErrorInfo
                 {
                     Message = $"Entity with id '{doc.Id}' has an unknown state.",
                     Type = ErrorInfoType.Unknown
                 }, false);
             }
 
-            return (null, new ErrorInfo
+            return (null, null, new ErrorInfo
             {
                 Message = $"Matched with {docs.Length} documents but no unlocked",
                 Type = ErrorInfoType.Unknown
@@ -661,16 +669,28 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
             _logger?.LogInformation("{Actor} picked an entity from {BeforeActor} that expired {Expired} ago.", actor, result.Before.Lock.Actor, result.Before.Lock.ExpireTime - now);
         }
 
+        return (result.Before, entityLock, null, false);
+    }
+
+    /// <summary>
+    /// Legacy <c>Pick*</c> entry point: acquires the lock via <see cref="AcquireLockAsync"/>, then constructs an
+    /// <see cref="EntityScope{TEntity, TKey}"/> whose release action is bound to <paramref name="commitMode"/>.
+    /// </summary>
+    private async Task<(EntityScope<TEntity, TKey> EntityScope, ErrorInfo errorInfo, bool ShouldWait)> CreateLockAsync(FilterDefinition<TEntity> filter, TimeSpan? timeout, string actor, CommitMode commitMode, Func<CallbackResult<TEntity>, Task> completeAction, bool failIfLocked)
+    {
+        var (entity, entityLock, errorInfo, shouldWait) = await AcquireLockAsync(filter, timeout, actor, failIfLocked);
+        if (entity == null) return (null, errorInfo, shouldWait);
+
         Func<TEntity, bool, Exception, Task> releaseAction;
         try
         {
             switch (commitMode)
             {
                 case CommitMode.Update:
-                    releaseAction = (entity, commit, exception) => ReleaseAsync(entity, entityLock, commit, exception, completeAction, PrepareCommitForUpdateAsync);
+                    releaseAction = (e, commit, exception) => ReleaseAsync(e, entityLock, commit, exception, completeAction, PrepareCommitForUpdateAsync);
                     break;
                 case CommitMode.Delete:
-                    releaseAction = (entity, commit, exception) => ReleaseAsync(entity, entityLock, commit, exception, completeAction, PerformCommitForDeleteAsync);
+                    releaseAction = (e, commit, exception) => ReleaseAsync(e, entityLock, commit, exception, completeAction, PerformCommitForDeleteAsync);
                     break;
                 default:
                     throw new ArgumentOutOfRangeException(nameof(commitMode), commitMode, null);
@@ -681,7 +701,7 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
             _releaseEvent.Set();
         }
 
-        return (new EntityScope<TEntity, TKey>(result.Before, releaseAction), null, false);
+        return (new EntityScope<TEntity, TKey>(entity, releaseAction), null, false);
     }
 
     private async Task<bool> ReleaseAsync(TEntity entity, Lock entityLock, bool commit, Exception exception, Func<CallbackResult<TEntity>, Task> completeAction, Func<TEntity, Lock, Func<CallbackResult<TEntity>, Task>, Lock, Task<(EntityChangeResult<TEntity>, LockAction)>> releaseAction)

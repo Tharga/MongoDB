@@ -25,11 +25,12 @@
 - [x] No test mocks to update (only the interface and a sample subclass implement it; the latter inherits the stubs)
 - [x] Build clean (9 warnings on Tharga.MongoDB project, all pre-existing); 128 Lockable tests pass — no regressions
 
-### Step 3: Split `CreateLockAsync` into `AcquireLockAsync` + scope-building wrapper
-- [ ] Extract a new private `AcquireLockAsync(filter, timeout, actor, failIfLocked)` that returns `(TEntity Locked, Lock EntityLock, ErrorInfo errorInfo, bool ShouldWait)` — pure acquisition, no scope construction
-- [ ] Refactor `CreateLockAsync` to call `AcquireLockAsync`, build the per-mode release action (existing logic at lines 649–662), and construct `EntityScope` — legacy callers (`Pick*`, `WaitForLock`) keep working unchanged
-- [ ] **Run all existing `Lockable` tests — must pass without changes.** This is the regression gate.
-- [ ] Build solution
+### Step 3: Split `CreateLockAsync` into `AcquireLockAsync` + scope-building wrapper — DONE
+- [x] Extracted private `AcquireLockAsync(filter, timeout, actor, failIfLocked)` returning `(TEntity Entity, Lock EntityLock, ErrorInfo ErrorInfo, bool ShouldWait)` — pure acquisition, no scope construction. All error messages preserved verbatim.
+- [x] Refactored `CreateLockAsync` to call `AcquireLockAsync`, build the per-mode release action (`PrepareCommitForUpdateAsync` / `PerformCommitForDeleteAsync`), construct `EntityScope`, and signal `_releaseEvent`. Legacy callers (`Pick*`, `WaitForLock`) untouched.
+- [x] Full Lockable test suite: 128/128 pass (regression gate green).
+- [x] Full repo test suite: 320 passed / 8 skipped / 0 failed.
+- [x] Build clean (9 warnings on Tharga.MongoDB project, all pre-existing).
 
 ### Step 4: Implement single-doc `LockAsync` + `LockScope`
 - [ ] `LockAsync(id, ...)` calls `AcquireLockAsync` and constructs a `LockScope`. The scope holds the locked entity + the `Lock` info + the `completeAction` callback + a reference to the parent collection so its `CommitAsync(CommitMode, TEntity)` can dispatch:
