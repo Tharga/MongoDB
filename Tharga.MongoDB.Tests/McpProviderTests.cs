@@ -129,8 +129,8 @@ public class McpProviderTests
         var provider = new MongoDbToolProvider(_monitorMock.Object);
         var tools = await provider.ListToolsAsync(_contextMock.Object, CancellationToken.None);
 
-        tools.Should().HaveCount(2);
-        tools.Select(t => t.Name).Should().Contain(["mongodb.touch", "mongodb.rebuild_index"]);
+        tools.Should().HaveCount(3);
+        tools.Select(t => t.Name).Should().Contain(["mongodb.touch", "mongodb.rebuild_index", "mongodb.restore_all_indexes"]);
         tools.Should().AllSatisfy(t => t.InputSchema.Should().NotBeNull());
     }
 

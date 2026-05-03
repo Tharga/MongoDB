@@ -11,25 +11,47 @@ internal static class IndexMetaConverter
 {
     public static IEnumerable<IndexMeta> BuildIndexMetas(this RepositoryCollectionBase instance)
     {
-        var indicesProp = instance.GetType().GetProperty("Indices");
-        var indices = indicesProp?.GetValue(instance) as IEnumerable;
+        var indices = ResolveProperty(instance, "Indices");
+        var coreIndices = ResolveProperty(instance, "CoreIndices");
 
-        var coreIndicesProp = instance.GetType().GetProperty("CoreIndices", BindingFlags.NonPublic | BindingFlags.Instance);
-        var coreIndices = coreIndicesProp?.GetValue(instance) as IEnumerable;
-
-        var allIndices = indices.Union(coreIndices);
+        // Order matches every other call site: CoreIndices first, then consumer Indices.
+        var allIndices = coreIndices.Union(indices);
 
         var definedIndices = new List<IndexMeta>();
-        if (allIndices is IEnumerable items)
+        foreach (var indexModel in allIndices)
         {
-            foreach (var indexModel in items)
-            {
-                definedIndices.Add(IndexMetaConverter.ConvertToMetaDynamic(indexModel));
-            }
+            definedIndices.Add(IndexMetaConverter.ConvertToMetaDynamic(indexModel));
         }
-        var definedIndicesX = definedIndices.ToArray();
-        return definedIndicesX;
+        return definedIndices.ToArray();
     }
+
+    /// <summary>
+    /// Walks the inheritance chain to find a property that may be declared as <c>internal</c> or
+    /// <c>public</c> on a base class. Plain <c>GetProperty(name, BindingFlags.NonPublic | BindingFlags.Instance)</c>
+    /// does NOT find non-public members that are inherited from a base class, so we explicitly walk up.
+    /// </summary>
+    private static IEnumerable ResolveProperty(RepositoryCollectionBase instance, string propertyName)
+    {
+        var type = instance.GetType();
+        while (type != null)
+        {
+            var prop = type.GetProperty(propertyName, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly);
+            if (prop != null)
+            {
+                return prop.GetValue(instance) as IEnumerable;
+            }
+            type = type.BaseType;
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Converts a single <see cref="CreateIndexModel{TEntity}"/> into an <see cref="IndexMeta"/>
+    /// without involving reflection on the consumer type. Use this when you already have the
+    /// model in hand (e.g. inside <c>UpdateIndicesBySchemaAsync</c>) and want lock-step pairing
+    /// with the source array, instead of the reflection-driven <see cref="BuildIndexMetas"/>.
+    /// </summary>
+    internal static IndexMeta ConvertToMetaPublic<T>(CreateIndexModel<T> model) => ConvertToMeta(model);
 
     // Called dynamically
     private static IndexMeta ConvertToMetaDynamic(object model)
