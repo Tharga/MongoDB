@@ -429,6 +429,21 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
         return BuildLockScope(result.Entity, result.EntityLock, completeAction);
     }
 
+    public Task<DocumentLease<TEntity, TKey>> LockManyAsync(IEnumerable<TKey> ids, TimeSpan? timeout = null, string actor = null, CancellationToken cancellationToken = default)
+    {
+        throw new NotImplementedException();
+    }
+
+    public Task<DocumentLease<TEntity, TKey>> LockManyAsync(FilterDefinition<TEntity> filter, TimeSpan? timeout = null, string actor = null, CancellationToken cancellationToken = default)
+    {
+        throw new NotImplementedException();
+    }
+
+    public Task<DocumentLease<TEntity, TKey>> LockManyAsync(Expression<Func<TEntity, bool>> predicate, TimeSpan? timeout = null, string actor = null, CancellationToken cancellationToken = default)
+    {
+        throw new NotImplementedException();
+    }
+
     private LockScope<TEntity, TKey> BuildLockScope(TEntity entity, Lock entityLock, Func<CallbackResult<TEntity>, Task> completeAction)
     {
         if (entity == null) return null;

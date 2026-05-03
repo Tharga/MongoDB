@@ -43,11 +43,13 @@
 - [x] Build clean
 - [x] Lockable regression: 128/128 still pass
 
-### Step 5: Multi-doc public API surface
-- [ ] Add `DocumentLeaseCommitSummary` and `DocumentLeaseFailure` records under `Tharga.MongoDB.Lockable`
-- [ ] Add `DocumentLease<TEntity, TKey>` class skeleton with `Documents`, `MarkForUpdate(2 overloads)`, `MarkForDelete`, `MarkRelease`, `CommitAsync`, `DisposeAsync`
-- [ ] Add 3 `LockManyAsync` overloads on `ILockableRepositoryCollection<TEntity, TKey>` (id list / filter / predicate); stub with `NotImplementedException`
-- [ ] Build solution; update test mock ripples
+### Step 5: Multi-doc public API surface — DONE
+- [x] Added `DocumentLeaseCommitSummary<TKey>` and `DocumentLeaseFailure<TKey>` records under `Tharga.MongoDB.Lockable` (generic on TKey for typed Id without casts; `IntendedDecision` is `CommitMode?` where null = release)
+- [x] Added `DocumentLease<T>` (defaulted to ObjectId) and `DocumentLease<T, TKey>` class skeleton with `Documents`, `MarkForUpdate(T)`, `MarkForUpdate(TKey, T)`, `MarkForDelete(TKey)`, `MarkRelease(TKey)`, `CommitAsync(CancellationToken)`, `IAsyncDisposable.DisposeAsync`, `IDisposable.Dispose` — all members `virtual` and currently throw `NotImplementedException`. Internal parameterless constructor.
+- [x] Added 3 `LockManyAsync` overloads on `ILockableRepositoryCollection<TEntity, TKey>` (id list / filter / predicate). Signature uses `CancellationToken` (no `completeAction` for the multi-doc case — keeps it simple; can add overloads if needed)
+- [x] Stubbed implementations on `LockableRepositoryCollectionBase<TEntity, TKey>` with `NotImplementedException`
+- [x] Build clean; no test mock ripples (no mocks of `ILockableRepositoryCollection` in the codebase)
+- [x] Lockable regression: 128/128 still pass
 
 ### Step 6: Implement multi-doc `LockManyAsync` + `DocumentLease`
 - [ ] `LockManyAsync(ids, ...)` sorts ids via `Comparer<TKey>.Default` and calls `AcquireLockAsync` per id. On any acquisition failure, release all already-acquired locks (call existing `AbandonAsync` per scope) and surface the original failure

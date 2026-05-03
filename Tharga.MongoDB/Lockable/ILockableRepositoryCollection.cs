@@ -60,6 +60,25 @@ public interface ILockableRepositoryCollection<TEntity, TKey> : IRepositoryColle
     /// </summary>
     Task<LockScope<TEntity, TKey>> LockAsync(Expression<Func<TEntity, bool>> predicate = null, TimeSpan? timeout = null, string actor = null, Func<CallbackResult<TEntity>, Task> completeAction = null);
 
+    /// <summary>
+    /// Locks multiple documents identified by <paramref name="ids"/>. Acquisition is sequential and ordered by key
+    /// to avoid AB / BA deadlocks; if any acquisition fails, locks acquired so far are released and the failure
+    /// is propagated (the lease never returns half-acquired). Per-document commit decisions are staged on the
+    /// returned <see cref="DocumentLease{TEntity, TKey}"/>.
+    /// </summary>
+    Task<DocumentLease<TEntity, TKey>> LockManyAsync(IEnumerable<TKey> ids, TimeSpan? timeout = null, string actor = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Locks all documents matched by <paramref name="filter"/>. The filter is resolved to an id list at acquire time;
+    /// documents added later are not locked. Otherwise behaves like <see cref="LockManyAsync(IEnumerable{TKey}, TimeSpan?, string, CancellationToken)"/>.
+    /// </summary>
+    Task<DocumentLease<TEntity, TKey>> LockManyAsync(FilterDefinition<TEntity> filter, TimeSpan? timeout = null, string actor = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Locks all documents matched by <paramref name="predicate"/>. The predicate is resolved to an id list at acquire time.
+    /// </summary>
+    Task<DocumentLease<TEntity, TKey>> LockManyAsync(Expression<Func<TEntity, bool>> predicate, TimeSpan? timeout = null, string actor = null, CancellationToken cancellationToken = default);
+
     IAsyncEnumerable<EntityLock<TEntity, TKey>> GetWithLockInfoAsync(FilterDefinition<TEntity> filter = null, Options<TEntity> options = null, CancellationToken cancellationToken = default);
     IAsyncEnumerable<EntityLock<TEntity, TKey>> GetLockedAsync(LockMode lockMode, FilterDefinition<TEntity> filter = null, Options<TEntity> options = null, CancellationToken cancellationToken = default);
     IAsyncEnumerable<EntityLock<TEntity, TKey>> GetExpiredAsync(FilterDefinition<TEntity> filter = null, Options<TEntity> options = null, CancellationToken cancellationToken = default);
