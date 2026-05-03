@@ -164,6 +164,61 @@ This is the main type of collection. It does what you expect, saving and loading
 This is a write-protected collection that you can only update by requesting an exclusive lock.
 It can be used similar to a queue.
 
+##### Pick-style lock (decision known up front)
+When you already know whether you'll update or delete the document at lock time:
+
+```csharp
+await using var scope = await collection.PickForUpdateAsync(id);
+scope.Entity.Data = "updated";
+await scope.CommitAsync();        // writes the change and clears the lock
+
+await using var del = await collection.PickForDeleteAsync(id);
+await del.CommitAsync();          // deletes the document
+```
+
+Both methods accept `id`, `FilterDefinition<TEntity>`, or `Expression<Func<TEntity, bool>>` predicate, plus an optional `timeout`, `actor`, and `completeAction` callback. Disposal without `CommitAsync` releases the lock unchanged.
+
+##### Unified lock (decision at commit time)
+When you need to inspect the document before deciding update vs delete, use `LockAsync` and pass a `CommitMode` to `CommitAsync`:
+
+```csharp
+await using var scope = await collection.LockAsync(id);
+if (ShouldDelete(scope.Entity))
+{
+    await scope.CommitAsync(CommitMode.Delete);
+}
+else
+{
+    var updated = scope.Entity with { Data = "updated" };
+    await scope.CommitAsync(CommitMode.Update, updated);
+}
+```
+
+`AbandonAsync` releases without changes; `SetErrorStateAsync(ex)` records an exception on the lock; disposal without commit calls `AbandonAsync`. Same semantics as `PickFor*` — both go through the same internal acquire-lock primitive.
+
+##### Multi-document lease
+To inspect several documents and decide each one's fate before committing them all, use `LockManyAsync`. Acquisition is sequential, ordered by key (so two leases targeting overlapping sets always lock in the same order — no AB / BA deadlocks). If any acquisition fails, partial locks are rolled back.
+
+```csharp
+await using var lease = await collection.LockManyAsync(new[] { id1, id2, id3 });
+
+foreach (var doc in lease.Documents)
+{
+    if (ShouldDelete(doc))
+        lease.MarkForDelete(doc.Id);
+    else if (HasChanges(doc))
+        lease.MarkForUpdate(doc with { Data = "..." });
+    // else: leave unmarked — released unchanged at commit
+}
+
+var summary = await lease.CommitAsync();
+// summary.Updated / Deleted / ReleasedUnchanged / Failures
+```
+
+Multi-doc commit is **sequential**: each decision is applied in mark order. A failure mid-pass is collected into `summary.Failures` rather than thrown, so remaining decisions still attempt to apply (matches the existing single-doc partial-failure model). All-or-nothing semantics via MongoDB transactions are a planned follow-up.
+
+`LockManyAsync` also accepts a `FilterDefinition<TEntity>` or an `Expression<Func<TEntity, bool>>` predicate — both resolve to an id list at acquire time.
+
 ### Simpler way of doing repositories
 The simplest way is to have the *repository* implement the *collection* directly.
 The downside is that you cannot protect access to methods, the cosumer will have access to it all.
