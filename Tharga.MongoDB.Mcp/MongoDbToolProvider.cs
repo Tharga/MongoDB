@@ -15,6 +15,7 @@ public sealed class MongoDbToolProvider : IMcpToolProvider
 {
     private const string TouchToolName = "mongodb.touch";
     private const string RebuildIndexToolName = "mongodb.rebuild_index";
+    private const string RestoreAllIndexesToolName = "mongodb.restore_all_indexes";
 
     private static readonly JsonElement CollectionArgSchema = JsonSerializer.Deserialize<JsonElement>("""
         {
@@ -38,6 +39,16 @@ public sealed class MongoDbToolProvider : IMcpToolProvider
             "force": { "type": "boolean" }
           },
           "required": ["databaseName", "collectionName"]
+        }
+        """);
+
+    private static readonly JsonElement RestoreAllIndexesArgSchema = JsonSerializer.Deserialize<JsonElement>("""
+        {
+          "type": "object",
+          "properties": {
+            "configurationName": { "type": "string" },
+            "databaseName": { "type": "string" }
+          }
         }
         """);
 
@@ -66,6 +77,12 @@ public sealed class MongoDbToolProvider : IMcpToolProvider
                 Description = "Restore or rebuild indexes for a collection according to its defined index model.",
                 InputSchema = RebuildIndexArgSchema,
             },
+            new McpToolDescriptor
+            {
+                Name = RestoreAllIndexesToolName,
+                Description = "Iterate every known collection and re-apply its declared indexes. Optional configurationName / databaseName narrow the scope. Returns a summary with success / failure / skipped counts.",
+                InputSchema = RestoreAllIndexesArgSchema,
+            },
         ];
         return Task.FromResult(tools);
     }
@@ -78,6 +95,7 @@ public sealed class MongoDbToolProvider : IMcpToolProvider
             {
                 TouchToolName => await TouchAsync(arguments, cancellationToken),
                 RebuildIndexToolName => await RebuildIndexAsync(arguments, cancellationToken),
+                RestoreAllIndexesToolName => await RestoreAllIndexesAsync(arguments, cancellationToken),
                 _ => Error($"Unknown tool: {toolName}"),
             };
         }
@@ -116,6 +134,29 @@ public sealed class MongoDbToolProvider : IMcpToolProvider
             rebuilt = true,
             collection = collection.CollectionName,
             force,
+        });
+    }
+
+    private async Task<McpToolResult> RestoreAllIndexesAsync(JsonElement arguments, CancellationToken cancellationToken)
+    {
+        var configurationName = arguments.TryGetProperty("configurationName", out var c) ? c.GetString() : null;
+        var databaseName = arguments.TryGetProperty("databaseName", out var d) ? d.GetString() : null;
+
+        Func<CollectionInfo, bool> filter = null;
+        if (configurationName != null || databaseName != null)
+        {
+            filter = info =>
+                (configurationName == null || info.ConfigurationName.Value == configurationName)
+                && (databaseName == null || info.DatabaseName == databaseName);
+        }
+
+        var summary = await _monitor.RestoreAllIndicesAsync(filter: filter, cancellationToken: cancellationToken);
+        return Ok(new
+        {
+            total = summary.Total,
+            succeeded = summary.Succeeded,
+            failed = summary.Failed,
+            skipped = summary.Skipped,
         });
     }
 

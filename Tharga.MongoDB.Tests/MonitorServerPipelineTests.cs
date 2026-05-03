@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Microsoft.Extensions.Options;
@@ -192,6 +193,7 @@ public class MonitorServerPipelineTests
         public Task TouchAsync(CollectionInfo collectionInfo) => throw new NotImplementedException();
         public Task<(int Before, int After)> DropIndexAsync(CollectionInfo collectionInfo) => throw new NotImplementedException();
         public Task RestoreIndexAsync(CollectionInfo collectionInfo, bool force) => throw new NotImplementedException();
+        public Task<IndexAssureSummary> RestoreAllIndicesAsync(Func<CollectionInfo, bool> filter = null, IProgress<IndexAssureProgress> progress = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<System.Collections.Generic.IEnumerable<string[]>> GetIndexBlockersAsync(CollectionInfo collectionInfo, string indexName) => throw new NotImplementedException();
         public Task<CleanInfo> CleanAsync(CollectionInfo collectionInfo, bool cleanGuids) => throw new NotImplementedException();
         public System.Collections.Generic.IEnumerable<CallInfo> GetCalls(CallType callType) => throw new NotImplementedException();

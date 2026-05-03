@@ -47,6 +47,14 @@ internal class DatabaseNullMonitor : IDatabaseMonitor
         return Task.CompletedTask;
     }
 
+    public Task<IndexAssureSummary> RestoreAllIndicesAsync(
+        Func<CollectionInfo, bool> filter = null,
+        IProgress<IndexAssureProgress> progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        return Task.FromResult(new IndexAssureSummary { Total = 0, Succeeded = 0, Failed = 0, Skipped = 0 });
+    }
+
     public Task<IEnumerable<string[]>> GetIndexBlockersAsync(CollectionInfo collectionInfo, string indexName)
     {
         return Task.FromResult<IEnumerable<string[]>>(new List<string[]>());
