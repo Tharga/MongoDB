@@ -32,13 +32,16 @@
 - [x] Full repo test suite: 320 passed / 8 skipped / 0 failed.
 - [x] Build clean (9 warnings on Tharga.MongoDB project, all pre-existing).
 
-### Step 4: Implement single-doc `LockAsync` + `LockScope`
-- [ ] `LockAsync(id, ...)` calls `AcquireLockAsync` and constructs a `LockScope`. The scope holds the locked entity + the `Lock` info + the `completeAction` callback + a reference to the parent collection so its `CommitAsync(CommitMode, TEntity)` can dispatch:
-  - `CommitMode.Update` → call existing `ReleaseAsync(...)` with `PrepareCommitForUpdateAsync`
-  - `CommitMode.Delete` → call existing `ReleaseAsync(...)` with `PerformCommitForDeleteAsync`
-  - `AbandonAsync` / `SetErrorStateAsync` → the existing `commit=false` path on `ReleaseAsync`
-- [ ] Implement filter / predicate overloads of `LockAsync` on top of `AcquireLockAsync`
-- [ ] Build solution
+### Step 4: Implement single-doc `LockAsync` + `LockScope` — DONE
+- [x] All 3 `LockAsync` overloads now delegate to `AcquireLockAsync` (id uses failIfLocked=true, filter/predicate use false — matches existing `Pick*` semantics) and return a `LockScope` built by a new private `BuildLockScope` helper
+- [x] `BuildLockScope` constructs the `Func<TEntity, CommitMode?, Exception, Task>` release-action lambda that dispatches on the mode passed at commit time:
+  - `CommitMode.Update` → `ReleaseAsync(..., commit: true, ..., PrepareCommitForUpdateAsync)`
+  - `CommitMode.Delete` → `ReleaseAsync(..., commit: true, ..., PerformCommitForDeleteAsync)`
+  - `null` mode (AbandonAsync / SetErrorStateAsync) → `ReleaseAsync(..., commit: false, ...)` with no per-mode dispatcher
+  - `_releaseEvent.Set()` is called once at lock-acquire time, mirroring the legacy `CreateLockAsync` behavior
+- [x] Added a small overload `ThrowException(ErrorInfo)` so the new entry points can pass an `ErrorInfo` directly without constructing a fake tuple. Existing tuple overload now forwards to it.
+- [x] Build clean
+- [x] Lockable regression: 128/128 still pass
 
 ### Step 5: Multi-doc public API surface
 - [ ] Add `DocumentLeaseCommitSummary` and `DocumentLeaseFailure` records under `Tharga.MongoDB.Lockable`

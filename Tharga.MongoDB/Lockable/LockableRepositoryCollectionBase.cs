@@ -408,19 +408,48 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
         return await WaitForLock(id, lockTimeout, waitTimeout, actor, cancellationToken, CommitMode.Delete, completeAction);
     }
 
-    public Task<LockScope<TEntity, TKey>> LockAsync(TKey id, TimeSpan? timeout = null, string actor = null, Func<CallbackResult<TEntity>, Task> completeAction = null)
+    public async Task<LockScope<TEntity, TKey>> LockAsync(TKey id, TimeSpan? timeout = null, string actor = null, Func<CallbackResult<TEntity>, Task> completeAction = null)
     {
-        throw new NotImplementedException();
+        var result = await AcquireLockAsync(Builders<TEntity>.Filter.Eq(x => x.Id, id), timeout, actor, failIfLocked: true);
+        ThrowException(result.ErrorInfo);
+        return BuildLockScope(result.Entity, result.EntityLock, completeAction);
     }
 
-    public Task<LockScope<TEntity, TKey>> LockAsync(FilterDefinition<TEntity> filter, TimeSpan? timeout = null, string actor = null, Func<CallbackResult<TEntity>, Task> completeAction = null)
+    public async Task<LockScope<TEntity, TKey>> LockAsync(FilterDefinition<TEntity> filter, TimeSpan? timeout = null, string actor = null, Func<CallbackResult<TEntity>, Task> completeAction = null)
     {
-        throw new NotImplementedException();
+        var result = await AcquireLockAsync(filter, timeout, actor, failIfLocked: false);
+        ThrowException(result.ErrorInfo);
+        return BuildLockScope(result.Entity, result.EntityLock, completeAction);
     }
 
-    public Task<LockScope<TEntity, TKey>> LockAsync(Expression<Func<TEntity, bool>> predicate = null, TimeSpan? timeout = null, string actor = null, Func<CallbackResult<TEntity>, Task> completeAction = null)
+    public async Task<LockScope<TEntity, TKey>> LockAsync(Expression<Func<TEntity, bool>> predicate = null, TimeSpan? timeout = null, string actor = null, Func<CallbackResult<TEntity>, Task> completeAction = null)
     {
-        throw new NotImplementedException();
+        var result = await AcquireLockAsync(predicate ?? (x => true), timeout, actor, failIfLocked: false);
+        ThrowException(result.ErrorInfo);
+        return BuildLockScope(result.Entity, result.EntityLock, completeAction);
+    }
+
+    private LockScope<TEntity, TKey> BuildLockScope(TEntity entity, Lock entityLock, Func<CallbackResult<TEntity>, Task> completeAction)
+    {
+        if (entity == null) return null;
+
+        Func<TEntity, CommitMode?, Exception, Task> releaseAction = (e, mode, exception) =>
+        {
+            switch (mode)
+            {
+                case CommitMode.Update:
+                    return ReleaseAsync(e, entityLock, commit: true, exception, completeAction, PrepareCommitForUpdateAsync);
+                case CommitMode.Delete:
+                    return ReleaseAsync(e, entityLock, commit: true, exception, completeAction, PerformCommitForDeleteAsync);
+                case null:
+                    return ReleaseAsync(e, entityLock, commit: false, exception, completeAction, null);
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(mode), mode, null);
+            }
+        };
+
+        _releaseEvent.Set();
+        return new LockScope<TEntity, TKey>(entity, releaseAction);
     }
 
     public IAsyncEnumerable<EntityLock<TEntity, TKey>> GetWithLockInfoAsync(FilterDefinition<TEntity> filter = null, Options<TEntity> options = null, CancellationToken cancellationToken = default)
@@ -836,18 +865,23 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
 
     private static void ThrowException((EntityScope<TEntity, TKey> EntityScope, ErrorInfo errorInfo, bool ShouldWait) result)
     {
-        if (result.errorInfo != null)
+        ThrowException(result.errorInfo);
+    }
+
+    private static void ThrowException(ErrorInfo errorInfo)
+    {
+        if (errorInfo != null)
         {
-            switch (result.errorInfo.Type)
+            switch (errorInfo.Type)
             {
                 case ErrorInfoType.Locked:
-                    throw new LockException(result.errorInfo.Message);
+                    throw new LockException(errorInfo.Message);
                 case ErrorInfoType.Error:
-                    throw new LockErrorException(result.errorInfo.Message);
+                    throw new LockErrorException(errorInfo.Message);
                 case ErrorInfoType.Unknown:
-                    throw new UnknownException(result.errorInfo.Message);
+                    throw new UnknownException(errorInfo.Message);
                 default:
-                    throw new ArgumentOutOfRangeException(nameof(result.errorInfo.Type), $"Unknown type {nameof(result.errorInfo.Type)} {result.errorInfo.Type}");
+                    throw new ArgumentOutOfRangeException(nameof(errorInfo.Type), $"Unknown type {nameof(errorInfo.Type)} {errorInfo.Type}");
             }
         }
     }
