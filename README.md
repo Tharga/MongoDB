@@ -685,7 +685,7 @@ services.AddThargaMcp(mcp =>
     mcp.AddMongoDB();
 });
 
-app.MapMcp();
+app.UseThargaMcp();
 ```
 
 ### Resources (System scope)
