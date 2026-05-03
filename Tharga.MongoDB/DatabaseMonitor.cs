@@ -508,6 +508,55 @@ internal class DatabaseMonitor : IDatabaseMonitor
         await UpdateIndexCacheAsync(collectionInfo);
     }
 
+    public async Task<IndexAssureSummary> RestoreAllIndicesAsync(
+        Func<CollectionInfo, bool> filter = null,
+        IProgress<IndexAssureProgress> progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
+
+        var instances = new List<CollectionInfo>();
+        await foreach (var info in GetInstancesAsync(false, null).WithCancellation(cancellationToken))
+        {
+            if (filter == null || filter(info)) instances.Add(info);
+        }
+
+        var total = instances.Count;
+        var succeeded = 0;
+        var failed = 0;
+        var skipped = 0;
+
+        for (var i = 0; i < total; i++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var info = instances[i];
+
+            // Mirrors the guards inside RestoreIndexAsync: collections we know are not in code
+            // can't be restored from this side. Report as skipped so the caller can surface it.
+            if (info.Registration == Registration.NotInCode)
+            {
+                skipped++;
+                progress?.Report(new IndexAssureProgress { Index = i, Total = total, CollectionInfo = info, Success = false, Skipped = true });
+                continue;
+            }
+
+            try
+            {
+                await RestoreIndexAsync(info, force: false);
+                succeeded++;
+                progress?.Report(new IndexAssureProgress { Index = i, Total = total, CollectionInfo = info, Success = true, Skipped = false });
+            }
+            catch (Exception e)
+            {
+                failed++;
+                _logger?.LogError(e, "Failed to restore indexes for collection {collection}: {message}", info.CollectionName, e.Message);
+                progress?.Report(new IndexAssureProgress { Index = i, Total = total, CollectionInfo = info, Success = false, Skipped = false, Error = e });
+            }
+        }
+
+        return new IndexAssureSummary { Total = total, Succeeded = succeeded, Failed = failed, Skipped = skipped };
+    }
+
     public async Task<IEnumerable<string[]>> GetIndexBlockersAsync(CollectionInfo collectionInfo, string indexName)
     {
         if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");

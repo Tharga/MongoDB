@@ -15,6 +15,13 @@ public abstract class MongoDbTestBase : IDisposable
     private readonly Mock<IRepositoryConfigurationInternal> _configurationMock;
     private readonly DatabaseContext _databaseContext;
     private readonly IMongoDbServiceFactory _mongoDbServiceFactory;
+    private AssureIndexMode _assureIndexMode = AssureIndexMode.ByName;
+
+    /// <summary>
+    /// Switch the index assurance mode for tests that need <see cref="AssureIndexMode.BySchema"/> or
+    /// <see cref="AssureIndexMode.DropCreate"/>. Effective on the next collection access.
+    /// </summary>
+    protected void SetAssureIndexMode(AssureIndexMode mode) => _assureIndexMode = mode;
 
     protected MongoDbTestBase()
     {
@@ -24,7 +31,7 @@ public abstract class MongoDbTestBase : IDisposable
         _configurationMock = new Mock<IRepositoryConfigurationInternal>(MockBehavior.Strict);
         _configurationMock.Setup(x => x.GetDatabaseUrl()).Returns(() => new MongoUrl($"mongodb://localhost:27017/Tharga_MongoDb_Test_{_databaseContext.DatabasePart}"));
         _configurationMock.Setup(x => x.GetConfiguration()).Returns(Mock.Of<MongoDbConfig>(x => x.FetchSize == 100));
-        _configurationMock.Setup(x => x.GetAssureIndexMode()).Returns(AssureIndexMode.ByName);
+        _configurationMock.Setup(x => x.GetAssureIndexMode()).Returns(() => _assureIndexMode);
         _configurationMock.Setup(x => x.GetConfigurationName()).Returns("Default");
         _configurationMock.Setup(x => x.GetDatabaseContext()).Returns(Mock.Of<DatabaseContext>());
 
@@ -46,8 +53,10 @@ public abstract class MongoDbTestBase : IDisposable
         var collectionPool = new Mock<ICollectionPool>(MockBehavior.Loose);
         mocker.Use(collectionPool);
 
-        var initiationLibrary = new Mock<IInitiationLibrary>(MockBehavior.Loose);
-        mocker.Use(initiationLibrary);
+        // Use the real InitiationLibrary so AssureIndex actually runs (a Loose mock would
+        // return false from ShouldInitiate / ShouldInitiateIndex, silently bypassing the
+        // index-creation code path and giving green tests on a broken codebase).
+        mocker.Use<IInitiationLibrary>(new InitiationLibrary());
 
         _mongoDbServiceFactory = mocker.CreateInstance<MongoDbServiceFactory>();
     }

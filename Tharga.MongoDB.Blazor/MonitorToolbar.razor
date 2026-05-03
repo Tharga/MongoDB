@@ -11,6 +11,8 @@
                         title="Clears the collection cache in memory and removes persisted monitor state from the _monitor collection in the database." />
         <RadzenMenuItem Text="Clear Call History" Icon="delete_sweep" Click="ClearCallHistoryAsync"
                         title="Clears in-memory call history (recent, slow and ongoing calls). Does not affect the database." />
+        <RadzenMenuItem Text="Assure all indices" Icon="build_circle" Click="AssureAllIndicesAsync"
+                        title="Iterates every known collection and re-applies its declared indexes. Useful after rolling out new index definitions to existing tenant databases." />
     </RadzenMenu>
 }
 
@@ -33,5 +35,33 @@
         await DatabaseMonitor.ResetAsync();
         NotificationService.Notify(new NotificationMessage { Summary = "Collection cache has been reset." });
         await OnCacheReset.InvokeAsync();
+    }
+
+    private async Task AssureAllIndicesAsync()
+    {
+        var progress = new Progress<IndexAssureProgress>(p =>
+        {
+            var label = $"[{p.Index + 1}/{p.Total}] {p.CollectionInfo.CollectionName}";
+            if (p.Skipped)
+            {
+                NotificationService.Notify(new NotificationMessage { Severity = NotificationSeverity.Info, Summary = $"Skipped {label}", Detail = "Collection is not in code." });
+            }
+            else if (p.Success)
+            {
+                NotificationService.Notify(new NotificationMessage { Severity = NotificationSeverity.Success, Summary = $"Assured {label}" });
+            }
+            else
+            {
+                NotificationService.Notify(new NotificationMessage { Severity = NotificationSeverity.Error, Summary = $"Failed {label}", Detail = p.Error?.Message });
+            }
+        });
+
+        var summary = await DatabaseMonitor.RestoreAllIndicesAsync(progress: progress);
+        NotificationService.Notify(new NotificationMessage
+        {
+            Severity = summary.Failed > 0 ? NotificationSeverity.Warning : NotificationSeverity.Success,
+            Summary = "Assure all indices completed",
+            Detail = $"Total: {summary.Total}, Succeeded: {summary.Succeeded}, Failed: {summary.Failed}, Skipped: {summary.Skipped}"
+        });
     }
 }
