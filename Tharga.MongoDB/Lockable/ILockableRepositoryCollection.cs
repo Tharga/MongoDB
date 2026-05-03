@@ -34,12 +34,12 @@ public interface ILockableRepositoryCollection<TEntity, TKey> : IRepositoryColle
     IAsyncEnumerable<TEntity> GetUnlockedAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default);
     IAsyncEnumerable<TEntity> GetUnlockedAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default);
 
-    Task<EntityScope<TEntity, TKey>> PickForUpdateAsync(TKey id, TimeSpan? timeout = null, string actor = null, Func<CallbackResult<TEntity>, Task> completeAction = null);
-    Task<EntityScope<TEntity, TKey>> PickForUpdateAsync(FilterDefinition<TEntity> filter, TimeSpan? timeout = null, string actor = null, Func<CallbackResult<TEntity>, Task> completeAction = null);
-    Task<EntityScope<TEntity, TKey>> PickForUpdateAsync(Expression<Func<TEntity, bool>> predicate = null, TimeSpan? timeout = null, string actor = null, Func<CallbackResult<TEntity>, Task> completeAction = null);
-    Task<EntityScope<TEntity, TKey>> PickForDeleteAsync(TKey id, TimeSpan? timeout = null, string actor = null, Func<CallbackResult<TEntity>, Task> completeAction = null);
-    Task<EntityScope<TEntity, TKey>> PickForDeleteAsync(FilterDefinition<TEntity> filter, TimeSpan? timeout = null, string actor = null, Func<CallbackResult<TEntity>, Task> completeAction = null);
-    Task<EntityScope<TEntity, TKey>> PickForDeleteAsync(Expression<Func<TEntity, bool>> predicate = null, TimeSpan? timeout = null, string actor = null, Func<CallbackResult<TEntity>, Task> completeAction = null);
+    Task<EntityScope<TEntity, TKey>> PickForUpdateAsync(TKey id, TimeSpan? timeout = null, string actor = null, Func<CallbackResult<TEntity>, Task> completeAction = null, IClientSessionHandle session = null);
+    Task<EntityScope<TEntity, TKey>> PickForUpdateAsync(FilterDefinition<TEntity> filter, TimeSpan? timeout = null, string actor = null, Func<CallbackResult<TEntity>, Task> completeAction = null, IClientSessionHandle session = null);
+    Task<EntityScope<TEntity, TKey>> PickForUpdateAsync(Expression<Func<TEntity, bool>> predicate = null, TimeSpan? timeout = null, string actor = null, Func<CallbackResult<TEntity>, Task> completeAction = null, IClientSessionHandle session = null);
+    Task<EntityScope<TEntity, TKey>> PickForDeleteAsync(TKey id, TimeSpan? timeout = null, string actor = null, Func<CallbackResult<TEntity>, Task> completeAction = null, IClientSessionHandle session = null);
+    Task<EntityScope<TEntity, TKey>> PickForDeleteAsync(FilterDefinition<TEntity> filter, TimeSpan? timeout = null, string actor = null, Func<CallbackResult<TEntity>, Task> completeAction = null, IClientSessionHandle session = null);
+    Task<EntityScope<TEntity, TKey>> PickForDeleteAsync(Expression<Func<TEntity, bool>> predicate = null, TimeSpan? timeout = null, string actor = null, Func<CallbackResult<TEntity>, Task> completeAction = null, IClientSessionHandle session = null);
 
     Task<EntityScope<TEntity, TKey>> WaitForUpdateAsync(TKey id, TimeSpan? lockTimeout = null, TimeSpan? waitTimeout = null, string actor = null, Func<CallbackResult<TEntity>, Task> completeAction = null, CancellationToken cancellationToken = default);
     Task<EntityScope<TEntity, TKey>> WaitForDeleteAsync(TKey id, TimeSpan? lockTimeout = null, TimeSpan? waitTimeout = null, string actor = null, Func<CallbackResult<TEntity>, Task> completeAction = null, CancellationToken cancellationToken = default);
@@ -48,17 +48,17 @@ public interface ILockableRepositoryCollection<TEntity, TKey> : IRepositoryColle
     /// Locks a single document without pre-committing to update-vs-delete. The decision is taken at commit time
     /// via <see cref="LockScope{TEntity, TKey}.CommitAsync(CommitMode, TEntity)"/>.
     /// </summary>
-    Task<LockScope<TEntity, TKey>> LockAsync(TKey id, TimeSpan? timeout = null, string actor = null, Func<CallbackResult<TEntity>, Task> completeAction = null);
+    Task<LockScope<TEntity, TKey>> LockAsync(TKey id, TimeSpan? timeout = null, string actor = null, Func<CallbackResult<TEntity>, Task> completeAction = null, IClientSessionHandle session = null);
 
     /// <summary>
     /// Locks a single document matched by <paramref name="filter"/> without pre-committing to update-vs-delete.
     /// </summary>
-    Task<LockScope<TEntity, TKey>> LockAsync(FilterDefinition<TEntity> filter, TimeSpan? timeout = null, string actor = null, Func<CallbackResult<TEntity>, Task> completeAction = null);
+    Task<LockScope<TEntity, TKey>> LockAsync(FilterDefinition<TEntity> filter, TimeSpan? timeout = null, string actor = null, Func<CallbackResult<TEntity>, Task> completeAction = null, IClientSessionHandle session = null);
 
     /// <summary>
     /// Locks a single document matched by <paramref name="predicate"/> without pre-committing to update-vs-delete.
     /// </summary>
-    Task<LockScope<TEntity, TKey>> LockAsync(Expression<Func<TEntity, bool>> predicate = null, TimeSpan? timeout = null, string actor = null, Func<CallbackResult<TEntity>, Task> completeAction = null);
+    Task<LockScope<TEntity, TKey>> LockAsync(Expression<Func<TEntity, bool>> predicate = null, TimeSpan? timeout = null, string actor = null, Func<CallbackResult<TEntity>, Task> completeAction = null, IClientSessionHandle session = null);
 
     /// <summary>
     /// Locks multiple documents identified by <paramref name="ids"/>. Acquisition is sequential and ordered by key
@@ -66,18 +66,18 @@ public interface ILockableRepositoryCollection<TEntity, TKey> : IRepositoryColle
     /// is propagated (the lease never returns half-acquired). Per-document commit decisions are staged on the
     /// returned <see cref="DocumentLease{TEntity, TKey}"/>.
     /// </summary>
-    Task<DocumentLease<TEntity, TKey>> LockManyAsync(IEnumerable<TKey> ids, TimeSpan? timeout = null, string actor = null, CancellationToken cancellationToken = default);
+    Task<DocumentLease<TEntity, TKey>> LockManyAsync(IEnumerable<TKey> ids, TimeSpan? timeout = null, string actor = null, CancellationToken cancellationToken = default, IClientSessionHandle session = null);
 
     /// <summary>
     /// Locks all documents matched by <paramref name="filter"/>. The filter is resolved to an id list at acquire time;
-    /// documents added later are not locked. Otherwise behaves like <see cref="LockManyAsync(IEnumerable{TKey}, TimeSpan?, string, CancellationToken)"/>.
+    /// documents added later are not locked. Otherwise behaves like <see cref="LockManyAsync(IEnumerable{TKey}, TimeSpan?, string, CancellationToken, IClientSessionHandle)"/>.
     /// </summary>
-    Task<DocumentLease<TEntity, TKey>> LockManyAsync(FilterDefinition<TEntity> filter, TimeSpan? timeout = null, string actor = null, CancellationToken cancellationToken = default);
+    Task<DocumentLease<TEntity, TKey>> LockManyAsync(FilterDefinition<TEntity> filter, TimeSpan? timeout = null, string actor = null, CancellationToken cancellationToken = default, IClientSessionHandle session = null);
 
     /// <summary>
     /// Locks all documents matched by <paramref name="predicate"/>. The predicate is resolved to an id list at acquire time.
     /// </summary>
-    Task<DocumentLease<TEntity, TKey>> LockManyAsync(Expression<Func<TEntity, bool>> predicate, TimeSpan? timeout = null, string actor = null, CancellationToken cancellationToken = default);
+    Task<DocumentLease<TEntity, TKey>> LockManyAsync(Expression<Func<TEntity, bool>> predicate, TimeSpan? timeout = null, string actor = null, CancellationToken cancellationToken = default, IClientSessionHandle session = null);
 
     IAsyncEnumerable<EntityLock<TEntity, TKey>> GetWithLockInfoAsync(FilterDefinition<TEntity> filter = null, Options<TEntity> options = null, CancellationToken cancellationToken = default);
     IAsyncEnumerable<EntityLock<TEntity, TKey>> GetLockedAsync(LockMode lockMode, FilterDefinition<TEntity> filter = null, Options<TEntity> options = null, CancellationToken cancellationToken = default);

@@ -90,12 +90,12 @@ public abstract class RepositoryCollectionBase<TEntity, TKey> : RepositoryCollec
     public abstract Task<long> GetSizeAsync(CancellationToken cancellationToken = default);
 
     //Create
-    public abstract Task AddAsync(TEntity entity);
-    public abstract Task<bool> TryAddAsync(TEntity entity);
-    public abstract Task AddManyAsync(IEnumerable<TEntity> entities);
+    public abstract Task AddAsync(TEntity entity, IClientSessionHandle session = null);
+    public abstract Task<bool> TryAddAsync(TEntity entity, IClientSessionHandle session = null);
+    public abstract Task AddManyAsync(IEnumerable<TEntity> entities, IClientSessionHandle session = null);
 
     //Delete
-    public abstract Task<TEntity> DeleteOneAsync(TKey id);
+    public abstract Task<TEntity> DeleteOneAsync(TKey id, IClientSessionHandle session = null);
 
     //Other
     public abstract Task DropCollectionAsync();

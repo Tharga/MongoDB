@@ -41,6 +41,11 @@ internal class MongoDbService : IMongoDbServiceInternal
     public ICollectionPool CollectionPool { get; }
     public IInitiationLibrary InitiationLibrary { get; }
 
+    public Task<IClientSessionHandle> StartSessionAsync(ClientSessionOptions options = null, CancellationToken cancellationToken = default)
+    {
+        return _mongoClient.StartSessionAsync(options, cancellationToken);
+    }
+
     public async Task<IMongoCollection<T>> GetCollectionAsync<T>(string name)
     {
         await AssureFirewallAccessAsync();

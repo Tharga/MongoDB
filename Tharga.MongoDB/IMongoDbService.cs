@@ -12,6 +12,12 @@ public interface IMongoDbService
     Task<IMongoCollection<T>> GetCollectionAsync<T>(string name);
 
     /// <summary>
+    /// Start a client session on the underlying MongoDB cluster. Used as the foundation for
+    /// <c>MongoDbServiceFactoryTransactionExtensions.WithTransactionAsync</c>.
+    /// </summary>
+    Task<IClientSessionHandle> StartSessionAsync(ClientSessionOptions options = null, System.Threading.CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Returns the raw <see cref="IMongoCollection{BsonDocument}"/> for an arbitrary database name.
     /// Used by document-inspection paths that operate on per-tenant databases (DatabasePart) without
     /// rebuilding the whole <see cref="IMongoDbService"/> instance per database.
