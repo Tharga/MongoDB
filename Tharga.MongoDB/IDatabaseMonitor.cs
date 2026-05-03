@@ -18,6 +18,20 @@ public interface IDatabaseMonitor
     Task TouchAsync(CollectionInfo collectionInfo);
     Task<(int Before, int After)> DropIndexAsync(CollectionInfo collectionInfo);
     Task RestoreIndexAsync(CollectionInfo collectionInfo, bool force);
+
+    /// <summary>
+    /// Iterates every known collection (via <see cref="GetInstancesAsync"/>) and calls
+    /// <see cref="RestoreIndexAsync"/> on each one. Use to apply newly added indexes
+    /// across already-deployed environments without restarting consumer apps.
+    /// </summary>
+    /// <param name="filter">Optional predicate; collections returning false are skipped.</param>
+    /// <param name="progress">Optional progress reporter — fires once per collection.</param>
+    /// <param name="cancellationToken">Cancels the iteration between collections.</param>
+    Task<IndexAssureSummary> RestoreAllIndicesAsync(
+        System.Func<CollectionInfo, bool> filter = null,
+        IProgress<IndexAssureProgress> progress = null,
+        CancellationToken cancellationToken = default);
+
     Task<IEnumerable<string[]>> GetIndexBlockersAsync(CollectionInfo collectionInfo, string indexName);
     Task<CleanInfo> CleanAsync(CollectionInfo collectionInfo, bool cleanGuids);
     IEnumerable<CallInfo> GetCalls(CallType callType);

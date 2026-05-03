@@ -1667,17 +1667,39 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
     {
         var indices = (CoreIndices?.ToArray() ?? []).Union(Indices?.ToArray() ?? []).ToArray();
 
+        // Validate up front: two defined indexes with the same explicit name would cause the
+        // second CreateOneAsync to fail mid-loop. Mirrors the check in UpdateIndicesByNameAsync.
+        var firstDuplicateName = indices
+            .Where(x => !string.IsNullOrEmpty(x.Options.Name))
+            .GroupBy(x => x.Options.Name)
+            .FirstOrDefault(x => x.Count() > 1);
+        if (firstDuplicateName != null)
+            throw new InvalidOperationException($"Indices can only be defined once with the same name. Index {firstDuplicateName.Key} has been defined {firstDuplicateName.Count()} times for collection {ProtectedCollectionName}.");
+
         var existingIndiceModel = (await MongoDbService.BuildIndicesModel(collection))
             .Where(x => !x.Name.StartsWith("_id_"))
             .ToArray();
-        var definedIndiceModel = this.BuildIndexMetas().ToArray();
 
-        // Pair each CreateIndexModel with its IndexMeta so we can locate the model by schema
-        var indexPairs = indices.Zip(definedIndiceModel, (idx, meta) => (idx, meta)).ToArray();
+        // Build defined metas in lock-step with `indices` so we can pair each CreateIndexModel
+        // with its computed IndexMeta by index. Using `BuildIndexMetas()` here would risk an
+        // ordering mismatch (it has its own enumeration logic).
+        var definedIndiceModel = indices.Select(IndexMetaConverter.ConvertToMetaPublic).ToArray();
 
         // Schema-only equality: ignore name, compare fields (ordered) and uniqueness
         static bool SameSchema(IndexMeta a, IndexMeta b) =>
             a.IsUnique == b.IsUnique && a.Fields.SequenceEqual(b.Fields);
+
+        // Warn about same-schema duplicates — typically a copy-paste error since only one ends up applied.
+        for (var i = 0; i < definedIndiceModel.Length; i++)
+        {
+            for (var j = i + 1; j < definedIndiceModel.Length; j++)
+            {
+                if (SameSchema(definedIndiceModel[i], definedIndiceModel[j]))
+                {
+                    _logger?.LogWarning("Indices {left} and {right} for collection {collection} have identical schema (same fields and uniqueness). Only one will be applied.", definedIndiceModel[i].Name, definedIndiceModel[j].Name, ProtectedCollectionName);
+                }
+            }
+        }
 
         var hasChanged = false;
 
@@ -1705,8 +1727,11 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         }
 
         //NOTE: Create indexes in the list
-        foreach (var (indexModel, definedMeta) in indexPairs)
+        for (var i = 0; i < indices.Length; i++)
         {
+            var indexModel = indices[i];
+            var definedMeta = definedIndiceModel[i];
+
             if (existingIndiceModel.All(x => !SameSchema(x, definedMeta)))
             {
                 try
@@ -1740,6 +1765,15 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
     private async Task UpdateIndicesByDropCreateAsync(IMongoCollection<TEntity> collection, bool throwOnException)
     {
         var indices = (CoreIndices?.ToArray() ?? []).Union(Indices?.ToArray() ?? []).ToArray();
+
+        // Validate up front: two defined indexes with the same explicit name would cause the
+        // second CreateOneAsync to fail mid-loop. Mirrors the check in UpdateIndicesByNameAsync.
+        var firstDuplicateName = indices
+            .Where(x => !string.IsNullOrEmpty(x.Options.Name))
+            .GroupBy(x => x.Options.Name)
+            .FirstOrDefault(x => x.Count() > 1);
+        if (firstDuplicateName != null)
+            throw new InvalidOperationException($"Indices can only be defined once with the same name. Index {firstDuplicateName.Key} has been defined {firstDuplicateName.Count()} times for collection {ProtectedCollectionName}.");
 
         var allExistingIndexNames = (await collection.Indexes.ListAsync()).ToList()
             .Select(x => x.GetValue("name").AsString)

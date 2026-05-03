@@ -384,6 +384,29 @@ Create `Indices` by overriding the property in your collection class.
 The list of `Indices` is applied befor the first record is added to the collection.
 It is also reviewed once every time the application starts, removing `Indices` that no longer exists and creates new ones if the code have changed.
 
+#### Index assurance modes
+
+`AssureIndexMode` (set via `DatabaseOptions.AssureIndexMode` or per configuration) controls how the library reconciles the indexes you declare in code with the indexes that exist in MongoDB. Each mode has different reconciliation semantics — pick one based on how you roll out index changes:
+
+| Mode | Names required | Detects schema change | Comment |
+|---|---|---|---|
+| `ByName` (default) | yes | no | Fastest. Names must be set on every `CreateIndexOptions`. Indexes are matched by name only — if you change the schema (fields/uniqueness) but keep the name, the change is **not** detected and **not** applied. To roll out a schema change, rename the index. |
+| `BySchema` | optional | yes | Names optional. Indexes are matched by their rendered schema (key fields + uniqueness). Schema changes are detected and applied. Renaming an index in code while keeping the same schema does **not** rename the live index — the existing one is treated as up-to-date. |
+| `DropCreate` | optional | n/a | Drops every non-`_id` index and recreates them on every assurance pass. Always converges, but expensive — generally only useful in non-production. |
+| `Disabled` | n/a | n/a | Skips index assurance entirely. Useful for read-only consumers or one-shot deploy tooling that doesn't own the schema. |
+
+For both `BySchema` and `DropCreate`, declaring two indexes with the same explicit name throws `InvalidOperationException` up front (mirrors `ByName`). `BySchema` additionally logs a warning when two declared indexes have identical schema (typically a copy-paste error — only one ends up in MongoDB).
+
+#### Re-applying indexes after a code change
+
+Index assurance runs lazily — the first access to a collection triggers it. For an already-deployed environment that holds many tenant collections, that means new indexes only land when each collection is next touched. To force a one-shot re-apply across every tracked collection, use:
+
+- **API:** `IDatabaseMonitor.RestoreAllIndicesAsync(filter, progress, cancellationToken)` — iterates `GetInstancesAsync()` and calls `RestoreIndexAsync` per collection. Returns an `IndexAssureSummary` (total / succeeded / failed / skipped). Optional `filter: CollectionInfo => bool` narrows the scope; optional `IProgress<IndexAssureProgress>` reports per-collection outcomes.
+- **Blazor toolbar:** click *Assure all indices* in the `MonitorToolbar` component — emits a notification per collection and a final summary.
+- **MCP:** call the `mongodb.restore_all_indexes` tool via `Tharga.MongoDB.Mcp`. Optional `configurationName` / `databaseName` arguments narrow the scope.
+
+The helper is **not** auto-run on app startup — keep timing under your own control.
+
 ### MongoUrl Builder
 The `MongoUrl` is created by a built in implementation of `IMongoUrlBuilder`. It takes the raw version and parses variables to build `MongoUrl`.
 
@@ -673,6 +696,7 @@ app.MapMcp();
 ### Tools (System scope)
 - `mongodb.touch` — refresh collection stats (args: `databaseName`, `collectionName`, optional `configurationName`)
 - `mongodb.rebuild_index` — restore/rebuild indexes (args: `databaseName`, `collectionName`, optional `configurationName`, `force`)
+- `mongodb.restore_all_indexes` — iterate every known collection and re-apply its declared indexes (optional `configurationName`, `databaseName` filters; returns total/succeeded/failed/skipped counts)
 
 Provides are registered with `McpScope.System`, so they are only exposed on the system-level MCP endpoint.
 
