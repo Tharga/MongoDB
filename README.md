@@ -688,17 +688,47 @@ services.AddThargaMcp(mcp =>
 app.UseThargaMcp();
 ```
 
+### Data access levels
+
+By default, `Tharga.MongoDB.Mcp` exposes only metadata and admin tools — nothing that returns or modifies actual document data. To expose more, opt in:
+
+```csharp
+services.AddThargaMcp(mcp =>
+{
+    mcp.AddMongoDB(o =>
+    {
+        // Default: DataAccessLevel.Metadata
+        o.DataAccess = DataAccessLevel.DataRead;       // adds tools/resources that read document data
+        // o.DataAccess = DataAccessLevel.DataReadWrite; // adds tools that modify data (e.g. mongodb.clean)
+    });
+});
+```
+
+Each tool/resource is tagged below with its required level. Anything above the configured level is filtered out of `tools/list` / `resources/list` and rejected at `tools/call` / `resources/read` with an `IsError` response.
+
+> **Upgrading from `Tharga.MongoDB.Mcp` 2.10.x:** the default level is `Metadata`, which means `mongodb://monitoring` no longer surfaces unless you opt in to `DataAccessLevel.DataRead`. Calls also embed query filter values, hence the gating.
+
 ### Resources (System scope)
-- `mongodb://collections` — list of collections with stats, index info, and clean status
-- `mongodb://monitoring` — recent and slow calls, summaries, error summary, connection pool state
-- `mongodb://clients` — connected remote monitoring agents
+| URI | Level | Description |
+|---|---|---|
+| `mongodb://collections` | Metadata | List of collections with stats, index info, and clean status |
+| `mongodb://clients` | Metadata | Connected remote monitoring agents |
+| `mongodb://monitoring` | DataRead | Recent and slow calls, summaries, error summary, connection pool state — calls embed filter values |
 
 ### Tools (System scope)
-- `mongodb.touch` — refresh collection stats (args: `databaseName`, `collectionName`, optional `configurationName`)
-- `mongodb.rebuild_index` — restore/rebuild indexes (args: `databaseName`, `collectionName`, optional `configurationName`, `force`)
-- `mongodb.restore_all_indexes` — iterate every known collection and re-apply its declared indexes (optional `configurationName`, `databaseName` filters; returns total/succeeded/failed/skipped counts)
+| Tool | Level | Args |
+|---|---|---|
+| `mongodb.touch` | Metadata | `databaseName`, `collectionName`, optional `configurationName` |
+| `mongodb.rebuild_index` | Metadata | `databaseName`, `collectionName`, optional `configurationName`, `force` |
+| `mongodb.restore_all_indexes` | Metadata | optional `configurationName` / `databaseName` filters; returns total/succeeded/failed/skipped counts |
+| `mongodb.drop_index` | Metadata | `databaseName`, `collectionName`, optional `configurationName`; drops indexes not declared in code |
+| `mongodb.reset_cache` | Metadata | (no args) resets the in-memory monitor cache |
+| `mongodb.clear_call_history` | Metadata | (no args) clears recent + slow call history |
+| `mongodb.find_duplicates` | DataRead | `databaseName`, `collectionName`, `indexName`, optional `configurationName`; returns duplicate-key tuples |
+| `mongodb.explain` | DataRead | `callKey` (Guid string); returns explain plan including the original query filter |
+| `mongodb.clean` | DataReadWrite | `databaseName`, `collectionName`, optional `configurationName`, `cleanGuids`; deletes orphaned/invalid documents |
 
-Provides are registered with `McpScope.System`, so they are only exposed on the system-level MCP endpoint.
+Providers are registered with `McpScope.System`, so they are only exposed on the system-level MCP endpoint.
 
 ---
 

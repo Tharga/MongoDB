@@ -21,46 +21,69 @@ public sealed class MongoDbResourceProvider : IMcpResourceProvider
         WriteIndented = true,
     };
 
-    private readonly IDatabaseMonitor _monitor;
+    private static readonly McpResourceDescriptor[] AllResources =
+    [
+        new McpResourceDescriptor
+        {
+            Uri = CollectionsUri,
+            Name = "MongoDB Collections",
+            Description = "List of monitored collections with stats, index info, and clean status.",
+            MimeType = "application/json",
+        },
+        new McpResourceDescriptor
+        {
+            Uri = MonitoringUri,
+            Name = "MongoDB Monitoring",
+            Description = "Recent calls, call summary (by collection+function), error summary, and slow-call index coverage. Calls embed query filter values, hence DataRead.",
+            MimeType = "application/json",
+        },
+        new McpResourceDescriptor
+        {
+            Uri = ClientsUri,
+            Name = "MongoDB Monitor Clients",
+            Description = "Connected remote monitoring agents and their connection state.",
+            MimeType = "application/json",
+        },
+    ];
 
-    public MongoDbResourceProvider(IDatabaseMonitor monitor)
+    private static readonly IReadOnlyDictionary<string, DataAccessLevel> ResourceLevels =
+        new Dictionary<string, DataAccessLevel>
+        {
+            [CollectionsUri] = DataAccessLevel.Metadata,
+            [MonitoringUri] = DataAccessLevel.DataRead,
+            [ClientsUri] = DataAccessLevel.Metadata,
+        };
+
+    private readonly IDatabaseMonitor _monitor;
+    private readonly MongoDbMcpOptions _options;
+
+    public MongoDbResourceProvider(IDatabaseMonitor monitor, MongoDbMcpOptions options)
     {
         _monitor = monitor;
+        _options = options;
     }
 
     public McpScope Scope => McpScope.System;
 
     public Task<IReadOnlyList<McpResourceDescriptor>> ListResourcesAsync(IMcpContext context, CancellationToken cancellationToken)
     {
-        IReadOnlyList<McpResourceDescriptor> resources =
-        [
-            new McpResourceDescriptor
-            {
-                Uri = CollectionsUri,
-                Name = "MongoDB Collections",
-                Description = "List of monitored collections with stats, index info, and clean status.",
-                MimeType = "application/json",
-            },
-            new McpResourceDescriptor
-            {
-                Uri = MonitoringUri,
-                Name = "MongoDB Monitoring",
-                Description = "Recent calls, call summary (by collection+function), error summary, and slow-call index coverage.",
-                MimeType = "application/json",
-            },
-            new McpResourceDescriptor
-            {
-                Uri = ClientsUri,
-                Name = "MongoDB Monitor Clients",
-                Description = "Connected remote monitoring agents and their connection state.",
-                MimeType = "application/json",
-            },
-        ];
-        return Task.FromResult(resources);
+        IReadOnlyList<McpResourceDescriptor> filtered = AllResources
+            .Where(r => ResourceLevels[r.Uri] <= _options.DataAccess)
+            .ToArray();
+        return Task.FromResult(filtered);
     }
 
     public async Task<McpResourceContent> ReadResourceAsync(string uri, IMcpContext context, CancellationToken cancellationToken)
     {
+        if (ResourceLevels.TryGetValue(uri, out var required) && required > _options.DataAccess)
+        {
+            return new McpResourceContent
+            {
+                Uri = uri,
+                Text = $"Resource '{uri}' requires DataAccessLevel.{required} but server is configured for DataAccessLevel.{_options.DataAccess}.",
+            };
+        }
+
         return uri switch
         {
             CollectionsUri => await BuildCollectionsAsync(cancellationToken),
