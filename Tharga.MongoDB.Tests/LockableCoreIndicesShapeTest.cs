@@ -1,3 +1,4 @@
+using System;
 using System.Collections;
 using System.Linq;
 using System.Reflection;
@@ -5,6 +6,7 @@ using FluentAssertions;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization;
 using MongoDB.Driver;
+using Moq;
 using Tharga.MongoDB.Tests.Support;
 using Xunit;
 
@@ -17,12 +19,12 @@ namespace Tharga.MongoDB.Tests;
 /// silently lose their query coverage. This test fails at build time so drift is
 /// caught before it ships.
 /// </summary>
-public class LockableCoreIndicesShapeTest : MongoDbTestBase
+public class LockableCoreIndicesShapeTest
 {
     [Fact]
     public void CoreIndices_CoverLockField()
     {
-        var sut = new LockableTestRepositoryCollection(MongoDbServiceFactory);
+        var sut = CreateSut();
 
         var rendered = RenderCoreIndices(sut);
 
@@ -37,7 +39,7 @@ public class LockableCoreIndicesShapeTest : MongoDbTestBase
         //   Lock.ExceptionInfo == null AND Lock.ExpireTime < now
         // The compound LockStatus index covers ExceptionInfo, ExpireTime, LockTime
         // — so the same index also serves diagnostic queries that filter by lock time.
-        var sut = new LockableTestRepositoryCollection(MongoDbServiceFactory);
+        var sut = CreateSut();
 
         var rendered = RenderCoreIndices(sut);
 
@@ -45,6 +47,21 @@ public class LockableCoreIndicesShapeTest : MongoDbTestBase
         lockStatus.Keys.Names.Should().BeEquivalentTo(
             new[] { "Lock.ExceptionInfo", "Lock.ExpireTime", "Lock.LockTime" },
             opts => opts.WithStrictOrdering());
+    }
+
+    /// <summary>
+    /// Pure-reflection test — does not hit MongoDB. Use a Loose factory mock that
+    /// returns a Loose IMongoDbService so the base ctor's eager
+    /// <c>GetMongoDbService(...)</c> call succeeds without opening a connection.
+    /// Inheriting from <see cref="MongoDbTestBase"/> would force a real MongoDB on
+    /// the CI coverage job, which is not available there.
+    /// </summary>
+    private static LockableTestRepositoryCollection CreateSut()
+    {
+        var serviceMock = new Mock<IMongoDbService>(MockBehavior.Loose);
+        var factoryMock = new Mock<IMongoDbServiceFactory>(MockBehavior.Loose);
+        factoryMock.Setup(x => x.GetMongoDbService(It.IsAny<Func<DatabaseContext>>())).Returns(serviceMock.Object);
+        return new LockableTestRepositoryCollection(factoryMock.Object);
     }
 
     private static (string Name, BsonDocument Keys)[] RenderCoreIndices(LockableTestRepositoryCollection sut)
