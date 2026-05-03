@@ -90,16 +90,18 @@
 - Full suite: 340 passed / 8 skipped / 0 failed (was 320/8/0 before the new tests)
 - Build clean
 
-### Step 8: Build verification on all targets
-- [ ] Build on net8 / net9 / net10 — clean, warnings under 50 budget
-- [ ] McpProviderTests + full suite — green on net10
+### Step 8: Build verification on all targets — DONE
+- [x] Full solution build clean on net8 / net9 / net10. **15 warnings**, all pre-existing (none on the new types or the refactor). Well under the 50-warning budget.
+- [x] Full test suite: **339 passed / 8 skipped / 1 known-flaky** (`Lockable.GetLockedTests.GetLockedExpired`, passes in isolation as before — pre-existing timing flake; not caused by this work).
 
-### Step 9: README update
-- [ ] Add "Unified lock with commit-time decision" subsection to the Lockable docs
-  - Single-doc example: `await using var scope = await coll.LockAsync(id); ... await scope.CommitAsync(LockCommitMode.Delete);`
-  - Multi-doc example: `await using var lease = await coll.LockManyAsync([id1, id2, id3]); lease.MarkForDelete(...); lease.MarkForUpdate(...); var summary = await lease.CommitAsync();`
-- [ ] Note that `PickForUpdateAsync` / `PickForDeleteAsync` are still first-class for the "I know the outcome up front" case
-- [ ] Note partial-failure semantics for the multi-doc lease and the planned transactional follow-up
+### Step 9: README update — DONE
+- [x] Expanded the existing `#### ILockableRepositoryCollection` subsection with three named blocks:
+  - **Pick-style lock** — example for `PickForUpdateAsync` / `PickForDeleteAsync` (decision known at lock time)
+  - **Unified lock** — example for `LockAsync` + `CommitAsync(CommitMode, ...)` (decision at commit time); covers `AbandonAsync` / `SetErrorStateAsync` / dispose-as-abandon
+  - **Multi-document lease** — example for `LockManyAsync` + `MarkForUpdate/Delete/Release` + `CommitAsync` returning a summary with counts and failures
+- [x] Documented that acquisition is sequential, key-ordered, and rolled back on partial failure
+- [x] Documented that multi-doc commit is sequential and partial-failure is collected (matches existing single-doc model); transactional commit flagged as a planned follow-up
+- [x] Both filter / predicate overloads called out for `LockAsync` and `LockManyAsync`
 
 ### Step 10: Milestone commit
 - [ ] Commit message: `feat: add Lock + LockMany with commit-time mode (closes planned #30 + #31)`
