@@ -32,13 +32,14 @@
 - [x] **Cross-config behavior**: caller picks one configuration as the transaction's anchor; writes against a different `MongoClient` throw at the driver level (we don't preempt with a client-side check). Two configs pointing at the same cluster but with different `MongoUrl` resolve to different cached `MongoClient`s — sessions don't transfer; documented as a known limitation.
 - [x] Build clean as starting point — already verified in pre-plan
 
-### Step 3: Refactor `ExecuteAsync<T>` to thread `IClientSessionHandle`
-- [ ] Add `IClientSessionHandle session = null` parameter to `DiskRepositoryCollectionBase<TEntity, TKey>.ExecuteAsync<T>` (the protected funnel)
-- [ ] Change the action lambda from `Func<IMongoCollection<TEntity>, CancellationToken, Task<(T, int)>>` to `Func<IMongoCollection<TEntity>, IClientSessionHandle, CancellationToken, Task<(T, int)>>` so each write site can pick the session-aware driver overload
-- [ ] When `session != null`, **skip `OperationIndexManagement`** and log "skipping index assurance — transaction active" at debug. (Index DDL inside a Mongo transaction throws.)
-- [ ] Update every internal call site of `ExecuteAsync` in `DiskRepositoryCollectionBase` to take the new third lambda parameter (most just ignore it)
-- [ ] **Run all existing tests.** Behavior must be identical for the no-session path. Regression gate.
-- [ ] Build clean
+### Step 3: Refactor `ExecuteAsync<T>` to thread `IClientSessionHandle` — DONE
+- [x] Added optional `IClientSessionHandle session = null` parameter to `DiskRepositoryCollectionBase<TEntity, TKey>.ExecuteAsync<T>` (last parameter, source-compat).
+- [x] Lambda type changed to `Func<IMongoCollection<TEntity>, IClientSessionHandle, CancellationToken, Task<(T, int)>>`. The lambda now receives the session as its second parameter so write sites can pick the session-aware driver overload in Step 4.
+- [x] When `session != null`, `OperationIndexManagement` is **skipped** and a `IndexAssureSkipped` step is recorded with message *"Skipped — transaction active."* (Index DDL inside a Mongo transaction throws.)
+- [x] `DropEmptyAsync` (post-delete cleanup) is also skipped under an active session for the same reason — drop-collection is DDL.
+- [x] All 24 internal call sites of `ExecuteAsync` updated: `(collection, ct) =>` → `(collection, _, ct) =>`, `(_, _) =>` → `(_, _, _) =>`. None of the lambdas use the session yet — Step 4 lights up the write-side overloads.
+- [x] **Full test suite green: 340 passed / 8 skipped / 0 failed.** Behavior identical for the no-session path. Regression gate held.
+- [x] Build clean: 6 warnings on full solution, all pre-existing.
 
 ### Step 4: Add session-aware overloads on Disk write methods
 - [ ] `AddAsync(TEntity entity, IClientSessionHandle session = null)` — single new overload via optional parameter (source-compat)

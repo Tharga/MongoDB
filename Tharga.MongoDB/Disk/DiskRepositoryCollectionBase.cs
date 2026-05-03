@@ -56,7 +56,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 
     public override int? FetchSize => base.FetchSize ?? _autoFetchSize;
 
-    protected async Task<T> ExecuteAsync<T>(string functionName, Func<IMongoCollection<TEntity>, CancellationToken, Task<(T Data, int Count)>> action, Operation operation, CancellationToken cancellationToken = default, FilterDefinition<TEntity> filter = null)
+    protected async Task<T> ExecuteAsync<T>(string functionName, Func<IMongoCollection<TEntity>, IClientSessionHandle, CancellationToken, Task<(T Data, int Count)>> action, Operation operation, CancellationToken cancellationToken = default, FilterDefinition<TEntity> filter = null, IClientSessionHandle session = null)
     {
         var callKey = Guid.NewGuid();
         var startAt = Stopwatch.GetTimestamp();
@@ -115,24 +115,31 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                     };
                 }
 
-                //NOTE: Handle index depending on operation
-                var indexStartTimestamp = Stopwatch.GetTimestamp();
-                var indexStep = await OperationIndexManagement(operation, collection);
-                var indexMessage = FormatDriverCommands(commandMonitor, indexStartTimestamp, Stopwatch.GetTimestamp());
-                steps.Add(indexMessage != null ? indexStep with { Message = indexMessage } : indexStep);
+                //NOTE: Handle index depending on operation. Skip under an active session — MongoDB forbids index DDL inside a transaction.
+                if (session == null)
+                {
+                    var indexStartTimestamp = Stopwatch.GetTimestamp();
+                    var indexStep = await OperationIndexManagement(operation, collection);
+                    var indexMessage = FormatDriverCommands(commandMonitor, indexStartTimestamp, Stopwatch.GetTimestamp());
+                    steps.Add(indexMessage != null ? indexStep with { Message = indexMessage } : indexStep);
+                }
+                else
+                {
+                    steps.Add(new StepResponse { Timestamp = Stopwatch.GetTimestamp(), Step = "IndexAssureSkipped", Message = "Skipped — transaction active." });
+                }
 
                 //NOTE: Set collection context for FlexibleGuidSerializer warnings
                 FlexibleGuidSerializer.CollectionContext = ProtectedCollectionName;
 
                 //NOTE: Perform action
                 var actionStartTimestamp = Stopwatch.GetTimestamp();
-                var response = await action.Invoke(collection, ct);
+                var response = await action.Invoke(collection, session, ct);
                 var actionEndTimestamp = Stopwatch.GetTimestamp();
                 var actionMessage = FormatDriverCommands(commandMonitor, actionStartTimestamp, actionEndTimestamp);
 
                 steps.Add(new StepResponse { Timestamp = actionEndTimestamp, Step = "Action", Message = actionMessage });
 
-                if (operation == Operation.Delete) await DropEmptyAsync(collection);
+                if (operation == Operation.Delete && session == null) await DropEmptyAsync(collection);
 
                 return response;
             }, _mongoDbService.GetServerKey(), _mongoDbService.GetMaxConnectionPoolSize(), cancellationToken);
@@ -342,7 +349,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             _logger?.LogWarning("GetManyAsync called without limit. Defaulting to {limit} for collection {collection}.", defaultLimit, ProtectedCollectionName);
         }
 
-        return await ExecuteAsync(nameof(GetManyAsync), async (collection, ct) =>
+        return await ExecuteAsync(nameof(GetManyAsync), async (collection, _, ct) =>
         {
             var o = BuildOptions(options);
             var cursor = await FindAsync(collection, filter, ct, o);
@@ -384,7 +391,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             _logger?.LogWarning("GetManyProjectionAsync called without limit. Defaulting to {limit} for collection {collection}.", defaultLimit, ProtectedCollectionName);
         }
 
-        return await ExecuteAsync(nameof(GetManyProjectionAsync), async (collection, ct) =>
+        return await ExecuteAsync(nameof(GetManyProjectionAsync), async (collection, _, ct) =>
         {
             var findOptions = options == null
                 ? new FindOptions<TEntity, T>
@@ -432,7 +439,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
     public override async Task<TEntity> GetOneAsync(TKey id, CancellationToken cancellationToken = default)
     {
         var filter = Builders<TEntity>.Filter.Eq(x => x.Id, id);
-        return await ExecuteAsync(nameof(GetOneAsync), async (collection, ct) =>
+        return await ExecuteAsync(nameof(GetOneAsync), async (collection, _, ct) =>
         {
             var item = await collection.Find(filter).Limit(1).SingleOrDefaultAsync(ct);
             return (await CleanEntityAsync(collection, item), item == null ? 0 : 1);
@@ -447,7 +454,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 
     public override async Task<TEntity> GetOneAsync(FilterDefinition<TEntity> filter, OneOption<TEntity> options = null, CancellationToken cancellationToken = default)
     {
-        return await ExecuteAsync(nameof(GetOneAsync), async (collection, ct) =>
+        return await ExecuteAsync(nameof(GetOneAsync), async (collection, _, ct) =>
         {
             var sort = options?.Sort;
             var findFluent = collection.Find(filter).Sort(sort).Limit(2);
@@ -483,7 +490,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 
     public override async Task<long> CountAsync(FilterDefinition<TEntity> filter, CancellationToken cancellationToken = default)
     {
-        return await ExecuteAsync(nameof(CountAsync), async (collection, ct) =>
+        return await ExecuteAsync(nameof(CountAsync), async (collection, _, ct) =>
         {
             var count = await collection.CountDocumentsAsync(filter, cancellationToken: ct);
             return (count, (int)count);
@@ -492,7 +499,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 
     public override async Task<long> EstimatedCountAsync(CancellationToken cancellationToken = default)
     {
-        return await ExecuteAsync(nameof(EstimatedCountAsync), async (collection, ct) =>
+        return await ExecuteAsync(nameof(EstimatedCountAsync), async (collection, _, ct) =>
         {
             var count = await collection.EstimatedDocumentCountAsync(cancellationToken: ct);
             return (count, (int)count);
@@ -502,7 +509,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
     public override async Task<decimal> SumAsync(Expression<Func<TEntity, decimal>> field, Expression<Func<TEntity, bool>> predicate = null, CancellationToken cancellationToken = default)
     {
         var filter = predicate == null ? FilterDefinition<TEntity>.Empty : new ExpressionFilterDefinition<TEntity>(predicate);
-        return await ExecuteAsync(nameof(SumAsync), async (collection, ct) =>
+        return await ExecuteAsync(nameof(SumAsync), async (collection, _, ct) =>
         {
             var fieldName = GetFieldName(field, collection);
             var pipeline = BuildAggregationPipeline(filter, new BsonDocument("$sum", "$" + fieldName));
@@ -515,7 +522,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
     public override async Task<decimal> AvgAsync(Expression<Func<TEntity, decimal>> field, Expression<Func<TEntity, bool>> predicate = null, CancellationToken cancellationToken = default)
     {
         var filter = predicate == null ? FilterDefinition<TEntity>.Empty : new ExpressionFilterDefinition<TEntity>(predicate);
-        return await ExecuteAsync(nameof(AvgAsync), async (collection, ct) =>
+        return await ExecuteAsync(nameof(AvgAsync), async (collection, _, ct) =>
         {
             var fieldName = GetFieldName(field, collection);
             var pipeline = BuildAggregationPipeline(filter, new BsonDocument("$avg", "$" + fieldName));
@@ -528,7 +535,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
     public override async Task<TField> MinAsync<TField>(Expression<Func<TEntity, TField>> field, Expression<Func<TEntity, bool>> predicate = null, CancellationToken cancellationToken = default)
     {
         var filter = predicate == null ? FilterDefinition<TEntity>.Empty : new ExpressionFilterDefinition<TEntity>(predicate);
-        return await ExecuteAsync(nameof(MinAsync), async (collection, ct) =>
+        return await ExecuteAsync(nameof(MinAsync), async (collection, _, ct) =>
         {
             var fieldName = GetFieldName(field, collection);
             var pipeline = BuildAggregationPipeline(filter, new BsonDocument("$min", "$" + fieldName));
@@ -541,7 +548,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
     public override async Task<TField> MaxAsync<TField>(Expression<Func<TEntity, TField>> field, Expression<Func<TEntity, bool>> predicate = null, CancellationToken cancellationToken = default)
     {
         var filter = predicate == null ? FilterDefinition<TEntity>.Empty : new ExpressionFilterDefinition<TEntity>(predicate);
-        return await ExecuteAsync(nameof(MaxAsync), async (collection, ct) =>
+        return await ExecuteAsync(nameof(MaxAsync), async (collection, _, ct) =>
         {
             var fieldName = GetFieldName(field, collection);
             var pipeline = BuildAggregationPipeline(filter, new BsonDocument("$max", "$" + fieldName));
@@ -579,13 +586,13 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 
     public override async Task<long> GetSizeAsync(CancellationToken cancellationToken = default)
     {
-        return await ExecuteAsync(nameof(GetSizeAsync), (_, _) => Task.FromResult((_mongoDbService.GetSize(ProtectedCollectionName), 1)),Operation.Read, cancellationToken);
+        return await ExecuteAsync(nameof(GetSizeAsync), (_, _, _) => Task.FromResult((_mongoDbService.GetSize(ProtectedCollectionName), 1)),Operation.Read, cancellationToken);
     }
 
     //Create
     public override async Task AddAsync(TEntity entity)
     {
-        await ExecuteAsync(nameof(AddAsync), async (collection, ct) =>
+        await ExecuteAsync(nameof(AddAsync), async (collection, _, ct) =>
         {
             await collection.InsertOneAsync(entity, cancellationToken: ct);
             return (true, 1);
@@ -594,7 +601,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 
     public override async Task<bool> TryAddAsync(TEntity entity)
     {
-        return await ExecuteAsync(nameof(AddAsync), async (collection, ct) =>
+        return await ExecuteAsync(nameof(AddAsync), async (collection, _, ct) =>
         {
             try
             {
@@ -611,7 +618,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 
     public override async Task AddManyAsync(IEnumerable<TEntity> entities)
     {
-        await ExecuteAsync(nameof(AddManyAsync), async (collection, ct) =>
+        await ExecuteAsync(nameof(AddManyAsync), async (collection, _, ct) =>
         {
             var arr = entities.ToArray();
             await collection.InsertManyAsync(arr, cancellationToken: ct);
@@ -623,7 +630,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
     public virtual async Task<EntityChangeResult<TEntity>> AddOrReplaceAsync(TEntity entity)
     {
         var filter = Builders<TEntity>.Filter.Eq(x => x.Id, entity.Id);
-        return await ExecuteAsync(nameof(AddOrReplaceAsync), async (collection, ct) =>
+        return await ExecuteAsync(nameof(AddOrReplaceAsync), async (collection, _, ct) =>
         {
             var current = await collection.FindOneAndReplaceAsync(filter, entity, cancellationToken: ct);
             TEntity before = null;
@@ -655,7 +662,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
     {
         if (entity == null) throw new ArgumentNullException(nameof(entity));
 
-        return await ExecuteAsync(nameof(ReplaceOneWithCheckAsync), async (collection, ct) =>
+        return await ExecuteAsync(nameof(ReplaceOneWithCheckAsync), async (collection, _, ct) =>
         {
             var sort = options?.Sort;
             var findFluent = collection.Find(filter).Sort(sort).Limit(2);
@@ -708,7 +715,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         if (filter == null) throw new ArgumentException(nameof(filter));
         if (update == null) throw new ArgumentException(nameof(update));
 
-        var response = await ExecuteAsync(nameof(UpdateOneAsync), async (collection, ct) =>
+        var response = await ExecuteAsync(nameof(UpdateOneAsync), async (collection, _, ct) =>
         {
             var sort = options?.Sort;
             var findFluent = collection.Find(filter).Sort(sort).Limit(2);
@@ -759,7 +766,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
     public virtual async Task<long> UpdateManyAsync(Expression<Func<TEntity, bool>> predicate, UpdateDefinition<TEntity> update)
     {
         var filter = predicate != null ? Builders<TEntity>.Filter.Where(predicate) : FilterDefinition<TEntity>.Empty;
-        return await ExecuteAsync(nameof(UpdateManyAsync), async (collection, ct) =>
+        return await ExecuteAsync(nameof(UpdateManyAsync), async (collection, _, ct) =>
         {
             var result = await collection.UpdateManyAsync(filter, update, cancellationToken: ct);
             return (result.ModifiedCount, (int)result.ModifiedCount);
@@ -768,7 +775,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 
     public async Task<long> UpdateManyAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update)
     {
-        return await ExecuteAsync(nameof(UpdateManyAsync), async (collection, ct) =>
+        return await ExecuteAsync(nameof(UpdateManyAsync), async (collection, _, ct) =>
         {
             var result = await collection.UpdateManyAsync(filter, update, cancellationToken: ct);
             return (result.ModifiedCount, (int)result.ModifiedCount);
@@ -795,7 +802,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
     {
         if (filter == null) throw new ArgumentNullException(nameof(filter));
 
-        return await ExecuteAsync(nameof(UpdateOneAsync), async (collection, ct) =>
+        return await ExecuteAsync(nameof(UpdateOneAsync), async (collection, _, ct) =>
         {
             var sort = options?.Sort;
             var findFluent = collection.Find(filter).Sort(sort).Limit(2);
@@ -833,7 +840,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
     public async Task<long> DeleteManyAsync(Expression<Func<TEntity, bool>> predicate)
     {
         var filter = predicate != null ? Builders<TEntity>.Filter.Where(predicate) : FilterDefinition<TEntity>.Empty;
-        return await ExecuteAsync(nameof(DeleteManyAsync), async (collection, ct) =>
+        return await ExecuteAsync(nameof(DeleteManyAsync), async (collection, _, ct) =>
         {
             var item = await collection.DeleteManyAsync(filter, cancellationToken: ct);
             return (item.DeletedCount, (int)item.DeletedCount);
@@ -842,7 +849,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 
     public async Task<long> DeleteManyAsync(FilterDefinition<TEntity> filter)
     {
-        return await ExecuteAsync(nameof(DeleteManyAsync), async (collection, ct) =>
+        return await ExecuteAsync(nameof(DeleteManyAsync), async (collection, _, ct) =>
         {
             var item = await collection.DeleteManyAsync(filter, cancellationToken: ct);
             return (item.DeletedCount, (int)item.DeletedCount);
@@ -859,7 +866,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 
     public override async Task<T> ExecuteAsync<T>(Func<IMongoCollection<TEntity>, Task<T>> execute, Operation operation)
     {
-        var response = await ExecuteAsync(nameof(ExecuteAsync), async (collection, _) =>
+        var response = await ExecuteAsync(nameof(ExecuteAsync), async (collection, _, _) =>
         {
             var response = await execute.Invoke(collection);
             return (response, 1);
@@ -870,7 +877,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 
     public override async Task<T> ExecuteAsync<T>(Func<IMongoCollection<TEntity>, CancellationToken, Task<T>> execute, Operation operation, CancellationToken cancellationToken)
     {
-        var response = await ExecuteAsync(nameof(ExecuteAsync), async (collection, ct) =>
+        var response = await ExecuteAsync(nameof(ExecuteAsync), async (collection, _, ct) =>
         {
             var response = await execute.Invoke(collection, ct);
             return (response, 1);
