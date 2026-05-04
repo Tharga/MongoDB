@@ -16,12 +16,12 @@ public interface IRepositoryCollection<TEntity, TKey> : IReadOnlyRepositoryColle
     where TEntity : EntityBase<TKey>
 {
     //Create
-    Task AddAsync(TEntity entity);
-    Task<bool> TryAddAsync(TEntity entity);
-    Task AddManyAsync(IEnumerable<TEntity> entities);
+    Task AddAsync(TEntity entity, IClientSessionHandle session = null);
+    Task<bool> TryAddAsync(TEntity entity, IClientSessionHandle session = null);
+    Task AddManyAsync(IEnumerable<TEntity> entities, IClientSessionHandle session = null);
 
     //Delete
-    Task<TEntity> DeleteOneAsync(TKey id);
+    Task<TEntity> DeleteOneAsync(TKey id, IClientSessionHandle session = null);
 
     Task<T> ExecuteAsync<T>(Func<IMongoCollection<TEntity>, Task<T>> execute, Operation operation);
     Task<T> ExecuteAsync<T>(Func<IMongoCollection<TEntity>, CancellationToken, Task<T>> execute, Operation operation, CancellationToken cancellationToken);

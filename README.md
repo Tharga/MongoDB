@@ -215,9 +215,58 @@ var summary = await lease.CommitAsync();
 // summary.Updated / Deleted / ReleasedUnchanged / Failures
 ```
 
-Multi-doc commit is **sequential**: each decision is applied in mark order. A failure mid-pass is collected into `summary.Failures` rather than thrown, so remaining decisions still attempt to apply (matches the existing single-doc partial-failure model). All-or-nothing semantics via MongoDB transactions are a planned follow-up.
+Multi-doc commit is **sequential** by default: each decision is applied in mark order, and per-decision failures are collected into `summary.Failures` rather than thrown. For all-or-nothing semantics — atomic apply of every staged decision in one transaction — pass `transactional: true`:
 
-`LockManyAsync` also accepts a `FilterDefinition<TEntity>` or an `Expression<Func<TEntity, bool>>` predicate — both resolve to an id list at acquire time.
+```csharp
+var summary = await lease.CommitAsync(transactional: true);
+// All decisions land or none do. A single failed decision aborts the transaction.
+```
+
+`LockManyAsync` also accepts a `FilterDefinition<TEntity>` or an `Expression<Func<TEntity, bool>>` predicate — both resolve to an id list at acquire time. Transactional commit requires a replica set / sharded MongoDB cluster (see Transactions below).
+
+---
+
+### Transactions
+
+Multi-document writes can be wrapped in a MongoDB transaction so they all commit atomically (or all roll back on exception). Works across multiple collections in the same cluster, and supports both Disk and Lockable repositories — including taking and committing locks inside the same transaction.
+
+```csharp
+await mongoDbServiceFactory.WithTransactionAsync(async (session, ct) =>
+{
+    await jobsRepo.AddAsync(job, session);
+    await statsRepo.AddAsync(stat, session);
+
+    await using var scope = await accountRepo.LockAsync(accountId, session: session);
+    await scope.CommitAsync(CommitMode.Update, scope.Entity with { Balance = newBalance });
+});
+```
+
+The session is created on the cluster identified by `configurationName` (default if null). The driver retries on transient transaction errors automatically. Body exceptions abort and rethrow.
+
+For the most common case — *lock N docs, decide each, commit atomically* — you don't need to touch `IClientSessionHandle` at all:
+
+```csharp
+await using var lease = await coll.LockManyAsync(ids);
+// inspect, mark...
+var summary = await lease.CommitAsync(transactional: true);
+```
+
+Acquisition stays unchanged (sequential, fast); the commit pass runs inside an internal transaction so all marked decisions land atomically.
+
+#### Requirements
+- **Replica set or sharded cluster.** MongoDB transactions don't work on standalone deployments; the driver throws on `StartTransaction`.
+- All collections inside one transaction must be backed by the same `MongoClient` (same cluster). Cross-cluster transactions aren't supported by MongoDB.
+- Default 60-second transaction timeout — don't try to work around it. For long workflows, do the deciding outside the transaction and only wrap the commit pass.
+
+#### Behavior under an active session
+- `OperationIndexManagement` is **skipped** when a session is active (Mongo forbids index DDL inside a transaction). Indexes are assured by the next non-transactional call against the collection. If your transaction is the *first* call against a fresh collection on process startup, the index won't be assured until later — warm up the collection at startup.
+- `DropEmptyAsync` (auto-drop after the last delete) is similarly skipped under a session.
+
+#### Out of scope
+- Cross-cluster transactions
+- Nested transactions / savepoints
+- Long-running transactions
+- Session-aware reads (`GetAsync(filter, session)` etc.) — write atomicity is the focus; filed as a follow-up
 
 ### Simpler way of doing repositories
 The simplest way is to have the *repository* implement the *collection* directly.

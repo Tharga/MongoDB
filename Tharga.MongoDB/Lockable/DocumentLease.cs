@@ -4,15 +4,26 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using MongoDB.Bson;
+using MongoDB.Driver;
 
 namespace Tharga.MongoDB.Lockable;
 
 /// <summary>
+/// Hook the lease uses to wrap its commit pass in a transaction when
+/// <see cref="DocumentLease{T, TKey}.CommitAsync"/> is called with <c>transactional: true</c>.
+/// </summary>
+internal interface IDocumentLeaseTransactionRunner
+{
+    Task RunInTransactionAsync(Func<IClientSessionHandle, CancellationToken, Task> body, CancellationToken cancellationToken);
+}
+
+/// <summary>
 /// Internal per-document handle inside a <see cref="DocumentLease{T, TKey}"/>: the locked entity and a
 /// release-action delegate that dispatches on the <see cref="CommitMode"/> chosen at commit time
-/// (or <c>null</c> for the abandon / error-state path).
+/// (or <c>null</c> for the abandon / error-state path). The fourth parameter carries the session to use for
+/// the underlying writes — <c>null</c> means non-transactional.
 /// </summary>
-internal sealed record DocumentLeaseEntry<T, TKey>(T Entity, Func<T, CommitMode?, Exception, Task> ReleaseAction)
+internal sealed record DocumentLeaseEntry<T, TKey>(T Entity, Func<T, CommitMode?, Exception, IClientSessionHandle, Task> ReleaseAction)
     where T : LockableEntityBase<TKey>;
 
 /// <summary>
@@ -24,7 +35,8 @@ internal sealed record DocumentLeaseEntry<T, TKey>(T Entity, Func<T, CommitMode?
 public sealed class DocumentLease<T> : DocumentLease<T, ObjectId>
     where T : LockableEntityBase<ObjectId>
 {
-    internal DocumentLease(IReadOnlyList<DocumentLeaseEntry<T, ObjectId>> entries) : base(entries) { }
+    internal DocumentLease(IReadOnlyList<DocumentLeaseEntry<T, ObjectId>> entries, IClientSessionHandle session, IDocumentLeaseTransactionRunner transactionRunner)
+        : base(entries, session, transactionRunner) { }
 }
 
 /// <summary>
@@ -40,13 +52,17 @@ public class DocumentLease<T, TKey> : IAsyncDisposable, IDisposable
     private readonly Dictionary<TKey, DocumentLeaseEntry<T, TKey>> _byId;
     private readonly List<TKey> _markOrder = new();
     private readonly Dictionary<TKey, (CommitMode? Mode, T Updated)> _marks = new();
+    private readonly IClientSessionHandle _boundSession;
+    private readonly IDocumentLeaseTransactionRunner _transactionRunner;
     private bool _committed;
     private bool _disposed;
 
-    internal DocumentLease(IReadOnlyList<DocumentLeaseEntry<T, TKey>> entries)
+    internal DocumentLease(IReadOnlyList<DocumentLeaseEntry<T, TKey>> entries, IClientSessionHandle session = null, IDocumentLeaseTransactionRunner transactionRunner = null)
     {
         _entries = entries;
         _byId = entries.ToDictionary(e => e.Entity.Id);
+        _boundSession = session;
+        _transactionRunner = transactionRunner;
     }
 
     /// <summary>The locked documents at the time of acquisition, in lock-acquisition order.</summary>
@@ -101,17 +117,50 @@ public class DocumentLease<T, TKey> : IAsyncDisposable, IDisposable
     }
 
     /// <summary>
-    /// Apply all staged decisions sequentially in the order they were marked. Any not-yet-marked locks
-    /// are released unchanged. Failures are collected into the returned summary's
-    /// <see cref="DocumentLeaseCommitSummary{TKey}.Failures"/> list rather than thrown — remaining decisions
-    /// still attempt to apply.
+    /// Apply all staged decisions in the order they were marked. Any not-yet-marked locks are released unchanged.
     /// </summary>
-    public async Task<DocumentLeaseCommitSummary<TKey>> CommitAsync(CancellationToken cancellationToken = default)
+    /// <param name="transactional">
+    /// When <c>false</c> (default), each decision is applied sequentially and per-decision failures are collected
+    /// into <see cref="DocumentLeaseCommitSummary{TKey}.Failures"/> rather than thrown — remaining decisions still
+    /// attempt to apply.
+    /// When <c>true</c>, the entire commit pass runs inside a transaction so all decisions land atomically (or
+    /// none do). If the lease was created with a bound session (caller is already inside an outer transaction)
+    /// the bound session is reused. Any decision-time failure aborts the transaction and rethrows; on abort no
+    /// decisions land and the locks remain held on the documents.
+    /// </param>
+    /// <param name="cancellationToken">Cancels between operations. Honored before each decision is applied.</param>
+    public async Task<DocumentLeaseCommitSummary<TKey>> CommitAsync(bool transactional = false, CancellationToken cancellationToken = default)
     {
         EnsureNotCommitted();
         EnsureNotDisposed();
         _committed = true;
 
+        if (transactional)
+        {
+            // Reuse the bound session if present; otherwise open a new transaction.
+            if (_boundSession != null)
+            {
+                return await ApplyDecisionsAsync(_boundSession, allOrNothing: true, cancellationToken);
+            }
+
+            if (_transactionRunner == null)
+                throw new InvalidOperationException("DocumentLease cannot start a transaction — no transaction runner was provided. This typically means the lease was constructed outside of LockableRepositoryCollectionBase.");
+
+            DocumentLeaseCommitSummary<TKey> result = null;
+            await _transactionRunner.RunInTransactionAsync(
+                async (session, ct) =>
+                {
+                    result = await ApplyDecisionsAsync(session, allOrNothing: true, ct);
+                },
+                cancellationToken);
+            return result;
+        }
+
+        return await ApplyDecisionsAsync(_boundSession, allOrNothing: false, cancellationToken);
+    }
+
+    private async Task<DocumentLeaseCommitSummary<TKey>> ApplyDecisionsAsync(IClientSessionHandle session, bool allOrNothing, CancellationToken cancellationToken)
+    {
         var failures = new List<DocumentLeaseFailure<TKey>>();
         int updated = 0, deleted = 0, released = 0;
         var processed = new HashSet<TKey>();
@@ -124,7 +173,7 @@ public class DocumentLease<T, TKey> : IAsyncDisposable, IDisposable
             try
             {
                 var entityToCommit = markedUpdate ?? entry.Entity;
-                await entry.ReleaseAction.Invoke(entityToCommit, mode, null);
+                await entry.ReleaseAction.Invoke(entityToCommit, mode, null, session);
                 switch (mode)
                 {
                     case CommitMode.Update: updated++; break;
@@ -134,6 +183,7 @@ public class DocumentLease<T, TKey> : IAsyncDisposable, IDisposable
             }
             catch (Exception ex)
             {
+                if (allOrNothing) throw;
                 failures.Add(new DocumentLeaseFailure<TKey>
                 {
                     Id = id,
@@ -151,11 +201,12 @@ public class DocumentLease<T, TKey> : IAsyncDisposable, IDisposable
             cancellationToken.ThrowIfCancellationRequested();
             try
             {
-                await entry.ReleaseAction.Invoke(entry.Entity, null, null);
+                await entry.ReleaseAction.Invoke(entry.Entity, null, null, session);
                 released++;
             }
             catch (Exception ex)
             {
+                if (allOrNothing) throw;
                 failures.Add(new DocumentLeaseFailure<TKey>
                 {
                     Id = entry.Entity.Id,
@@ -185,7 +236,7 @@ public class DocumentLease<T, TKey> : IAsyncDisposable, IDisposable
         {
             try
             {
-                await entry.ReleaseAction.Invoke(entry.Entity, null, null);
+                await entry.ReleaseAction.Invoke(entry.Entity, null, null, _boundSession);
             }
             catch
             {
