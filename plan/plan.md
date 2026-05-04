@@ -81,39 +81,43 @@
 - [x] **Built only on the public Layer 1 API.** No internal access. Any consumer can implement an equivalent class with their own state-management strategy.
 - [x] Build clean
 
-### Step 8: Tests
-- [ ] New `Paging/CursorTokenTests.cs` — pure unit tests, no DB:
-  - Round-trip for `ObjectId`, `DateTime` (UTC + offsets), `Guid`, `string`, `int`, `long`, `decimal`, `null`
-  - Malformed Base64URL → `FormatException`
-  - Truncated BSON → `FormatException`
-  - `Empty` round-trip
-- [ ] New `Paging/GetPageAsyncTests.cs` — DB-backed (existing `LockableTestBase`-style fixture):
-  - Seed 50 docs; First page returns first 10 in ascending order; `HasNext=true, HasPrevious=false`
-  - Next page from `LastCursor` returns next 10; `HasNext=true, HasPrevious=true`
-  - Previous page from `FirstCursor` of page 2 returns page 1
-  - Last page returns the final partial-or-full page in correct ascending order; `HasNext=false`
-  - `pageStep:1` jump skips one page
-  - Sort by `_id` ascending — the unique-only path
-  - Sort by `_id` descending — flip path
-  - Sort by a non-unique field (e.g. `Count` with several duplicates) — verify tiebreaker by `_id`
-  - Predicate filter ANDed with cursor: filter `Count > 5`, page through; only matching docs appear
-  - Empty collection: First / Last / After(empty cursor) all return empty `CursorPage` with both flags false
-  - Projection variant: returns projected DTO shape
-  - Cursor from sort A used with sort B → `InvalidOperationException` with a clear message
-  - Lockable collection delegates correctly: same scenario produces same results when called on a `LockableTestRepositoryCollection`
-- [ ] Run McpProviderTests + full suite — green on net10 (1 known-flaky `GetLockedExpired` allowed)
-- [ ] New `Paging/CursorPagerTests.cs` — DB-backed:
-  - Sequential next: `LoadAsync(0, 10, ...)` then `LoadAsync(10, 10, ...)` then `LoadAsync(20, 10, ...)` returns the right pages
-  - Last page: `LoadAsync(40, 10, ...)` against a 50-doc collection → final 10 in correct order
-  - Previous: `LoadAsync(20 ... )` then `LoadAsync(10, ...)` returns page 2 again
-  - 2-page jump: `LoadAsync(0, 10, ...)` then `LoadAsync(20, 10, ...)` → uses `After` with `pageStep: 1`
-  - Arbitrary jump: `LoadAsync(0, 10, ...)` then `LoadAsync(150, 10, ...)` → falls back to `GetManyAsync(skip)`, returns page 16; subsequent `LoadAsync(160, ...)` → uses keyset (cursor was re-issued from the fallback's last item)
-  - Total-count cache: change the filter → `CountAsync` runs once for the new filter, then no count queries on subsequent same-filter loads
-  - `Reset()` clears state — next `LoadAsync` re-runs CountAsync + treats Skip=0 as First
+### Step 8: Tests — DONE
+- [x] New `Paging/CursorTokenTests.cs` — pure unit tests, no DB:
+  - Round-trip for `ObjectId`, `DateTime` (UTC + offsets), `Guid`, `string`, `int`, `long`, `decimal`, `null` — done in Step 3
+  - Malformed Base64URL → `FormatException` — done in Step 3
+  - Truncated BSON → `FormatException` — done in Step 3
+  - `Empty` round-trip — done in Step 3
+- [x] New `Paging/GetPageAsyncTests.cs` — DB-backed (`MongoDbTestBase` fixture, dedicated `PagingTestEntity` + `PagingTestRepositoryCollection`, 17 tests):
+  - First page (50 docs, sortBy Name): returns first 10 in ascending order, HasNext=true, HasPrevious=false
+  - After(LastCursor) returns next 10
+  - Before(FirstCursor) goes back to page 1
+  - Last returns the trailing pageSize items in ascending order; HasNext=false
+  - Last with partial-final-page (47 docs) — returns trailing 10 (doc-038..047)
+  - pageStep:1 jump skips one page
+  - sortBy null (id ascending) — the unique-only path
+  - sortBy null + descending — flip path
+  - Non-unique sort by Bucket — tiebreaker by _id, no duplicates/skips across pages
+  - Predicate Bucket > 2 ANDed with cursor — only matching docs appear
+  - Empty collection — First and Last return empty page with both flags false, empty cursors
+  - Projection variant returns projected DTO (string)
+  - Cursor from sortBy Name used with sortBy Bucket → InvalidOperationException with "*not transferable across sorts*"
+  - pageSize 0 → ArgumentOutOfRangeException
+  - Descending sort First + After both work
+  - Lockable collection delegates: same scenario produces same results
+- [x] Full suite green on net10: 388 passed / 8 skipped / 6 pre-existing failures (replica-set transactions + the known `GetLockedExpired` flake) — no new regressions
+- [x] New `Paging/CursorPagerTests.cs` — DB-backed (8 tests):
+  - SequentialNext returns right pages and stable total count
+  - LastPage from trailing skip
+  - Previous from keyset state
+  - Two-page jump (within MaxJumpPages) stays on keyset path
+  - Arbitrary jump (skip=70 from skip=0, > 5 page jump) → fallback then resume keyset on next call
+  - Filter change → recounts and resets cursors; same filter again uses cached count
+  - Reset clears state and re-counts on next load
+  - Empty collection returns empty items + zero total
 
-### Step 9: Index-plan verification test
-- [ ] Add an explain-plan check (use `Disk.ExecuteAsync(...)` to run `explain` on a representative page query against a seeded collection that has the recommended `{sortField, _id}` index) — assert the winning plan stage is `IXSCAN`, not `COLLSCAN`
-- [ ] Note: this is a guidance test, not an enforcement; running without the index still works, just slower
+### Step 9: Index-plan verification test — DONE
+- [x] `Paging/IndexPlanTests.cs` — runs explain command against the seeded collection (200 docs) with the recommended `{Name, _id}` compound index, asserting the winning plan contains `IXSCAN` and not `COLLSCAN`
+- [x] Guidance not enforcement — running without the index still works, just slower
 
 ### Step 10: Build verification on all targets
 - [ ] Build on net8 / net9 / net10 — clean, warnings under 50 budget
