@@ -61,26 +61,25 @@
 ### Step 6: Lockable delegation — DONE (folded into Step 2)
 - [x] `LockableRepositoryCollectionBase` overrides for `GetPageAsync` / `GetPageProjectionAsync` already in place from Step 2 stub — one-line delegation to `_disk.GetPageAsync(...)` / `_disk.GetPageProjectionAsync(...)`. No further work needed.
 
-### Step 7: Implement `CursorPager<TEntity, TKey>`
-- [ ] Constructor stores the `IRepositoryCollection<TEntity, TKey>` reference
-- [ ] State fields: `_firstCursor`, `_lastCursor` (`CursorToken.Empty` initially), `_previousSkip = -1`, `_filterCacheKey` (string), `_totalCount` (long)
-- [ ] `LoadAsync(skip, pageSize, predicate, sortBy, ascending, ct)` body:
-  - Build a stable cache key for `predicate` (e.g. render the filter to JSON via the driver's `RenderArgs`-based machinery)
-  - If the cache key changed → re-run `_repo.CountAsync(predicate)`; cache new key + new count
-  - Decode `(skip, pageSize)` to a `PagePosition`:
+### Step 7: Implement `CursorPager<TEntity, TKey>` — DONE
+- [x] Constructor stores the `IRepositoryCollection<TEntity, TKey>` reference
+- [x] State fields: `_firstCursor`, `_lastCursor` (`CursorToken.Empty` initially), `_previousSkip = -1`, `_previousPageSize = -1`, `_queryCacheKey` (string), `_totalCount` (long)
+- [x] `LoadAsync(skip, pageSize, predicate, sortBy, ascending, ct)` body:
+  - Builds a stable cache key for `(predicate, sortBy, ascending)` via `Expression.ToString()` concatenation. Any change → invalidates count + cursors.
+  - If the cache key changed → runs `_repository.CountAsync(predicate)`; caches new key + new count + clears cursors + resets `_previousSkip`/`_previousPageSize`.
+  - Decodes `(skip, pageSize)` to a `PagePosition`:
     - `skip == 0` → `First`
-    - `skip + pageSize >= _totalCount` → `Last`
-    - `skip - _previousSkip == pageSize` → `After(_lastCursor)`
-    - `_previousSkip - skip == pageSize` → `Before(_firstCursor)`
-    - `(skip - _previousSkip) % pageSize == 0` and absolute step ≤ 5 pages → `After`/`Before` with `pageStep = abs(delta)/pageSize - 1`
+    - `skip == lastPageSkip` AND `pageSize == _previousPageSize` → `Last` (only when the request lines up with the trailing-partial-page boundary)
+    - First call after invalidation OR page-size change OR cursor empty → fallback path
+    - `delta % pageSize == 0` AND `1 ≤ stepMagnitude ≤ 5` → `After`/`Before` with `pageStep = stepMagnitude - 1`
     - Otherwise → fallback path
-  - Fallback: call `_repo.GetManyAsync(predicate, new Options<TEntity> { Skip = skip, Limit = pageSize, Sort = sortBy, Ascending = ascending })`. After the fetch, re-issue cursors via `CursorToken.From(items[0], sortBy, ascending)` and `CursorToken.From(items[^1], sortBy, ascending)` so the next non-jump call can resume keyset navigation.
-  - On non-fallback path: call `_repo.GetPageAsync(pageSize, position, predicate, sortBy, ascending, ct)` and store `page.FirstCursor` / `page.LastCursor`
-  - Update `_previousSkip = skip`
-  - Return `(items, _totalCount)`
-- [ ] `Reset()` clears state (`_firstCursor`, `_lastCursor`, `_previousSkip`, `_filterCacheKey`, `_totalCount`)
-- [ ] **Important: this class is built only on the public Layer 1 API.** No internal access. The same algorithm could be implemented by any consumer who needs different state-management.
-- [ ] Build clean
+  - Fallback: calls `_repository.GetManyAsync(predicate, new Options<TEntity> { Skip = skip, Limit = pageSize, Sort = BuildSortDefinition(sortBy, ascending) })`. After the fetch, re-issues cursors via `CursorToken.From(items[0], sortBy, ascending)` and `CursorToken.From(items[^1], sortBy, ascending)` so the next non-jump call can resume keyset navigation.
+  - On non-fallback path: calls `_repository.GetPageAsync(pageSize, position, predicate, sortBy, ascending, ct)` and stores `page.FirstCursor` / `page.LastCursor`
+  - Updates `_previousSkip = skip`, `_previousPageSize = pageSize`
+  - Returns `(items, _totalCount)`
+- [x] `Reset()` clears state (`_firstCursor`, `_lastCursor`, `_previousSkip`, `_previousPageSize`, `_queryCacheKey`, `_totalCount`)
+- [x] **Built only on the public Layer 1 API.** No internal access. Any consumer can implement an equivalent class with their own state-management strategy.
+- [x] Build clean
 
 ### Step 8: Tests
 - [ ] New `Paging/CursorTokenTests.cs` — pure unit tests, no DB:
