@@ -119,18 +119,18 @@
 - [x] `Paging/IndexPlanTests.cs` — runs explain command against the seeded collection (200 docs) with the recommended `{Name, _id}` compound index, asserting the winning plan contains `IXSCAN` and not `COLLSCAN`
 - [x] Guidance not enforcement — running without the index still works, just slower
 
-### Step 10: Build verification on all targets
-- [ ] Build on net8 / net9 / net10 — clean, warnings under 50 budget
+### Step 10: Build verification on all targets — DONE
+- [x] Release build of `Tharga.MongoDB.csproj` clean on net8 / net9 / net10 — 9 warnings (all pre-existing, well under the 50 budget)
 
-### Step 11: README update
-- [ ] Extend the "Custom queries" section with a new "Keyset pagination" subsection covering:
-  - Why (skip penalty on deep pages, "jump to last")
-  - Basic usage — `GetPageAsync(pageSize, PagePosition.First, ...)`, then chaining via `LastCursor`/`FirstCursor`
+### Step 11: README update — DONE
+- [x] New `## Keyset pagination` section added between "Custom queries" and "Execute Limiter":
+  - Why: skip-penalty rationale + total-count separation
+  - Basic usage with First/After/Before chaining and the PagePosition factory table
   - Sort + filter combinator example
-  - Index guidance: compound `{sortField, _id}` per sortable column
-  - Total count: separate cached `CountAsync(predicate)` call
-  - **Easy path**: using `CursorPager<TEntity, TKey>` in a Blazor grid (Radzen example)
-  - **Manual path**: when you need full control, the ~60-line state-tracking pattern against the raw `GetPageAsync` + `CursorToken.From` API
+  - Index guidance with compound `{sortField, _id}` index recipe
+  - Total-count guidance — separate `CountAsync(predicate)` call, cache it client-side
+  - Easy path: `CursorPager<TEntity, TKey>` with a Radzen-style `LoadDataArgs` integration example
+  - Manual path: `CursorToken.From(entity, sortBy, ascending)` + cursor URL persistence example, plus the sort-bound `InvalidOperationException` warning
 
 ### Step 12: Milestone commit + closure
 - [ ] (Per-step commits along the way — this is the closure)
