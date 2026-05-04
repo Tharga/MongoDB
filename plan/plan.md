@@ -16,21 +16,23 @@
 - [x] Added abstract `GetPageAsync` / `GetPageProjectionAsync` on `RepositoryCollectionBase<TEntity, TKey>` and the matching contract on `IRepositoryCollection<TEntity, TKey>`. Stubbed `NotImplementedException` on `DiskRepositoryCollectionBase` and a one-line `Disk.GetPageAsync(...)` delegation on `LockableRepositoryCollectionBase` (saves the override needing a stub later).
 - [x] Build clean: 16 warnings (all pre-existing); full regression: 340 passed / 8 skipped / 0 failed — same as master baseline.
 
-### Step 3: `CursorToken` — encode / decode + sort-mismatch detection + `From(entity, ...)`
-- [ ] Implement BSON-doc round-trip:
-  - Encode: `new BsonDocument { ["f"] = path, ["d"] = ascending ? 1 : -1, ["v"] = sortValue, ["i"] = id }.ToBson()` → Base64URL
-  - Decode: Base64URL → bytes → `BsonDocument` → extract fields
-- [ ] Implement `CursorToken.From<TEntity, TKey>(TEntity entity, Expression<Func<TEntity, object>> sortBy, bool ascending)`:
-  - Resolve the sort-field path via the same `RenderArgs<TEntity>`-based machinery used by `Builders<T>.IndexKeys.Ascending(expr)` (Step 4 will share the same helper)
-  - Read the boundary value off the entity by compiling the expression (acceptable cost for the fallback / re-issue path; not on the hot keyset path)
-  - Read `_id` via `entity.Id`
-  - Construct and return the token
-  - When `sortBy == null`: token is on `_id` only; same shape, sort path = `"_id"`
-- [ ] Sort-mismatch detection: when a token is used by `GetPageAsync`, the impl compares `(token.SortFieldPath, token.Direction)` to the call's sort and throws `InvalidOperationException` with a clear message ("This cursor was issued for sort '{x}' direction {asc|desc}; the current call uses sort '{y}' direction {asc|desc}. Cursors are not transferable across sorts.")
-- [ ] Unit tests for encode-decode round-trip with `ObjectId`, `DateTime`, `Guid`, `string`, `int`, and a null sort value
-- [ ] Unit tests for `CursorToken.From` round-trip: token built from an entity decodes back to the same boundary
-- [ ] Unit tests for malformed input → `FormatException`
-- [ ] Build clean
+### Step 3: `CursorToken` — encode / decode + sort-mismatch detection + `From(entity, ...)` — DONE
+- [x] BSON-doc round-trip via `new BsonDocument { f, d, v, i }.ToBson()` → Base64URL (manual, RFC 4648 §5: `+ → -`, `/ → _`, drop trailing `=`).
+- [x] `CursorToken.From<TEntity, TKey>(entity, sortBy, ascending)`:
+  - Sort-field path resolved via `new ExpressionFieldDefinition<TEntity, object>(sortBy).Render(args).FieldName` — uses the same machinery `Builders<T>.IndexKeys.Ascending(expr)` uses, so `[BsonElement]` renames are honored.
+  - Boundary value read by compiling the expression (acceptable cost for the fallback path; not on the hot keyset path).
+  - `sortBy == null` → `_id`-only token (path `"_id"`, sort value = the entity's id).
+- [x] `ValidateForSort(expectedPath, expectedAscending)` internal method on `CursorToken`. Used by `GetPageAsync` impl in Step 4. Throws `InvalidOperationException` with a clear message; `Empty` cursor passes through silently (used at the start of a session).
+- [x] **23 unit tests** in `Paging/CursorTokenTests.cs`:
+  - Round-trip across `ObjectId`, `DateTime` (UTC), `Guid` (binary), `string`, `int`, `long`, `decimal`, null
+  - Both directions (ascending + descending)
+  - Empty token round-trip
+  - Malformed input: invalid Base64URL chars; valid Base64URL but not BSON; BSON missing required fields; BSON with invalid direction value
+  - `ValidateForSort` accepts same-sort, rejects different-field and different-direction, treats Empty as valid
+  - `From(entity, sortBy, ascending)` round-trips for null-sortBy (`_id` only), string field, int field
+  - `From` rejects null entity
+  - Composite test: `From(entity, ...)` → `ToString()` → `Parse(...)` decodes back to identical token
+- [x] Full regression: 363 passed / 8 skipped / 0 failed (was 340 baseline + 23 new). Build clean.
 
 ### Step 4: Implement `DiskRepositoryCollectionBase.GetPageAsync`
 - [ ] Helper: extract the sort-field path from `Expression<Func<TEntity, object>>` using the driver's `RenderArgs<TEntity>`-based path so `[BsonElement("foo")]` renames are honored. Match what `Builders<TEntity>.IndexKeys.Ascending(sortBy).Render(...)` produces.
