@@ -589,6 +589,29 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         return await ExecuteAsync(nameof(GetSizeAsync), (_, _, _) => Task.FromResult((_mongoDbService.GetSize(ProtectedCollectionName), 1)),Operation.Read, cancellationToken);
     }
 
+    public override Task<Paging.CursorPage<TEntity>> GetPageAsync(
+        int pageSize,
+        Paging.PagePosition position,
+        Expression<Func<TEntity, bool>> predicate = null,
+        Expression<Func<TEntity, object>> sortBy = null,
+        bool ascending = true,
+        CancellationToken cancellationToken = default)
+    {
+        throw new NotImplementedException();
+    }
+
+    public override Task<Paging.CursorPage<T>> GetPageProjectionAsync<T>(
+        int pageSize,
+        Paging.PagePosition position,
+        Expression<Func<TEntity, T>> projection,
+        Expression<Func<TEntity, bool>> predicate = null,
+        Expression<Func<TEntity, object>> sortBy = null,
+        bool ascending = true,
+        CancellationToken cancellationToken = default)
+    {
+        throw new NotImplementedException();
+    }
+
     //Create
     public override async Task AddAsync(TEntity entity, IClientSessionHandle session = null)
     {

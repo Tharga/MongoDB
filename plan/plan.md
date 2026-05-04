@@ -8,30 +8,27 @@
 - [x] `GetManyAsync` and `GetManyProjectionAsync` exist in `DiskRepositoryCollectionBase` and stay as the skip-based APIs (orthogonal to the new keyset path)
 - [x] All reads funnel through `DiskRepositoryCollectionBase.ExecuteAsync<T>` (already session-aware after `feature/transactions`); the new methods follow the same pattern with `Operation.Read`
 
-### Step 2: Public API surface
-- [ ] Create `Tharga.MongoDB/Paging/` folder
-- [ ] Add `CursorToken` (readonly struct):
-  - Carries: sort-field path (string), sort direction (`Ascending`/`Descending`), sort-field value (object/`BsonValue`), `_id` (object/`BsonValue`)
-  - `ToString()` returns Base64URL of a small BSON document `{ f, d, v, i }`
-  - `Parse(string)` reverses it; bad input throws `FormatException` with a clear message
-  - `Empty` static sentinel
-  - Equality / `GetHashCode` based on the encoded string for record-like behavior
-- [ ] Add `PagePosition` (readonly struct):
-  - Static factories `First`, `Last`, `After(CursorToken cursor, int pageStep = 0)`, `Before(CursorToken cursor, int pageStep = 0)`
-  - Internal kind enum (First / Last / After / Before) plus optional `CursorToken` and `PageStep`
-  - Validation: `pageStep < 0` throws; `pageSize <= 0` is a separate guard inside `GetPageAsync`
-- [ ] Add `CursorPage<T>` (sealed record): `T[] Items, CursorToken FirstCursor, CursorToken LastCursor, bool HasNext, bool HasPrevious`
-- [ ] Add abstract `GetPageAsync` / `GetPageProjectionAsync` on `RepositoryCollectionBase<TEntity, TKey>` with the planned signatures
-- [ ] Add the same on `IRepositoryCollection<TEntity, TKey>` (interface contract)
-- [ ] Stub the implementations on `DiskRepositoryCollectionBase` and `LockableRepositoryCollectionBase` with `NotImplementedException`
-- [ ] Build solution; check for ripples on test mocks (none expected; no mocks of `IRepositoryCollection`)
+### Step 2: Public API surface — DONE
+- [x] Created `Tharga.MongoDB/Paging/` folder with `CursorToken`, `PagePosition`, `CursorPage<T>`, `CursorPager<TEntity, TKey>`. All have skeletons that throw `NotImplementedException` for the parts that need real bodies (Steps 3, 7).
+- [x] `CursorToken` is a readonly struct with `IsEmpty`, `Empty`, equality + hash based on the encoded string, `ToString` / `Parse` / `From` signatures stubbed.
+- [x] `PagePosition` has factories for `First`, `Last`, `After(cursor, pageStep)`, `Before(cursor, pageStep)`. `pageStep` validated `>= 0`.
+- [x] `CursorPage<T>` is a sealed record with the four expected members.
+- [x] Added abstract `GetPageAsync` / `GetPageProjectionAsync` on `RepositoryCollectionBase<TEntity, TKey>` and the matching contract on `IRepositoryCollection<TEntity, TKey>`. Stubbed `NotImplementedException` on `DiskRepositoryCollectionBase` and a one-line `Disk.GetPageAsync(...)` delegation on `LockableRepositoryCollectionBase` (saves the override needing a stub later).
+- [x] Build clean: 16 warnings (all pre-existing); full regression: 340 passed / 8 skipped / 0 failed — same as master baseline.
 
-### Step 3: `CursorToken` — encode / decode + sort-mismatch detection
+### Step 3: `CursorToken` — encode / decode + sort-mismatch detection + `From(entity, ...)`
 - [ ] Implement BSON-doc round-trip:
   - Encode: `new BsonDocument { ["f"] = path, ["d"] = ascending ? 1 : -1, ["v"] = sortValue, ["i"] = id }.ToBson()` → Base64URL
   - Decode: Base64URL → bytes → `BsonDocument` → extract fields
+- [ ] Implement `CursorToken.From<TEntity, TKey>(TEntity entity, Expression<Func<TEntity, object>> sortBy, bool ascending)`:
+  - Resolve the sort-field path via the same `RenderArgs<TEntity>`-based machinery used by `Builders<T>.IndexKeys.Ascending(expr)` (Step 4 will share the same helper)
+  - Read the boundary value off the entity by compiling the expression (acceptable cost for the fallback / re-issue path; not on the hot keyset path)
+  - Read `_id` via `entity.Id`
+  - Construct and return the token
+  - When `sortBy == null`: token is on `_id` only; same shape, sort path = `"_id"`
 - [ ] Sort-mismatch detection: when a token is used by `GetPageAsync`, the impl compares `(token.SortFieldPath, token.Direction)` to the call's sort and throws `InvalidOperationException` with a clear message ("This cursor was issued for sort '{x}' direction {asc|desc}; the current call uses sort '{y}' direction {asc|desc}. Cursors are not transferable across sorts.")
 - [ ] Unit tests for encode-decode round-trip with `ObjectId`, `DateTime`, `Guid`, `string`, `int`, and a null sort value
+- [ ] Unit tests for `CursorToken.From` round-trip: token built from an entity decodes back to the same boundary
 - [ ] Unit tests for malformed input → `FormatException`
 - [ ] Build clean
 
@@ -67,7 +64,28 @@
 - [ ] Override `GetPageAsync` / `GetPageProjectionAsync` on `LockableRepositoryCollectionBase<TEntity, TKey>` with one-line delegation to `Disk.GetPageAsync(...)` / `Disk.GetPageProjectionAsync(...)` — matches existing read-method delegation pattern
 - [ ] Build clean
 
-### Step 7: Tests
+### Step 7: Implement `CursorPager<TEntity, TKey>`
+- [ ] Constructor stores the `IRepositoryCollection<TEntity, TKey>` reference
+- [ ] State fields: `_firstCursor`, `_lastCursor` (`CursorToken.Empty` initially), `_previousSkip = -1`, `_filterCacheKey` (string), `_totalCount` (long)
+- [ ] `LoadAsync(skip, pageSize, predicate, sortBy, ascending, ct)` body:
+  - Build a stable cache key for `predicate` (e.g. render the filter to JSON via the driver's `RenderArgs`-based machinery)
+  - If the cache key changed → re-run `_repo.CountAsync(predicate)`; cache new key + new count
+  - Decode `(skip, pageSize)` to a `PagePosition`:
+    - `skip == 0` → `First`
+    - `skip + pageSize >= _totalCount` → `Last`
+    - `skip - _previousSkip == pageSize` → `After(_lastCursor)`
+    - `_previousSkip - skip == pageSize` → `Before(_firstCursor)`
+    - `(skip - _previousSkip) % pageSize == 0` and absolute step ≤ 5 pages → `After`/`Before` with `pageStep = abs(delta)/pageSize - 1`
+    - Otherwise → fallback path
+  - Fallback: call `_repo.GetManyAsync(predicate, new Options<TEntity> { Skip = skip, Limit = pageSize, Sort = sortBy, Ascending = ascending })`. After the fetch, re-issue cursors via `CursorToken.From(items[0], sortBy, ascending)` and `CursorToken.From(items[^1], sortBy, ascending)` so the next non-jump call can resume keyset navigation.
+  - On non-fallback path: call `_repo.GetPageAsync(pageSize, position, predicate, sortBy, ascending, ct)` and store `page.FirstCursor` / `page.LastCursor`
+  - Update `_previousSkip = skip`
+  - Return `(items, _totalCount)`
+- [ ] `Reset()` clears state (`_firstCursor`, `_lastCursor`, `_previousSkip`, `_filterCacheKey`, `_totalCount`)
+- [ ] **Important: this class is built only on the public Layer 1 API.** No internal access. The same algorithm could be implemented by any consumer who needs different state-management.
+- [ ] Build clean
+
+### Step 8: Tests
 - [ ] New `Paging/CursorTokenTests.cs` — pure unit tests, no DB:
   - Round-trip for `ObjectId`, `DateTime` (UTC + offsets), `Guid`, `string`, `int`, `long`, `decimal`, `null`
   - Malformed Base64URL → `FormatException`
@@ -88,24 +106,33 @@
   - Cursor from sort A used with sort B → `InvalidOperationException` with a clear message
   - Lockable collection delegates correctly: same scenario produces same results when called on a `LockableTestRepositoryCollection`
 - [ ] Run McpProviderTests + full suite — green on net10 (1 known-flaky `GetLockedExpired` allowed)
+- [ ] New `Paging/CursorPagerTests.cs` — DB-backed:
+  - Sequential next: `LoadAsync(0, 10, ...)` then `LoadAsync(10, 10, ...)` then `LoadAsync(20, 10, ...)` returns the right pages
+  - Last page: `LoadAsync(40, 10, ...)` against a 50-doc collection → final 10 in correct order
+  - Previous: `LoadAsync(20 ... )` then `LoadAsync(10, ...)` returns page 2 again
+  - 2-page jump: `LoadAsync(0, 10, ...)` then `LoadAsync(20, 10, ...)` → uses `After` with `pageStep: 1`
+  - Arbitrary jump: `LoadAsync(0, 10, ...)` then `LoadAsync(150, 10, ...)` → falls back to `GetManyAsync(skip)`, returns page 16; subsequent `LoadAsync(160, ...)` → uses keyset (cursor was re-issued from the fallback's last item)
+  - Total-count cache: change the filter → `CountAsync` runs once for the new filter, then no count queries on subsequent same-filter loads
+  - `Reset()` clears state — next `LoadAsync` re-runs CountAsync + treats Skip=0 as First
 
-### Step 8: Index-plan verification test
+### Step 9: Index-plan verification test
 - [ ] Add an explain-plan check (use `Disk.ExecuteAsync(...)` to run `explain` on a representative page query against a seeded collection that has the recommended `{sortField, _id}` index) — assert the winning plan stage is `IXSCAN`, not `COLLSCAN`
 - [ ] Note: this is a guidance test, not an enforcement; running without the index still works, just slower
 
-### Step 9: Build verification on all targets
+### Step 10: Build verification on all targets
 - [ ] Build on net8 / net9 / net10 — clean, warnings under 50 budget
 
-### Step 10: README update
+### Step 11: README update
 - [ ] Extend the "Custom queries" section with a new "Keyset pagination" subsection covering:
   - Why (skip penalty on deep pages, "jump to last")
   - Basic usage — `GetPageAsync(pageSize, PagePosition.First, ...)`, then chaining via `LastCursor`/`FirstCursor`
   - Sort + filter combinator example
   - Index guidance: compound `{sortField, _id}` per sortable column
   - Total count: separate cached `CountAsync(predicate)` call
-  - Radzen integration pattern: how to map `LoadDataEventArgs.Skip` to `PagePosition` and how `PagingSummaryFormat` works without an in-page count
+  - **Easy path**: using `CursorPager<TEntity, TKey>` in a Blazor grid (Radzen example)
+  - **Manual path**: when you need full control, the ~60-line state-tracking pattern against the raw `GetPageAsync` + `CursorToken.From` API
 
-### Step 11: Milestone commit + closure
+### Step 12: Milestone commit + closure
 - [ ] (Per-step commits along the way — this is the closure)
 - [ ] Archive `plan/feature.md` → `$DOC_ROOT/Tharga/plans/Toolkit/MongoDB/done/keyset-pagination.md`
 - [ ] Delete `$DOC_ROOT/Tharga/plans/Toolkit/MongoDB/planned/33-keyset-pagination.md`
@@ -113,7 +140,7 @@
 - [ ] Delete `plan/` directory from the repo
 - [ ] Final commit: `feat: keyset-pagination complete`
 
-### Step 12: Push + PR
+### Step 13: Push + PR
 - [ ] User pushes `feature/keyset-pagination` to origin
 - [ ] Claude opens PR to `Tharga/master`
 - [ ] After merge — delete the feature branch (local + remote)

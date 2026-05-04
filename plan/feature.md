@@ -55,6 +55,17 @@ public readonly struct CursorToken
     public override string ToString();           // URL-safe string form
     public static CursorToken Parse(string s);   // throws FormatException on bad input
     public static CursorToken Empty { get; }     // sentinel for "no cursor"
+
+    /// <summary>
+    /// Construct a cursor that points at the given <paramref name="entity"/> under the given sort.
+    /// Used by adapter code that falls back to skip-based queries (e.g. arbitrary page-number jumps in
+    /// a Radzen grid) and then needs to resume keyset navigation from the boundary documents.
+    /// </summary>
+    public static CursorToken From<TEntity, TKey>(
+        TEntity entity,
+        Expression<Func<TEntity, object>> sortBy,
+        bool ascending)
+        where TEntity : EntityBase<TKey>;
 }
 ```
 
@@ -96,21 +107,80 @@ Keyset pagination is fast only with a compound index `{sortField: 1, _id: 1}` (d
 ### Lockable collections
 `LockableRepositoryCollectionBase` overrides `GetPageAsync` / `GetPageProjectionAsync` with delegation to `Disk.GetPageAsync(...)` — same pattern as the other read methods.
 
+### `CursorPager<TEntity, TKey>` — grid-agnostic state helper
+
+```csharp
+namespace Tharga.MongoDB.Paging;
+
+public sealed class CursorPager<TEntity, TKey>
+    where TEntity : EntityBase<TKey>
+{
+    public CursorPager(IRepositoryCollection<TEntity, TKey> repository);
+
+    public async Task<(TEntity[] Items, long TotalCount)> LoadAsync(
+        int skip,
+        int pageSize,
+        Expression<Func<TEntity, bool>> predicate = null,
+        Expression<Func<TEntity, object>> sortBy = null,
+        bool ascending = true,
+        CancellationToken cancellationToken = default);
+
+    public void Reset();   // forget cached cursors + total count (e.g. on filter reset)
+}
+```
+
+Encapsulates the per-grid state: the previous skip, the previous page's first/last cursors, and a per-filter `TotalCount` cache. On each `LoadAsync` call it maps `(skip, pageSize)` to a `PagePosition`:
+
+- `skip == 0` → `First`
+- `skip + pageSize >= TotalCount` → `Last`
+- `skip - previousSkip == pageSize` → `After(lastCursor)`
+- `previousSkip - skip == pageSize` → `Before(firstCursor)`
+- `±N pages within a small bound` → `After`/`Before` with `pageStep`
+- arbitrary jump → falls back to skip-based `GetManyAsync`, then re-issues cursors via `CursorToken.From(...)` so subsequent prev/next stays on the keyset path
+
+Re-runs `CountAsync(predicate)` only when the filter changes (cached by the predicate's text representation).
+
+**The pager is built entirely on top of the public Layer 1 API** — same access any consumer has. Direct use of `GetPageAsync` + `PagePosition` + `CursorToken.From` remains supported and unchanged. Consumers that prefer manual state (URL-driven pagination, server-pushed updates, infinite scroll) skip the pager entirely.
+
+#### Radzen integration shape (with the pager)
+
+```csharp
+// Component-level state — one CursorPager per grid
+private readonly CursorPager<TeamEntity, ObjectId> _pager;
+
+private async Task OnLoadData(LoadDataEventArgs args)
+{
+    var predicate = BuildPredicate(args.Filters);
+    var (sortBy, ascending) = ParseSort(args.OrderBy);
+
+    var (items, totalCount) = await _pager.LoadAsync(
+        args.Skip ?? 0, args.Top ?? 10,
+        predicate, sortBy, ascending);
+
+    Items = items;
+    Count = (int)totalCount;
+}
+```
+
+Without the pager, the same logic in raw form is ~60 lines (state fields + the Skip→PagePosition decoder + the fallback re-issue) — also documented in the README for consumers who need full control.
+
 ### Total count
 Not in `CursorPage<T>`. Callers call `CountAsync(predicate)` separately and cache per-filter. Doing a count on every page load would defeat the speed advantage; the spec is explicit about this.
 
 ## Out of scope (deferred)
 - **Multi-column sort** (mixed direction). Single column is enough for the target UI; multi-column adds composite-cursor design complexity without a motivating consumer.
-- **Total count inside `CursorPage<T>`** — separate, caller-controlled query (above).
+- **Total count inside `CursorPage<T>`** — separate, caller-controlled query (above). The `CursorPager` caches it per filter for ergonomics, but the raw API stays count-free.
 - **Auto-keyset inside `GetManyAsync`** — too magical to be predictable.
-- **Direct Radzen adapter component** — README pattern, no Radzen package dependency.
+- **Direct Radzen adapter component** — `CursorPager` is grid-agnostic; no Radzen package dependency.
 
 ## Acceptance criteria
 - [ ] `GetPageAsync` and `GetPageProjectionAsync` on `IRepositoryCollection<TEntity, TKey>` and `RepositoryCollectionBase<TEntity, TKey>` (abstract)
 - [ ] Implemented in `DiskRepositoryCollectionBase`; delegation override in `LockableRepositoryCollectionBase`
-- [ ] `PagePosition`, `CursorPage<T>`, `CursorToken` under `Tharga.MongoDB.Paging`
+- [ ] `PagePosition`, `CursorPage<T>`, `CursorToken`, `CursorPager<TEntity, TKey>` under `Tharga.MongoDB.Paging`
 - [ ] `CursorToken.ToString()` / `CursorToken.Parse(...)` round-trip safely; malformed input throws `FormatException` with a clear message
+- [ ] `CursorToken.From<TEntity, TKey>(entity, sortBy, ascending)` constructs a token from an arbitrary entity (used by the pager's fallback path; available to direct consumers too)
 - [ ] Cursor token carries sort-field path + direction so a token from one sort is rejected when used with a different sort (clear `InvalidOperationException` or similar)
+- [ ] `CursorPager<TEntity, TKey>` encapsulates Skip→PagePosition decoding, per-filter total-count cache, fallback for arbitrary jumps; built only on the public Layer 1 API
 - [ ] Compound-index requirement called out in README; explain-plan test confirms a representative seeded query uses an index scan, not a collection scan
 - [ ] Filter composition: caller predicate ANDed with cursor filter; correctness verified with a dynamic filter change between pages
 - [ ] Execution goes through the existing `_databaseExecutor` limiter and shows up in admin-UI call tracking as `Operation.Read`
@@ -126,6 +196,10 @@ Not in `CursorPage<T>`. Callers call `CountAsync(predicate)` separately and cach
   - [ ] Empty collection returns empty `CursorPage` with `HasNext` / `HasPrevious = false`
   - [ ] Projection variant returns the projected shape
   - [ ] Lockable collection delegates correctly
+  - [ ] `CursorToken.From(entity, sortBy, ascending)` round-trips: token built from an entity navigates back to the same logical position
+  - [ ] `CursorPager.LoadAsync` happy path — sequential next / previous / first / last produces the same items as direct `GetPageAsync` calls
+  - [ ] `CursorPager.LoadAsync` falls back to skip-based on arbitrary jump; subsequent next/prev calls work correctly (cursors re-issued from fallback page boundaries)
+  - [ ] `CursorPager` total-count cache: `CountAsync` is called once per filter, not once per page
 - [ ] README "Custom queries" section gains a "Keyset pagination" subsection: basic usage, Radzen integration pattern, index guidance, total-count-cached-separately pattern
 - [ ] Build + tests green on net8 / net9 / net10 within the 50-warning budget
 - [ ] **Regression: full Disk + Lockable test suites pass without edits.**

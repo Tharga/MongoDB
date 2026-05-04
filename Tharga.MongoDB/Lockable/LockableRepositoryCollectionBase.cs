@@ -141,6 +141,25 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
         return Disk.GetSizeAsync(cancellationToken);
     }
 
+    public override Task<Paging.CursorPage<TEntity>> GetPageAsync(
+        int pageSize,
+        Paging.PagePosition position,
+        Expression<Func<TEntity, bool>> predicate = null,
+        Expression<Func<TEntity, object>> sortBy = null,
+        bool ascending = true,
+        CancellationToken cancellationToken = default)
+        => Disk.GetPageAsync(pageSize, position, predicate, sortBy, ascending, cancellationToken);
+
+    public override Task<Paging.CursorPage<T>> GetPageProjectionAsync<T>(
+        int pageSize,
+        Paging.PagePosition position,
+        Expression<Func<TEntity, T>> projection,
+        Expression<Func<TEntity, bool>> predicate = null,
+        Expression<Func<TEntity, object>> sortBy = null,
+        bool ascending = true,
+        CancellationToken cancellationToken = default)
+        => Disk.GetPageProjectionAsync(pageSize, position, projection, predicate, sortBy, ascending, cancellationToken);
+
     //Create
     public override Task AddAsync(TEntity entity, IClientSessionHandle session = null)
     {

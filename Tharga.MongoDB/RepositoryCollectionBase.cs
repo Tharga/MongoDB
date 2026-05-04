@@ -89,6 +89,23 @@ public abstract class RepositoryCollectionBase<TEntity, TKey> : RepositoryCollec
 
     public abstract Task<long> GetSizeAsync(CancellationToken cancellationToken = default);
 
+    public abstract Task<Tharga.MongoDB.Paging.CursorPage<TEntity>> GetPageAsync(
+        int pageSize,
+        Tharga.MongoDB.Paging.PagePosition position,
+        Expression<Func<TEntity, bool>> predicate = null,
+        Expression<Func<TEntity, object>> sortBy = null,
+        bool ascending = true,
+        CancellationToken cancellationToken = default);
+
+    public abstract Task<Tharga.MongoDB.Paging.CursorPage<T>> GetPageProjectionAsync<T>(
+        int pageSize,
+        Tharga.MongoDB.Paging.PagePosition position,
+        Expression<Func<TEntity, T>> projection,
+        Expression<Func<TEntity, bool>> predicate = null,
+        Expression<Func<TEntity, object>> sortBy = null,
+        bool ascending = true,
+        CancellationToken cancellationToken = default);
+
     //Create
     public abstract Task AddAsync(TEntity entity, IClientSessionHandle session = null);
     public abstract Task<bool> TryAddAsync(TEntity entity, IClientSessionHandle session = null);
