@@ -34,37 +34,32 @@
   - Composite test: `From(entity, ...)` → `ToString()` → `Parse(...)` decodes back to identical token
 - [x] Full regression: 363 passed / 8 skipped / 0 failed (was 340 baseline + 23 new). Build clean.
 
-### Step 4: Implement `DiskRepositoryCollectionBase.GetPageAsync`
-- [ ] Helper: extract the sort-field path from `Expression<Func<TEntity, object>>` using the driver's `RenderArgs<TEntity>`-based path so `[BsonElement("foo")]` renames are honored. Match what `Builders<TEntity>.IndexKeys.Ascending(sortBy).Render(...)` produces.
-- [ ] Helper: build the cursor filter for `After`/`Before`:
+### Step 4: Implement `DiskRepositoryCollectionBase.GetPageAsync` — DONE
+- [x] Helper `ResolveSortFieldPath` — extracts the sort-field path from `Expression<Func<TEntity, object>>` using the driver's `RenderArgs<TEntity>` machinery so `[BsonElement("foo")]` renames are honored. Same path as `Builders<TEntity>.IndexKeys.Ascending(expr).Render(...)`.
+- [x] Helper `BuildCursorFilter` — builds the cursor filter for `After`/`Before`:
   - Unique sort (sortBy == null → `_id` only): `{_id: {$gt|$lt: cursor.id}}`
   - Non-unique sort: `$or:[{sortField: {$gt|$lt: v}}, {sortField: {$eq: v}, _id: {$gt|$lt: id}}]`
-- [ ] Helper: build the sort spec `{sortField: 1, _id: 1}` for ascending; flip both for descending; for unique-only path use just `{_id: 1}`
-- [ ] Build the final filter: caller `predicate` AND'd with the cursor filter (if any)
-- [ ] Per-position handling:
+  - `goForward == ascending` decides `$gt` vs `$lt`
+- [x] Helper `BuildSortDefinition` — `{sortField: 1, _id: 1}` ascending; flipped descending; unique-only path uses just `{_id: ±1}`
+- [x] Helper `ComposeFilter` — caller `predicate` AND'd with the cursor filter (handles null on either side)
+- [x] Per-position handling implemented in `FetchPageAsync`:
   - `First`: no cursor filter, sort per `ascending`, `Limit(pageSize)`
-  - `Last`: no cursor filter, **flip** the sort direction, `Limit(pageSize)`, **reverse items in memory**
-  - `After(cursor, pageStep)`: validate sort match, cursor `>` filter, sort per `ascending`, `Skip(pageStep × pageSize).Limit(pageSize)`
-  - `Before(cursor, pageStep)`: validate sort match, cursor `<` filter, **flip** sort, `Skip(pageStep × pageSize).Limit(pageSize)`, **reverse items in memory**
-- [ ] After fetching, build `CursorPage<TEntity>`:
-  - `Items` — final ordered list (post-reverse if applicable)
-  - `FirstCursor` — token for `Items[0]` (or `CursorToken.Empty` if items empty)
-  - `LastCursor` — token for `Items[^1]`
-  - `HasNext` — true iff there's at least one matching doc strictly past `LastCursor` (cheap: probe `Find(predicate ∧ keysetAfterLastCursor).Limit(1).Any()`; or check whether the fetch returned `pageSize` items AND we know more exist by an extra count… simpler: do the explicit probe)
-  - `HasPrevious` — same shape, in the other direction from `FirstCursor`
-- [ ] Use `ExecuteAsync(nameof(GetPageAsync), ..., Operation.Read, filter: combinedFilter)` so the call shows up in admin-UI tracking
-- [ ] Argument validation: `pageSize > 0`, `pageStep >= 0`, `position` non-default
-- [ ] Build clean
+  - `Last`: no cursor filter, **flips** the sort direction, `Limit(pageSize)`, **reverses items in memory**
+  - `After(cursor, pageStep)`: validates sort match via `cursor.ValidateForSort`, cursor `>` filter, sort per `ascending`, `Skip(pageStep × pageSize).Limit(pageSize)`
+  - `Before(cursor, pageStep)`: validates sort match, cursor `<` filter, **flips** sort, `Skip(pageStep × pageSize).Limit(pageSize)`, **reverses items in memory**
+- [x] Builds `CursorPage<TEntity>` with `Items`, `FirstCursor` (= `CursorToken.From(items[0], sortBy, ascending)`), `LastCursor`, `HasNext`, `HasPrevious`. Empty result → both flags false.
+- [x] `HasNext` / `HasPrevious` probed via `Find(predicate ∧ cursorFilter).Limit(1).AnyAsync()` (cheap, hits the same index, bounded).
+- [x] Routed through `ExecuteAsync(nameof(GetPageAsync), ..., Operation.Read, filter: predicateFilter)` so the call shows up in admin-UI tracking
+- [x] Argument validation: `pageSize > 0` (throws `ArgumentOutOfRangeException`)
+- [x] `GetPageProjectionAsync` reuses `FetchPageAsync` then materializes the projected `T[]` via `projection.Compile()` client-side (decision per Step 5 design note)
+- [x] Build clean across net8/9/10; full regression: 362 passed / 8 skipped / 6 pre-existing failures (replica-set transaction tests + the known `GetLockedExpired` flake) — same as master baseline
 
-### Step 5: Implement `GetPageProjectionAsync`
-- [ ] Mirror Step 4's implementation but materialize a projected `T[]` instead of `TEntity[]`
-- [ ] Cursor tokens are still computed from the **entity's** sort-field + `_id` — so the projection stage runs after the sort-and-cursor stage. Internally: fetch raw `TEntity` for boundary documents, then project; or do a server-side `$project` and ensure the projected shape still includes the boundary fields. **Decision: use a two-step approach** — server-side find returns full `TEntity`, then we materialize the projected `T` via `projection.Compile()` client-side. Reason: keeps cursor-token construction trivial and avoids a separate "include _id and sortField in projection" wart on the API.
-- [ ] If profiling later shows the client-side projection is too costly for very wide entities, we can switch to a server-side `$project` that explicitly preserves `{_id, sortField, ...projectedFields}` — but defer that until a consumer measures the cost.
-- [ ] Build clean
+### Step 5: Implement `GetPageProjectionAsync` — DONE (folded into Step 4)
+- [x] Done as part of Step 4: reuses `FetchPageAsync` then `projection.Compile()` client-side per the Step-4 decision
+- [x] Follow-up captured in `feature.md`: switch to server-side `$project` preserving `{_id, sortField, ...projectedFields}` if profiling later shows client-side is too costly for wide entities
 
-### Step 6: Lockable delegation
-- [ ] Override `GetPageAsync` / `GetPageProjectionAsync` on `LockableRepositoryCollectionBase<TEntity, TKey>` with one-line delegation to `Disk.GetPageAsync(...)` / `Disk.GetPageProjectionAsync(...)` — matches existing read-method delegation pattern
-- [ ] Build clean
+### Step 6: Lockable delegation — DONE (folded into Step 2)
+- [x] `LockableRepositoryCollectionBase` overrides for `GetPageAsync` / `GetPageProjectionAsync` already in place from Step 2 stub — one-line delegation to `_disk.GetPageAsync(...)` / `_disk.GetPageProjectionAsync(...)`. No further work needed.
 
 ### Step 7: Implement `CursorPager<TEntity, TKey>`
 - [ ] Constructor stores the `IRepositoryCollection<TEntity, TKey>` reference
