@@ -589,6 +589,175 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         return await ExecuteAsync(nameof(GetSizeAsync), (_, _, _) => Task.FromResult((_mongoDbService.GetSize(ProtectedCollectionName), 1)),Operation.Read, cancellationToken);
     }
 
+    public override async Task<Paging.CursorPage<TEntity>> GetPageAsync(
+        int pageSize,
+        Paging.PagePosition position,
+        Expression<Func<TEntity, bool>> predicate = null,
+        Expression<Func<TEntity, object>> sortBy = null,
+        bool ascending = true,
+        CancellationToken cancellationToken = default)
+    {
+        if (pageSize <= 0) throw new ArgumentOutOfRangeException(nameof(pageSize), "pageSize must be > 0.");
+
+        return await ExecuteAsync(nameof(GetPageAsync), async (collection, _, ct) =>
+        {
+            var page = await FetchPageAsync(collection, pageSize, position, predicate, sortBy, ascending, ct);
+            return (page, page.Items.Length);
+        }, Operation.Read, cancellationToken, filter: predicate != null ? Builders<TEntity>.Filter.Where(predicate) : null);
+    }
+
+    public override async Task<Paging.CursorPage<T>> GetPageProjectionAsync<T>(
+        int pageSize,
+        Paging.PagePosition position,
+        Expression<Func<TEntity, T>> projection,
+        Expression<Func<TEntity, bool>> predicate = null,
+        Expression<Func<TEntity, object>> sortBy = null,
+        bool ascending = true,
+        CancellationToken cancellationToken = default)
+    {
+        if (pageSize <= 0) throw new ArgumentOutOfRangeException(nameof(pageSize), "pageSize must be > 0.");
+        if (projection == null) throw new ArgumentNullException(nameof(projection));
+
+        var compiled = projection.Compile();
+
+        return await ExecuteAsync(nameof(GetPageProjectionAsync), async (collection, _, ct) =>
+        {
+            var entityPage = await FetchPageAsync(collection, pageSize, position, predicate, sortBy, ascending, ct);
+            var projected = new T[entityPage.Items.Length];
+            for (var i = 0; i < entityPage.Items.Length; i++) projected[i] = compiled(entityPage.Items[i]);
+
+            var page = new Paging.CursorPage<T>(projected, entityPage.FirstCursor, entityPage.LastCursor, entityPage.HasNext, entityPage.HasPrevious);
+            return (page, page.Items.Length);
+        }, Operation.Read, cancellationToken, filter: predicate != null ? Builders<TEntity>.Filter.Where(predicate) : null);
+    }
+
+    private async Task<Paging.CursorPage<TEntity>> FetchPageAsync(
+        IMongoCollection<TEntity> collection,
+        int pageSize,
+        Paging.PagePosition position,
+        Expression<Func<TEntity, bool>> predicate,
+        Expression<Func<TEntity, object>> sortBy,
+        bool ascending,
+        CancellationToken cancellationToken)
+    {
+        var sortFieldPath = ResolveSortFieldPath(sortBy);
+
+        // Sort-mismatch detection: a cursor issued for sort A can't be used with sort B.
+        if (position.Kind is Paging.PagePosition.PositionKind.After or Paging.PagePosition.PositionKind.Before)
+        {
+            position.Cursor.ValidateForSort(sortFieldPath, ascending);
+        }
+
+        // Plan: cursor filter, actual sort direction, whether to reverse in memory.
+        FilterDefinition<TEntity> cursorFilter = null;
+        bool finalAscending = ascending;
+        bool reverseInMemory = false;
+
+        switch (position.Kind)
+        {
+            case Paging.PagePosition.PositionKind.First:
+                break;
+            case Paging.PagePosition.PositionKind.Last:
+                finalAscending = !ascending;
+                reverseInMemory = true;
+                break;
+            case Paging.PagePosition.PositionKind.After:
+                cursorFilter = BuildCursorFilter(sortFieldPath, position.Cursor, ascending, goForward: true);
+                break;
+            case Paging.PagePosition.PositionKind.Before:
+                cursorFilter = BuildCursorFilter(sortFieldPath, position.Cursor, ascending, goForward: false);
+                finalAscending = !ascending;
+                reverseInMemory = true;
+                break;
+        }
+
+        var finalFilter = ComposeFilter(predicate, cursorFilter);
+        var sortDef = BuildSortDefinition(sortFieldPath, finalAscending);
+        var skipCount = position.PageStep * pageSize;
+
+        var items = await collection.Find(finalFilter)
+            .Sort(sortDef)
+            .Skip(skipCount)
+            .Limit(pageSize)
+            .ToListAsync(cancellationToken);
+
+        if (reverseInMemory) items.Reverse();
+
+        if (items.Count == 0)
+        {
+            return new Paging.CursorPage<TEntity>(Array.Empty<TEntity>(), Paging.CursorToken.Empty, Paging.CursorToken.Empty, HasNext: false, HasPrevious: false);
+        }
+
+        var firstCursor = Paging.CursorToken.From<TEntity, TKey>(items[0], sortBy, ascending);
+        var lastCursor = Paging.CursorToken.From<TEntity, TKey>(items[items.Count - 1], sortBy, ascending);
+
+        // Probe HasNext (any matching doc strictly after lastCursor in the natural sort order).
+        var afterFilter = ComposeFilter(predicate, BuildCursorFilter(sortFieldPath, lastCursor, ascending, goForward: true));
+        var hasNext = await collection.Find(afterFilter).Limit(1).AnyAsync(cancellationToken);
+
+        // Probe HasPrevious (any matching doc strictly before firstCursor in the natural sort order).
+        var beforeFilter = ComposeFilter(predicate, BuildCursorFilter(sortFieldPath, firstCursor, ascending, goForward: false));
+        var hasPrevious = await collection.Find(beforeFilter).Limit(1).AnyAsync(cancellationToken);
+
+        return new Paging.CursorPage<TEntity>(items.ToArray(), firstCursor, lastCursor, hasNext, hasPrevious);
+    }
+
+    private static string ResolveSortFieldPath(Expression<Func<TEntity, object>> sortBy)
+    {
+        if (sortBy == null) return "_id";
+        var serializer = BsonSerializer.SerializerRegistry.GetSerializer<TEntity>();
+        var args = new RenderArgs<TEntity>(serializer, BsonSerializer.SerializerRegistry);
+        return new ExpressionFieldDefinition<TEntity, object>(sortBy).Render(args).FieldName;
+    }
+
+    private static FilterDefinition<TEntity> ComposeFilter(
+        Expression<Func<TEntity, bool>> predicate,
+        FilterDefinition<TEntity> cursorFilter)
+    {
+        if (predicate == null && cursorFilter == null) return Builders<TEntity>.Filter.Empty;
+        if (predicate == null) return cursorFilter;
+        var predicateFilter = Builders<TEntity>.Filter.Where(predicate);
+        if (cursorFilter == null) return predicateFilter;
+        return Builders<TEntity>.Filter.And(predicateFilter, cursorFilter);
+    }
+
+    private static SortDefinition<TEntity> BuildSortDefinition(string sortFieldPath, bool ascending)
+    {
+        var b = Builders<TEntity>.Sort;
+        if (sortFieldPath == "_id")
+        {
+            return ascending ? b.Ascending("_id") : b.Descending("_id");
+        }
+        var sortField = ascending ? b.Ascending(sortFieldPath) : b.Descending(sortFieldPath);
+        var idField = ascending ? b.Ascending("_id") : b.Descending("_id");
+        return b.Combine(sortField, idField);
+    }
+
+    private static FilterDefinition<TEntity> BuildCursorFilter(
+        string sortFieldPath,
+        Paging.CursorToken cursor,
+        bool ascending,
+        bool goForward)
+    {
+        if (cursor.IsEmpty) return null;
+
+        // Operator: $gt when (goForward == ascending), else $lt.
+        // Forward in ascending sort = greater values; forward in descending sort = smaller values.
+        var useGt = goForward == ascending;
+        var b = Builders<TEntity>.Filter;
+
+        if (sortFieldPath == "_id")
+        {
+            return useGt ? b.Gt("_id", cursor.Id) : b.Lt("_id", cursor.Id);
+        }
+
+        var sortFieldGtLt = useGt ? b.Gt(sortFieldPath, cursor.SortValue) : b.Lt(sortFieldPath, cursor.SortValue);
+        var sortFieldEq = b.Eq(sortFieldPath, cursor.SortValue);
+        var idGtLt = useGt ? b.Gt("_id", cursor.Id) : b.Lt("_id", cursor.Id);
+
+        return b.Or(sortFieldGtLt, b.And(sortFieldEq, idGtLt));
+    }
+
     //Create
     public override async Task AddAsync(TEntity entity, IClientSessionHandle session = null)
     {
