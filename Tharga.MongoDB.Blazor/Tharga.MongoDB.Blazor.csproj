@@ -6,7 +6,7 @@
     <Authors>Daniel Bohlin</Authors>
     <Company>Thargelion AB</Company>
     <Product>Tharga MongoDB Blazor</Product>
-    <Description>Component for manageing the Tharga MongoDB features in blazor.</Description>
+    <Description>Drop-in Blazor admin UI for Tharga.MongoDB — Razor components that render the live monitoring data (collections, calls, indexes, queue metrics, connected clients) on any admin page.</Description>
     <PackageIconUrl>https://thargelion.se/wp-content/uploads/2025/11/Thargelion-DB-Icon-150.png</PackageIconUrl>
     <GenerateDocumentationFile>True</GenerateDocumentationFile>
     <PackageReadmeFile>README.md</PackageReadmeFile>

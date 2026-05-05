@@ -7,7 +7,7 @@
     <Authors>Daniel Bohlin</Authors>
     <Company>Thargelion AB</Company>
     <Product>Tharga MongoDB</Product>
-    <Description>Dynamic names for databases and collections.</Description>
+    <Description>MongoDB repository toolkit for .NET — dynamic database/collection naming, automatic index assurance, document-level locking, multi-document transactions, keyset pagination, and built-in call monitoring on top of MongoDB.Driver.</Description>
     <PackageIconUrl>https://thargelion.se/wp-content/uploads/2025/11/Thargelion-DB-Icon-150.png</PackageIconUrl>
     <GenerateDocumentationFile>True</GenerateDocumentationFile>
     <PackageReadmeFile>README.md</PackageReadmeFile>
