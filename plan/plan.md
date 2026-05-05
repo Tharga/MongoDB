@@ -1,16 +1,15 @@
 # Plan — Fix #88 (TDD red-green)
 
-## Step 1: Branch — DONE setup
+## Step 1: Branch + baseline — DONE
 
-- [ ] `git checkout -b fix/issue-88-lockable-custom-interface master` (or whatever convention; project uses GitHub Actions → feature branches off master).
-- [ ] No content commit yet — used for the rest of the steps.
+- [x] `git checkout -b fix/issue-88-lockable-custom-interface master`
+- [x] First commit: settings.json cleanup + plan/feature.md + plan/plan.md (carried in the same branch since they were uncommitted on master).
 
-## Step 2: Locate test fixture pattern
+## Step 2: Locate test fixture pattern — DONE
 
-- [ ] Read `Tharga.MongoDB.Tests/MongoDbRegistrationTests.cs` (or whatever the existing AddMongoDB-related test class is) to follow the same pattern. If no matching file exists, locate the test that exercises auto-registration. Existing tests for `TrackMongoCollection` are a likely starting point.
-- [ ] Decision point: write the new test in the same file or a new one. Default: new file `Tharga.MongoDB.Tests/MongoDbRegistrationTests.cs` (or extend the existing one) with the `#88` repro plus the complementary tests.
+- [x] Surveyed `Tharga.MongoDB.Tests/RegistrationOptionsTests.cs` and `TrackMongoCollectionTests.cs` for the pattern. New tests use `new ServiceCollection().AddLogging()` + an empty `ConfigurationBuilder` config.
 
-## Step 3: Red — write the failing test
+## Step 3: Red — DONE
 
 - [ ] In `Tharga.MongoDB.Tests/Registration/AddMongoDb_LockableSubclassWithCustomInterface_DoesNotThrow.cs` (or sibling location):
   ```csharp
@@ -29,7 +28,7 @@
   3. Asserts no throw, and that the resulting `ServiceProvider` resolves `IIntegrationCollection`.
 - [ ] Run only this test: should fail with the same `InvalidOperationException` from the issue. Confirm the exception message contains `IDocumentLeaseTransactionRunner` so we know the test is hitting the right path. **This is the red.**
 
-## Step 4: Green — fix the filter
+## Step 4: Green — DONE
 
 - [ ] Edit `Tharga.MongoDB/MongoDbRegistrationExtensions.cs:190-198`. Current shape:
   ```csharp
@@ -54,7 +53,7 @@
   ```
 - [ ] Re-run the test from Step 3. **Should pass — green.**
 
-## Step 5: Lock down the intended validation behaviour
+## Step 5: Lockdown — DONE
 
 Add tests so future refactors can't quietly re-break either case:
 
@@ -63,7 +62,7 @@ Add tests so future refactors can't quietly re-break either case:
 - [ ] **Two genuine consumer interfaces still throws** — assert the validation fires for the case it was designed for. Build a class that implements two non-framework custom interfaces; expect `InvalidOperationException` and the same shape of message.
 - [ ] All four tests run from the same fixture for consistency.
 
-## Step 6: Regression sweep
+## Step 6: Regression sweep — DONE
 
 - [ ] `dotnet test -c Debug` full suite. Expect the same baseline as master plus +4 (or +N) new passes. The 6 pre-existing replica-set transaction failures and the `GetLockedExpired` flake are expected; nothing else should turn red.
 - [ ] `dotnet build -c Release` clean across net8/net9/net10.
@@ -89,6 +88,19 @@ Add tests so future refactors can't quietly re-break either case:
 - **The fix relies on namespace strings.** If we ever ship a framework interface in a non-`Tharga.MongoDB.*` namespace (e.g. a base interface in `Tharga.Toolkit.*`), the filter misses it and the bug returns. Mitigation: keep all framework interfaces under the `Tharga.MongoDB.*` namespace — already true; document as an invariant if needed.
 - **Behaviour change for any user who legitimately has multiple custom interfaces** is unaffected — they still throw with the same message.
 
-## Last session
+## Last session — implementation complete; awaits push + PR
 
-Just kicked off — feature.md and plan.md written, no code or tests touched yet. Next: Step 1 (branch).
+All 6 implementation steps done. Committed sequence on `fix/issue-88-lockable-custom-interface`:
+
+1. `dd8f469` — settings.json cleanup + plan baseline
+2. `a23a6a5` — red test (regression repro)
+3. `51b2db8` — fix: assembly-based framework-interface check + green test refinement (asserts on `IServiceCollection` registration entry, not full DI resolution)
+4. `72ae593` — 5 lockdown unit tests for `ResolveCollectionServiceType` helper
+
+**Important deviation from the original plan:** the helper started as a namespace-prefix check (`StartsWith("Tharga.MongoDB.")`), but that erroneously matches the `Tharga.MongoDB.Tests` namespace and filtered out *test* interfaces too. Switched to an assembly check (`type.Assembly == typeof(IRepositoryCollection).Assembly`) which is both more correct and more robust to future namespace reorganisations.
+
+**Refactor done as part of green:** extracted the resolution loop body to an internal helper `ResolveCollectionServiceType(TypeInfo)` so the validation can be unit-tested without going through the full `AddMongoDB` machinery. Helper is `internal` and visible to tests via the existing `InternalsVisibleTo("Tharga.MongoDB.Tests")`.
+
+Tests: 6 new (1 integration + 5 lockdown). Full regression: 395 passed / 8 skipped / 5 pre-existing failures (replica-set transaction tests). Release build clean across net8/9/10.
+
+Next: Step 7 — push + PR + closure (archive plan/feature.md to external `done/`).
