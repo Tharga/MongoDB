@@ -192,8 +192,7 @@ public static class MongoDbRegistrationExtensions
             {
                 var serviceTypes = collectionType.ImplementedInterfaces
                     .Where(x => x.IsInterface && !x.IsGenericType)
-                    .Where(x => x != typeof(IReadOnlyRepositoryCollection))
-                    .Where(x => x != typeof(IRepositoryCollection))
+                    .Where(x => !IsThargaMongoDBFrameworkInterface(x))
                     .ToArray();
                 if (serviceTypes.Length > 1) throw new InvalidOperationException($"There are {serviceTypes.Length} interfaces for collection type '{collectionType.Name}' ({string.Join(", ", serviceTypes.Select(x => x.Name))}).");
                 var implementationType = collectionType.AsType();
@@ -228,6 +227,10 @@ public static class MongoDbRegistrationExtensions
         TryLoadCacheAssembly(o);
         return (o.AutoRegistrationAssemblies ?? AssemblyService.GetAssemblies()).Union(o._extraAssemblies);
     }
+
+    private static readonly Assembly _frameworkAssembly = typeof(IRepositoryCollection).Assembly;
+
+    private static bool IsThargaMongoDBFrameworkInterface(Type type) => type.Assembly == _frameworkAssembly;
 
     [System.Diagnostics.DebuggerNonUserCode]
     private static void TryLoadCacheAssembly(DatabaseOptions o)

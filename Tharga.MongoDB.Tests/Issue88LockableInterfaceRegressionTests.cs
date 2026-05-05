@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using FluentAssertions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -30,35 +31,39 @@ public class Issue88LockableInterfaceRegressionTests
         {
             o.AutoRegisterRepositories = false;
             o.AutoRegisterCollections = true;
-            o.AutoRegistrationAssemblies = new[] { typeof(IntegrationCollection).Assembly };
+            o.AutoRegistrationAssemblies = new[] { typeof(Issue88IntegrationCollection).Assembly };
         });
 
         act.Should().NotThrow();
 
-        using var provider = services.BuildServiceProvider();
-        provider.GetService<IIntegrationCollection>().Should().BeOfType<IntegrationCollection>();
+        // The bug manifests as the registration scan throwing; once the scan succeeds we only need
+        // to confirm that the custom interface ended up bound to its concrete implementation, not
+        // accidentally bound to the framework marker IDocumentLeaseTransactionRunner.
+        services.Should().ContainSingle(d =>
+            d.ServiceType == typeof(IIssue88IntegrationCollection)
+            && d.ImplementationType == typeof(Issue88IntegrationCollection));
     }
+}
 
-    // Test types — kept in the same assembly so the auto-registration scan picks them up.
-    public record IntegrationMessage : LockableEntityBase<ObjectId>
+// Test types — kept at top level so the auto-registration scan picks them up.
+public record Issue88IntegrationMessage : LockableEntityBase<ObjectId>
+{
+    public string Payload { get; init; }
+}
+
+public interface IIssue88IntegrationCollection : ILockableRepositoryCollection<Issue88IntegrationMessage, ObjectId>
+{
+}
+
+public class Issue88IntegrationCollection
+    : LockableRepositoryCollectionBase<Issue88IntegrationMessage, ObjectId>, IIssue88IntegrationCollection
+{
+    public Issue88IntegrationCollection(IMongoDbServiceFactory mongoDbServiceFactory)
+        : base(mongoDbServiceFactory)
     {
-        public string Payload { get; init; }
     }
 
-    public interface IIntegrationCollection : ILockableRepositoryCollection<IntegrationMessage, ObjectId>
-    {
-    }
+    public override string CollectionName => "issue88-integration";
 
-    public class IntegrationCollection
-        : LockableRepositoryCollectionBase<IntegrationMessage, ObjectId>, IIntegrationCollection
-    {
-        public IntegrationCollection(IMongoDbServiceFactory mongoDbServiceFactory)
-            : base(mongoDbServiceFactory)
-        {
-        }
-
-        public override string CollectionName => "issue88-integration";
-
-        protected override bool RequireActor => false;
-    }
+    protected override bool RequireActor => false;
 }
