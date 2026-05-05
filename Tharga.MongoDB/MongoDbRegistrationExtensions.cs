@@ -190,14 +190,8 @@ public static class MongoDbRegistrationExtensions
             var currentDomainDefinedTypes = AssemblyService.GetTypes<IReadOnlyRepositoryCollection>(x => !x.IsGenericType && !x.IsInterface, GetAssemblies(o)).ToArray();
             foreach (var collectionType in currentDomainDefinedTypes)
             {
-                var serviceTypes = collectionType.ImplementedInterfaces
-                    .Where(x => x.IsInterface && !x.IsGenericType)
-                    .Where(x => !IsThargaMongoDBFrameworkInterface(x))
-                    .ToArray();
-                if (serviceTypes.Length > 1) throw new InvalidOperationException($"There are {serviceTypes.Length} interfaces for collection type '{collectionType.Name}' ({string.Join(", ", serviceTypes.Select(x => x.Name))}).");
                 var implementationType = collectionType.AsType();
-                var serviceType = serviceTypes.Length == 0 ? implementationType : serviceTypes.Single();
-
+                var serviceType = ResolveCollectionServiceType(collectionType);
                 RegisterCollection(services, mongoDbInstance, serviceType, implementationType, "Auto");
             }
         }
@@ -230,7 +224,29 @@ public static class MongoDbRegistrationExtensions
 
     private static readonly Assembly _frameworkAssembly = typeof(IRepositoryCollection).Assembly;
 
-    private static bool IsThargaMongoDBFrameworkInterface(Type type) => type.Assembly == _frameworkAssembly;
+    /// <summary>
+    /// True when <paramref name="type"/> is an interface defined in the Tharga.MongoDB assembly
+    /// itself (e.g. <c>IDocumentLeaseTransactionRunner</c>). Such interfaces are framework markers
+    /// and must not be considered as candidate service-type bindings during auto-registration.
+    /// </summary>
+    internal static bool IsThargaMongoDBFrameworkInterface(Type type) => type.Assembly == _frameworkAssembly;
+
+    /// <summary>
+    /// Resolves the service-type binding for an auto-discovered collection type. Picks the single
+    /// non-framework, non-generic interface the class declares; falls back to the implementation
+    /// type itself when none is declared. Throws <see cref="InvalidOperationException"/> if more
+    /// than one custom interface is found — auto-registration cannot disambiguate.
+    /// </summary>
+    internal static Type ResolveCollectionServiceType(TypeInfo collectionType)
+    {
+        var serviceTypes = collectionType.ImplementedInterfaces
+            .Where(x => x.IsInterface && !x.IsGenericType)
+            .Where(x => !IsThargaMongoDBFrameworkInterface(x))
+            .ToArray();
+        if (serviceTypes.Length > 1)
+            throw new InvalidOperationException($"There are {serviceTypes.Length} interfaces for collection type '{collectionType.Name}' ({string.Join(", ", serviceTypes.Select(x => x.Name))}).");
+        return serviceTypes.Length == 0 ? collectionType.AsType() : serviceTypes.Single();
+    }
 
     [System.Diagnostics.DebuggerNonUserCode]
     private static void TryLoadCacheAssembly(DatabaseOptions o)
