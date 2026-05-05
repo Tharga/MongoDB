@@ -1,0 +1,55 @@
+{
+  "metadata": [
+    {
+      "src": [
+        {
+          "src": "..",
+          "files": [
+            "Tharga.MongoDB/Tharga.MongoDB.csproj",
+            "Tharga.MongoDB.Blazor/Tharga.MongoDB.Blazor.csproj",
+            "Tharga.MongoDB.Mcp/Tharga.MongoDB.Mcp.csproj",
+            "Tharga.MongoDB.Monitor.Client/Tharga.MongoDB.Monitor.Client.csproj",
+            "Tharga.MongoDB.Monitor.Server/Tharga.MongoDB.Monitor.Server.csproj"
+          ]
+        }
+      ],
+      "dest": "api",
+      "includePrivateMembers": false,
+      "disableGitFeatures": false,
+      "disableDefaultFilter": false,
+      "noRestore": false,
+      "namespaceLayout": "flattened",
+      "memberLayout": "samePage",
+      "EnumSortOrder": "alphabetic",
+      "allowCompilationErrors": false
+    }
+  ],
+  "build": {
+    "content": [
+      {
+        "files": ["**/*.{md,yml}"],
+        "exclude": ["_site/**", "obj/**"]
+      }
+    ],
+    "resource": [
+      {
+        "files": ["images/**", "CNAME"]
+      }
+    ],
+    "output": "_site",
+    "globalMetadata": {
+      "_appName": "Tharga.MongoDB",
+      "_appTitle": "Tharga.MongoDB",
+      "_enableSearch": true,
+      "_disableContribution": false,
+      "_gitContribute": {
+        "repo": "https://github.com/Tharga/MongoDB",
+        "branch": "master"
+      }
+    },
+    "template": ["default", "modern"],
+    "postProcessors": ["ExtractSearchIndex"],
+    "keepFileLink": false,
+    "disableGitFeatures": false
+  }
+}
