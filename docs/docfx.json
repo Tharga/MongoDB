@@ -40,6 +40,8 @@
     "globalMetadata": {
       "_appName": "Tharga.MongoDB",
       "_appTitle": "Tharga.MongoDB",
+      "_appLogoPath": "images/logo.png",
+      "_appFaviconPath": "images/logo.png",
       "_enableSearch": true,
       "_disableContribution": false,
       "_gitContribute": {
