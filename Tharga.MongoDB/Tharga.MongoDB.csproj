@@ -22,7 +22,7 @@
   </PropertyGroup>
 
   <PropertyGroup>
-    <NoWarn>1701;1702;CS1591;CS0809</NoWarn>
+    <NoWarn>1701;1702;CS1591;CS0809;CS0067</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
@@ -43,6 +43,8 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
     <PackageReference Include="MongoDB.Driver" Version="3.8.0" />
+    <PackageReference Include="SharpCompress" Version="0.48.0" />
+    <PackageReference Include="Snappier" Version="1.3.1" />
     <PackageReference Include="Tharga.Runtime" Version="0.1.11" />
     <PackageReference Include="System.Linq.Async" Version="7.0.1" />
   </ItemGroup>
