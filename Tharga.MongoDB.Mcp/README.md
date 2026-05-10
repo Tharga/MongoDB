@@ -45,6 +45,30 @@ The provider is registered on the `System` MCP scope, so it only surfaces to sys
 **Tools (DataReadWrite)**
 - `mongodb.clean` — apply collection cleaners
 
+## Atlas (optional)
+
+When you set `MongoDbMcpOptions.Atlas` to a `MongoDbApiAccess` (Public/Private API key + Group/Project ID), the package additionally registers read-only MongoDB Atlas Administration tools on the System scope:
+
+```csharp
+builder.Services.AddThargaMcp(mcp => mcp.AddMongoDB(o =>
+{
+    o.Atlas = new MongoDbApiAccess
+    {
+        PublicKey  = "<atlas-public-key>",
+        PrivateKey = "<atlas-private-key>",
+        GroupId    = "<atlas-project-id>",
+    };
+}));
+```
+
+| Tool | Purpose |
+|---|---|
+| `atlas.list_clusters` | Clusters in the configured Atlas project — name, type, state, MongoDB version. |
+| `atlas.get_performance_advisor_suggestions` | Atlas Performance Advisor's suggested-index list for a named cluster (the same data the Atlas UI surfaces). Takes `clusterName`. |
+| `atlas.get_open_alerts` | Currently-firing Atlas alerts in the project. |
+
+Atlas tools are gated by the same `DataAccessLevel.Metadata` minimum as the rest of the package. Leaving `Atlas` unset keeps the surface entirely opt-in.
+
 ## Documentation
 
 Full docs and configuration reference: [github.com/Tharga/MongoDB](https://github.com/Tharga/MongoDB).

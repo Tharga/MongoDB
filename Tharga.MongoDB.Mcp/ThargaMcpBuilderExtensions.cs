@@ -1,6 +1,7 @@
 using System;
 using Microsoft.Extensions.DependencyInjection;
 using Tharga.Mcp;
+using Tharga.MongoDB.Mcp.Atlas;
 
 namespace Tharga.MongoDB.Mcp;
 
@@ -11,10 +12,12 @@ public static class ThargaMcpBuilderExtensions
 {
     /// <summary>
     /// Registers <see cref="MongoDbResourceProvider"/> and <see cref="MongoDbToolProvider"/>, exposing
-    /// MongoDB collection data, monitoring data, and admin tools on the System scope.
+    /// MongoDB collection data, monitoring data, and admin tools on the System scope. When
+    /// <see cref="MongoDbMcpOptions.Atlas"/> is configured, additionally registers
+    /// <see cref="AtlasMongoDbToolProvider"/> and an <see cref="AtlasV2HttpClient"/> singleton.
     /// </summary>
     /// <param name="builder">The MCP builder.</param>
-    /// <param name="configure">Optional callback to configure <see cref="MongoDbMcpOptions"/>. If omitted, defaults are used (<see cref="DataAccessLevel.Metadata"/>).</param>
+    /// <param name="configure">Optional callback to configure <see cref="MongoDbMcpOptions"/>. If omitted, defaults are used (<see cref="DataAccessLevel.Metadata"/>, no Atlas access).</param>
     public static IThargaMcpBuilder AddMongoDB(this IThargaMcpBuilder builder, Action<MongoDbMcpOptions> configure = null)
     {
         var options = new MongoDbMcpOptions();
@@ -23,6 +26,13 @@ public static class ThargaMcpBuilderExtensions
 
         builder.AddResourceProvider<MongoDbResourceProvider>();
         builder.AddToolProvider<MongoDbToolProvider>();
+
+        if (options.Atlas != null)
+        {
+            builder.Services.AddSingleton(sp => new AtlasV2HttpClient(options.Atlas));
+            builder.AddToolProvider<AtlasMongoDbToolProvider>();
+        }
+
         return builder;
     }
 }
