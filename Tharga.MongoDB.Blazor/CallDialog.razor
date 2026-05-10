@@ -1,7 +1,7 @@
 ﻿@using Microsoft.JSInterop
 @using Tharga.Blazor
 @inject ICallLibrary CallLibrary
-@inject IJSRuntime JSRuntime
+@inject IJSRuntime JsRuntime
 
 @if (_model == null)
 {
@@ -74,7 +74,7 @@ else
             </RadzenTabsItem>
             <RadzenTabsItem Text="Filter" Visible="@(!string.IsNullOrEmpty(_model.FilterJson))">
                 <RadzenText TextStyle="TextStyle.Caption" Text="Filter" />
-                <pre style="background:#f5f5f5;padding:0.5rem;border-radius:4px;overflow-x:auto;font-size:0.8rem;white-space:pre-wrap;word-break:break-all;">@_model.FilterJson</pre>
+                <pre style="background:var(--rz-base);padding:0.5rem;border-radius:4px;overflow-x:auto;font-size:0.8rem;white-space:pre-wrap;word-break:break-all;">@_model.FilterJson</pre>
             </RadzenTabsItem>
             <RadzenTabsItem Text="Explain" Visible="@(_model.ExplainProvider != null)">
                 <RadzenRow AlignItems="AlignItems.Center" Gap="0.5rem">
@@ -86,10 +86,13 @@ else
                                       Visible="@(_explainJson == null)"
                                       ButtonStyle="ButtonStyle.Light"
                                       Click="LoadExplainAsync" Disabled="_loadingExplain"/>
-                        <RadzenButton Icon="content_copy" Size="ButtonSize.ExtraSmall"
-                                      Visible="@(_explainJson != null)"
-                                      ButtonStyle="ButtonStyle.Light"
-                                      Click="CopyExplainAsync" title="Copy to clipboard"/>
+                        <div style="text-align:right;">
+                            <RadzenButton Icon="content_copy" Size="ButtonSize.ExtraSmall"
+                                          Text="Copy"
+                                          Visible="@(_explainJson != null)"
+                                          ButtonStyle="ButtonStyle.Light"
+                                          Click="CopyExplainAsync" title="Copy to clipboard"/>
+                        </div>
                     </RadzenColumn>
                 </RadzenRow>
                 @if (_loadingExplain)
@@ -98,7 +101,7 @@ else
                 }
                 else if (_explainJson != null)
                 {
-                    <pre style="background:#f5f5f5;padding:0.5rem;border-radius:4px;overflow-x:auto;font-size:0.75rem;white-space:pre-wrap;word-break:break-all;max-height:400px;">@_explainJson</pre>
+                    <pre style="background:var(--rz-base);padding:0.5rem;border-radius:4px;overflow-x:auto;font-size:0.75rem;white-space:pre-wrap;word-break:break-all;max-height:400px;">@_explainJson</pre>
                 }
             </RadzenTabsItem>
         </Tabs>
@@ -137,6 +140,6 @@ else
 
     private async Task CopyExplainAsync()
     {
-        await JSRuntime.InvokeVoidAsync("navigator.clipboard.writeText", _explainJson);
+        await JsRuntime.InvokeVoidAsync("navigator.clipboard.writeText", _explainJson);
     }
 }
