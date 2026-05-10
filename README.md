@@ -224,6 +224,35 @@ var summary = await lease.CommitAsync(transactional: true);
 
 `LockManyAsync` also accepts a `FilterDefinition<TEntity>` or an `Expression<Func<TEntity, bool>>` predicate — both resolve to an id list at acquire time. Transactional commit requires a replica set / sharded MongoDB cluster (see Transactions below).
 
+##### Structured error handling with `ExecuteAsync`
+
+The `EntityScope.ExecuteAsync` extension wraps the common pick → mutate → commit flow into a single call:
+
+```csharp
+await using var scope = await collection.PickForUpdateAsync(id);
+await scope.ExecuteAsync(async job =>
+{
+    job.Data = "updated";
+    return job;             // commit
+    // return null;         // abandon
+});
+```
+
+Errors thrown inside the func record an exception on the lock (`SetErrorStateAsync`); errors during commit (`LockExpiredException`, `LockAlreadyReleasedException`, `CommitException`, transient I/O) propagate. To consolidate every failure path into one callback, pass an `Action<LockableErrorKind, Exception>` handler:
+
+```csharp
+await scope.ExecuteAsync(
+    async job => { job.Data = "updated"; return job; },
+    (kind, e) => kind switch
+    {
+        LockableErrorKind.HandlerError       => _logger.LogError(e, e.Message),
+        LockableErrorKind.LockExpired        => _logger.LogError(e, "Lock expired for {Job}: {Message}", id, e.Message),
+        _                                    => _logger.LogError(e, "Commit error ({Kind}): {Message}", kind, e.Message),
+    });
+```
+
+`LockableErrorKind` covers `HandlerError` / `LockExpired` / `LockAlreadyReleased` / `CommitError`. The legacy `Action<Exception>` overload is still supported (handles only `HandlerError`; commit errors propagate as before) for callers that haven't migrated.
+
 ##### Auto-declared lock indexes
 
 Every `LockableRepositoryCollectionBase<TEntity, TKey>` automatically declares two indexes via `CoreIndices` so the lock-check pattern (`{Lock: null}` or `{Lock.ExceptionInfo: null, Lock.ExpireTime: < now}`) doesn't full-scan:
