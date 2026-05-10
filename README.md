@@ -891,6 +891,30 @@ Providers are registered with `McpScope.System`, so they are only exposed on the
 - Per-tenant databases (`DatabasePart` / per-team DBs) work directly: pass the resolved `databaseName` from `mongodb://collections`. No special "part" parameter needed.
 - Remote-only collections (`Registration.NotInCode`) are not yet supported — these tools throw a clear error. Adding remote routing requires extending `IRemoteActionDispatcher` and the Monitor.Server pipeline; planned as a follow-up.
 
+### Atlas Administration tools
+
+When `MongoDbMcpOptions.Atlas` is set, the package also exposes a curated read-only slice of the MongoDB Atlas Administration API as MCP tools — diagnose Atlas Performance Advisor suggestions or open alerts from any MCP client without re-implementing the Atlas integration per consumer.
+
+```csharp
+services.AddThargaMcp(mcp => mcp.AddMongoDB(o =>
+{
+    o.Atlas = new MongoDbApiAccess
+    {
+        PublicKey  = "<atlas-public-key>",
+        PrivateKey = "<atlas-private-key>",
+        GroupId    = "<atlas-project-id>",
+    };
+}));
+```
+
+| Tool | Level | Args |
+|---|---|---|
+| `atlas.list_clusters` | Metadata | (no args) — returns clusters in the configured Atlas project |
+| `atlas.get_performance_advisor_suggestions` | Metadata | `clusterName` (from `atlas.list_clusters`) — returns the suggested-index list per the Atlas UI |
+| `atlas.get_open_alerts` | Metadata | (no args) — returns currently-firing alerts in the project |
+
+All three target Atlas Administration API v2. Auth is HTTP Digest via the public/private API key pair, the same pattern used by the firewall integration in `Tharga.MongoDB`. Leaving `Atlas` unset keeps the surface entirely opt-in — no Atlas tools are advertised unless the option is configured.
+
 ---
 
 ## Aggregation Queries
