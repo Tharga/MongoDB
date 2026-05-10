@@ -30,7 +30,7 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
 
     internal override IRepositoryCollection<TEntity, TKey> BaseCollection => Disk;
     private DiskRepositoryCollectionBase<TEntity, TKey> Disk => _disk ??= new GenericDiskRepositoryCollection<TEntity, TKey>(_mongoDbServiceFactory, _databaseContext ?? new DatabaseContext { CollectionName = CollectionName, DatabasePart = DatabasePart, ConfigurationName = ConfigurationName }, _logger, this);
-    internal override IEnumerable<CreateIndexModel<TEntity>> CoreIndices =>
+    public override IEnumerable<CreateIndexModel<TEntity>> CoreIndices =>
     [
         new(Builders<TEntity>.IndexKeys.Ascending(x => x.Lock), new CreateIndexOptions { Name = nameof(LockableEntityBase.Lock) }),
         new(

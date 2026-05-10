@@ -1,7 +1,5 @@
 using System;
-using System.Collections;
 using System.Linq;
-using System.Reflection;
 using FluentAssertions;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization;
@@ -24,9 +22,7 @@ public class LockableCoreIndicesShapeTest
     [Fact]
     public void CoreIndices_CoverLockField()
     {
-        var sut = CreateSut();
-
-        var rendered = RenderCoreIndices(sut);
+        var rendered = RenderCoreIndices(CreateSut());
 
         rendered.Should().ContainSingle(x => x.Name == "Lock")
             .Which.Keys.Names.Should().BeEquivalentTo(new[] { "Lock" });
@@ -39,9 +35,7 @@ public class LockableCoreIndicesShapeTest
         //   Lock.ExceptionInfo == null AND Lock.ExpireTime < now
         // The compound LockStatus index covers ExceptionInfo, ExpireTime, LockTime
         // — so the same index also serves diagnostic queries that filter by lock time.
-        var sut = CreateSut();
-
-        var rendered = RenderCoreIndices(sut);
+        var rendered = RenderCoreIndices(CreateSut());
 
         var lockStatus = rendered.Should().ContainSingle(x => x.Name == "LockStatus").Subject;
         lockStatus.Keys.Names.Should().BeEquivalentTo(
@@ -50,7 +44,7 @@ public class LockableCoreIndicesShapeTest
     }
 
     /// <summary>
-    /// Pure-reflection test — does not hit MongoDB. Use a Loose factory mock that
+    /// Pure unit test — does not hit MongoDB. Use a Loose factory mock that
     /// returns a Loose IMongoDbService so the base ctor's eager
     /// <c>GetMongoDbService(...)</c> call succeeds without opening a connection.
     /// Inheriting from <see cref="MongoDbTestBase"/> would force a real MongoDB on
@@ -70,20 +64,7 @@ public class LockableCoreIndicesShapeTest
         var serializer = registry.GetSerializer<LockableTestEntity>();
         var args = new RenderArgs<LockableTestEntity>(serializer, registry);
 
-        // CoreIndices is internal on the base class, and BindingFlags.NonPublic|Instance
-        // doesn't find inherited non-public members on a derived type — walk up explicitly.
-        var type = sut.GetType();
-        PropertyInfo prop = null;
-        while (type != null && prop == null)
-        {
-            prop = type.GetProperty("CoreIndices",
-                BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly);
-            type = type.BaseType;
-        }
-        prop.Should().NotBeNull("CoreIndices should be reachable via reflection on the lockable base");
-
-        var indices = (IEnumerable)prop.GetValue(sut);
-        return indices.Cast<CreateIndexModel<LockableTestEntity>>()
+        return sut.CoreIndices
             .Select(x => (x.Options.Name, x.Keys.Render(args)))
             .ToArray();
     }
