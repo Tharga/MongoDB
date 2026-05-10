@@ -224,6 +224,21 @@ var summary = await lease.CommitAsync(transactional: true);
 
 `LockManyAsync` also accepts a `FilterDefinition<TEntity>` or an `Expression<Func<TEntity, bool>>` predicate — both resolve to an id list at acquire time. Transactional commit requires a replica set / sharded MongoDB cluster (see Transactions below).
 
+##### Auto-declared lock indexes
+
+Every `LockableRepositoryCollectionBase<TEntity, TKey>` automatically declares two indexes via `CoreIndices` so the lock-check pattern (`{Lock: null}` or `{Lock.ExceptionInfo: null, Lock.ExpireTime: < now}`) doesn't full-scan:
+
+| Name | Keys | Covers |
+|---|---|---|
+| `Lock` | `{Lock: 1}` | The `Lock == null` branch — unlocked documents. |
+| `LockStatus` | `{Lock.ExceptionInfo: 1, Lock.ExpireTime: 1, Lock.LockTime: 1}` | The expired-lock branch + lock-age diagnostics. |
+
+Consumers don't need to add these to their `Indices` override — they're applied alongside any consumer-declared indexes on first collection access (per [Index assurance modes](#index-assurance-modes) above). The merged set is exposed via the `CoreIndices` property if you need to inspect or assert on it from your own tests.
+
+If a consumer's query pattern adds extra fields (e.g. `{Lock: 1, State: 1}` for state-filtered scans), declare those compounds in the consumer's `Indices` — they merge with `CoreIndices` rather than replacing it.
+
+For collections that pre-date the upgrade and are missing these indexes in production, see [Re-applying indexes after a code change](#re-applying-indexes-after-a-code-change) — the `RestoreAllIndicesAsync` API, the *Assure all indices* Blazor toolbar action, and the `mongodb.restore_all_indexes` MCP tool all force a re-apply across tracked collections.
+
 ---
 
 ### Transactions

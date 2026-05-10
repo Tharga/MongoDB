@@ -58,7 +58,7 @@ public abstract class RepositoryCollectionBase<TEntity, TKey> : RepositoryCollec
     public virtual CreateStrategy CreateCollectionStrategy => _mongoDbService.CreateCollectionStrategy();
     public virtual int? FetchSize => _mongoDbService.GetFetchSize();
     public virtual IEnumerable<CreateIndexModel<TEntity>> Indices => null;
-    internal virtual IEnumerable<CreateIndexModel<TEntity>> CoreIndices => null;
+    public virtual IEnumerable<CreateIndexModel<TEntity>> CoreIndices => null;
     public virtual IEnumerable<Type> Types => null;
 
     //Read
