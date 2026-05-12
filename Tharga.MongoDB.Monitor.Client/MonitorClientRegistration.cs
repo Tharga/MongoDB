@@ -1,4 +1,6 @@
+using System;
 using System.Linq;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Tharga.Communication.Client;
@@ -54,5 +56,34 @@ public static class MonitorClientRegistration
         builder.Services.AddHostedService<MonitorForwarder>();
 
         return builder;
+    }
+
+    /// <summary>
+    /// <see cref="IServiceCollection"/> overload of <see cref="AddMongoDbMonitorClient(IHostApplicationBuilder, string, string)"/>
+    /// for hosts that only expose <see cref="IServiceCollection"/> at registration time — for example
+    /// Tharga.Wpf, whose <c>App.Register(HostBuilderContext context, IServiceCollection services)</c>
+    /// signature has no builder in scope. Delegates to the builder overload via a minimal
+    /// <see cref="ServicesOnlyHostApplicationBuilder"/> adapter so there is no logic duplication.
+    /// </summary>
+    /// <param name="services">The service collection.</param>
+    /// <param name="configuration">The application configuration. Used by Tharga.Communication to read its <c>Tharga:Communication</c> section. Registered as <see cref="IConfiguration"/> on <paramref name="services"/> if not already there.</param>
+    /// <param name="sendTo">The server URL to connect to. Required.</param>
+    /// <param name="apiKey">Optional API key for authenticating with the server.</param>
+    public static IServiceCollection AddMongoDbMonitorClient(this IServiceCollection services, IConfiguration configuration, string sendTo = null, string apiKey = null)
+    {
+        if (services == null) throw new ArgumentNullException(nameof(services));
+
+        // Tharga.Communication 0.1.5's AddThargaCommunicationClient pulls IConfiguration via
+        // services.BuildServiceProvider().GetService<IConfiguration>(). Register the caller's
+        // IConfiguration if nothing is registered yet — typical IHostApplicationBuilder hosts
+        // register it before user callbacks run, but minimal IServiceCollection hosts may not.
+        if (configuration != null && services.All(d => d.ServiceType != typeof(IConfiguration)))
+        {
+            services.AddSingleton(configuration);
+        }
+
+        var builder = new ServicesOnlyHostApplicationBuilder(services);
+        builder.AddMongoDbMonitorClient(sendTo, apiKey);
+        return services;
     }
 }

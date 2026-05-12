@@ -695,6 +695,16 @@ builder.AddMongoDB();
 builder.AddMongoDbMonitorClient(sendTo: "https://monitor-server");
 ```
 
+For hosts that only expose `IServiceCollection` at registration time — for example a `Tharga.Wpf` agent whose `App.Register(HostBuilderContext context, IServiceCollection services)` callback has no builder in scope — use the `IServiceCollection` overload:
+
+```csharp
+services.AddMongoDbMonitorClient(
+    configuration: context.Configuration,
+    sendTo: "https://monitor-server");
+```
+
+Both overloads behave identically once `sendTo` is set.
+
 The forwarder subscribes to call events and sends `CallDto` via fire-and-forget. When the server is unavailable or not configured, there is zero overhead. The hub endpoint defaults to `/mongodb-monitor`.
 
 ### Receiving remote monitoring data
