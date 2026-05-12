@@ -15,7 +15,16 @@ builder.AddMongoDbMonitorClient(
     apiKey: builder.Configuration["MongoMonitor:ApiKey"]);     // optional, must match one of the server's primary/secondary keys
 ```
 
-If `sendTo` is null/empty the client is a no-op — convenient for local dev.
+For hosts that only expose `IServiceCollection` at registration time — for example a `Tharga.Wpf`-based agent whose `App.Register(HostBuilderContext context, IServiceCollection services)` callback has no builder in scope — use the `IServiceCollection` overload instead:
+
+```csharp
+services.AddMongoDbMonitorClient(
+    configuration: context.Configuration,
+    sendTo: "https://monitor.example.com/",
+    apiKey: context.Configuration["MongoMonitor:ApiKey"]);
+```
+
+If `sendTo` is null/empty the client is a no-op — convenient for local dev. Both overloads behave identically once `sendTo` is set.
 
 ## What it sends
 
