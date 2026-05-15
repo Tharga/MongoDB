@@ -18,11 +18,13 @@ public class RemoteActionDelegationTests
     private readonly DatabaseMonitor _monitor;
     private readonly Mock<IRemoteActionDispatcher> _dispatcherMock;
     private readonly Mock<ICollectionCache> _cacheMock;
+    private readonly Mock<IMongoDbServiceFactory> _factoryMock;
 
     public RemoteActionDelegationTests()
     {
-        var factoryMock = new Mock<IMongoDbServiceFactory>();
-        factoryMock.Setup(f => f.SourceName).Returns("TestServer/TestApp");
+        _factoryMock = new Mock<IMongoDbServiceFactory>();
+        _factoryMock.Setup(f => f.SourceName).Returns("TestServer/TestApp");
+        var factoryMock = _factoryMock;
 
         var instanceMock = new Mock<IMongoDbInstance>();
         instanceMock.Setup(i => i.RegisteredCollections).Returns(new ConcurrentDictionary<Type, Type>());
@@ -148,6 +150,56 @@ public class RemoteActionDelegationTests
         var sources = _monitor.GetCollectionSources(collection.Key);
 
         sources.Should().Contain("Agent-1/OrderService");
+    }
+
+    [Fact]
+    public void GetCollectionSources_IncludesLocalSource_AfterCollectionAccessEvent()
+    {
+        var fingerprint = new CollectionFingerprint
+        {
+            ConfigurationName = "Default",
+            DatabaseName = "LocalDb",
+            CollectionName = "LocalCol",
+        };
+
+        _factoryMock.Raise(f => f.CollectionAccessEvent += null, this,
+            new CollectionAccessEventArgs(fingerprint, "local-server", typeof(object), null));
+
+        var sources = _monitor.GetCollectionSources(fingerprint.Key);
+
+        sources.Should().Contain("TestServer/TestApp");
+    }
+
+    [Fact]
+    public void GetCollectionSources_OmitsLocalSource_WhenOnlyRemoteHasReported()
+    {
+        var collection = CreateRemoteCollection();
+        IngestRemoteCollectionWithAgent(collection, "Agent-1/OrderService", "conn-123");
+
+        var sources = _monitor.GetCollectionSources(collection.Key);
+
+        sources.Should().NotContain("TestServer/TestApp");
+        sources.Should().Contain("Agent-1/OrderService");
+    }
+
+    [Fact]
+    public void GetCollectionSources_IncludesBothSources_WhenLocalAndRemoteBothTouch()
+    {
+        var collection = CreateRemoteCollection();
+        IngestRemoteCollectionWithAgent(collection, "Agent-1/OrderService", "conn-123");
+
+        var fingerprint = new CollectionFingerprint
+        {
+            ConfigurationName = collection.ConfigurationName,
+            DatabaseName = collection.DatabaseName,
+            CollectionName = collection.CollectionName,
+        };
+        _factoryMock.Raise(f => f.CollectionAccessEvent += null, this,
+            new CollectionAccessEventArgs(fingerprint, "local-server", typeof(object), null));
+
+        var sources = _monitor.GetCollectionSources(collection.Key);
+
+        sources.Should().BeEquivalentTo("TestServer/TestApp", "Agent-1/OrderService");
     }
 
     [Fact]

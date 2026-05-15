@@ -89,6 +89,11 @@ internal class DatabaseMonitor : IDatabaseMonitor
                 {
                     _logger.LogTrace($"{nameof(IMongoDbServiceFactory.CollectionAccessEvent)}: {e.Fingerprint}");
 
+                    // Tag the local source first so it's recorded even if the cache update or
+                    // event raise below short-circuits — the access itself is the canonical
+                    // "touched by me" signal.
+                    TagLocalSource(e.Fingerprint.Key);
+
                     var entry = BuildInitialEntry(e.Fingerprint, e.Server, e.DatabasePart, e.EntityType.Name);
 
                     // Track previous registration so we can detect reclassification
@@ -125,8 +130,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
 
                     if (_cache.TryGet(e.Fingerprint.Key, out var item))
                     {
-                        if (CollectionInfoChangedEvent != null)
-                            CollectionInfoChangedEvent.Invoke(this, new CollectionInfoChangedEventArgs(item));
+                        RaiseLocalCollectionInfoChanged(item);
 
                         // Persist when a Dynamic collection is first seen or reclassified from NotInCode
                         if (item.Registration == Registration.Dynamic && previousRegistration != Registration.Dynamic)
@@ -167,9 +171,9 @@ internal class DatabaseMonitor : IDatabaseMonitor
                                 updateFactory: (_, existing) =>
                                     existing with { Index = BuildIndexInfo(existing, meta.Indexes) });
 
-                            if (CollectionInfoChangedEvent != null && _cache.TryGet(e.Fingerprint.Key, out var item))
+                            if (_cache.TryGet(e.Fingerprint.Key, out var item))
                             {
-                                CollectionInfoChangedEvent?.Invoke(this, new CollectionInfoChangedEventArgs(item));
+                                RaiseLocalCollectionInfoChanged(item);
                                 await _cache.SaveAsync(item);
                             }
                         }
@@ -396,7 +400,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
                 CurrentSchemaFingerprint = existing.CurrentSchemaFingerprint ?? ComputeSchemaFingerprint(existing.CollectionType),
             });
 
-        CollectionInfoChangedEvent?.Invoke(this, new CollectionInfoChangedEventArgs(updated));
+        RaiseLocalCollectionInfoChanged(updated);
         _ = Task.Run(() => _cache.SaveAsync(updated));
     }
 
@@ -445,7 +449,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
                 Index = BuildIndexInfo(existing, meta.Indexes, now)
             });
 
-        CollectionInfoChangedEvent?.Invoke(this, new CollectionInfoChangedEventArgs(updated));
+        RaiseLocalCollectionInfoChanged(updated);
         _ = Task.Run(() => _cache.SaveAsync(updated));
     }
 
@@ -633,7 +637,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
             addFactory: _ => collectionInfo with { Clean = result },
             updateFactory: (_, existing) => existing with { Clean = result });
 
-        CollectionInfoChangedEvent?.Invoke(this, new CollectionInfoChangedEventArgs(updated));
+        RaiseLocalCollectionInfoChanged(updated);
 
         return result;
     }
@@ -892,6 +896,21 @@ internal class DatabaseMonitor : IDatabaseMonitor
         if (_collectionSources.TryGetValue(fingerprintKey, out var sources))
             return sources.Keys.ToArray();
         return [];
+    }
+
+    private void TagLocalSource(string fingerprintKey)
+    {
+        var localSource = _mongoDbServiceFactory.SourceName;
+        if (string.IsNullOrEmpty(localSource)) return;
+
+        var sources = _collectionSources.GetOrAdd(fingerprintKey, _ => new System.Collections.Concurrent.ConcurrentDictionary<string, bool>());
+        sources[localSource] = true;
+    }
+
+    private void RaiseLocalCollectionInfoChanged(CollectionInfo info)
+    {
+        TagLocalSource(info.Key);
+        CollectionInfoChangedEvent?.Invoke(this, new CollectionInfoChangedEventArgs(info));
     }
 
     public string FindConnectionIdBySource(string sourceName)
@@ -1313,7 +1332,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
             addFactory: _ => collectionInfo with { Index = BuildIndexInfo(collectionInfo, meta.Indexes, DateTime.UtcNow) },
             updateFactory: (_, existing) => existing with { Index = BuildIndexInfo(existing, meta.Indexes, DateTime.UtcNow) });
 
-        CollectionInfoChangedEvent?.Invoke(this, new CollectionInfoChangedEventArgs(updated));
+        RaiseLocalCollectionInfoChanged(updated);
         _ = Task.Run(() => _cache.SaveAsync(updated));
     }
 
