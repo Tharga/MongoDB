@@ -194,9 +194,17 @@ else
     private async void OnCallChanged(object sender, EventArgs e)
     {
         if (_disposed) return;
-        if (SelectedTab != "Ongoing") return;
 
-        try { await InvokeAsync(async () => { await ReloadDataAsync(); StateHasChanged(); }); }
+        try
+        {
+            await InvokeAsync(async () =>
+            {
+                UpdateFilterOptions();
+                if (SelectedTab == "Ongoing")
+                    await ReloadDataAsync();
+                StateHasChanged();
+            });
+        }
         catch (ObjectDisposedException) { }
     }
 
@@ -218,6 +226,7 @@ else
         _collections = allCalls.Select(x => x.Fingerprint.CollectionName).Distinct().Order().ToArray();
         _functions = allCalls.Select(x => x.FunctionName).Distinct().Order().ToArray();
         _operations = allCalls.Select(x => x.Operation).Distinct().Order().ToArray();
+        _showSource = _sources.Length > 1;
     }
 
     void OnCellRender(DataGridCellRenderEventArgs<CallInfo> args)
@@ -253,7 +262,6 @@ else
             .Where(x => SelectedFunctions == null || !SelectedFunctions.Any() || SelectedFunctions.Contains(x.FunctionName))
             .Where(x => SelectedOperations == null || !SelectedOperations.Any() || SelectedOperations.Contains(x.Operation))
             .ToArray();
-        _showSource = _sources.Length > 1;
         _showConfiguration = _all.Select(x => x.Fingerprint.ConfigurationName).Distinct().Count() > 1;
         _showDatabase = _all.Select(x => x.Fingerprint.DatabaseName).Distinct().Count() > 1;
         StateHasChanged();

@@ -1,5 +1,7 @@
+using System.Linq;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
+using Tharga.Communication.MessageHandler;
 using Tharga.Communication.Server;
 using Tharga.MongoDB.Monitor.Client;
 
@@ -19,8 +21,18 @@ public static class MonitorServerRegistration
     /// <param name="builder">The web application builder.</param>
     /// <param name="primaryApiKey">Optional primary API key. When set, clients must provide a matching key to connect.</param>
     /// <param name="secondaryApiKey">Optional secondary API key for zero-downtime key rotation.</param>
-    public static WebApplicationBuilder AddMongoDbMonitorServer(this WebApplicationBuilder builder, string primaryApiKey = null, string secondaryApiKey = null)
+    public static WebApplicationBuilder AddMongoDbMonitorServer(this WebApplicationBuilder builder, string primaryApiKey = null, string
+secondaryApiKey = null)
     {
+        // Pre-scan our assembly for handler types. AddThargaCommunicationServer's default
+        // scan only covers the entry assembly's namespace, which won't include
+        // MonitorCallHandler / MonitorCollectionInfoHandler / MonitorQueueMetricHandler
+        // unless the host app happens to live in Tharga.MongoDB.Monitor.Server. Mirrors
+        // the client-side pattern in MonitorClientRegistration.
+        var ourHandlers = HandlerTypeService.GetHandlerTypes(
+            builder.Services,
+            [typeof(MonitorServerRegistration).Assembly]);
+
         builder.AddThargaCommunicationServer(options =>
         {
             options.RegisterClientStateService<MonitorClientStateService>();
@@ -31,7 +43,20 @@ public static class MonitorServerRegistration
                 options.SecondaryApiKey = secondaryApiKey;
         });
 
-        // Ensure handlers are registered even if assembly scanning misses them
+        // Merge our handlers into the IHandlerTypeService AddThargaCommunicationServer
+        // registered. Without this, MonitorCallMessage / MonitorCollectionInfoMessage /
+        // MonitorQueueMetricMessage arrive at the hub but the dispatcher can't resolve
+        // a handler and silently drops them — the symptom is "agent connects but no
+        // remote calls or collections ever appear in CallView / CollectionView".
+        var defaultHandlers = HandlerTypeService.GetHandlerTypes(builder.Services);
+        foreach (var kvp in ourHandlers)
+            defaultHandlers.TryAdd(kvp.Key, kvp.Value);
+
+        var existing = builder.Services.FirstOrDefault(d => d.ServiceType == typeof(IHandlerTypeService));
+        if (existing != null) builder.Services.Remove(existing);
+        builder.Services.AddSingleton<IHandlerTypeService>(new HandlerTypeService(defaultHandlers));
+
+        // Register handler concrete types in DI so the dispatcher can resolve them.
         builder.Services.AddTransient<MonitorCallHandler>();
         builder.Services.AddTransient<MonitorCollectionInfoHandler>();
         builder.Services.AddTransient<MonitorQueueMetricHandler>();
