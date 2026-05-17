@@ -183,6 +183,99 @@ public class RemoteActionDelegationTests
     }
 
     [Fact]
+    public void GetMonitorClientDetail_ReturnsNull_ForUnknownSource()
+    {
+        _monitor.GetMonitorClientDetail("never-connected").Should().BeNull();
+    }
+
+    [Fact]
+    public void GetMonitorClientDetail_ReturnsOnlyCollectionsTaggedToThisSource()
+    {
+        var theirs = CreateRemoteCollection(collName: "TheirCol");
+        var others = CreateRemoteCollection(collName: "OthersCol");
+        IngestRemoteCollectionWithAgent(theirs, "Agent-1/Service", "conn-1");
+        IngestRemoteCollectionWithAgent(others, "Agent-2/Service", "conn-2");
+
+        var detail = _monitor.GetMonitorClientDetail("Agent-1/Service");
+
+        detail.Should().NotBeNull();
+        detail.CollectionKeys.Should().ContainSingle().Which.Should().Be(theirs.Key);
+    }
+
+    [Fact]
+    public void GetMonitorClientDetail_RecentCalls_AreFilteredBySourceName_AndCapped()
+    {
+        var collection = CreateRemoteCollection();
+        IngestRemoteCollectionWithAgent(collection, "Agent-1/Service", "conn-1");
+        IngestRemoteCollectionWithAgent(CreateRemoteCollection(collName: "Other"), "Agent-2/Service", "conn-2");
+
+        for (var i = 0; i < 30; i++) IngestCall("Agent-1/Service", collection);
+        for (var i = 0; i < 5; i++) IngestCall("Agent-2/Service", collection);
+
+        var detail = _monitor.GetMonitorClientDetail("Agent-1/Service", recentCallLimit: 20);
+
+        detail.RecentCalls.Should().HaveCount(20);
+        detail.RecentCalls.Should().OnlyContain(c => c.SourceName == "Agent-1/Service");
+    }
+
+    [Fact]
+    public void GetMonitorClientDetail_ReturnsQueueState_WhenAgentHasReportedOne()
+    {
+        var collection = CreateRemoteCollection();
+        IngestRemoteCollectionWithAgent(collection, "Agent-1/Service", "conn-1");
+        _monitor.IngestQueueMetric("Agent-1/Service", queueCount: 4, executingCount: 2, waitTimeMs: 17.5);
+
+        var detail = _monitor.GetMonitorClientDetail("Agent-1/Service");
+
+        detail.QueueState.Should().NotBeNull();
+        detail.QueueState.QueueCount.Should().Be(4);
+        detail.QueueState.ExecutingCount.Should().Be(2);
+        detail.QueueState.LastWaitTimeMs.Should().Be(17.5);
+    }
+
+    [Fact]
+    public void GetMonitorClientDetail_GracefullyEmptyForFreshlyConnectedAgent()
+    {
+        // Agent just connected — no collections forwarded yet, no calls, no queue metrics.
+        _monitor.IngestClientConnected(new MonitorClientDto
+        {
+            Instance = Guid.NewGuid(),
+            ConnectionId = "conn-fresh",
+            Machine = "FreshMachine",
+            Type = "TestAgent",
+            Version = "1.0",
+            IsConnected = true,
+            ConnectTime = DateTime.UtcNow,
+            SourceName = "Agent-Fresh/Service",
+        });
+
+        var detail = _monitor.GetMonitorClientDetail("Agent-Fresh/Service");
+
+        detail.Should().NotBeNull();
+        detail.Client.SourceName.Should().Be("Agent-Fresh/Service");
+        detail.CollectionKeys.Should().BeEmpty();
+        detail.RecentCalls.Should().BeEmpty();
+        detail.QueueState.Should().BeNull();
+    }
+
+    private void IngestCall(string sourceName, CollectionInfo collection)
+    {
+        _monitor.IngestCall(new CallDto
+        {
+            Key = Guid.NewGuid(),
+            StartTime = DateTime.UtcNow,
+            SourceName = sourceName,
+            ConfigurationName = collection.ConfigurationName.Value,
+            DatabaseName = collection.DatabaseName,
+            CollectionName = collection.CollectionName,
+            FunctionName = "GetAsync",
+            Operation = "Read",
+            ElapsedMs = 1,
+            Final = true,
+        });
+    }
+
+    [Fact]
     public void GetCollectionSources_IncludesBothSources_WhenLocalAndRemoteBothTouch()
     {
         var collection = CreateRemoteCollection();

@@ -116,6 +116,15 @@ public interface IDatabaseMonitor
     IEnumerable<MonitorClientDto> GetMonitorClients();
 
     /// <summary>
+    /// Atomic snapshot of everything a single agent has contributed: its
+    /// <see cref="MonitorClientDto"/>, the collections it has reported, its
+    /// most recent <paramref name="recentCallLimit"/> calls, and its latest
+    /// queue state. Returns <c>null</c> when no agent matches
+    /// <paramref name="sourceName"/>. Powers the per-agent detail dialog.
+    /// </summary>
+    MonitorClientDetail GetMonitorClientDetail(string sourceName, int recentCallLimit = 20);
+
+    /// <summary>
     /// Register a connected monitoring agent.
     /// </summary>
     void IngestClientConnected(MonitorClientDto client);
