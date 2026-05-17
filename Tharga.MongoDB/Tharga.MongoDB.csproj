@@ -43,8 +43,8 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
     <PackageReference Include="MongoDB.Driver" Version="3.8.1" />
-    <!-- Floors transitive SharpCompress 0.30.1 (from MongoDB.Driver) above CVE-2026-44788 / GHSA-6c8g-7p36-r338 (zip-slip; affected <= 0.47.4). Do not drop until MongoDB.Driver itself ships SharpCompress >= 0.48.0. -->
-    <PackageReference Include="SharpCompress" Version="0.48.0" />
+    <!-- Floors transitive SharpCompress 0.30.1 (from MongoDB.Driver) above CVE-2026-44788 / GHSA-6c8g-7p36-r338 (zip-slip; affected <= 0.47.4). Do not drop until MongoDB.Driver itself ships SharpCompress >= 1.0.0. -->
+    <PackageReference Include="SharpCompress" Version="1.0.0" />
     <!-- Floors transitive Snappier 1.0.0 (from MongoDB.Driver) above CVE / GHSA-pggp-6c3x-2xmx (infinite-loop on malformed framed Snappy; affected <= 1.3.0). Do not drop until MongoDB.Driver itself ships Snappier >= 1.3.1. -->
     <PackageReference Include="Snappier" Version="1.3.1" />
     <PackageReference Include="Tharga.Runtime" Version="0.1.12" />

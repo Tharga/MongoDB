@@ -37,10 +37,15 @@ secondaryApiKey = null)
         {
             options.RegisterClientStateService<MonitorClientStateService>();
             options.RegisterClientRepository<MonitorClientRepository, MonitorClientConnectionInfo>();
-            if (!string.IsNullOrWhiteSpace(primaryApiKey))
-                options.PrimaryApiKey = primaryApiKey;
-            if (!string.IsNullOrWhiteSpace(secondaryApiKey))
-                options.SecondaryApiKey = secondaryApiKey;
+
+            // Tharga.Communication 0.2.0 replaced PrimaryApiKey / SecondaryApiKey with a
+            // single ApiKeys collection consumed by the default validator. Preserve the
+            // primary/secondary parameter shape on our public extension so consumers
+            // don't have to migrate at the same time.
+            var keys = new System.Collections.Generic.List<string>();
+            if (!string.IsNullOrWhiteSpace(primaryApiKey)) keys.Add(primaryApiKey);
+            if (!string.IsNullOrWhiteSpace(secondaryApiKey)) keys.Add(secondaryApiKey);
+            if (keys.Count > 0) options.ApiKeys = keys.ToArray();
         });
 
         // Merge our handlers into the IHandlerTypeService AddThargaCommunicationServer
