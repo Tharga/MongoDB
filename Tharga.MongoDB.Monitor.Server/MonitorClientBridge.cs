@@ -49,6 +49,7 @@ internal sealed class MonitorClientBridge : IHostedService
                 Version = info.Version,
                 IsConnected = true,
                 ConnectTime = info.ConnectTime,
+                AuthKeyName = info.KeyName,
             });
         }
     }

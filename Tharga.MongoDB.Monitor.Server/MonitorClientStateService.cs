@@ -25,7 +25,9 @@ public sealed class MonitorClientStateService : ClientStateServiceBase<MonitorCl
             Version = info.Version,
             IsConnected = info.IsConnected,
             ConnectTime = info.ConnectTime,
-            DisconnectTime = info.DisconnectTime
+            DisconnectTime = info.DisconnectTime,
+            KeyId = info.KeyId,
+            KeyName = info.KeyName,
         };
     }
 

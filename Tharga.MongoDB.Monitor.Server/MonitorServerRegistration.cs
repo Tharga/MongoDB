@@ -1,3 +1,4 @@
+using System;
 using System.Linq;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
@@ -14,16 +15,19 @@ namespace Tharga.MongoDB.Monitor.Server;
 public static class MonitorServerRegistration
 {
     /// <summary>
-    /// Registers the MongoDB monitor server. Sets up a Tharga.Communication server
-    /// with default client state tracking and the <see cref="MonitorCallHandler"/>
-    /// for receiving monitoring data from remote agents.
+    /// Registers the MongoDB monitor server. Sets up a Tharga.Communication server with
+    /// default client state tracking and the <see cref="MonitorCallHandler"/> family for
+    /// receiving monitoring data from remote agents.
     /// </summary>
     /// <param name="builder">The web application builder.</param>
-    /// <param name="primaryApiKey">Optional primary API key. When set, clients must provide a matching key to connect.</param>
-    /// <param name="secondaryApiKey">Optional secondary API key for zero-downtime key rotation.</param>
-    public static WebApplicationBuilder AddMongoDbMonitorServer(this WebApplicationBuilder builder, string primaryApiKey = null, string
-secondaryApiKey = null)
+    /// <param name="configure">Configures <see cref="MongoDbMonitorOptions"/> — accepted API keys, optional custom validator.</param>
+    public static WebApplicationBuilder AddMongoDbMonitorServer(this WebApplicationBuilder builder, Action<MongoDbMonitorOptions> configure)
     {
+        ArgumentNullException.ThrowIfNull(configure);
+
+        var options = new MongoDbMonitorOptions();
+        configure(options);
+
         // Pre-scan our assembly for handler types. AddThargaCommunicationServer's default
         // scan only covers the entry assembly's namespace, which won't include
         // MonitorCallHandler / MonitorCollectionInfoHandler / MonitorQueueMetricHandler
@@ -33,19 +37,15 @@ secondaryApiKey = null)
             builder.Services,
             [typeof(MonitorServerRegistration).Assembly]);
 
-        builder.AddThargaCommunicationServer(options =>
+        builder.AddThargaCommunicationServer(commOptions =>
         {
-            options.RegisterClientStateService<MonitorClientStateService>();
-            options.RegisterClientRepository<MonitorClientRepository, MonitorClientConnectionInfo>();
+            commOptions.RegisterClientStateService<MonitorClientStateService>();
+            commOptions.RegisterClientRepository<MonitorClientRepository, MonitorClientConnectionInfo>();
 
-            // Tharga.Communication 0.2.0 replaced PrimaryApiKey / SecondaryApiKey with a
-            // single ApiKeys collection consumed by the default validator. Preserve the
-            // primary/secondary parameter shape on our public extension so consumers
-            // don't have to migrate at the same time.
-            var keys = new System.Collections.Generic.List<string>();
-            if (!string.IsNullOrWhiteSpace(primaryApiKey)) keys.Add(primaryApiKey);
-            if (!string.IsNullOrWhiteSpace(secondaryApiKey)) keys.Add(secondaryApiKey);
-            if (keys.Count > 0) options.ApiKeys = keys.ToArray();
+            if (options.ApiKeys is { Length: > 0 })
+                commOptions.ApiKeys = options.ApiKeys;
+
+            options.ConfigureCommunicationOptions?.Invoke(commOptions);
         });
 
         // Merge our handlers into the IHandlerTypeService AddThargaCommunicationServer
@@ -76,6 +76,24 @@ secondaryApiKey = null)
         builder.Services.AddSingleton<ILiveMonitoringSubscription, LiveMonitoringSubscriptionService>();
 
         return builder;
+    }
+
+    /// <summary>
+    /// Legacy two-string overload. Kept for one release so existing consumers compile unchanged.
+    /// Folds <paramref name="primaryApiKey"/> and <paramref name="secondaryApiKey"/> into the
+    /// new <see cref="MongoDbMonitorOptions.ApiKeys"/> array — Tharga.Communication 0.2.0 removed
+    /// the primary/secondary distinction; both are now just slots in a single accepted-keys array.
+    /// </summary>
+    [Obsolete("Use AddMongoDbMonitorServer(o => o.ApiKeys = [...]). Primary/secondary terminology was removed in Tharga.Communication 0.2.0.")]
+    public static WebApplicationBuilder AddMongoDbMonitorServer(this WebApplicationBuilder builder, string primaryApiKey = null, string secondaryApiKey = null)
+    {
+        return builder.AddMongoDbMonitorServer(o =>
+        {
+            var keys = new System.Collections.Generic.List<string>();
+            if (!string.IsNullOrWhiteSpace(primaryApiKey)) keys.Add(primaryApiKey);
+            if (!string.IsNullOrWhiteSpace(secondaryApiKey)) keys.Add(secondaryApiKey);
+            if (keys.Count > 0) o.ApiKeys = keys.ToArray();
+        });
     }
 
     /// <summary>

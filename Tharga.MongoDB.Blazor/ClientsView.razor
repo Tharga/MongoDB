@@ -39,6 +39,14 @@ else
                     }
                 </Template>
             </RadzenDataGridColumn>
+            <RadzenDataGridColumn Title="" Sortable="false" Filterable="false" Width="40px" Visible="@_anyKeyed">
+                <Template>
+                    @if (context.AuthKeyName != null)
+                    {
+                        <RadzenIcon Icon="lock" title="@context.AuthKeyName" />
+                    }
+                </Template>
+            </RadzenDataGridColumn>
             <RadzenDataGridColumn Title="Machine" Property="@nameof(MonitorClientDto.Machine)" />
             <RadzenDataGridColumn Title="Application" Property="@nameof(MonitorClientDto.Type)" />
             <RadzenDataGridColumn Title="Version" Property="@nameof(MonitorClientDto.Version)" Width="120px" />
@@ -74,6 +82,7 @@ else
 @code {
     private MonitorClientDto[] _model;
     private SubscriptionEntry[] _subscriptions = [];
+    private bool _anyKeyed;
     private bool _disposed;
     private Timer _timer;
 
@@ -81,6 +90,7 @@ else
     {
         DatabaseMonitor.MonitorClientsChanged += OnClientsChanged;
         _model = DatabaseMonitor.GetMonitorClients().ToArray();
+        _anyKeyed = _model.Any(x => x.AuthKeyName != null);
         RefreshSubscriptions();
         _timer = new Timer(OnTick, null, 2000, 2000);
     }
@@ -123,6 +133,7 @@ else
             await InvokeAsync(() =>
             {
                 _model = DatabaseMonitor.GetMonitorClients().ToArray();
+                _anyKeyed = _model.Any(x => x.AuthKeyName != null);
                 RefreshSubscriptions();
                 StateHasChanged();
             });
