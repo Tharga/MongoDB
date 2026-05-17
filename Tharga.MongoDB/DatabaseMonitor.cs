@@ -397,7 +397,9 @@ internal class DatabaseMonitor : IDatabaseMonitor
             {
                 Stats = new CollectionStats { DocumentCount = meta.DocumentCount, Size = meta.Size, UpdatedAt = now },
                 Index = BuildIndexInfo(existing, meta.Indexes, now),
-                CurrentSchemaFingerprint = existing.CurrentSchemaFingerprint ?? ComputeSchemaFingerprint(existing.CollectionType),
+                CurrentSchemaFingerprint = SchemaFingerprint.IsCurrentVersion(existing.CurrentSchemaFingerprint)
+                    ? existing.CurrentSchemaFingerprint
+                    : ComputeSchemaFingerprint(existing.CollectionType),
             });
 
         RaiseLocalCollectionInfoChanged(updated);
@@ -1378,7 +1380,9 @@ internal class DatabaseMonitor : IDatabaseMonitor
                     var codeEntry = BuildInitialEntry(fp, cached.Server, cached.DatabasePart, cached.EntityTypes?.FirstOrDefault());
                     cached = cached with
                     {
-                        CurrentSchemaFingerprint = cached.CurrentSchemaFingerprint ?? codeEntry.CurrentSchemaFingerprint,
+                        CurrentSchemaFingerprint = SchemaFingerprint.IsCurrentVersion(cached.CurrentSchemaFingerprint)
+                            ? cached.CurrentSchemaFingerprint
+                            : codeEntry.CurrentSchemaFingerprint,
                         Index = cached.Index != null
                             ? new IndexInfo { Current = cached.Index.Current, Defined = codeEntry.Index?.Defined ?? cached.Index.Defined, UpdatedAt = cached.Index.UpdatedAt }
                             : codeEntry.Index,
