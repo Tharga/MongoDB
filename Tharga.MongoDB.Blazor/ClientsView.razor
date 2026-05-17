@@ -3,6 +3,7 @@
 @implements IDisposable
 @inject IDatabaseMonitor DatabaseMonitor;
 @inject IOptions<DatabaseOptions> DatabaseOptions
+@inject DialogService DialogService
 
 @if (!DatabaseOptions.Value.Monitor.Enabled)
 {
@@ -22,7 +23,9 @@ else
                     AllowSorting="true"
                     AllowPaging="true" PageSize="8" PageSizeOptions="[8, 16, 32, 64]"
                     ShowPagingSummary="true" PagingSummaryFormat="@("{2:N0} clients, page {0} of {1}")"
-                    CellRender="@OnCellRender">
+                    CellRender="@OnCellRender"
+                    RowClick="@(args => OpenClientDialog(args.Data))"
+                    RowRender="@(args => args.Attributes.Add("style", "cursor: pointer;"))">
         <Columns>
             <RadzenDataGridColumn Title="Status" Sortable="true" Width="120px" CssClass="css-status">
                 <Template>
@@ -131,6 +134,13 @@ else
     {
         public required string Topic { get; init; }
         public required int Count { get; init; }
+    }
+
+    private async Task OpenClientDialog(MonitorClientDto client)
+    {
+        var parameters = new Dictionary<string, object> { { nameof(MonitorClientDialog.Client), client } };
+        var options = new DialogOptions { Resizable = true, Draggable = true, Width = "800px" };
+        await DialogService.OpenAsync<MonitorClientDialog>(client.SourceName ?? client.Machine, parameters, options);
     }
 
     void OnCellRender(DataGridCellRenderEventArgs<MonitorClientDto> args)

@@ -1,0 +1,176 @@
+@using Tharga.Toolkit
+@inject IDatabaseMonitor DatabaseMonitor
+
+@if (Client == null)
+{
+    <RadzenAlert AlertStyle="AlertStyle.Info" Variant="Variant.Flat" Shade="Shade.Lighter" ShowIcon="true" AllowClose="false">
+        No agent supplied.
+    </RadzenAlert>
+}
+else if (_detail == null)
+{
+    <Tharga.Blazor.Loading />
+}
+else
+{
+    <RadzenStack Orientation="Orientation.Vertical" Gap="1rem">
+
+        @* --- Identity --- *@
+        <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" AlignItems="AlignItems.Center">
+            @if (_detail.Client.IsConnected)
+            {
+                <RadzenBadge BadgeStyle="BadgeStyle.Success" Text="Connected" />
+            }
+            else
+            {
+                <RadzenBadge BadgeStyle="BadgeStyle.Danger" Text="Disconnected" />
+            }
+            <RadzenText TextStyle="TextStyle.Subtitle1" Text="@(_detail.Client.SourceName ?? _detail.Client.Machine)" />
+        </RadzenStack>
+
+        <RadzenRow>
+            <RadzenColumn>
+                <RadzenText TextStyle="TextStyle.Caption" Text="Machine" />
+                <RadzenText Text="@_detail.Client.Machine" />
+            </RadzenColumn>
+            <RadzenColumn>
+                <RadzenText TextStyle="TextStyle.Caption" Text="Application" />
+                <RadzenText Text="@_detail.Client.Type" />
+            </RadzenColumn>
+            <RadzenColumn>
+                <RadzenText TextStyle="TextStyle.Caption" Text="Version" />
+                <RadzenText Text="@_detail.Client.Version" />
+            </RadzenColumn>
+        </RadzenRow>
+        <RadzenRow>
+            <RadzenColumn>
+                <RadzenText TextStyle="TextStyle.Caption" Text="Connected" />
+                <Tharga.Blazor.DateTimeView Date="@_detail.Client.ConnectTime" />
+            </RadzenColumn>
+            <RadzenColumn>
+                <RadzenText TextStyle="TextStyle.Caption" Text="Disconnected" />
+                @if (_detail.Client.DisconnectTime.HasValue)
+                {
+                    <Tharga.Blazor.DateTimeView Date="@_detail.Client.DisconnectTime.Value" />
+                }
+                else
+                {
+                    <RadzenText Text="—" />
+                }
+            </RadzenColumn>
+        </RadzenRow>
+
+        @* --- Collections received --- *@
+        <RadzenCard>
+            <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween" AlignItems="AlignItems.Center">
+                <RadzenText TextStyle="TextStyle.H6" Text="Collections received" />
+                <RadzenBadge BadgeStyle="BadgeStyle.Light" Text="@($"{_detail.CollectionKeys.Count:N0}")" />
+            </RadzenStack>
+            @if (_detail.CollectionKeys.Count == 0)
+            {
+                <RadzenText TextStyle="TextStyle.Body2" Text="No collections reported yet." Style="color: gray;" />
+            }
+            else
+            {
+                <div style="max-height: 200px; overflow-y: auto;">
+                    @foreach (var key in _detail.CollectionKeys)
+                    {
+                        <div><RadzenText TextStyle="TextStyle.Body2" Text="@key" /></div>
+                    }
+                </div>
+            }
+        </RadzenCard>
+
+        @* --- Recent calls --- *@
+        <RadzenCard>
+            <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween" AlignItems="AlignItems.Center">
+                <RadzenText TextStyle="TextStyle.H6" Text="Recent calls" />
+                <RadzenBadge BadgeStyle="BadgeStyle.Light" Text="@($"{_detail.RecentCalls.Count:N0}")" />
+            </RadzenStack>
+            @if (_detail.RecentCalls.Count == 0)
+            {
+                <RadzenText TextStyle="TextStyle.Body2" Text="No calls received yet." Style="color: gray;" />
+            }
+            else
+            {
+                <RadzenDataGrid Data="_detail.RecentCalls" TItem="CallInfo" AllowSorting="true" Density="Density.Compact"
+                                AllowPaging="false">
+                    <Columns>
+                        <RadzenDataGridColumn Title="Start" Property="@nameof(CallInfo.StartTime)" SortOrder="SortOrder.Descending">
+                            <Template>
+                                <Tharga.Blazor.DateTimeView Date="@context.StartTime" />
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn Title="Collection" Property="@($"{nameof(CallInfo.Fingerprint)}.{nameof(CallInfo.Fingerprint.CollectionName)}")" />
+                        <RadzenDataGridColumn Title="Function" Property="@nameof(CallInfo.FunctionName)" />
+                        <RadzenDataGridColumn Title="Operation" Property="@nameof(CallInfo.Operation)" />
+                        <RadzenDataGridColumn Title="Elapsed" Property="@nameof(CallInfo.Elapsed)">
+                            <Template>
+                                <Tharga.Blazor.TimeSpanView TimeSpan="@context.Elapsed" />
+                            </Template>
+                        </RadzenDataGridColumn>
+                    </Columns>
+                </RadzenDataGrid>
+            }
+        </RadzenCard>
+
+        @* --- Latest queue snapshot --- *@
+        <RadzenCard>
+            <RadzenText TextStyle="TextStyle.H6" Text="Latest queue snapshot" />
+            @if (_detail.QueueState == null)
+            {
+                <RadzenText TextStyle="TextStyle.Body2" Text="No queue metrics reported yet." Style="color: gray;" />
+            }
+            else
+            {
+                <RadzenRow>
+                    <RadzenColumn>
+                        <RadzenText TextStyle="TextStyle.Caption" Text="Queued" />
+                        <RadzenText Text="@($"{_detail.QueueState.QueueCount:N0}")" />
+                    </RadzenColumn>
+                    <RadzenColumn>
+                        <RadzenText TextStyle="TextStyle.Caption" Text="Executing" />
+                        <RadzenText Text="@($"{_detail.QueueState.ExecutingCount:N0}")" />
+                    </RadzenColumn>
+                    <RadzenColumn>
+                        <RadzenText TextStyle="TextStyle.Caption" Text="Last Wait (ms)" />
+                        <RadzenText Text="@($"{_detail.QueueState.LastWaitTimeMs:N1}")" />
+                    </RadzenColumn>
+                </RadzenRow>
+            }
+        </RadzenCard>
+
+        @* --- Actions --- *@
+        <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
+            <RadzenButton Text="Refresh" Icon="refresh" Click="RefreshAsync" />
+        </RadzenStack>
+    </RadzenStack>
+}
+
+@code {
+    [Parameter]
+    public MonitorClientDto Client { get; set; }
+
+    [Parameter]
+    public int RecentCallLimit { get; set; } = 20;
+
+    private MonitorClientDetail _detail;
+
+    protected override void OnParametersSet()
+    {
+        Reload();
+        base.OnParametersSet();
+    }
+
+    private Task RefreshAsync()
+    {
+        Reload();
+        return Task.CompletedTask;
+    }
+
+    private void Reload()
+    {
+        if (Client?.SourceName == null) { _detail = null; return; }
+        _detail = DatabaseMonitor.GetMonitorClientDetail(Client.SourceName, RecentCallLimit);
+    }
+}

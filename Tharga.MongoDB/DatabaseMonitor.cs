@@ -836,6 +836,47 @@ internal class DatabaseMonitor : IDatabaseMonitor
         return _monitorClients.Values;
     }
 
+    public MonitorClientDetail GetMonitorClientDetail(string sourceName, int recentCallLimit = 20)
+    {
+        if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
+        if (string.IsNullOrEmpty(sourceName)) return null;
+
+        var client = _monitorClients.Values.FirstOrDefault(x => x.SourceName == sourceName);
+        if (client == null) return null;
+
+        var collectionKeys = _collectionSources
+            .Where(kvp => kvp.Value.ContainsKey(sourceName))
+            .Select(kvp => kvp.Key)
+            .OrderBy(k => k, StringComparer.Ordinal)
+            .ToArray();
+
+        var recentCalls = _callLibrary.GetLastCalls()
+            .Where(c => c.SourceName == sourceName)
+            .OrderByDescending(c => c.StartTime)
+            .Take(recentCallLimit)
+            .ToArray();
+
+        ConnectionPoolStateDto queueState = null;
+        if (_remoteQueueStates.TryGetValue(sourceName, out var remoteState))
+        {
+            queueState = new ConnectionPoolStateDto
+            {
+                QueueCount = remoteState.QueueCount,
+                ExecutingCount = remoteState.ExecutingCount,
+                LastWaitTimeMs = remoteState.LastWaitTimeMs,
+                RecentMetrics = [],
+            };
+        }
+
+        return new MonitorClientDetail
+        {
+            Client = client,
+            CollectionKeys = collectionKeys,
+            RecentCalls = recentCalls,
+            QueueState = queueState,
+        };
+    }
+
     public void IngestClientConnected(MonitorClientDto client)
     {
         _monitorClients[client.Instance] = client;
