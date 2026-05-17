@@ -16,4 +16,12 @@ public record MonitorClientDto
     public required DateTime ConnectTime { get; init; }
     public DateTime? DisconnectTime { get; init; }
     public string SourceName { get; init; }
+
+    /// <summary>
+    /// Human-readable name of the API key used to authenticate this connection,
+    /// as reported by the registered <c>IApiKeyValidator</c>. <c>null</c> when the
+    /// connection was accepted without a key, or when the validator did not
+    /// supply a name.
+    /// </summary>
+    public string AuthKeyName { get; init; }
 }

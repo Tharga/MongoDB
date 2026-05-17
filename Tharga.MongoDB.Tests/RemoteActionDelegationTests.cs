@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Concurrent;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -231,6 +232,49 @@ public class RemoteActionDelegationTests
         detail.QueueState.QueueCount.Should().Be(4);
         detail.QueueState.ExecutingCount.Should().Be(2);
         detail.QueueState.LastWaitTimeMs.Should().Be(17.5);
+    }
+
+    [Fact]
+    public void IngestClientConnected_PreservesAuthKeyName_ThroughGetMonitorClients()
+    {
+        _monitor.IngestClientConnected(new MonitorClientDto
+        {
+            Instance = Guid.NewGuid(),
+            ConnectionId = "conn-keyed",
+            Machine = "KeyedMachine",
+            Type = "TestAgent",
+            Version = "1.0",
+            IsConnected = true,
+            ConnectTime = DateTime.UtcNow,
+            SourceName = "Agent-Keyed/Service",
+            AuthKeyName = "production-monitor",
+        });
+
+        var client = _monitor.GetMonitorClients().Single(x => x.SourceName == "Agent-Keyed/Service");
+        client.AuthKeyName.Should().Be("production-monitor");
+    }
+
+    [Fact]
+    public void GetMonitorClientDetail_SurfacesAuthKeyName_ForKeyedAgent()
+    {
+        _monitor.IngestClientConnected(new MonitorClientDto
+        {
+            Instance = Guid.NewGuid(),
+            ConnectionId = "conn-keyed",
+            Machine = "KeyedMachine",
+            Type = "TestAgent",
+            Version = "1.0",
+            IsConnected = true,
+            ConnectTime = DateTime.UtcNow,
+            SourceName = "Agent-Keyed/Service",
+            AuthKeyName = "production-monitor",
+        });
+
+        var detail = _monitor.GetMonitorClientDetail("Agent-Keyed/Service");
+
+        detail.Should().NotBeNull();
+        detail.Client.AuthKeyName.Should().Be("production-monitor",
+            "the per-agent dialog needs the auth-key label so the seal-badge tooltip can render it");
     }
 
     [Fact]

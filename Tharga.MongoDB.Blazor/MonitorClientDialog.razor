@@ -25,6 +25,10 @@ else
             {
                 <RadzenBadge BadgeStyle="BadgeStyle.Danger" Text="Disconnected" />
             }
+            @if (_detail.Client.AuthKeyName != null)
+            {
+                <RadzenIcon Icon="lock" title="@_detail.Client.AuthKeyName" />
+            }
             <RadzenText TextStyle="TextStyle.Subtitle1" Text="@(_detail.Client.SourceName ?? _detail.Client.Machine)" />
         </RadzenStack>
 

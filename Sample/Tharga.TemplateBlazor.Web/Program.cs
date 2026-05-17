@@ -36,7 +36,7 @@ builder.AddMongoDB(o =>
     o.Monitor.EnableCommandMonitoring = true;
 });
 
-builder.AddMongoDbMonitorServer();
+builder.AddMongoDbMonitorServer(_ => { });
 
 builder.Services.AddThargaMcp(mcp =>
 {
