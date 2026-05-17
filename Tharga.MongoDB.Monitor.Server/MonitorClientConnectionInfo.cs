@@ -16,4 +16,10 @@ public record MonitorClientConnectionInfo : IClientConnectionInfo
     public bool IsConnected { get; init; }
     public DateTime ConnectTime { get; init; }
     public DateTime? DisconnectTime { get; init; }
+
+    // Added in Tharga.Communication 0.2.0 to support per-key auth state visibility.
+    // Surfacing real values is GitHub issue #100's job; this record carries the
+    // contract so the upstream interface is satisfied.
+    public string KeyId { get; init; }
+    public string KeyName { get; init; }
 }
