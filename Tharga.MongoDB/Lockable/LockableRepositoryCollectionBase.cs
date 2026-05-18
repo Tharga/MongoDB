@@ -272,7 +272,7 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
         return Disk.GetDirtyAsync();
     }
 
-    public override IEnumerable<(IndexFailOperation Operation, string Name)> GetFailedIndices()
+    public override IReadOnlyList<IndexFailure> GetFailedIndices()
     {
         return Disk.GetFailedIndices();
     }

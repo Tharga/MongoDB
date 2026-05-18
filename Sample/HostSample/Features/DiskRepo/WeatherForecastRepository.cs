@@ -29,7 +29,7 @@ internal class WeatherForecastRepository : IWeatherForecastRepository
         return _collection.GetDirtyAsync();
     }
 
-    public IEnumerable<(IndexFailOperation Operation, string Name)> GetFailedIndices()
+    public IReadOnlyList<IndexFailure> GetFailedIndices()
     {
         return _collection.GetFailedIndices();
     }

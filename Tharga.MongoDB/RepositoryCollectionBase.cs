@@ -122,7 +122,7 @@ public abstract class RepositoryCollectionBase<TEntity, TKey> : RepositoryCollec
     public abstract IAsyncEnumerable<T> ExecuteManyAsync<T>(Func<IMongoCollection<TEntity>, CancellationToken, Task<IAsyncCursor<T>>> queryFactory, CancellationToken cancellationToken = default);
 
     public abstract IAsyncEnumerable<TEntity> GetDirtyAsync();
-    public abstract IEnumerable<(IndexFailOperation Operation, string Name)> GetFailedIndices();
+    public abstract IReadOnlyList<IndexFailure> GetFailedIndices();
 
     internal abstract Task<StepResponse<IMongoCollection<TEntity>>> FetchCollectionAsync(bool initiate = true);
     internal abstract Task<bool> AssureIndex(IMongoCollection<TEntity> collection, bool forceAssure = false, bool throwOnException = false);
