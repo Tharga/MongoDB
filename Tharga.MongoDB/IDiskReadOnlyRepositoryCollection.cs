@@ -75,10 +75,12 @@ public interface IReadOnlyRepositoryCollection<TEntity, TKey> : IReadOnlyReposit
     IAsyncEnumerable<TEntity> GetDirtyAsync();
 
     /// <summary>
-    /// Indices that have failed to be created.
+    /// Indices that have failed to be created or dropped on this collection within
+    /// the current process, with the most recent error message captured for each.
+    /// Empty when no failures have been recorded. In-process scope; cross-process
+    /// persistence is a planned follow-up.
     /// </summary>
-    /// <returns></returns>
-    IEnumerable<(IndexFailOperation Operation, string Name)> GetFailedIndices();
+    IReadOnlyList<IndexFailure> GetFailedIndices();
 }
 
 public interface IDiskReadOnlyRepositoryCollection<TEntity, TKey> : IReadOnlyRepositoryCollection<TEntity, TKey>

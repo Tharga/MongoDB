@@ -1260,9 +1260,39 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         }
     }
 
-    public override IEnumerable<(IndexFailOperation Operation, string Name)> GetFailedIndices()
+    public override IReadOnlyList<IndexFailure> GetFailedIndices()
     {
         return _initiationLibrary.GetFailedIndices(ServerName, DatabaseName, ProtectedCollectionName);
+    }
+
+    /// <summary>
+    /// Logs an index drop/create failure and records it in the InitiationLibrary.
+    /// First occurrence per (operation, indexName) in this process logs at Error
+    /// with the exception attached so the root cause is captured once. Subsequent
+    /// occurrences log at Warning without the exception, so OTel pipelines don't
+    /// promote every retry into the AppExceptions table — Florida's #58/day noise
+    /// in `Requests.md` (2026-05-13) was the motivating case.
+    /// </summary>
+    private void LogIndexOperationFailure(IndexFailOperation operation, string indexName, Exception exception)
+    {
+        var alreadyKnown = _initiationLibrary
+            .GetFailedIndices(ServerName, DatabaseName, ProtectedCollectionName)
+            .Any(f => f.Operation == operation && f.Name == indexName);
+
+        var verb = operation == IndexFailOperation.Drop ? "drop" : "create";
+
+        if (alreadyKnown)
+        {
+            _logger?.LogWarning("Failed to {verb} index {indexName} in collection {collection} (retry). {message}",
+                verb, indexName, ProtectedCollectionName, exception.Message);
+        }
+        else
+        {
+            _logger?.LogError(exception, "Failed to {verb} index {indexName} in collection {collection}. {message}",
+                verb, indexName, ProtectedCollectionName, exception.Message);
+        }
+
+        _initiationLibrary.AddFailedInitiateIndex(ServerName, DatabaseName, ProtectedCollectionName, operation, indexName, exception.Message);
     }
 
     //private async Task<IMongoCollection<T>> GetProjectionCollectionAsync<T>()
@@ -1799,8 +1829,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                 }
                 catch (Exception e)
                 {
-                    _logger?.LogError(e, "Failed to drop index {indexName} in collection {collection}. {message}", indexName, ProtectedCollectionName, e.Message);
-                    _initiationLibrary.AddFailedInitiateIndex(ServerName, DatabaseName, ProtectedCollectionName, (IndexFailOperation.Drop, indexName));
+                    LogIndexOperationFailure(IndexFailOperation.Drop, indexName, e);
                     if (throwOnException) throw;
                 }
             }
@@ -1820,8 +1849,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                 }
                 catch (Exception e)
                 {
-                    _logger?.LogError(e, "Failed to create index {indexName} in collection {collection}. {message}", index.Options.Name, ProtectedCollectionName, e.Message);
-                    _initiationLibrary.AddFailedInitiateIndex(ServerName, DatabaseName, ProtectedCollectionName, (IndexFailOperation.Create, index.Options.Name));
+                    LogIndexOperationFailure(IndexFailOperation.Create, index.Options.Name, e);
                     if (throwOnException) throw;
                 }
             }
@@ -1895,8 +1923,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                 }
                 catch (Exception e)
                 {
-                    _logger?.LogError(e, "Failed to drop index {indexName} in collection {collection}. {message}", indexName, ProtectedCollectionName, e.Message);
-                    _initiationLibrary.AddFailedInitiateIndex(ServerName, DatabaseName, ProtectedCollectionName, (IndexFailOperation.Drop, indexName));
+                    LogIndexOperationFailure(IndexFailOperation.Drop, indexName, e);
                     if (throwOnException) throw;
                 }
             }
@@ -1919,8 +1946,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                 }
                 catch (Exception e)
                 {
-                    _logger?.LogError(e, "Failed to create index {indexName} in collection {collection}. {message}", definedMeta.Name, ProtectedCollectionName, e.Message);
-                    _initiationLibrary.AddFailedInitiateIndex(ServerName, DatabaseName, ProtectedCollectionName, (IndexFailOperation.Create, definedMeta.Name));
+                    LogIndexOperationFailure(IndexFailOperation.Create, definedMeta.Name, e);
                     if (throwOnException) throw;
                 }
             }
@@ -1969,8 +1995,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             }
             catch (Exception e)
             {
-                _logger?.LogError(e, "Failed to drop index {indexName} in collection {collection}. {message}", indexName, ProtectedCollectionName, e.Message);
-                _initiationLibrary.AddFailedInitiateIndex(ServerName, DatabaseName, ProtectedCollectionName, (IndexFailOperation.Drop, indexName));
+                LogIndexOperationFailure(IndexFailOperation.Drop, indexName, e);
                 if (throwOnException) throw;
             }
         }
@@ -1986,8 +2011,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             }
             catch (Exception e)
             {
-                _logger?.LogError(e, "Failed to create index {indexName} in collection {collection}. {message}", index.Options.Name, ProtectedCollectionName, e.Message);
-                _initiationLibrary.AddFailedInitiateIndex(ServerName, DatabaseName, ProtectedCollectionName, (IndexFailOperation.Create, index.Options.Name));
+                LogIndexOperationFailure(IndexFailOperation.Create, index.Options.Name, e);
                 if (throwOnException) throw;
             }
         }
