@@ -45,6 +45,17 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
     protected virtual TimeSpan DefaultTimeout { get; init; } = TimeSpan.FromSeconds(30);
     protected virtual bool RequireActor => true;
 
+    /// <summary>
+    /// When <c>true</c> (default — resolved from <see cref="Configuration.DatabaseOptions.AllowDelayedCommit"/>),
+    /// a successful <c>CommitAsync</c> is permitted even when the lease's lock has expired,
+    /// provided no other writer has touched the document (<c>LockKey</c> still matches). The
+    /// <c>LockKey</c> atomicity check still drives the safety guarantee.
+    /// Override to <c>false</c> to pin a specific collection to strict-TTL semantics regardless
+    /// of the global option — <c>CommitAsync</c> will throw <see cref="LockExpiredException"/>
+    /// for any expired lease as it did before this feature.
+    /// </summary>
+    protected virtual bool AllowDelayedCommit => _mongoDbServiceFactory.AllowDelayedCommit;
+
     //Read
     public override IAsyncEnumerable<TEntity> GetAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default)
     {
@@ -850,10 +861,22 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
         var timeout = entityLock.ExpireTime - entityLock.LockTime;
         var lockInfo = BuildLockInfo(entityLock, exception);
         var expired = lockTime > timeout;
+        var delayedCommit = expired && commit && exception == null && AllowDelayedCommit;
 
-        if ((commit || exception != null) && expired)
+        // Strict-TTL gate: throw on expired commit / expired exception-release unless this is
+        // a delayed-commit path explicitly enabled by the AllowDelayedCommit option. The
+        // exception-release branch always remains strict — a delayed exception-record on a
+        // lock that may have been picked elsewhere has no clean semantics.
+        if (expired && (exception != null || (commit && !AllowDelayedCommit)))
         {
             throw new LockExpiredException($"Too late to release entity of type {typeof(TEntity).Name} locked by {entityLock.Actor}.", timeout, lockTime);
+        }
+
+        if (delayedCommit)
+        {
+            _logger?.LogInformation(
+                "Lockable entity {entityId} in collection {collection} committed {expiredBy} after lock expiry — no other writer had modified it.",
+                entity.Id, ProtectedCollectionName, lockTime - timeout);
         }
 
         EntityChangeResult<TEntity> result;
@@ -888,7 +911,11 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
         after ??= await result.GetAfterAsync();
         if (after == null && Debugger.IsAttached) throw new InvalidOperationException($"Entity {typeof(TEntity).Name} with id '{entity.Id}' does not exist after release.");
 
-        if (completeAction != null && !expired)
+        // Fire the post-release callback when the lease produced a real write — either within
+        // the TTL window, or via the new delayed-commit path (commit happened, no other writer
+        // had touched the document). Skip when the lock was past expiry AND the consumer chose
+        // not to commit (abandon-after-expiry).
+        if (completeAction != null && (!expired || commit))
         {
             await completeAction.Invoke(new CallbackResult<TEntity> { LockAction = lockAction, Before = result.Before, After = after });
         }

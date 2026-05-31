@@ -77,21 +77,38 @@ public class ReleaseDeleteTests : LockableTestBase
         //Act
         var act = () => ReleaseAsync(release, sut, sut.Entity with { Count = 1 });
 
-        //Assert
-        if (release != ReleaseType.Abandon)
+        //Assert — behaviour changed by lockable-delayed-commit: Commit now succeeds for an
+        //expired-but-untouched lock (deleting the doc); the document is removed by the
+        //delayed PickForDelete commit. SetErrorState still throws — exception-release stays strict.
+        if (release == ReleaseType.SetErrorState)
         {
             await act.Should()
                 .ThrowAsync<LockExpiredException>()
                 .WithMessage($"Too late to release entity of type {nameof(LockableTestEntity)} locked by *");
+            eventCount.Should().Be(0);
+            callbackResult.Should().BeNull();
+            var item = await collection.GetOneAsync(sut.Entity.Id);
+            item.Should().NotBeNull();
         }
         else
         {
             await act.Should().NotThrowAsync();
+            if (release == ReleaseType.Commit)
+            {
+                eventCount.Should().Be(1, "the delayed-commit path still fires the completion callback");
+                callbackResult.Should().NotBeNull();
+                callbackResult.LockAction.Should().Be(LockAction.CommitDeleted);
+                var deletedItem = await collection.GetOneAsync(sut.Entity.Id);
+                deletedItem.Should().BeNull("delayed PickForDelete commit must actually delete");
+            }
+            else
+            {
+                eventCount.Should().Be(0);
+                callbackResult.Should().BeNull();
+                var item = await collection.GetOneAsync(sut.Entity.Id);
+                item.Should().NotBeNull();
+            }
         }
-        eventCount.Should().Be(0);
-        callbackResult.Should().BeNull();
-        var item = await collection.GetOneAsync(sut.Entity.Id);
-        item.Should().NotBeNull();
     }
 
     [Theory]
@@ -185,19 +202,32 @@ public class ReleaseDeleteTests : LockableTestBase
         //Act
         var act = () => ReleaseAsync(release, sut, sut.Entity with { Count = 1 });
 
-        //Assert
-        if (release != ReleaseType.Abandon)
+        //Assert — same as ReleaseEntityWithExpiredLock: delayed PickForDelete commit now
+        //succeeds (deletes the doc); SetErrorState still throws.
+        if (release == ReleaseType.SetErrorState)
         {
             await act.Should().ThrowAsync<LockExpiredException>();
+            eventCount.Should().Be(0);
+            callbackResult.Should().BeNull();
+            var item = await collection.GetOneAsync(sut.Entity.Id);
+            item.Should().NotBeNull();
         }
         else
         {
             await act.Should().NotThrowAsync();
+            if (release == ReleaseType.Commit)
+            {
+                eventCount.Should().Be(1);
+                callbackResult.Should().NotBeNull();
+                var deletedItem = await collection.GetOneAsync(sut.Entity.Id);
+                deletedItem.Should().BeNull();
+            }
+            else
+            {
+                var item = await collection.GetOneAsync(sut.Entity.Id);
+                item.Should().NotBeNull();
+            }
         }
-        eventCount.Should().Be(0);
-        callbackResult.Should().BeNull();
-        var item = await collection.GetOneAsync(sut.Entity.Id);
-        item.Should().NotBeNull();
     }
 
     private static Task ReleaseAsync(ReleaseType release, EntityScope<LockableTestEntity, ObjectId> sut, LockableTestEntity entity)

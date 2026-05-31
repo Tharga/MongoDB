@@ -101,6 +101,7 @@ public static class MongoDbRegistrationExtensions
             var factory = new MongoDbServiceFactory(mongoDbClientProvider, repositoryConfigurationLoader, mongoDbFirewallStateService, executeLimiter, collectionPool, initiationLibrary, logger);
             if (!string.IsNullOrWhiteSpace(o.Monitor?.SourceName))
                 factory.SourceName = o.Monitor.SourceName;
+            factory.AllowDelayedCommit = o.AllowDelayedCommit;
             factory.CommandMonitor = serviceProvider.GetService<ICommandMonitorService>();
             return factory;
         });

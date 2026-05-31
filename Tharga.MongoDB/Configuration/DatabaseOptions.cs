@@ -90,6 +90,17 @@ public record DatabaseOptions
     public AssureIndexMode AssureIndex { get; set; } = AssureIndexMode.ByName;
 
     /// <summary>
+    /// Controls whether <see cref="Lockable.DocumentLease{T,TKey}.CommitAsync"/> may succeed for
+    /// a lease whose lock has expired, provided no other writer has touched the document since
+    /// (the <c>LockKey</c> atomicity check still drives the safety guarantee). Default <c>true</c>.
+    /// Set to <c>false</c> to restore the strict-TTL behaviour where every expired commit throws
+    /// <see cref="Lockable.LockExpiredException"/>. Individual collections can pin themselves to
+    /// either policy by overriding the virtual <c>AllowDelayedCommit</c> property on
+    /// <see cref="Lockable.LockableRepositoryCollectionBase{TEntity,TKey}"/>.
+    /// </summary>
+    public bool AllowDelayedCommit { get; set; } = true;
+
+    /// <summary>
     /// Configuration for monitor. This is by default enabled.
     /// </summary>
     public MonitorOptions Monitor { get; set; } = new();
