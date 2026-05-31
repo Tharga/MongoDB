@@ -36,6 +36,7 @@ internal class MongoDbServiceFactory : IMongoDbServiceFactory
     }
 
     public string SourceName { get; internal set; }
+    public bool AllowDelayedCommit { get; internal set; } = true;
     internal ICommandMonitorService CommandMonitor { get; set; }
 
     public event EventHandler<CollectionAccessEventArgs> CollectionAccessEvent;

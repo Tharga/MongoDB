@@ -12,5 +12,13 @@ public interface IMongoDbServiceFactory
 
     string SourceName { get; }
 
+    /// <summary>
+    /// Resolved value of <c>DatabaseOptions.AllowDelayedCommit</c>. Surfaced on the factory
+    /// so <see cref="Lockable.LockableRepositoryCollectionBase{TEntity,TKey}"/> can read it as
+    /// the default for its virtual <c>AllowDelayedCommit</c> property without taking a direct
+    /// dependency on <c>IOptions&lt;DatabaseOptions&gt;</c>.
+    /// </summary>
+    bool AllowDelayedCommit { get; }
+
     IMongoDbService GetMongoDbService(Func<DatabaseContext> databaseContextLoader);
 }

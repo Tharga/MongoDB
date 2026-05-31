@@ -217,6 +217,11 @@ public class PickTests : LockableTestBase
     [Trait("Category", "Database")]
     public async Task PickAndCommitTooLate(PickType type)
     {
+        // Behaviour changed by the lockable-delayed-commit feature: when the lock is past
+        // expiry but no other writer has touched the document (LockKey still matches),
+        // the commit succeeds. This used to throw LockExpiredException; now it doesn't.
+        // The LockKey atomicity check still drives safety — see PickAndCommitTooLateWhenOtherHavePicked
+        // for the "another writer picked" case.
         //Arrange
         var firstActor = "some actor";
         var sut = new LockableTestRepositoryCollection(_mongoDbServiceFactory);
@@ -229,14 +234,20 @@ public class PickTests : LockableTestBase
         //Act
         var act = () => scope.CommitAsync(updated);
 
-        //Assert
-        await act.Should()
-            .ThrowAsync<LockExpiredException>()
-            .WithMessage($"Too late to release entity of type {nameof(LockableTestEntity)} locked by *");
+        //Assert — delayed commit succeeds, document reflects the staged change.
+        await act.Should().NotThrowAsync();
         var item = await sut.GetOneAsync(entity.Id);
-        item.Should().NotBeNull();
-        item.Lock.Should().NotBeNull();
-        item.Lock.ExceptionInfo.Should().BeNull();
+        if (type == PickType.Delete)
+        {
+            item.Should().BeNull("a delayed PickForDelete commit must actually delete");
+        }
+        else
+        {
+            item.Should().NotBeNull();
+            item.Data.Should().Be("updated");
+            item.Count.Should().Be(1);
+            item.Lock.Should().BeNull("a successful delayed commit clears the lock");
+        }
     }
 
     [Theory]
@@ -295,6 +306,10 @@ public class PickTests : LockableTestBase
     [Trait("Category", "Database")]
     public async Task PickAndCommitTooLateThenTryToSetException(PickType type)
     {
+        // Behaviour changed by lockable-delayed-commit: the "too late" commit now
+        // succeeds (when no other writer has touched the doc) rather than throwing.
+        // Setting an exception on the now-released scope still throws
+        // LockAlreadyReleasedException — the scope-already-released guard is unchanged.
         //Arrange
         var firstActor = "some actor";
         var sut = new LockableTestRepositoryCollection(_mongoDbServiceFactory);
@@ -304,7 +319,7 @@ public class PickTests : LockableTestBase
         await using var scope = await PickAsync(type, sut, entity.Id, firstActor, timeSpan);
         var updated = scope.Entity with { Count = 1, Data = "updated" };
         var preAct = () => scope.CommitAsync(updated);
-        await preAct.Should().ThrowAsync<LockExpiredException>();
+        await preAct.Should().NotThrowAsync("delayed commit succeeds when no other writer has touched the document");
 
         //Act
         var act = () => scope.SetErrorStateAsync(new Exception("some issue."));
@@ -313,10 +328,6 @@ public class PickTests : LockableTestBase
         await act.Should()
             .ThrowAsync<LockAlreadyReleasedException>()
             .WithMessage("Entity has already been released.");
-        var item = await sut.GetOneAsync(entity.Id);
-        item.Should().NotBeNull();
-        item.Lock.Should().NotBeNull();
-        item.Lock.ExceptionInfo.Should().BeNull();
     }
 
     [Theory]
@@ -325,6 +336,12 @@ public class PickTests : LockableTestBase
     [Trait("Category", "Database")]
     public async Task PickAndCommitTooLateWhenOtherHavePicked(PickType type)
     {
+        // The safety guarantee of lockable-delayed-commit: when ANOTHER writer has picked
+        // the expired lock, the original scope's LockKey is no longer current, and the
+        // delayed commit MUST fail. The exception type is no longer LockExpiredException
+        // (the strict-TTL gate was dropped) — instead the Mongo-side filter mismatch on
+        // LockKey surfaces as InvalidOperationException from ReleaseAsync's "Cannot find
+        // entity before release" guard.
         //Arrange
         var firstActor = "some actor";
         var sut = new LockableTestRepositoryCollection(_mongoDbServiceFactory);
@@ -342,9 +359,7 @@ public class PickTests : LockableTestBase
         var act = () => scope.CommitAsync(updated);
 
         //Assert
-        await act.Should()
-            .ThrowAsync<LockExpiredException>()
-            .WithMessage($"Too late to release entity of type {nameof(LockableTestEntity)} locked by *");
+        await act.Should().ThrowAsync<InvalidOperationException>();
 
         await scope.DisposeAsync();
     }

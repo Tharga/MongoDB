@@ -69,19 +69,32 @@ public class ReleaseUpdateTests : LockableTestBase
         //Act
         var act = () => ReleaseAsync(release, sut, sut.Entity with { Count = 1 });
 
-        //Assert
-        if (release != ReleaseType.Abandon)
+        //Assert — behaviour changed by lockable-delayed-commit: Commit now succeeds for an
+        //expired-but-untouched lock (LockKey still matches). SetErrorState still throws —
+        //the exception-release path stays strict per the feature spec. Abandon is unchanged.
+        if (release == ReleaseType.SetErrorState)
         {
             await act.Should()
                 .ThrowAsync<LockExpiredException>()
                 .WithMessage($"Too late to release entity of type {nameof(LockableTestEntity)} locked by *");
+            eventCount.Should().Be(0);
+            callbackResult.Should().BeNull();
         }
         else
         {
             await act.Should().NotThrowAsync();
+            if (release == ReleaseType.Commit)
+            {
+                eventCount.Should().Be(1, "the delayed-commit path still fires the completion callback");
+                callbackResult.Should().NotBeNull();
+                callbackResult.LockAction.Should().Be(LockAction.CommitUpdated);
+            }
+            else
+            {
+                eventCount.Should().Be(0, "Abandon does not fire the completion callback");
+                callbackResult.Should().BeNull();
+            }
         }
-        eventCount.Should().Be(0);
-        callbackResult.Should().BeNull();
         var item = await collection.GetOneAsync(sut.Entity.Id);
         item.Should().NotBeNull();
     }
@@ -157,17 +170,24 @@ public class ReleaseUpdateTests : LockableTestBase
         //Act
         var act = () => ReleaseAsync(release, sut, sut.Entity with { Count = 1 });
 
-        //Assert
-        if (release != ReleaseType.Abandon)
+        //Assert — same as ReleaseEntityWithExpiredLock: the lockable-delayed-commit feature
+        //means Commit now succeeds for an immediately-expired pick (LockKey still ours).
+        //SetErrorState still throws; Abandon is unchanged.
+        if (release == ReleaseType.SetErrorState)
         {
             await act.Should().ThrowAsync<LockExpiredException>();
+            eventCount.Should().Be(0);
+            callbackResult.Should().BeNull();
         }
         else
         {
             await act.Should().NotThrowAsync();
+            if (release == ReleaseType.Commit)
+            {
+                eventCount.Should().Be(1);
+                callbackResult.Should().NotBeNull();
+            }
         }
-        eventCount.Should().Be(0);
-        callbackResult.Should().BeNull();
         var item = await collection.GetOneAsync(sut.Entity.Id);
         item.Should().NotBeNull();
     }
