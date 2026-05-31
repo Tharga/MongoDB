@@ -1322,8 +1322,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
         {
             if (_staticLookup != null) return (_staticLookup, _dynamicLookup);
 
-            _staticLookup = GetStaticCollectionsFromCodeCore()
-                .ToDictionary(x => (x.ConfigurationName ?? _options.DefaultConfigurationName, x.CollectionName), x => x);
+            _staticLookup = BuildStaticLookup(GetStaticCollectionsFromCodeCore(), _options.DefaultConfigurationName);
             var a = GetDynamicRegistrations(_staticLookup.Select(x => new DatabaseContext { ConfigurationName = x.Key.Item1 })).ToArray();
             var b = a.GroupBy(x => x.Type).ToArray();
             var c = b.Where(x => x.Count() > 1).ToArray();
@@ -1485,6 +1484,23 @@ internal class DatabaseMonitor : IDatabaseMonitor
             type = type.BaseType;
         }
         return null;
+    }
+
+    /// <summary>
+    /// Builds the static-collection lookup. Two registered classes are legitimately
+    /// allowed to overlay the same physical Mongo collection as read projections
+    /// (e.g. a writer + a lean read-projection class). Same key would otherwise crash
+    /// <c>ToDictionary</c>; group-and-take-first matches the dynamic-lookup pattern
+    /// right below it, and the merged <c>EntityTypes</c> let the monitor UI surface
+    /// every reader of the shared physical collection.
+    /// </summary>
+    internal static Dictionary<(string, string), StatColInfo> BuildStaticLookup(IEnumerable<StatColInfo> source, string defaultConfigurationName)
+    {
+        return source
+            .GroupBy(x => (x.ConfigurationName ?? defaultConfigurationName, x.CollectionName))
+            .ToDictionary(
+                g => g.Key,
+                g => g.First() with { EntityTypes = g.SelectMany(x => x.EntityTypes).Distinct().ToArray() });
     }
 
     private IEnumerable<StatColInfo> GetStaticCollectionsFromCodeCore()
