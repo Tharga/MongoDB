@@ -453,6 +453,21 @@ internal class DatabaseMonitor : IDatabaseMonitor
 
         RaiseLocalCollectionInfoChanged(updated);
         _ = Task.Run(() => _cache.SaveAsync(updated));
+
+        // Touch is the operator-driven opportunistic recovery hook: always re-run a fresh
+        // index-assure pass on the touched collection. Failed indexes from prior attempts
+        // get retried; successful retries clear FailedIndices via the per-index success
+        // paths in DiskRepositoryCollectionBase.UpdateIndices*. Cheap for healthy
+        // collections (list-existing + compare; no Mongo ops when indexes match).
+        try
+        {
+            await RestoreIndexAsync(collectionInfo, force: true);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "TouchAsync: index re-assure for {Configuration}.{Database}.{Collection} threw — recorded in InitiationLibrary, not propagated.",
+                collectionInfo.ConfigurationName, collectionInfo.DatabaseName, collectionInfo.CollectionName);
+        }
     }
 
     public async Task<(int Before, int After)> DropIndexAsync(CollectionInfo collectionInfo)
@@ -834,6 +849,23 @@ internal class DatabaseMonitor : IDatabaseMonitor
     public IEnumerable<MonitorClientDto> GetMonitorClients()
     {
         return _monitorClients.Values;
+    }
+
+    public IReadOnlyList<CollectionInfo> GetCollectionsWithFailedIndices()
+    {
+        if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
+
+        var initiationLibrary = _serviceProvider.GetService(typeof(Internals.IInitiationLibrary)) as Internals.IInitiationLibrary;
+        if (initiationLibrary == null) return [];
+
+        var failures = initiationLibrary.GetCollectionsWithFailures();
+        if (failures.Count == 0) return [];
+
+        var lookup = new HashSet<(string Server, string Database, string Collection)>(failures);
+
+        return _cache.GetAll()
+            .Where(info => lookup.Contains((info.Server, info.DatabaseName, info.CollectionName)))
+            .ToArray();
     }
 
     public MonitorClientDetail GetMonitorClientDetail(string sourceName, int recentCallLimit = 20)

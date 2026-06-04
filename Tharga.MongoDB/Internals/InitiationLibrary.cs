@@ -11,7 +11,15 @@ internal class InitiationLibrary : IInitiationLibrary
 
     public bool ShouldInitiate(string serverName, string databaseName, string collectionName)
     {
-        return _initiated.TryAdd($"{serverName}.{databaseName}.{collectionName}", new InitiationInfo { IndexAssured = false });
+        return _initiated.TryAdd(
+            $"{serverName}.{databaseName}.{collectionName}",
+            new InitiationInfo
+            {
+                IndexAssured = false,
+                ServerName = serverName,
+                DatabaseName = databaseName,
+                CollectionName = collectionName,
+            });
     }
 
     public bool ShouldInitiateIndex(string serverName, string databaseName, string collectionName)
@@ -48,6 +56,20 @@ internal class InitiationLibrary : IInitiationLibrary
         if (!_initiated.TryGetValue($"{serverName}.{databaseName}.{collectionName}", out var initiationInfo)) return [];
         return initiationInfo.FailedIndices
             .Select(kvp => new IndexFailure { Operation = kvp.Key.Operation, Name = kvp.Key.Name, LastErrorMessage = kvp.Value })
+            .ToArray();
+    }
+
+    public void ClearFailedIndex(string serverName, string databaseName, string collectionName, IndexFailOperation operation, string indexName)
+    {
+        if (!_initiated.TryGetValue($"{serverName}.{databaseName}.{collectionName}", out var initiationInfo)) return;
+        initiationInfo.FailedIndices.TryRemove((operation, indexName), out _);
+    }
+
+    public IReadOnlyList<(string ServerName, string DatabaseName, string CollectionName)> GetCollectionsWithFailures()
+    {
+        return _initiated.Values
+            .Where(info => !info.FailedIndices.IsEmpty && info.ServerName != null)
+            .Select(info => (info.ServerName, info.DatabaseName, info.CollectionName))
             .ToArray();
     }
 }

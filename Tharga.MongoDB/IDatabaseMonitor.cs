@@ -20,6 +20,16 @@ public interface IDatabaseMonitor
     Task RestoreIndexAsync(CollectionInfo collectionInfo, bool force);
 
     /// <summary>
+    /// Enumerates the registered collections whose in-process initiation state has at
+    /// least one failed index. Used by the optional <c>FailedIndexRecheckService</c>
+    /// background sweep (controlled via <c>DatabaseOptions.FailedIndexRecheckInterval</c>)
+    /// and available for consumer UIs that want to surface "broken index" badges. Returns
+    /// an empty list when no collection has recorded any failure. In-process scope — see
+    /// the planned <c>index-failure-persistence</c> follow-up for cross-process state.
+    /// </summary>
+    IReadOnlyList<CollectionInfo> GetCollectionsWithFailedIndices();
+
+    /// <summary>
     /// Iterates every known collection (via <see cref="GetInstancesAsync"/>) and calls
     /// <see cref="RestoreIndexAsync"/> on each one. Use to apply newly added indexes
     /// across already-deployed environments without restarting consumer apps.

@@ -213,19 +213,19 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 
     private async Task<StepResponse> OperationIndexManagement(Operation operation, IMongoCollection<TEntity> collection)
     {
+        // Per the failed-index-recheck feature: index assurance is once-per-session at
+        // first access. Update / Delete no longer arm a re-check on subsequent writes —
+        // recovery from a failed index goes through the explicit paths
+        // (RestoreIndexAsync, the FailedIndexRecheckService background sweep, or
+        // TouchAsync) instead of being driven by data-write cadence.
         switch (operation)
         {
             case Operation.Read:
+            case Operation.Delete:
                 break;
             case Operation.Create:
-                await AssureIndex(collection);
-                break;
             case Operation.Update:
                 await AssureIndex(collection);
-                ArmRecheckInvalidIndex();
-                break;
-            case Operation.Delete:
-                ArmRecheckInvalidIndex();
                 break;
             default:
                 throw new ArgumentOutOfRangeException(nameof(operation), operation, null);
@@ -1295,6 +1295,16 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         _initiationLibrary.AddFailedInitiateIndex(ServerName, DatabaseName, ProtectedCollectionName, operation, indexName, exception.Message);
     }
 
+    /// <summary>
+    /// Clears the <c>(operation, indexName)</c> entry from <see cref="IInitiationLibrary"/> so
+    /// <c>GetFailedIndices()</c> reflects reality after a successful per-index op. Called from
+    /// every successful <c>CreateOneAsync</c> / <c>DropOneAsync</c> in the index-update paths.
+    /// </summary>
+    private void ClearIndexFailure(IndexFailOperation operation, string indexName)
+    {
+        _initiationLibrary.ClearFailedIndex(ServerName, DatabaseName, ProtectedCollectionName, operation, indexName);
+    }
+
     //private async Task<IMongoCollection<T>> GetProjectionCollectionAsync<T>()
     //{
     //    var fullName = $"{ConfigurationName ?? Constants.DefaultConfigurationName}.{DatabaseName}.{CollectionName}";
@@ -1765,11 +1775,6 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         await DropCollectionAsync();
     }
 
-    private void ArmRecheckInvalidIndex()
-    {
-        _initiationLibrary.RecheckInitiateIndex(ServerName, DatabaseName, ProtectedCollectionName);
-    }
-
     private async Task UpdateIndicesAsync(IMongoCollection<TEntity> collection, AssureIndexMode assureIndexMode, bool throwOnException)
     {
         switch (assureIndexMode)
@@ -1825,6 +1830,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                     _logger?.LogDebug("Index {indexName} will be dropped in collection {collection}.", indexName, ProtectedCollectionName);
                     await collection.Indexes.DropOneAsync(indexName);
                     _logger?.LogInformation("Index {indexName} was dropped in collection {collection}.", indexName, ProtectedCollectionName);
+                    ClearIndexFailure(IndexFailOperation.Drop, indexName);
                     hasChanged = true;
                 }
                 catch (Exception e)
@@ -1845,6 +1851,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                     _logger?.LogDebug("Index {indexName} will be created in collection {collection}.", index.Options.Name, ProtectedCollectionName);
                     var message = await collection.Indexes.CreateOneAsync(index);
                     _logger?.LogInformation("Index {indexName} was created in collection {collection}. {message}", index.Options.Name, ProtectedCollectionName, message);
+                    ClearIndexFailure(IndexFailOperation.Create, index.Options.Name);
                     hasChanged = true;
                 }
                 catch (Exception e)
@@ -1919,6 +1926,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                     _logger?.LogDebug("Index {indexName} will be dropped in collection {collection}.", indexName, ProtectedCollectionName);
                     await collection.Indexes.DropOneAsync(indexName);
                     _logger?.LogInformation("Index {indexName} was dropped in collection {collection}.", indexName, ProtectedCollectionName);
+                    ClearIndexFailure(IndexFailOperation.Drop, indexName);
                     hasChanged = true;
                 }
                 catch (Exception e)
@@ -1942,6 +1950,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                     _logger?.LogDebug("Index {indexName} will be created in collection {collection}.", definedMeta.Name, ProtectedCollectionName);
                     var message = await collection.Indexes.CreateOneAsync(indexModel);
                     _logger?.LogInformation("Index {indexName} was created in collection {collection}. {message}", definedMeta.Name, ProtectedCollectionName, message);
+                    ClearIndexFailure(IndexFailOperation.Create, definedMeta.Name);
                     hasChanged = true;
                 }
                 catch (Exception e)
@@ -2008,6 +2017,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                 _logger?.LogDebug("Index {indexName} will be created in collection {collection}.", index.Options.Name, ProtectedCollectionName);
                 var message = await collection.Indexes.CreateOneAsync(index);
                 _logger?.LogInformation("Index {indexName} was created in collection {collection}. {message}", index.Options.Name, ProtectedCollectionName, message);
+                ClearIndexFailure(IndexFailOperation.Create, index.Options.Name);
             }
             catch (Exception e)
             {

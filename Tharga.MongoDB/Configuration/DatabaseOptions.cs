@@ -90,6 +90,25 @@ public record DatabaseOptions
     public AssureIndexMode AssureIndex { get; set; } = AssureIndexMode.ByName;
 
     /// <summary>
+    /// When <c>true</c>, every registered collection has its indexes assured during
+    /// <c>UseMongoDB</c> at startup instead of waiting for the first access to each
+    /// collection. Failures during the startup pass are logged and recorded in the
+    /// in-process initiation state — they never throw, so the host always starts.
+    /// Default <c>false</c> (lazy first-access assurance).
+    /// </summary>
+    public bool AssureIndexAtStartup { get; set; } = false;
+
+    /// <summary>
+    /// When non-null, registers a small background service that wakes on this cadence
+    /// and re-attempts any index whose creation has previously failed. The service is
+    /// idle in the steady state — ticks where no collection has a failed index return
+    /// immediately, so a healthy app pays no cost. Set to <c>null</c> to disable
+    /// (consumers with their own auditor or those who prefer strict "operator-explicit"
+    /// recovery via <c>RestoreIndexAsync</c>). Default <c>TimeSpan.FromHours(1)</c>.
+    /// </summary>
+    public TimeSpan? FailedIndexRecheckInterval { get; set; } = TimeSpan.FromHours(1);
+
+    /// <summary>
     /// Controls whether <see cref="Lockable.DocumentLease{T,TKey}.CommitAsync"/> may succeed for
     /// a lease whose lock has expired, provided no other writer has touched the document since
     /// (the <c>LockKey</c> atomicity check still drives the safety guarantee). Default <c>true</c>.
