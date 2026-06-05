@@ -4,17 +4,15 @@
 
 @if (Model.Stats != null)
 {
-    <span style="@(Model.IsRevalidating ? "opacity: 0.55; font-style: italic;" : null)">
-        @switch (Field)
-        {
-            case StatsField.Documents:
-                @($"{Model.Stats.DocumentCount:N0}")
-                break;
-            case StatsField.Size:
-                @Model.Stats.Size.ToReadableByteSize()
-                break;
-        }
-    </span>
+    @switch (Field)
+    {
+        case StatsField.Documents:
+            @($"{Model.Stats.DocumentCount:N0}")
+            break;
+        case StatsField.Size:
+            @Model.Stats.Size.ToReadableByteSize()
+            break;
+    }
 }
 
 @code {

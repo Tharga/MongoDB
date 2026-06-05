@@ -96,7 +96,7 @@ else
                         }
                     </Template>
                 </RadzenDataGridColumn>
-                <RadzenDataGridColumn Title="Calls" Property="@nameof(CollectionModel.CallCount)" Filterable="false" Sortable="true" TextAlign="TextAlign.Right" Width="80px">
+                <RadzenDataGridColumn Title="Calls" Property="@nameof(CollectionModel.CallCount)" Filterable="false" Sortable="true" TextAlign="TextAlign.Right" CssClass="css-calls" Width="80px">
                     <Template>
                         <CallCountCell Model="@context" />
                     </Template>
@@ -131,6 +131,8 @@ else
     public string Filter { get; set; }
 
     private RevalidationQueue _revalidator;
+    private HashSet<string> _visibleKeys = new();
+    private const int DefaultPageSize = 8;
 
     protected override async Task OnInitializedAsync()
     {
@@ -270,12 +272,13 @@ else
     private void EnqueueAllForRevalidation()
     {
         if (_model == null) return;
-        // Phase 4: visible-page rows go high-priority, rest go low-priority.
+        // Visible-page rows go high-priority, rest go low-priority.
         // The grid's PageChange handler (OnGridPaged) re-prioritises as the
-        // user pages around — until then, the default page (first 8) is high.
-        var firstPageSize = 8;
-        _revalidator.EnqueueHighMany(_model.Take(firstPageSize).Select(x => x.Key));
-        _revalidator.EnqueueLowMany(_model.Skip(firstPageSize).Select(x => x.Key));
+        // user pages around — until then, the default first page is high.
+        var firstPage = _model.Take(DefaultPageSize).Select(x => x.Key).ToArray();
+        _visibleKeys = new HashSet<string>(firstPage);
+        _revalidator.EnqueueHighMany(firstPage);
+        _revalidator.EnqueueLowMany(_model.Skip(DefaultPageSize).Select(x => x.Key));
     }
 
     private async Task RevalidateOneAsync(string key, System.Threading.CancellationToken ct)
@@ -290,6 +293,7 @@ else
         {
             marked.IsRevalidating = true;
             marked.NotifyChanged();
+            await NotifyVisibleCellChromeAsync(key);
         }
 
         try
@@ -316,14 +320,28 @@ else
             {
                 marked.IsRevalidating = false;
                 marked.NotifyChanged();
+                await NotifyVisibleCellChromeAsync(key);
             }
         }
+    }
+
+    // The cell BACKGROUND (loading/yellow/pink) is set by OnCellRender on the
+    // RadzenDataGrid, which only re-fires on grid StateHasChanged. Per-cell
+    // components handle the cell CONTENT (numbers, text) without grid re-render.
+    // Trigger a grid re-render ONLY when the toggling row is currently visible
+    // so off-screen IsRevalidating transitions cost nothing.
+    private async Task NotifyVisibleCellChromeAsync(string key)
+    {
+        if (_disposed) return;
+        if (!_visibleKeys.Contains(key)) return;
+        try { await InvokeAsync(StateHasChanged); } catch (ObjectDisposedException) { }
     }
 
     private void OnGridPaged(PagerEventArgs args)
     {
         if (_model == null || _revalidator == null) return;
-        var pageRows = _model.Skip(args.Skip).Take(args.Top).Select(x => x.Key);
+        var pageRows = _model.Skip(args.Skip).Take(args.Top).Select(x => x.Key).ToArray();
+        _visibleKeys = new HashSet<string>(pageRows);
         _revalidator.EnqueueHighMany(pageRows);
     }
 
@@ -396,6 +414,17 @@ else
     {
         var cssClass = args.Column.CssClass;
         if (string.IsNullOrEmpty(cssClass)) return;
+
+        // Loading takes precedence over the unknown-value yellow / mismatch pink.
+        // Uses Radzen's info-light theme token so it adapts to light/dark themes.
+        if (args.Data.IsRevalidating && (
+            cssClass.StartsWith("css-count") || cssClass.StartsWith("css-size") ||
+            cssClass.StartsWith("css-indices") || cssClass.StartsWith("css-clean") ||
+            cssClass.StartsWith("css-calls")))
+        {
+            SetColor(args, "var(--rz-info-light)");
+            return;
+        }
 
         if (cssClass.StartsWith("css-count"))
         {

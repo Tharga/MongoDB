@@ -1,7 +1,7 @@
 @using Tharga.MongoDB.Blazor
 @implements IDisposable
 
-<span style="@(Model.IsRevalidating ? "opacity: 0.55; font-style: italic;" : null)">@(Model.CallCount > 0 ? $"{Model.CallCount:N0}" : "")</span>
+@(Model.CallCount > 0 ? $"{Model.CallCount:N0}" : "")
 
 @code {
     [Parameter, EditorRequired]
