@@ -1,0 +1,42 @@
+@using Tharga.MongoDB.Blazor
+@implements IDisposable
+
+@(Model.CallCount > 0 ? $"{Model.CallCount:N0}" : "")
+
+@code {
+    [Parameter, EditorRequired]
+    public CollectionModel Model { get; set; }
+
+    private CollectionModel _subscribed;
+
+    protected override void OnParametersSet()
+    {
+        if (ReferenceEquals(_subscribed, Model)) return;
+
+        if (_subscribed != null)
+        {
+            _subscribed.Changed -= OnModelChanged;
+        }
+
+        _subscribed = Model;
+
+        if (_subscribed != null)
+        {
+            _subscribed.Changed += OnModelChanged;
+        }
+    }
+
+    private void OnModelChanged()
+    {
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        if (_subscribed != null)
+        {
+            _subscribed.Changed -= OnModelChanged;
+            _subscribed = null;
+        }
+    }
+}

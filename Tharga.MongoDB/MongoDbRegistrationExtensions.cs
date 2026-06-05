@@ -88,6 +88,7 @@ public static class MongoDbRegistrationExtensions
         services.AddSingleton<IQueueMonitor>(sp => sp.GetRequiredService<ExecuteLimiter>());
         services.AddSingleton<ICollectionPool, CollectionPool>();
         services.AddSingleton<IInitiationLibrary, InitiationLibrary>();
+        services.AddSingleton<CollectionInfoCache>();
         services.AddSingleton<ICollectionProviderCache, CollectionProviderCache>();
         services.AddSingleton<IMongoDbServiceFactory>(serviceProvider =>
         {

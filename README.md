@@ -790,6 +790,17 @@ Live monitoring data (queue metrics, ongoing calls) is only sent by remote agent
 Call `IDatabaseMonitor.ResetAsync()` to clear all cached monitor state (both in-memory and persisted).
 The Blazor admin UI (`CollectionView`) includes a Reset button that triggers this.
 
+### CollectionView at scale
+At thousands of collections + a busy multi-agent call firehose the **Collections** tab uses a per-process stale-while-revalidate cache so navigation back to it renders synchronously. First navigation per host process still loads from MongoDB (one user pays); every subsequent navigation across all admin users on that host is instant.
+
+After the synchronous render, a background revalidator (`RevalidationQueue`) refreshes each row from MongoDB with a 16-way concurrency cap so the database doesn't see thousands of simultaneous fetches. The currently-visible page is fetched first; off-screen rows fill in afterwards. Each row that's being refreshed is highlighted in blue (Radzen `--rz-info-light`) so it's clear which values are stale-but-loading. Hourly cell color codes:
+
+- **Yellow** — value not yet known (stats never loaded for this collection).
+- **Pink** — index definitions don't match the registered schema.
+- **Blue** — background revalidation in flight; the value shown is from cache.
+
+The revalidation refreshes `Stats`, `Discovery`, `Indices`, and `Clean`. `CallCount` and `Sources` follow their own event-driven paths and update independently. The cache is in-memory only — it does not survive a host restart, and load-balanced instances each pay the first-load cost.
+
 ### REST API integration
 The monitor exposes API-friendly methods that return JSON-serializable DTOs.
 Wire them to your endpoints with minimal code:

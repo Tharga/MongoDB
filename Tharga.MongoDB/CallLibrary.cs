@@ -18,6 +18,7 @@ internal class CallLibrary : ICallLibrary
     private readonly PriorityQueue<CallInfo, double> _slowest;
     private readonly object _slowestLock = new();
     private readonly ConcurrentDictionary<string, int> _callCounts = new();
+    private readonly ConcurrentDictionary<string, int> _callCountsBySuffix = new();
     private readonly ConcurrentDictionary<Guid, DateTime> _completedAt = new();
     private static readonly TimeSpan CompletedRetention = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan ThrottleInterval = TimeSpan.FromMilliseconds(500);
@@ -64,6 +65,7 @@ internal class CallLibrary : ICallLibrary
         }
 
         _callCounts.AddOrUpdate(e.Fingerprint.Key, 1, (_, count) => count + 1);
+        _callCountsBySuffix.AddOrUpdate(SuffixKey(e.Fingerprint), 1, (_, count) => count + 1);
 
         // Queue notification (don't process heavy work inline)
         _channel.Writer.TryWrite(e);
@@ -137,6 +139,16 @@ internal class CallLibrary : ICallLibrary
         return new ReadOnlyDictionary<string, int>(_callCounts);
     }
 
+    public IReadOnlyDictionary<string, int> GetCallCountsBySuffix()
+    {
+        return new ReadOnlyDictionary<string, int>(_callCountsBySuffix);
+    }
+
+    private static string SuffixKey(CollectionFingerprint fingerprint)
+    {
+        return $".{fingerprint.DatabaseName}.{fingerprint.CollectionName}";
+    }
+
     public void IngestCall(CallInfo call)
     {
         _calls.TryAdd(call.Key, call);
@@ -151,6 +163,7 @@ internal class CallLibrary : ICallLibrary
         }
 
         _callCounts.AddOrUpdate(call.Fingerprint.Key, 1, (_, count) => count + 1);
+        _callCountsBySuffix.AddOrUpdate(SuffixKey(call.Fingerprint), 1, (_, count) => count + 1);
 
         if (call.Final)
         {
@@ -186,6 +199,7 @@ internal class CallLibrary : ICallLibrary
             _slowest.Clear();
         }
         _callCounts.Clear();
+        _callCountsBySuffix.Clear();
         _completedAt.Clear();
 
         NotifyChanged(immediate: true);
