@@ -100,6 +100,8 @@ internal class DatabaseNullMonitor : IDatabaseMonitor
 
     public IEnumerable<MonitorClientDto> GetMonitorClients() { yield break; }
 
+    public IReadOnlyList<CollectionInfo> GetCollectionsWithFailedIndices() => [];
+
     public MonitorClientDetail GetMonitorClientDetail(string sourceName, int recentCallLimit = 20) => null;
 
     public void IngestClientConnected(MonitorClientDto client) { }

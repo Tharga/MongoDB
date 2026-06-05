@@ -7,7 +7,7 @@
     <Company>Thargelion AB</Company>
     <Product>Tharga MongoDB MCP</Product>
     <Description>Exposes Tharga.MongoDB monitoring data (collections, calls, clients) and actions (touch, rebuild index) via MCP (Model Context Protocol). Plugs into Tharga.Mcp.</Description>
-    <PackageIconUrl>https://thargelion.se/wp-content/uploads/2025/11/Thargelion-DB-Icon-150.png</PackageIconUrl>
+    <PackageIconUrl>https://thargelion.net/assets/component-mongodb.png</PackageIconUrl>
     <GenerateDocumentationFile>True</GenerateDocumentationFile>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageProjectUrl>https://github.com/Tharga/MongoDB</PackageProjectUrl>

@@ -212,6 +212,7 @@ public class MonitorServerPipelineTests
         public event EventHandler MonitorClientsChanged { add { } remove { } }
         public System.Collections.Generic.IEnumerable<MonitorClientDto> GetMonitorClients() => throw new NotImplementedException();
         public MonitorClientDetail GetMonitorClientDetail(string sourceName, int recentCallLimit = 20) => throw new NotImplementedException();
+        public System.Collections.Generic.IReadOnlyList<CollectionInfo> GetCollectionsWithFailedIndices() => throw new NotImplementedException();
         public void IngestClientConnected(MonitorClientDto client) => throw new NotImplementedException();
         public void IngestClientDisconnected(string connectionId) => throw new NotImplementedException();
         public void IngestCollectionInfo(RemoteCollectionInfoDto collectionInfo, string connectionId = null) => throw new NotImplementedException();

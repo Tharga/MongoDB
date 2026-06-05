@@ -7,7 +7,7 @@
     <Company>Thargelion AB</Company>
     <Product>Tharga MongoDB Blazor</Product>
     <Description>Drop-in Blazor admin UI for Tharga.MongoDB — Razor components that render the live monitoring data (collections, calls, indexes, queue metrics, connected clients) on any admin page.</Description>
-    <PackageIconUrl>https://thargelion.se/wp-content/uploads/2025/11/Thargelion-DB-Icon-150.png</PackageIconUrl>
+    <PackageIconUrl>https://thargelion.net/assets/component-mongodb.png</PackageIconUrl>
     <GenerateDocumentationFile>True</GenerateDocumentationFile>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <DebugType>portable</DebugType>

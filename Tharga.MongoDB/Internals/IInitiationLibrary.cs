@@ -23,4 +23,20 @@ public interface IInitiationLibrary
     /// Returns the recorded failures for this collection. Empty when none have been recorded.
     /// </summary>
     IReadOnlyList<IndexFailure> GetFailedIndices(string serverName, string databaseName, string collectionName);
+
+    /// <summary>
+    /// Removes the single <c>(operation, indexName)</c> entry from this collection's
+    /// failed-index set. Called by the per-index success paths after a successful
+    /// <c>CreateOneAsync</c> / <c>DropOneAsync</c> so the in-memory state stays in sync
+    /// with reality. No-op when the entry isn't present.
+    /// </summary>
+    void ClearFailedIndex(string serverName, string databaseName, string collectionName, IndexFailOperation operation, string indexName);
+
+    /// <summary>
+    /// Returns the <c>(serverName, databaseName, collectionName)</c> keys of collections
+    /// that currently have at least one failed index recorded. Used by
+    /// <see cref="IDatabaseMonitor.GetCollectionsWithFailedIndices"/> and the optional
+    /// background sweep. Empty in the steady state.
+    /// </summary>
+    IReadOnlyList<(string ServerName, string DatabaseName, string CollectionName)> GetCollectionsWithFailures();
 }

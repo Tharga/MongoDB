@@ -49,7 +49,7 @@
         "branch": "master"
       }
     },
-    "template": ["default", "modern"],
+    "template": ["default", "modern", "templates/thg"],
     "postProcessors": ["ExtractSearchIndex"],
     "keepFileLink": false,
     "disableGitFeatures": false

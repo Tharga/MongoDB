@@ -214,6 +214,13 @@ public static class MongoDbRegistrationExtensions
             services.AddSingleton<IDatabaseMonitor, DatabaseNullMonitor>();
         }
 
+        // Optional periodic sweep that re-attempts any index whose creation has previously failed.
+        // Idle in the steady state — each tick early-returns when no collection has failures.
+        if (o.FailedIndexRecheckInterval != null)
+        {
+            services.AddHostedService<FailedIndexRecheckService>();
+        }
+
         return services;
     }
 
@@ -373,7 +380,7 @@ public static class MongoDbRegistrationExtensions
             monitor?.Start(app.Services);
         }
 
-        if (o.AssureIndex && !lateConnectionStrins)
+        if (o.AssureIndex && databaseOptions.Value.AssureIndexAtStartup && !lateConnectionStrins)
         {
             var task = Task.Run(async () =>
             {
