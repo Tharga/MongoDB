@@ -76,6 +76,10 @@ Live data (queue depth, ongoing calls) is only forwarded when someone is activel
 
 `IDatabaseMonitor.ResetAsync()` clears all cached state (in-memory + persisted). The Blazor `CollectionView` exposes a Reset button that calls this.
 
+## CollectionView at scale
+
+For deployments with thousands of collections, the `CollectionView` uses a per-process stale-while-revalidate cache: first navigation per host pays the full load, every subsequent navigation across all admin users on that host is instant. After the synchronous render, a 16-way concurrency-capped background revalidator refreshes each row from MongoDB (visible page first, off-screen rows after). Rows currently being refreshed render with a blue background (`var(--rz-info-light)`) so it's clear which values are stale-but-loading. Cache is in-memory only and does not survive host restart.
+
 ## See also
 
 - [API: IDatabaseMonitor](xref:Tharga.MongoDB.IDatabaseMonitor)
