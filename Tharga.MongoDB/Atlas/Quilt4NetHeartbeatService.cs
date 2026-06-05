@@ -1,7 +1,6 @@
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Quilt4Net.Toolkit.Features.Atlas;
 using System;
 using System.Collections.Concurrent;
 using System.Net;
@@ -75,14 +74,14 @@ internal sealed class Quilt4NetHeartbeatService : BackgroundService
             {
                 // OpenAsync also serves as the usage signal when the firewall is already open
                 // (returns AlreadyOpen). No separate ReportUsedAsync needed in Open mode.
-                await _firewall.OpenAsync(access, ip, ct).ConfigureAwait(false);
+                await _firewall.OpenAsync(access, ip, name: null, ct).ConfigureAwait(false);
             }
             else
             {
                 await _firewall.ReportUsedAsync(access, ip, ct).ConfigureAwait(false);
             }
         }
-        catch (AtlasFirewallAuthorizationException ex)
+        catch (Quilt4NetFirewallAuthorizationException ex)
         {
             _logger.LogWarning(ex,
                 "Quilt4Net heartbeat: auth rejected for {Group}/{Ip} — removing from heartbeat loop.",

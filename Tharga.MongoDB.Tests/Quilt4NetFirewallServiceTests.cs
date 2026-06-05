@@ -1,8 +1,11 @@
 using FluentAssertions;
-using Moq;
-using Quilt4Net.Toolkit.Features.Atlas;
-using Quilt4Net.Toolkit.Features.ValueGroup;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Http;
+using System;
+using System.Linq;
 using System.Net;
+using System.Net.Http;
+using System.Net.Http.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Tharga.MongoDB.Atlas;
@@ -13,44 +16,102 @@ namespace Tharga.MongoDB.Tests;
 
 public class Quilt4NetFirewallServiceTests
 {
-    private static (Quilt4NetFirewallService sut, Mock<IAtlasFirewallClientFactory> factory, Mock<IAtlasFirewallClient> client)
-        Build()
+    private sealed class CapturingHandler : HttpMessageHandler
     {
-        var client = new Mock<IAtlasFirewallClient>();
-        var factory = new Mock<IAtlasFirewallClientFactory>();
-        factory.Setup(f => f.Create(It.IsAny<AtlasFirewallProxyKeyEntry>())).Returns(client.Object);
-        return (new Quilt4NetFirewallService(factory.Object), factory, client);
+        public HttpRequestMessage LastRequest { get; private set; }
+        public string LastBody { get; private set; }
+        public Func<HttpRequestMessage, HttpResponseMessage> Reply { get; init; } = _ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = JsonContent.Create(new { outcome = "Opened" })
+        };
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            LastRequest = request;
+            if (request.Content != null) LastBody = await request.Content.ReadAsStringAsync(cancellationToken);
+            return Reply(request);
+        }
+    }
+
+    private static (Quilt4NetFirewallService sut, CapturingHandler handler) Build(Func<HttpRequestMessage, HttpResponseMessage> reply = null)
+    {
+        var handler = new CapturingHandler();
+        if (reply != null) handler = new CapturingHandler { Reply = reply };
+
+        var services = new ServiceCollection();
+        services.AddHttpClient(Quilt4NetFirewallProxyClient.HttpClientName)
+                .ConfigurePrimaryHttpMessageHandler(() => handler);
+        var sp = services.BuildServiceProvider();
+
+        var proxy = new Quilt4NetFirewallProxyClient(sp.GetRequiredService<IHttpClientFactory>());
+        return (new Quilt4NetFirewallService(proxy), handler);
+    }
+
+    private static MongoDbApiAccess NewAccess(string baseUrl = "https://q4n.test/") => new()
+    {
+        GroupId = "g1",
+        Quilt4NetApiKey = "key1",
+        Quilt4NetBaseUrl = baseUrl,
+    };
+
+    [Fact]
+    public async Task OpenAsync_SendsXApiKey_PostToOpenEndpoint_WithGroupIdAndIp()
+    {
+        var (sut, handler) = Build();
+
+        await sut.OpenAsync(NewAccess(), IPAddress.Parse("203.0.113.4"), name: "test-host");
+
+        handler.LastRequest.Method.Should().Be(HttpMethod.Post);
+        handler.LastRequest.RequestUri.ToString().Should().Be("https://q4n.test/Api/AtlasFirewall/open");
+        handler.LastRequest.Headers.GetValues("X-API-KEY").Single().Should().Be("key1");
+        handler.LastBody.Should().Contain("\"groupId\":\"g1\"");
+        handler.LastBody.Should().Contain("\"ip\":\"203.0.113.4\"");
+        handler.LastBody.Should().Contain("\"name\":\"test-host\"");
     }
 
     [Fact]
-    public async Task OpenAsync_SendsManageEntry_AndCallsOpenWithIp()
+    public async Task ReportUsedAsync_PostToUsedEndpoint_NoNameInBody()
     {
-        var (sut, factory, client) = Build();
-        client.Setup(c => c.OpenAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
-              .ReturnsAsync(new FirewallOpenResult());
+        var (sut, handler) = Build(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = JsonContent.Create(new { outcome = "Recorded" })
+        });
 
-        var access = new MongoDbApiAccess { GroupId = "g1", Quilt4NetApiKey = "k1" };
+        await sut.ReportUsedAsync(NewAccess(), IPAddress.Parse("203.0.113.5"));
 
-        await sut.OpenAsync(access, IPAddress.Parse("203.0.113.4"));
-
-        factory.Verify(f => f.Create(It.Is<AtlasFirewallProxyKeyEntry>(e =>
-            e.ApiKey == "k1" && e.GroupId == "g1" && e.CanManage == true)), Times.Once);
-        client.Verify(c => c.OpenAsync("203.0.113.4", null, It.IsAny<CancellationToken>()), Times.Once);
+        handler.LastRequest.RequestUri.ToString().Should().Be("https://q4n.test/Api/AtlasFirewall/used");
+        handler.LastBody.Should().Contain("\"groupId\":\"g1\"");
+        handler.LastBody.Should().Contain("\"ip\":\"203.0.113.5\"");
+        handler.LastBody.Should().NotContain("\"name\"");
     }
 
     [Fact]
-    public async Task ReportUsedAsync_SendsUsageEntry_AndCallsReportUsedWithIp()
+    public async Task OpenAsync_UsesDefaultBaseUrl_WhenAccessHasNone()
     {
-        var (sut, factory, client) = Build();
-        client.Setup(c => c.ReportUsedAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-              .ReturnsAsync(new FirewallUsageResult());
+        var (sut, handler) = Build();
 
-        var access = new MongoDbApiAccess { GroupId = "g1", Quilt4NetApiKey = "k2" };
+        await sut.OpenAsync(new MongoDbApiAccess { GroupId = "g1", Quilt4NetApiKey = "k1" }, IPAddress.Parse("203.0.113.6"));
 
-        await sut.ReportUsedAsync(access, IPAddress.Parse("203.0.113.5"));
+        handler.LastRequest.RequestUri.ToString().Should().StartWith(Quilt4NetFirewallProxyClient.DefaultBaseUrl);
+    }
 
-        factory.Verify(f => f.Create(It.Is<AtlasFirewallProxyKeyEntry>(e =>
-            e.ApiKey == "k2" && e.GroupId == "g1" && e.CanManage == false)), Times.Once);
-        client.Verify(c => c.ReportUsedAsync("203.0.113.5", It.IsAny<CancellationToken>()), Times.Once);
+    [Fact]
+    public async Task Unauthorized_ThrowsQuilt4NetFirewallAuthorizationException()
+    {
+        var (sut, _) = Build(_ => new HttpResponseMessage(HttpStatusCode.Unauthorized));
+
+        var act = () => sut.OpenAsync(NewAccess(), IPAddress.Parse("203.0.113.7"));
+
+        await act.Should().ThrowAsync<Quilt4NetFirewallAuthorizationException>();
+    }
+
+    [Fact]
+    public async Task Forbidden_ThrowsQuilt4NetFirewallAuthorizationException()
+    {
+        var (sut, _) = Build(_ => new HttpResponseMessage(HttpStatusCode.Forbidden));
+
+        var act = () => sut.ReportUsedAsync(NewAccess(), IPAddress.Parse("203.0.113.8"));
+
+        await act.Should().ThrowAsync<Quilt4NetFirewallAuthorizationException>();
     }
 }

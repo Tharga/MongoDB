@@ -1,47 +1,31 @@
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
-using Quilt4Net.Toolkit.Features.Atlas;
-using Quilt4Net.Toolkit.Features.ValueGroup;
 using Tharga.MongoDB.Configuration;
 
 namespace Tharga.MongoDB.Atlas;
 
 /// <summary>
-/// Thin wrapper around <see cref="IAtlasFirewallClient"/> that builds a per-access
-/// <see cref="AtlasFirewallProxyKeyEntry"/> from <see cref="MongoDbApiAccess"/>'s
-/// Quilt4Net fields. Quilt4Net's factory binds one client to one entry, so callers
-/// hand us the access record and we construct the entry per call.
+/// Thin adapter that translates from <see cref="MongoDbApiAccess"/> records to the lean
+/// <see cref="Quilt4NetFirewallProxyClient"/> HTTP calls. Kept as a distinct seam so the
+/// dispatch site doesn't need to know about HttpClient or wire-format details.
 /// </summary>
 internal sealed class Quilt4NetFirewallService
 {
-    private readonly IAtlasFirewallClientFactory _factory;
+    private readonly Quilt4NetFirewallProxyClient _proxy;
 
-    public Quilt4NetFirewallService(IAtlasFirewallClientFactory factory)
+    public Quilt4NetFirewallService(Quilt4NetFirewallProxyClient proxy)
     {
-        _factory = factory;
+        _proxy = proxy;
     }
 
-    public Task<FirewallOpenResult> OpenAsync(MongoDbApiAccess access, IPAddress ip, CancellationToken cancellationToken = default)
+    public Task<FirewallProxyOpenResponse> OpenAsync(MongoDbApiAccess access, IPAddress ip, string name = null, CancellationToken cancellationToken = default)
     {
-        var client = _factory.Create(BuildEntry(access, canManage: true));
-        return client.OpenAsync(ip.ToString(), null, cancellationToken);
+        return _proxy.OpenAsync(access.Quilt4NetBaseUrl, access.Quilt4NetApiKey, access.GroupId, ip, name, cancellationToken);
     }
 
-    public Task<FirewallUsageResult> ReportUsedAsync(MongoDbApiAccess access, IPAddress ip, CancellationToken cancellationToken = default)
+    public Task<FirewallProxyUsageResponse> ReportUsedAsync(MongoDbApiAccess access, IPAddress ip, CancellationToken cancellationToken = default)
     {
-        // Usage-only path: the key may be either a manage or usage key.
-        var client = _factory.Create(BuildEntry(access, canManage: false));
-        return client.ReportUsedAsync(ip.ToString(), cancellationToken);
-    }
-
-    private static AtlasFirewallProxyKeyEntry BuildEntry(MongoDbApiAccess access, bool canManage)
-    {
-        return new AtlasFirewallProxyKeyEntry
-        {
-            ApiKey = access.Quilt4NetApiKey,
-            GroupId = access.GroupId,
-            CanManage = canManage,
-        };
+        return _proxy.ReportUsedAsync(access.Quilt4NetBaseUrl, access.Quilt4NetApiKey, access.GroupId, ip, cancellationToken);
     }
 }

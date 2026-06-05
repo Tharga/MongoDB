@@ -4,7 +4,6 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using MongoDB.Bson.Serialization;
-using Quilt4Net.Toolkit;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -24,11 +23,6 @@ public static class MongoDbRegistrationExtensions
 
     public static IServiceCollection AddMongoDB(this IHostApplicationBuilder builder, Action<DatabaseOptions> options = null)
     {
-        // Register the Quilt4Net Atlas firewall client factory so MongoDbApiAccess records
-        // with a Quilt4NetApiKey can resolve a client at runtime. The base URL is taken from
-        // the Quilt4Net section (default https://quilt4net.com/). Cheap to register; only
-        // consulted when a configured access actually triggers Notify/Open mode.
-        builder.AddQuilt4NetAtlasFirewallClient();
         return AddMongoDB(builder.Services, builder.Configuration, options);
     }
 
@@ -89,6 +83,8 @@ public static class MongoDbRegistrationExtensions
             services.AddSingleton<IMongoDbClientProvider>(new MongoDbClientProvider());
         }
         services.AddSingleton<IMongoDbFirewallStateService, MongoDbFirewallStateService>();
+        services.AddHttpClient(Atlas.Quilt4NetFirewallProxyClient.HttpClientName);
+        services.AddSingleton<Atlas.Quilt4NetFirewallProxyClient>();
         services.AddSingleton<Atlas.Quilt4NetFirewallService>();
         services.AddSingleton<Atlas.Quilt4NetHeartbeatService>();
         services.AddHostedService<Atlas.Quilt4NetHeartbeatService>(sp => sp.GetRequiredService<Atlas.Quilt4NetHeartbeatService>());

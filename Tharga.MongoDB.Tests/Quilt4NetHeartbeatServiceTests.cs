@@ -1,11 +1,12 @@
 using FluentAssertions;
-using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
-using Moq;
-using Quilt4Net.Toolkit.Features.Atlas;
 using System;
+using System.Collections.Concurrent;
 using System.Net;
+using System.Net.Http;
+using System.Net.Http.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Tharga.MongoDB.Atlas;
@@ -16,23 +17,36 @@ namespace Tharga.MongoDB.Tests;
 
 public class Quilt4NetHeartbeatServiceTests
 {
-    private static (Quilt4NetHeartbeatService sut, Mock<IAtlasFirewallClient> client) Build(TimeSpan? interval = null)
+    private sealed class CountingHandler : HttpMessageHandler
+    {
+        public ConcurrentBag<string> RequestPaths { get; } = new();
+        public Func<HttpRequestMessage, HttpResponseMessage> Reply { get; set; } = _ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = JsonContent.Create(new { outcome = "Recorded" })
+        };
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            RequestPaths.Add(request.RequestUri?.AbsolutePath ?? string.Empty);
+            return Task.FromResult(Reply(request));
+        }
+    }
+
+    private static (Quilt4NetHeartbeatService sut, CountingHandler handler) Build(TimeSpan? interval = null)
     {
         interval ??= TimeSpan.FromMilliseconds(80);
-        var client = new Mock<IAtlasFirewallClient>();
-        client.Setup(c => c.OpenAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
-              .ReturnsAsync(new FirewallOpenResult());
-        client.Setup(c => c.ReportUsedAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-              .ReturnsAsync(new FirewallUsageResult());
 
-        var factory = new Mock<IAtlasFirewallClientFactory>();
-        factory.Setup(f => f.Create(It.IsAny<Quilt4Net.Toolkit.Features.ValueGroup.AtlasFirewallProxyKeyEntry>()))
-               .Returns(client.Object);
+        var handler = new CountingHandler();
+        var services = new ServiceCollection();
+        services.AddHttpClient(Quilt4NetFirewallProxyClient.HttpClientName)
+                .ConfigurePrimaryHttpMessageHandler(() => handler);
+        var sp = services.BuildServiceProvider();
 
-        var firewall = new Quilt4NetFirewallService(factory.Object);
+        var proxy = new Quilt4NetFirewallProxyClient(sp.GetRequiredService<IHttpClientFactory>());
+        var firewall = new Quilt4NetFirewallService(proxy);
         var opts = Options.Create(new DatabaseOptions { Quilt4NetHeartbeatInterval = interval });
         var sut = new Quilt4NetHeartbeatService(firewall, opts, NullLogger<Quilt4NetHeartbeatService>.Instance);
-        return (sut, client);
+        return (sut, handler);
     }
 
     private static MongoDbApiAccess NewAccess(string suffix) => new()
@@ -41,6 +55,7 @@ public class Quilt4NetHeartbeatServiceTests
         PrivateKey = "k" + suffix,
         GroupId = "g" + suffix,
         Quilt4NetApiKey = "q" + suffix,
+        Quilt4NetBaseUrl = "https://q4n.test/",
     };
 
     [Fact]
@@ -76,50 +91,53 @@ public class Quilt4NetHeartbeatServiceTests
     [Fact]
     public async Task NotifyMode_TicksReportUsed()
     {
-        var (sut, client) = Build(TimeSpan.FromMilliseconds(40));
+        var (sut, handler) = Build(TimeSpan.FromMilliseconds(40));
         sut.Register(NewAccess("1"), IPAddress.Parse("203.0.113.3"), FirewallMode.Notify);
 
         await sut.StartAsync(CancellationToken.None);
         await Task.Delay(150);
         await sut.StopAsync(CancellationToken.None);
 
-        client.Verify(c => c.ReportUsedAsync("203.0.113.3", It.IsAny<CancellationToken>()), Times.AtLeastOnce);
-        client.Verify(c => c.OpenAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        handler.RequestPaths.Should().Contain(p => p.EndsWith("/Api/AtlasFirewall/used"));
+        handler.RequestPaths.Should().NotContain(p => p.EndsWith("/Api/AtlasFirewall/open"));
     }
 
     [Fact]
     public async Task OpenMode_TicksOpenAsync_NotReportUsed()
     {
-        var (sut, client) = Build(TimeSpan.FromMilliseconds(40));
+        var (sut, handler) = Build(TimeSpan.FromMilliseconds(40));
+        handler.Reply = _ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = JsonContent.Create(new { outcome = "AlreadyOpen" })
+        };
+
         sut.Register(NewAccess("2"), IPAddress.Parse("203.0.113.4"), FirewallMode.Open);
 
         await sut.StartAsync(CancellationToken.None);
         await Task.Delay(150);
         await sut.StopAsync(CancellationToken.None);
 
-        client.Verify(c => c.OpenAsync("203.0.113.4", null, It.IsAny<CancellationToken>()), Times.AtLeastOnce);
-        client.Verify(c => c.ReportUsedAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        handler.RequestPaths.Should().Contain(p => p.EndsWith("/Api/AtlasFirewall/open"));
+        handler.RequestPaths.Should().NotContain(p => p.EndsWith("/Api/AtlasFirewall/used"));
     }
 
     [Fact]
-    public async Task EmptyActive_DormantTick_NoCallsToFactory()
+    public async Task EmptyActive_DormantTick_NoHttpCalls()
     {
-        var (sut, client) = Build(TimeSpan.FromMilliseconds(40));
+        var (sut, handler) = Build(TimeSpan.FromMilliseconds(40));
 
         await sut.StartAsync(CancellationToken.None);
         await Task.Delay(150);
         await sut.StopAsync(CancellationToken.None);
 
-        client.Verify(c => c.OpenAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
-        client.Verify(c => c.ReportUsedAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        handler.RequestPaths.Should().BeEmpty();
     }
 
     [Fact]
     public async Task AuthRejected_RemovesEntry()
     {
-        var (sut, client) = Build(TimeSpan.FromMilliseconds(40));
-        client.Setup(c => c.ReportUsedAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-              .ThrowsAsync(new AtlasFirewallAuthorizationException("revoked"));
+        var (sut, handler) = Build(TimeSpan.FromMilliseconds(40));
+        handler.Reply = _ => new HttpResponseMessage(HttpStatusCode.Forbidden);
 
         sut.Register(NewAccess("3"), IPAddress.Parse("203.0.113.5"), FirewallMode.Notify);
 
@@ -133,9 +151,8 @@ public class Quilt4NetHeartbeatServiceTests
     [Fact]
     public async Task TransientError_KeepsEntry()
     {
-        var (sut, client) = Build(TimeSpan.FromMilliseconds(40));
-        client.Setup(c => c.ReportUsedAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-              .ThrowsAsync(new System.Net.Http.HttpRequestException("transient"));
+        var (sut, handler) = Build(TimeSpan.FromMilliseconds(40));
+        handler.Reply = _ => new HttpResponseMessage(HttpStatusCode.InternalServerError);
 
         sut.Register(NewAccess("4"), IPAddress.Parse("203.0.113.6"), FirewallMode.Notify);
 

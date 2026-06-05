@@ -88,7 +88,7 @@ internal class MongoDbFirewallStateService : IMongoDbFirewallStateService
             return "Quilt4Net Open mode: external IP could not be resolved; skipping open.";
         }
 
-        var openResult = await _quilt4Net.OpenAsync(accessInfo, ip);
+        var openResult = await _quilt4Net.OpenAsync(accessInfo, ip, BuildName(accessInfo));
         _heartbeat.Register(accessInfo, ip, FirewallMode.Open);
 
         var response = new FirewallResponse
@@ -101,10 +101,9 @@ internal class MongoDbFirewallStateService : IMongoDbFirewallStateService
         return $"Quilt4Net firewall responded with '{response.Result}' for {response.Name} with IP {response.IpAddress}.";
     }
 
-    private static EFirewallOpenResult MapQuilt4NetOutcome(Quilt4Net.Toolkit.Features.Atlas.FirewallOpenResult openResult)
+    private static EFirewallOpenResult MapQuilt4NetOutcome(FirewallProxyOpenResponse openResult)
     {
-        var name = openResult?.Outcome.ToString();
-        return name switch
+        return openResult?.Outcome switch
         {
             "Opened" => EFirewallOpenResult.Open,
             "AlreadyOpen" => EFirewallOpenResult.AlreadyOpen,
