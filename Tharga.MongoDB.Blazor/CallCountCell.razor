@@ -1,0 +1,42 @@
+@using Tharga.MongoDB.Blazor
+@implements IDisposable
+
+<span style="@(Model.IsRevalidating ? "opacity: 0.55; font-style: italic;" : null)">@(Model.CallCount > 0 ? $"{Model.CallCount:N0}" : "")</span>
+
+@code {
+    [Parameter, EditorRequired]
+    public CollectionModel Model { get; set; }
+
+    private CollectionModel _subscribed;
+
+    protected override void OnParametersSet()
+    {
+        if (ReferenceEquals(_subscribed, Model)) return;
+
+        if (_subscribed != null)
+        {
+            _subscribed.Changed -= OnModelChanged;
+        }
+
+        _subscribed = Model;
+
+        if (_subscribed != null)
+        {
+            _subscribed.Changed += OnModelChanged;
+        }
+    }
+
+    private void OnModelChanged()
+    {
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        if (_subscribed != null)
+        {
+            _subscribed.Changed -= OnModelChanged;
+            _subscribed = null;
+        }
+    }
+}

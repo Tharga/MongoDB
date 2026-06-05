@@ -9,6 +9,7 @@
 @inject DialogService DialogService
 @inject IOptions<DatabaseOptions> DatabaseOptions
 @inject ICallLibrary CallLibrary
+@inject CollectionInfoCache InfoCache
 
 @if (!DatabaseOptions.Value.Monitor.Enabled)
 {
@@ -59,7 +60,8 @@ else
                         AllowSorting="true"
                         AllowPaging="true" PageSize="8" PageSizeOptions="[8, 16, 32, 64]"
                         ShowPagingSummary="true" PagingSummaryFormat="@("{2:N0} collections, page {0} of {1}")"
-                        CellRender="@OnCellRender">
+                        CellRender="@OnCellRender"
+                        Page="@OnGridPaged">
             <Columns>
                 <RadzenDataGridColumn Title="Source" Visible="@_showSource" Sortable="false" Filterable="false" Width="200px">
                     <Template>
@@ -73,12 +75,12 @@ else
                 <RadzenDataGridColumn Title="Registration" Property="@nameof(CollectionModel.Registration)" Filterable="false" Width="120px" />
                 <RadzenDataGridColumn Title="Documents" TextAlign="TextAlign.Right" CssClass="css-count" Sortable="false" Filterable="false" Width="120px">
                     <Template>
-                        <RadzenText Text="@(context.Stats != null ? $"{context.Stats.DocumentCount:N0}" : "")" />
+                        <StatsCell Model="@context" Field="StatsField.Documents" />
                     </Template>
                 </RadzenDataGridColumn>
                 <RadzenDataGridColumn Title="Size" TextAlign="TextAlign.Right" Filterable="false" CssClass="css-size" Sortable="false" Width="120px">
                     <Template>
-                        @(context.Stats != null ? context.Stats.Size.ToReadableByteSize() : "")
+                        <StatsCell Model="@context" Field="StatsField.Size" />
                     </Template>
                 </RadzenDataGridColumn>
                 <RadzenDataGridColumn Title="Indices" Property="@nameof(CollectionModel.IndexEqualFields)" CssClass="css-indices" Width="120px">
@@ -96,7 +98,7 @@ else
                 </RadzenDataGridColumn>
                 <RadzenDataGridColumn Title="Calls" Property="@nameof(CollectionModel.CallCount)" Filterable="false" Sortable="true" TextAlign="TextAlign.Right" Width="80px">
                     <Template>
-                        @(context.CallCount > 0 ? $"{context.CallCount:N0}" : "")
+                        <CallCountCell Model="@context" />
                     </Template>
                 </RadzenDataGridColumn>
                 <RadzenDataGridColumn Title="" Sortable="false" Width="60px;" Filterable="false">
@@ -128,8 +130,11 @@ else
     [Parameter]
     public string Filter { get; set; }
 
+    private RevalidationQueue _revalidator;
+
     protected override async Task OnInitializedAsync()
     {
+        _revalidator = new RevalidationQueue(RevalidateOneAsync);
         DatabaseMonitor.CollectionInfoChangedEvent += OnCollectionInfoChanged;
         DatabaseMonitor.CollectionDroppedEvent += OnCollectionDropped;
         CallLibrary.CallChanged += OnCallChanged;
@@ -144,25 +149,28 @@ else
         DatabaseMonitor.CollectionInfoChangedEvent -= OnCollectionInfoChanged;
         DatabaseMonitor.CollectionDroppedEvent -= OnCollectionDropped;
         CallLibrary.CallChanged -= OnCallChanged;
+        _revalidator?.Dispose();
     }
 
     private async void OnCallChanged(object sender, EventArgs e)
     {
         if (_disposed || _model == null) return;
 
-        try { await InvokeAsync(() => { UpdateCallCounts(); StateHasChanged(); }); }
+        try { await InvokeAsync(UpdateCallCounts); }
         catch (ObjectDisposedException) { }
     }
 
     private void UpdateCallCounts()
     {
-        var callCounts = CallLibrary.GetCallCounts();
+        var callCountsBySuffix = CallLibrary.GetCallCountsBySuffix();
         foreach (var m in _model)
         {
             var suffix = $".{m.DatabaseName}.{m.CollectionName}";
-            m.CallCount = callCounts
-                .Where(kvp => kvp.Key.EndsWith(suffix))
-                .Sum(kvp => kvp.Value);
+            var next = callCountsBySuffix.TryGetValue(suffix, out var count) ? count : 0;
+            if (next == m.CallCount) continue;
+
+            m.CallCount = next;
+            m.NotifyChanged();
         }
     }
 
@@ -202,6 +210,10 @@ else
             m.Sources = sources;
 
             UpdateFilterOptions();
+
+            // Per-cell re-render only — avoid the grid-wide StateHasChanged on every event.
+            m.NotifyChanged();
+            return;
         }
 
         if (_disposed) return;
@@ -212,6 +224,11 @@ else
     {
         if (_disposed || _all == null) return;
 
+        foreach (var dropped in _all.Where(x => x.ToDatabaseContext() == e.DatabaseContext))
+        {
+            InfoCache.Remove(dropped.Key);
+        }
+
         _all = _all.Where(x => x.ToDatabaseContext() != e.DatabaseContext).ToArray();
         await ReloadDataAsync();
 
@@ -221,17 +238,93 @@ else
 
     protected override async Task OnParametersSetAsync()
     {
-        _all = await DatabaseMonitor.GetInstancesAsync(FullDatabaseScan, Filter).ToArrayAsync();
-        UpdateFilterOptions();
-        await ReloadDataAsync();
+        if (!InfoCache.IsEmpty)
+        {
+            // Stale-while-revalidate: render cached state synchronously, refresh in background.
+            _all = InfoCache.GetAll().ToArray();
+            UpdateFilterOptions();
+            await ReloadDataAsync();
+            EnqueueAllForRevalidation();
+        }
+        else
+        {
+            await LoadFromMongoAsync();
+        }
+
         await base.OnParametersSetAsync();
     }
 
     public async Task RefreshAsync()
     {
+        await LoadFromMongoAsync();
+    }
+
+    private async Task LoadFromMongoAsync()
+    {
         _all = await DatabaseMonitor.GetInstancesAsync(FullDatabaseScan, Filter).ToArrayAsync();
+        foreach (var info in _all) InfoCache.Upsert(info);
         UpdateFilterOptions();
         await ReloadDataAsync();
+    }
+
+    private void EnqueueAllForRevalidation()
+    {
+        if (_model == null) return;
+        // Phase 4: visible-page rows go high-priority, rest go low-priority.
+        // The grid's PageChange handler (OnGridPaged) re-prioritises as the
+        // user pages around — until then, the default page (first 8) is high.
+        var firstPageSize = 8;
+        _revalidator.EnqueueHighMany(_model.Take(firstPageSize).Select(x => x.Key));
+        _revalidator.EnqueueLowMany(_model.Skip(firstPageSize).Select(x => x.Key));
+    }
+
+    private async Task RevalidateOneAsync(string key, System.Threading.CancellationToken ct)
+    {
+        if (_disposed) return;
+
+        var stale = _all?.FirstOrDefault(x => x.Key == key);
+        if (stale == null) return;
+
+        var marked = _model?.FirstOrDefault(x => x.Key == key);
+        if (marked != null)
+        {
+            marked.IsRevalidating = true;
+            marked.NotifyChanged();
+        }
+
+        try
+        {
+            var info = await DatabaseMonitor.GetInstanceAsync(stale);
+            if (info == null || _disposed) return;
+
+            InfoCache.Upsert(info);
+
+            var m = _model?.FirstOrDefault(x => x.Key == info.Key);
+            if (m == null) return;
+
+            var indexModels = info.ToIndexModel().ToArray();
+            m.Stats = info.Stats;
+            m.Discovery = info.Discovery;
+            m.Size = info.Stats?.Size ?? 0;
+            m.Indices = indexModels;
+            m.IndexEqualFields = info.Index == null || info.Index.Current == null ? null : indexModels.All(x => x.EqualFields);
+            m.Clean = info.Clean;
+        }
+        finally
+        {
+            if (marked != null)
+            {
+                marked.IsRevalidating = false;
+                marked.NotifyChanged();
+            }
+        }
+    }
+
+    private void OnGridPaged(PagerEventArgs args)
+    {
+        if (_model == null || _revalidator == null) return;
+        var pageRows = _model.Skip(args.Skip).Take(args.Top).Select(x => x.Key);
+        _revalidator.EnqueueHighMany(pageRows);
     }
 
     private void UpdateFilterOptions()
@@ -255,7 +348,7 @@ else
 
     private async Task ReloadDataAsync()
     {
-        var callCounts = CallLibrary.GetCallCounts();
+        var callCountsBySuffix = CallLibrary.GetCallCountsBySuffix();
 
         // Build all models with sources
         var allModels = _all
@@ -263,9 +356,7 @@ else
             {
                 var indexModels = x.ToIndexModel().ToArray();
                 var suffix = $".{x.DatabaseName}.{x.CollectionName}";
-                var count = callCounts
-                    .Where(kvp => kvp.Key.EndsWith(suffix))
-                    .Sum(kvp => kvp.Value);
+                var count = callCountsBySuffix.TryGetValue(suffix, out var c) ? c : 0;
 
                 var sources = DatabaseMonitor.GetCollectionSources(x.Key).ToArray();
                 var isLocal = x.CollectionType != null;
