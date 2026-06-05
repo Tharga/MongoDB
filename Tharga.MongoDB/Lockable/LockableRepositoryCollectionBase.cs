@@ -263,13 +263,13 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
 
     public override Task<T> ExecuteAsync<T>(Func<IMongoCollection<TEntity>, Task<T>> execute, Operation operation)
     {
-        if (operation != Operation.Read) throw new InvalidOperationException($"Only operation {nameof(Operation.Read)} is allowed for lockable repository collections.");
+        if (operation != Operation.Read && operation != Operation.Create) throw new InvalidOperationException($"Only operations {nameof(Operation.Read)} and {nameof(Operation.Create)} are allowed for lockable repository collections. {nameof(Operation.Update)} and {nameof(Operation.Delete)} must go through the lock-acquire/commit cycle.");
         return Disk.ExecuteAsync(execute, operation);
     }
 
     public override Task<T> ExecuteAsync<T>(Func<IMongoCollection<TEntity>, CancellationToken, Task<T>> execute, Operation operation, CancellationToken cancellationToken)
     {
-        if (operation != Operation.Read) throw new InvalidOperationException($"Only operation {nameof(Operation.Read)} is allowed for lockable repository collections.");
+        if (operation != Operation.Read && operation != Operation.Create) throw new InvalidOperationException($"Only operations {nameof(Operation.Read)} and {nameof(Operation.Create)} are allowed for lockable repository collections. {nameof(Operation.Update)} and {nameof(Operation.Delete)} must go through the lock-acquire/commit cycle.");
         return Disk.ExecuteAsync(execute, operation, cancellationToken);
     }
 
