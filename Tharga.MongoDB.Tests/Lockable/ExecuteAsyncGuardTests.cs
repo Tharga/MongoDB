@@ -45,6 +45,7 @@ public class ExecuteAsyncGuardTests : LockableTestBase
     }
 
     [Fact]
+    [Trait("Category", "Database")]
     public async Task OperationUpdate_Throws()
     {
         var sut = new LockableTestRepositoryCollection(_mongoDbServiceFactory);
@@ -57,6 +58,7 @@ public class ExecuteAsyncGuardTests : LockableTestBase
     }
 
     [Fact]
+    [Trait("Category", "Database")]
     public async Task OperationDelete_Throws()
     {
         var sut = new LockableTestRepositoryCollection(_mongoDbServiceFactory);
@@ -69,6 +71,7 @@ public class ExecuteAsyncGuardTests : LockableTestBase
     }
 
     [Fact]
+    [Trait("Category", "Database")]
     public async Task OperationUpdate_WithCancellationToken_Throws()
     {
         var sut = new LockableTestRepositoryCollection(_mongoDbServiceFactory);
