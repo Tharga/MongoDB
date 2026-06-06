@@ -12,3 +12,5 @@
   href: monitoring.md
 - name: MCP integration
   href: mcp-integration.md
+- name: Atlas firewall management
+  href: atlas-firewall.md

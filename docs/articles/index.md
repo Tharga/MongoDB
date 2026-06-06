@@ -8,5 +8,6 @@ Feature guides for `Tharga.MongoDB`. Skim the [Getting started](getting-started.
 - **[Keyset pagination](keyset-pagination.md)** — `GetPageAsync` / `CursorPager` for grids that need O(log N) per page
 - **[Monitoring](monitoring.md)** — the `IDatabaseMonitor` surface, slow-query detection, and centralised topologies via `Monitor.Client` / `Monitor.Server`
 - **[MCP integration](mcp-integration.md)** — exposing collections, monitoring, and admin actions to AI clients via `Tharga.MongoDB.Mcp`
+- **[Atlas firewall management](atlas-firewall.md)** — direct Atlas IP access list updates, or via Quilt4Net's firewall proxy so individual services don't hold Atlas credentials
 
 Each guide is short — the full reference is in the [API](xref:Tharga.MongoDB) tab.
