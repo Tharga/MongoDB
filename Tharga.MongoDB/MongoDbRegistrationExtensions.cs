@@ -83,6 +83,11 @@ public static class MongoDbRegistrationExtensions
             services.AddSingleton<IMongoDbClientProvider>(new MongoDbClientProvider());
         }
         services.AddSingleton<IMongoDbFirewallStateService, MongoDbFirewallStateService>();
+        services.AddHttpClient(Atlas.Quilt4NetFirewallProxyClient.HttpClientName);
+        services.AddSingleton<Atlas.Quilt4NetFirewallProxyClient>();
+        services.AddSingleton<Atlas.Quilt4NetFirewallService>();
+        services.AddSingleton<Atlas.Quilt4NetHeartbeatService>();
+        services.AddHostedService<Atlas.Quilt4NetHeartbeatService>(sp => sp.GetRequiredService<Atlas.Quilt4NetHeartbeatService>());
         services.AddSingleton<ExecuteLimiter>();
         services.AddSingleton<IExecuteLimiter>(sp => sp.GetRequiredService<ExecuteLimiter>());
         services.AddSingleton<IQueueMonitor>(sp => sp.GetRequiredService<ExecuteLimiter>());

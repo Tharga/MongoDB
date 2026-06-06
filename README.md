@@ -589,6 +589,32 @@ To create a key-pair, select *Access Manager* for the *organization*. Then Selec
 The *GroupId* can be found as part of the URL on the *Atlas MongoDB* website.
 Example. `https://cloud.mongodb.com/v2/[GroupId]`
 
+### Optional Quilt4Net firewall proxy
+For deployments where you don't want individual services to hold an Atlas API key, [Quilt4Net.Server](https://www.nuget.org/packages/Quilt4Net.Toolkit) can act as a central firewall manager — it holds the Atlas Project-Owner credential and exposes a proxy API that opens the firewall on behalf of consumers, then auto-closes openings that stop being used. Tharga.MongoDB integrates with that proxy via two optional fields on `MongoDbApiAccess`:
+
+```csharp
+o.AccessInfo = new MongoDbApiAccess
+{
+    GroupId          = "<atlas-project-group-id>",
+    Quilt4NetBaseUrl = "https://your-quilt4net.example.com/", // defaults to https://quilt4net.com/
+    Quilt4NetApiKey  = "<your-quilt4net-firewall-key>",
+    // PublicKey / PrivateKey optional — see modes below.
+};
+```
+
+The mode is **inferred** from which keys you populate:
+
+| Atlas keys (Public+Private) | Quilt4Net key | Mode | Behaviour |
+|:--:|:--:|:--|:--|
+| ✔ | ✘ | **Classic** | Direct Atlas open. Today's behaviour, unchanged. |
+| ✔ | ✔ | **Notify** | Direct Atlas open + periodic Quilt4Net `ReportUsedAsync` heartbeat so the central system knows this IP is in use. |
+| ✘ | ✔ | **Open** | Quilt4Net opens the firewall via its proxy. Subsequent heartbeats reuse the same `OpenAsync` call (returns `AlreadyOpen` once the firewall is open, which serves as the usage signal — no separate `ReportUsedAsync` needed). The consumer never holds an Atlas credential. |
+| ✘ | ✘ | None | No firewall management. |
+
+The heartbeat is driven by a background service registered automatically by `AddMongoDB`. Set `DatabaseOptions.Quilt4NetHeartbeatInterval` to tune the cadence (default 5 minutes) or `null` to disable. The service is dormant when no access is in Notify/Open mode, so consumers without `Quilt4NetApiKey` pay nothing at runtime.
+
+401/403 from the proxy surfaces as `Quilt4NetFirewallAuthorizationException` and the affected entry is dropped from the heartbeat loop — a misconfigured key won't burn cycles retrying. Transient HTTP failures keep the entry so the next tick retries.
+
 ## Tracking external collections
 
 When an external NuGet package registers its own collection types via DI (e.g. `services.AddTransient<IMyCollection, MyCollection>()`), the database monitor may show them as "NotInCode" because they were not discovered by the auto-registration scan.

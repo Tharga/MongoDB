@@ -120,6 +120,16 @@ public record DatabaseOptions
     public bool AllowDelayedCommit { get; set; } = true;
 
     /// <summary>
+    /// Interval at which the Quilt4Net heartbeat service notifies Quilt4Net that the configured
+    /// Atlas firewall openings are still in use. Each tick walks the active <c>MongoDbApiAccess</c>
+    /// records and calls the appropriate proxy endpoint (<c>OpenAsync</c> for Open mode,
+    /// <c>ReportUsedAsync</c> for Notify mode). Dormant when no access is in either mode, so the
+    /// cost is zero when no consumer configures a <c>Quilt4NetApiKey</c>. Set to <c>null</c> to
+    /// disable the heartbeat entirely. Default <c>TimeSpan.FromMinutes(5)</c>.
+    /// </summary>
+    public TimeSpan? Quilt4NetHeartbeatInterval { get; set; } = TimeSpan.FromMinutes(5);
+
+    /// <summary>
     /// Configuration for monitor. This is by default enabled.
     /// </summary>
     public MonitorOptions Monitor { get; set; } = new();
