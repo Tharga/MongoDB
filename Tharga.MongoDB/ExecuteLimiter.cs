@@ -65,7 +65,7 @@ internal class ExecuteLimiter : IExecuteLimiter, IQueueMonitor
 
         if (queuedCount > 1)
         {
-            _logger?.LogInformation("Queued {queueCount} executions for {serverKey}.", queuedCount, serverKey);
+            _logger?.LogDebug("Queued {queueCount} executions for {serverKey}.", queuedCount, serverKey);
         }
 
         RecordMetric(queuedCount, state.GetExecuting(), null);
