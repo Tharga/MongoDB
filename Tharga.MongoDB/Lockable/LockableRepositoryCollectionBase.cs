@@ -46,6 +46,13 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
     protected virtual bool RequireActor => true;
 
     /// <summary>
+    /// Minimum wall-clock interval between actual database writes from <c>ExtendLockAsync</c>. Calls made
+    /// within this window of the previous write are in-memory no-ops, protecting the database from a tight or
+    /// irregular loop that extends the lock frequently. Default 60 seconds. Pass <c>force: true</c> to bypass.
+    /// </summary>
+    protected virtual TimeSpan MinLockExtendInterval => TimeSpan.FromSeconds(60);
+
+    /// <summary>
     /// When <c>true</c> (default — resolved from <see cref="Configuration.DatabaseOptions.AllowDelayedCommit"/>),
     /// a successful <c>CommitAsync</c> is permitted even when the lease's lock has expired,
     /// provided no other writer has touched the document (<c>LockKey</c> still matches). The
@@ -553,23 +560,79 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
     {
         if (entity == null) return null;
 
+        var lockHandle = new LockHandle(entityLock);
         Func<TEntity, CommitMode?, Exception, Task> releaseAction = (e, mode, exception) =>
         {
             switch (mode)
             {
                 case CommitMode.Update:
-                    return ReleaseAsync(e, entityLock, commit: true, exception, completeAction, PrepareCommitForUpdateAsync, session);
+                    return ReleaseAsync(e, lockHandle.Current, commit: true, exception, completeAction, PrepareCommitForUpdateAsync, session);
                 case CommitMode.Delete:
-                    return ReleaseAsync(e, entityLock, commit: true, exception, completeAction, PerformCommitForDeleteAsync, session);
+                    return ReleaseAsync(e, lockHandle.Current, commit: true, exception, completeAction, PerformCommitForDeleteAsync, session);
                 case null:
-                    return ReleaseAsync(e, entityLock, commit: false, exception, completeAction, null, session);
+                    return ReleaseAsync(e, lockHandle.Current, commit: false, exception, completeAction, null, session);
                 default:
                     throw new ArgumentOutOfRangeException(nameof(mode), mode, null);
             }
         };
 
+        Func<TimeSpan, bool, Task<LockExtensionResult>> extendAction = (extension, force) => ExtendLockCoreAsync(entity, lockHandle, extension, force, session);
+
         _releaseEvent.Set();
-        return new LockScope<TEntity, TKey>(entity, releaseAction);
+        return new LockScope<TEntity, TKey>(entity, releaseAction, extendAction);
+    }
+
+    /// <summary>
+    /// Guarded, write-throttled lock-extension primitive. When a write happens it atomically pushes the
+    /// <see cref="Lock.ExpireTime"/> of the document matching <paramref name="lockHandle"/>'s
+    /// <see cref="Lock.LockKey"/> to <c>UtcNow + <paramref name="extension"/></c> and records the write time,
+    /// updating <paramref name="lockHandle"/> in place so the holding scope's release/commit path sees the
+    /// refreshed expiry. Calls within <see cref="MinLockExtendInterval"/> of the previous write are in-memory
+    /// no-ops (unless <paramref name="force"/>). The <c>LockKey</c> match mirrors
+    /// <see cref="PrepareCommitForUpdateAsync"/> and carries the safety guarantee; an expired lock can still be
+    /// extended when no other writer has taken it, gated by <see cref="AllowDelayedCommit"/>. Throws
+    /// <see cref="LockExpiredException"/> when the lock is expired under strict TTL, or is no longer held by this
+    /// key (re-acquired, released, or the document was removed).
+    /// </summary>
+    private async Task<LockExtensionResult> ExtendLockCoreAsync(TEntity entity, LockHandle lockHandle, TimeSpan extension, bool force, IClientSessionHandle session)
+    {
+        var now = DateTime.UtcNow;
+        var current = lockHandle.Current;
+
+        // Write-throttle: at most one DB write per MinLockExtendInterval (unless forced). Calls inside the
+        // window are in-memory no-ops, so a tight or irregular loop that extends frequently does not hammer the DB.
+        if (!force && now - lockHandle.LastWriteAt < MinLockExtendInterval)
+        {
+            return new LockExtensionResult { ExpireTime = current.ExpireTime, Extended = false };
+        }
+
+        // Strict-TTL gate (mirrors commit): refuse to extend a lock already past expiry unless delayed
+        // operations are allowed. The LockKey match below still carries the safety guarantee.
+        var expired = now > current.ExpireTime;
+        if (expired && !AllowDelayedCommit)
+        {
+            throw new LockExpiredException($"Too late to extend the lock on entity of type {typeof(TEntity).Name} with id '{entity.Id}' — it expired and the collection is in strict-TTL mode.", current.ExpireTime - current.LockTime, now - current.LockTime);
+        }
+
+        var newLock = current with { ExpireTime = now.Add(extension) };
+
+        //NOTE: This filter assures that the correct lock still exists on the entity (mirrors PrepareCommitForUpdateAsync).
+        var filter = Builders<TEntity>.Filter.And(
+            Builders<TEntity>.Filter.Eq(x => x.Id, entity.Id),
+            Builders<TEntity>.Filter.Ne(x => x.Lock, null),
+            Builders<TEntity>.Filter.Eq(x => x.Lock.LockKey, current.LockKey)
+        );
+        var update = new UpdateDefinitionBuilder<TEntity>().Set(x => x.Lock, newLock);
+        var result = await Disk.UpdateOneAsync(filter, update, OneOption<TEntity>.FirstOrDefault, session); //Use FirstOrDefault since it is atomic safe.
+
+        if (result.Before == null)
+        {
+            throw new LockExpiredException($"Cannot extend the lock on entity of type {typeof(TEntity).Name} with id '{entity.Id}' — it is no longer held by this lock (expired and re-acquired, released, or the document was removed).", current.ExpireTime - current.LockTime, now - current.LockTime);
+        }
+
+        lockHandle.Current = newLock;
+        lockHandle.LastWriteAt = now;
+        return new LockExtensionResult { ExpireTime = newLock.ExpireTime, Extended = true };
     }
 
     public IAsyncEnumerable<EntityLock<TEntity, TKey>> GetWithLockInfoAsync(FilterDefinition<TEntity> filter = null, Options<TEntity> options = null, CancellationToken cancellationToken = default)
@@ -830,16 +893,17 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
         var (entity, entityLock, errorInfo, shouldWait) = await AcquireLockAsync(filter, timeout, actor, failIfLocked, session);
         if (entity == null) return (null, errorInfo, shouldWait);
 
+        var lockHandle = new LockHandle(entityLock);
         Func<TEntity, bool, Exception, Task> releaseAction;
         try
         {
             switch (commitMode)
             {
                 case CommitMode.Update:
-                    releaseAction = (e, commit, exception) => ReleaseAsync(e, entityLock, commit, exception, completeAction, PrepareCommitForUpdateAsync, session);
+                    releaseAction = (e, commit, exception) => ReleaseAsync(e, lockHandle.Current, commit, exception, completeAction, PrepareCommitForUpdateAsync, session);
                     break;
                 case CommitMode.Delete:
-                    releaseAction = (e, commit, exception) => ReleaseAsync(e, entityLock, commit, exception, completeAction, PerformCommitForDeleteAsync, session);
+                    releaseAction = (e, commit, exception) => ReleaseAsync(e, lockHandle.Current, commit, exception, completeAction, PerformCommitForDeleteAsync, session);
                     break;
                 default:
                     throw new ArgumentOutOfRangeException(nameof(commitMode), commitMode, null);
@@ -850,7 +914,8 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
             _releaseEvent.Set();
         }
 
-        return (new EntityScope<TEntity, TKey>(entity, releaseAction), null, false);
+        Func<TimeSpan, bool, Task<LockExtensionResult>> extendAction = (extension, force) => ExtendLockCoreAsync(entity, lockHandle, extension, force, session);
+        return (new EntityScope<TEntity, TKey>(entity, releaseAction, extendAction), null, false);
     }
 
     private async Task<bool> ReleaseAsync(TEntity entity, Lock entityLock, bool commit, Exception exception, Func<CallbackResult<TEntity>, Task> completeAction, Func<TEntity, Lock, Func<CallbackResult<TEntity>, Task>, Lock, IClientSessionHandle, Task<(EntityChangeResult<TEntity>, LockAction)>> releaseAction, IClientSessionHandle session = null)
@@ -1019,6 +1084,24 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
                 default:
                     throw new ArgumentOutOfRangeException(nameof(errorInfo.Type), $"Unknown type {nameof(errorInfo.Type)} {errorInfo.Type}");
             }
+        }
+    }
+
+    /// <summary>
+    /// Mutable holder for the active <see cref="Lock"/> of a single scope. Shared by the release and extend
+    /// closures so extending the lock (<see cref="ExtendLockCoreAsync"/>) is visible to a later commit/release
+    /// on the same scope. <see cref="LastWriteAt"/> drives the <see cref="MinLockExtendInterval"/> write-throttle
+    /// and is seeded with the acquisition time so the lock is not re-written immediately after it is taken.
+    /// </summary>
+    private sealed class LockHandle
+    {
+        public Lock Current { get; set; }
+        public DateTime LastWriteAt { get; set; }
+
+        public LockHandle(Lock current)
+        {
+            Current = current;
+            LastWriteAt = current.LockTime;
         }
     }
 }

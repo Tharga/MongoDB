@@ -196,6 +196,27 @@ else
 
 `AbandonAsync` releases without changes; `SetErrorStateAsync(ex)` records an exception on the lock; disposal without commit calls `AbandonAsync`. Same semantics as `PickFor*` — both go through the same internal acquire-lock primitive.
 
+##### Extending a lock ("buy more time")
+A long-running job can take a short lock and keep it alive while it works, instead of guessing a large timeout up front. `ExtendLockAsync(TimeSpan extension)` (on the `EntityScope` from `PickFor*`/`WaitFor*` and the `LockScope` from `LockAsync`) pushes the lock's expiry to `UtcNow + extension`:
+
+```csharp
+await using var scope = await collection.PickForUpdateAsync(id, timeout: TimeSpan.FromMinutes(5));
+foreach (var step in irregularWork)
+{
+    await DoStepAsync(step);                                  // may take seconds or minutes
+    var result = await scope.ExtendLockAsync(TimeSpan.FromMinutes(5));
+    // result.ExpireTime  -> the lock's current expiry
+    // result.Extended    -> true if this call actually wrote to the database
+}
+await scope.CommitAsync(scope.Entity with { Data = "done" });
+```
+
+It is safe to call on every iteration. To protect the database from a tight or irregular loop, an actual write happens **at most once per `MinLockExtendInterval`** (a `protected virtual` on the collection, default **60 seconds**); calls inside that window are in-memory no-ops that return `Extended = false` with the existing expiry. The first call at or after the window writes immediately — so an irregular job whose step durations are unpredictable always gets its extension through. Pass `force: true` to bypass the throttle for a guaranteed write.
+
+The write is a single atomic, `LockKey`-guarded update. An **expired** lock can still be extended when no other writer has taken it (the `LockKey` still matches), provided delayed operations are allowed — this follows the same `AllowDelayedCommit` gate as commit (strict-TTL collections throw `LockExpiredException` on an expired lock). If the lock was re-acquired by another actor, released, or the document was removed, `ExtendLockAsync` throws `LockExpiredException`; after the scope is committed or abandoned it throws `LockAlreadyReleasedException`.
+
+> Tip: extend by comfortably more than `MinLockExtendInterval` (e.g. extend 5 min with the default 60 s throttle) so the throttle can coalesce writes while keeping plenty of headroom before expiry.
+
 ##### Multi-document lease
 To inspect several documents and decide each one's fate before committing them all, use `LockManyAsync`. Acquisition is sequential, ordered by key (so two leases targeting overlapping sets always lock in the same order — no AB / BA deadlocks). If any acquisition fails, partial locks are rolled back.
 
