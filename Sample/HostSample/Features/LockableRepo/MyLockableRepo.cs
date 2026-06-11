@@ -35,6 +35,27 @@ public class MyLockableRepo : IMyLockableRepo
         return await scope.CommitAsync();
     }
 
+    public async Task<MyLockableEntity> ProcessLongRunningAsync(ObjectId id, int steps)
+    {
+        // Take a short lock, then "buy more time" as the job progresses. ExtendLockAsync is safe to call
+        // every iteration — it writes to the database at most once per MinLockExtendInterval (default 60s).
+        await using var scope = await _collection.PickForUpdateAsync(id, timeout: TimeSpan.FromMinutes(5), actor: "long-runner");
+
+        for (var i = 0; i < steps; i++)
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(50)); // stand-in for an irregular unit of work
+            scope.Entity.Counter++;
+
+            var extension = await scope.ExtendLockAsync(TimeSpan.FromMinutes(5));
+            if (!extension.Extended)
+            {
+                // Throttled (still well within the previous expiry) — nothing written this iteration.
+            }
+        }
+
+        return await scope.CommitAsync();
+    }
+
     public async Task ThrowAsync(ObjectId id)
     {
         var scope = await _collection.PickForUpdateAsync(id);
