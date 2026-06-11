@@ -268,6 +268,20 @@ If a consumer's query pattern adds extra fields (e.g. `{Lock: 1, State: 1}` for 
 
 For collections that pre-date the upgrade and are missing these indexes in production, see [Re-applying indexes after a code change](#re-applying-indexes-after-a-code-change) — the `RestoreAllIndicesAsync` API, the *Assure all indices* Blazor toolbar action, and the `mongodb.restore_all_indexes` MCP tool all force a re-apply across tracked collections.
 
+##### Renewable locks (lease renewal / keep-alive)
+
+For work whose duration is unpredictable, `RenewableLockRepositoryCollectionBase<TEntity, TKey>` (namespace `Tharga.MongoDB.Lockable.Renewable`) is a standalone variant where the lease can be set short and the lock owner extends it until finished — a lock always expires unless the owner asks for more time, so crash recovery is bounded by the short lease while healthy long jobs keep renewing:
+
+```csharp
+await using var scope = await collection.PickForDeleteAsync(id, TimeSpan.FromMinutes(5), actor);
+await using var keepAlive = scope.StartKeepAlive(new LockKeepAliveOptions { MaxTotalDuration = TimeSpan.FromHours(2) });
+// link scope.LockLost into the job's CancellationToken to abort early if the lock is ever stolen
+await RunLongJobAsync(scope.Entity);
+await scope.CommitAsync();
+```
+
+It mirrors `ILockableRepositoryCollection` one to one (scopes inherit `EntityScope`/`LockScope`, adding `ExtendAsync`, `StartKeepAlive` and a `LockLost` token), shares the on-disk lock format so both implementations interoperate on the same collections, and swapping in (or back) is just changing the repository collection's base class. See [Renewable lockable collections](https://mongodb.tharga.net/articles/renewable-lockable-collections.html) for the full semantics.
+
 ---
 
 ### Transactions

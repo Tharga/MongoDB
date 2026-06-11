@@ -4,6 +4,8 @@
   href: getting-started.md
 - name: Lockable collections
   href: lockable-collections.md
+- name: Renewable lockable collections
+  href: renewable-lockable-collections.md
 - name: Transactions
   href: transactions.md
 - name: Keyset pagination
