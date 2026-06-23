@@ -70,6 +70,8 @@ public static class MongoDbRegistrationExtensions
         services.AddHttpClient();
 
         services.AddTransient<IExternalIpAddressService, ExternalIpAddressService>();
+        services.AddHttpClient(Atlas.AtlasTokenService.HttpClientName);
+        services.AddSingleton<Atlas.IAtlasTokenService, Atlas.AtlasTokenService>();
         services.AddTransient<IMongoDbFirewallService, MongoDbFirewallService>();
         if (o.Monitor?.EnableCommandMonitoring == true)
         {

@@ -16,11 +16,13 @@ namespace Tharga.MongoDB.Atlas;
 internal class MongoDbFirewallService : IMongoDbFirewallService
 {
     private readonly IExternalIpAddressService _externalIpAddressService;
+    private readonly IAtlasTokenService _tokenService;
     private readonly ILogger<MongoDbFirewallService> _logger;
 
-    public MongoDbFirewallService(IExternalIpAddressService externalIpAddressService, ILogger<MongoDbFirewallService> logger)
+    public MongoDbFirewallService(IExternalIpAddressService externalIpAddressService, IAtlasTokenService tokenService, ILogger<MongoDbFirewallService> logger)
     {
         _externalIpAddressService = externalIpAddressService;
+        _tokenService = tokenService;
         _logger = logger;
     }
 
@@ -84,7 +86,7 @@ internal class MongoDbFirewallService : IMongoDbFirewallService
     {
         if (access == null) throw new ArgumentNullException(nameof(access));
 
-        using var atlasHttp = new AtlasHttpClient(access);
+        using var atlasHttp = await AtlasHttpClient.CreateAsync(access, _tokenService);
 
         using var request = new HttpRequestMessage(HttpMethod.Get, $"groups/{access.GroupId}/accessList");
         using var result = await atlasHttp.Client.SendAsync(request);
@@ -103,7 +105,7 @@ internal class MongoDbFirewallService : IMongoDbFirewallService
     {
         if (access == null) throw new ArgumentNullException(nameof(access));
 
-        using var atlasHttp = new AtlasHttpClient(access);
+        using var atlasHttp = await AtlasHttpClient.CreateAsync(access, _tokenService);
 
         await foreach (var item in GetFirewallListAsync(access).Where(x => x.Comment == name))
         {
@@ -117,7 +119,7 @@ internal class MongoDbFirewallService : IMongoDbFirewallService
     {
         if (access == null) throw new ArgumentNullException(nameof(access));
 
-        using var atlasHttp = new AtlasHttpClient(access);
+        using var atlasHttp = await AtlasHttpClient.CreateAsync(access, _tokenService);
 
         var payload = new[] { new { cidrBlock = $"{ipAddress}/32", comment = name } };
         var serialized = JsonSerializer.Serialize(payload);
