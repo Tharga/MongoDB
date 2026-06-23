@@ -610,6 +610,11 @@ To create a key-pair, select *Access Manager* for the *organization*. Then Selec
 The *GroupId* can be found as part of the URL on the *Atlas MongoDB* website.
 Example. `https://cloud.mongodb.com/v2/[GroupId]`
 
+### Service account (OAuth2)
+As an alternative to the API key pair, the Atlas-direct path can authenticate with an [Atlas Service Account](https://www.mongodb.com/docs/atlas/api/service-accounts/) (OAuth2 client credentials). Set `ClientId` and `ClientSecret` on `AccessInfo` instead of `PublicKey`/`PrivateKey` (the service account is used when both are set); Tharga.MongoDB exchanges them for a short-lived bearer token automatically. Works in Classic and Notify mode.
+
+> Service-account secrets **expire** and must be rotated. A failed token exchange raises `AtlasServiceAccountAuthException` (carrying `StatusCode` and a best-effort `LikelyExpired` flag — Atlas returns 401 for both invalid and expired secrets, so it can't be definitive).
+
 ### Optional Quilt4Net firewall proxy
 For deployments where you don't want individual services to hold an Atlas API key, [Quilt4Net.Server](https://www.nuget.org/packages/Quilt4Net.Toolkit) can act as a central firewall manager — it holds the Atlas Project-Owner credential and exposes a proxy API that opens the firewall on behalf of consumers, then auto-closes openings that stop being used. Tharga.MongoDB integrates with that proxy via two optional fields on `MongoDbApiAccess`:
 
@@ -625,12 +630,14 @@ o.AccessInfo = new MongoDbApiAccess
 
 The mode is **inferred** from which keys you populate:
 
-| Atlas keys (Public+Private) | Quilt4Net key | Mode | Behaviour |
+| Atlas credential\* | Quilt4Net key | Mode | Behaviour |
 |:--:|:--:|:--|:--|
 | ✔ | ✘ | **Classic** | Direct Atlas open. Today's behaviour, unchanged. |
 | ✔ | ✔ | **Notify** | Direct Atlas open + periodic Quilt4Net `ReportUsedAsync` heartbeat so the central system knows this IP is in use. |
 | ✘ | ✔ | **Open** | Quilt4Net opens the firewall via its proxy. Subsequent heartbeats reuse the same `OpenAsync` call (returns `AlreadyOpen` once the firewall is open, which serves as the usage signal — no separate `ReportUsedAsync` needed). The consumer never holds an Atlas credential. |
 | ✘ | ✘ | None | No firewall management. |
+
+\* *Atlas credential* = a Programmatic API key pair (`PublicKey`+`PrivateKey`) **or** a Service Account (`ClientId`+`ClientSecret`); either drives the Atlas-direct open.
 
 The heartbeat is driven by a background service registered automatically by `AddMongoDB`. Set `DatabaseOptions.Quilt4NetHeartbeatInterval` to tune the cadence (default 5 minutes) or `null` to disable. The service is dormant when no access is in Notify/Open mode, so consumers without `Quilt4NetApiKey` pay nothing at runtime.
 
