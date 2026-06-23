@@ -78,7 +78,18 @@ internal class DatabaseMonitor : IDatabaseMonitor
         }
         else
         {
-            _cache.LoadAsync().GetAwaiter().GetResult();
+            // A connectivity failure while loading the persisted cache must not abort process
+            // startup — the monitor starts degraded (empty cache, repopulated live on first
+            // access). Connectivity-fail-fast, when requested, is enforced earlier by the
+            // startup pre-check in UseMongoDB; reaching here means we are starting regardless.
+            try
+            {
+                _cache.LoadAsync().GetAwaiter().GetResult();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to load DatabaseMonitor cache at startup. Starting monitor with an empty cache; it will repopulate as collections are accessed.");
+            }
         }
 
         try

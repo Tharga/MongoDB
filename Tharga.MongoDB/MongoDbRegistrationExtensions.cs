@@ -208,6 +208,12 @@ public static class MongoDbRegistrationExtensions
         services.AddTransient<ICollectionTypeService, CollectionTypeService>();
         services.AddSingleton<IMongoDbInstance>(mongoDbInstance);
 
+        // Per-connection reachability surface, independent of the monitor. Populated by the
+        // startup connectivity pre-check in UseMongoDB and re-checkable live (e.g. from a
+        // readiness/health endpoint). Built on the non-throwing IMongoDbService.GetInfoAsync probe.
+        services.AddSingleton<MongoDbConnectivityState>();
+        services.AddSingleton<IMongoDbConnectivityState>(sp => sp.GetRequiredService<MongoDbConnectivityState>());
+
         if (o.Monitor?.Enabled ?? false)
         {
             if (o.Monitor.StorageMode == MonitorStorageMode.Database)
@@ -380,6 +386,48 @@ public static class MongoDbRegistrationExtensions
             });
 
             if (mustWait) Task.WaitAll(task);
+        }
+
+        //NOTE: Connectivity pre-check. Verifies each configured connection is reachable (built on
+        //      the non-throwing IMongoDbService.GetInfoAsync probe) BEFORE the monitor starts, so
+        //      an unreachable database produces an observable, logged, telemetered outcome instead
+        //      of an unhandled abort. On failure: log Critical -> await StartupFailureCallback
+        //      (flush) -> fail-fast (throw) or degrade (continue). Skipped when connection strings
+        //      arrive later (ReadyCallback), mirroring the firewall-open skip above.
+        if (!lateConnectionStrins)
+        {
+            var connectivityState = app.Services.GetService<MongoDbConnectivityState>();
+            if (connectivityState != null)
+            {
+                var results = connectivityState
+                    .CheckWithRetryAsync(o.StartupConnectivityRetryCount, o.StartupConnectivityRetryDelay, assureFirewall: true)
+                    .GetAwaiter().GetResult();
+
+                var unreachable = results.Where(r => !r.CanConnect).ToArray();
+                if (unreachable.Length > 0)
+                {
+                    var failure = new MongoStartupFailure(unreachable);
+                    o.Logger?.LogCritical("MongoDB startup connectivity check failed for {count} configuration(s): {summary}", unreachable.Length, failure.Summary);
+                    _actionEvent?.Invoke(new ActionEventArgs(new ActionEventArgs.ActionData { Message = $"MongoDB startup connectivity check failed: {failure.Summary}", Level = LogLevel.Critical }, new ActionEventArgs.ContextData()));
+
+                    if (o.StartupFailureCallback != null)
+                    {
+                        try
+                        {
+                            o.StartupFailureCallback(failure, app.Services).GetAwaiter().GetResult();
+                        }
+                        catch (Exception ex)
+                        {
+                            o.Logger?.LogError(ex, "StartupFailureCallback threw.");
+                        }
+                    }
+
+                    if (o.StartupConnectivity == StartupConnectivityMode.FailFast)
+                        throw new MongoStartupConnectivityException(failure);
+
+                    o.Logger?.LogWarning("Starting in degraded mode — {count} configuration(s) unreachable. IMongoDbConnectivityState / health checks will report unhealthy until connectivity is restored.", unreachable.Length);
+                }
+            }
         }
 
         if (databaseOptions.Value.Monitor?.Enabled ?? false)
