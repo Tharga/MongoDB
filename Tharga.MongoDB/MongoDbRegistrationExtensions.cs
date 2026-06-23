@@ -331,7 +331,7 @@ public static class MongoDbRegistrationExtensions
                     foreach (var configurationName in o.DatabaseUsage.FirewallConfigurationNames)
                     {
                         var configuration = repositoryConfiguration.GetConfiguration(configurationName);
-                        if (configuration.AccessInfo.HasMongoDbApiAccess())
+                        if (configuration.AccessInfo.HasFirewallConfiguration())
                         {
                             var mongoDbService = mongoDbServiceFactory.GetMongoDbService(() => new DatabaseContext { ConfigurationName = configurationName });
                             var databaseHostName = mongoDbService.GetDatabaseHostName();
@@ -363,7 +363,7 @@ public static class MongoDbRegistrationExtensions
                         else
                         {
                             skipped++;
-                            o.Logger?.LogInformation("Firewall skipped for {config}: no API access info.", configurationName);
+                            o.Logger?.LogInformation("Firewall skipped for {config}: no firewall configuration.", configurationName);
                         }
                     }
                 }

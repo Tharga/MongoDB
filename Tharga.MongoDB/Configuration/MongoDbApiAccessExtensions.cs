@@ -26,4 +26,10 @@ public static class MongoDbApiAccessExtensions
         if (hasAtlas) return FirewallMode.Classic;
         return FirewallMode.None;
     }
+
+    // True when any firewall mode is configured (Classic, Notify or Open). Unlike HasMongoDbApiAccess this also covers Quilt4Net-only (Open) configs, so the startup firewall open is attempted for them too.
+    internal static bool HasFirewallConfiguration(this MongoDbApiAccess item)
+    {
+        return item.GetFirewallMode() != FirewallMode.None;
+    }
 }
