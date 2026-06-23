@@ -643,6 +643,59 @@ The heartbeat is driven by a background service registered automatically by `Add
 
 401/403 from the proxy surfaces as `Quilt4NetFirewallAuthorizationException` and the affected entry is dropped from the heartbeat loop — a misconfigured key won't burn cycles retrying. Transient HTTP failures keep the entry so the next tick retries.
 
+## Resilient startup connectivity
+
+When a configured connection is unreachable at startup (e.g. the egress IP is not yet in the Atlas access list), `UseMongoDB` runs a **connectivity pre-check** — one non-throwing probe per configured connection, built on the same check as `IMongoDbService.GetInfoAsync()` / `DatabaseInfo.CanConnect`. Unreachable connections are retried with exponential backoff.
+
+If any connection is still unreachable after the retries, the failure is **logged (`LogCritical`) and the `StartupFailureCallback` is awaited** (so telemetry can be flushed) before the configured reaction takes effect:
+
+- **`FailFast`** (default) — a `MongoStartupConnectivityException` is thrown. The process still exits as before, but the failure is now observable in your telemetry backend instead of an unhandled, untelemetered abort.
+- **`Degrade`** — the host starts anyway. `IMongoDbConnectivityState` reports the connection as unhealthy (and a registered health check reports unhealthy) until connectivity is restored, while the rest of the app keeps running and telemetry keeps flowing.
+
+The pre-check is skipped when `DatabaseOptions.ReadyCallback` is configured (connection strings arrive later), mirroring the firewall-open skip.
+
+```csharp
+app.UseMongoDB(o =>
+{
+    o.StartupConnectivity = StartupConnectivityMode.Degrade;     // default is FailFast
+    o.StartupConnectivityRetryCount = 3;                          // attempts per connection
+    o.StartupConnectivityRetryDelay = TimeSpan.FromSeconds(2);    // initial backoff, doubled per retry
+
+    // Awaited before rethrow (FailFast) or continue (Degrade). Flush your telemetry here so the
+    // failure reaches Application Insights / OpenTelemetry even on a fail-fast exit.
+    o.StartupFailureCallback = async (failure, sp) =>
+    {
+        // Application Insights:
+        sp.GetService<TelemetryClient>()?.Flush();
+        await Task.Delay(TimeSpan.FromSeconds(5));   // give the async channel time to drain
+        // OpenTelemetry:
+        // sp.GetService<TracerProvider>()?.ForceFlush();
+    };
+});
+```
+
+> The library never references App Insights / OTel itself — the `StartupFailureCallback` is where you flush your own pipeline. It also logs `LogCritical` regardless, so the failure reaches any `ILogger` provider you have wired.
+
+### Health / readiness endpoint
+
+`IMongoDbConnectivityState` (registered by `AddMongoDB`) exposes per-connection reachability and an aggregate `IsHealthy`, and re-evaluates live via `CheckAsync()`. Wire it into ASP.NET Core health checks with the opt-in helper:
+
+```csharp
+builder.Services.AddHealthChecks()
+    .AddMongoDb(name: "mongodb", tags: ["ready"]);   // live = true re-probes per call and auto-recovers
+```
+
+Or read it directly:
+
+```csharp
+var state = app.Services.GetRequiredService<IMongoDbConnectivityState>();
+if (!state.IsHealthy)
+    foreach (var c in state.Connections.Where(x => !x.CanConnect))
+        logger.LogWarning("MongoDB connection {Config} is down: {Message}", c.ConfigurationName, c.Message);
+```
+
+The `_monitor` cache load and its "drop and start fresh" recovery are also hardened — an unreachable server there is logged and skipped (the monitor starts with an empty cache and repopulates on first access) rather than aborting the process.
+
 ## Tracking external collections
 
 When an external NuGet package registers its own collection types via DI (e.g. `services.AddTransient<IMyCollection, MyCollection>()`), the database monitor may show them as "NotInCode" because they were not discovered by the auto-registration scan.

@@ -59,7 +59,7 @@ internal class MongoDbCollectionCache : ICollectionCache
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "Failed to read _monitor collection for config '{ConfigName}'. Dropping and starting fresh.", configName);
-                await col.Database.DropCollectionAsync("_monitor");
+                await TryDropMonitorAsync(col, configName);
                 continue;
             }
 
@@ -81,10 +81,32 @@ internal class MongoDbCollectionCache : ICollectionCache
             if (hadDeserializationError)
             {
                 _logger.LogWarning("One or more _monitor documents failed to deserialize for config '{ConfigName}'. Dropping collection and starting fresh.", configName);
-                await col.Database.DropCollectionAsync("_monitor");
-                foreach (var key in loadedKeys)
-                    _dict.TryRemove(key, out _);
+                if (await TryDropMonitorAsync(col, configName))
+                {
+                    foreach (var key in loadedKeys)
+                        _dict.TryRemove(key, out _);
+                }
             }
+        }
+    }
+
+    /// <summary>
+    /// Drops the _monitor collection as part of the "start fresh" recovery. The drop is itself a
+    /// write against a database that may be unreachable (the very reason we are recovering), so a
+    /// failure here must never propagate — it would abort process startup. Returns true when the
+    /// drop succeeded.
+    /// </summary>
+    private async Task<bool> TryDropMonitorAsync(IMongoCollection<BsonDocument> col, string configName)
+    {
+        try
+        {
+            await col.Database.DropCollectionAsync("_monitor");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to drop _monitor collection for config '{ConfigName}' during recovery. Continuing without the persisted cache for this configuration.", configName);
+            return false;
         }
     }
 
