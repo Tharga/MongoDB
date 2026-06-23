@@ -70,6 +70,8 @@ public static class MongoDbRegistrationExtensions
         services.AddHttpClient();
 
         services.AddTransient<IExternalIpAddressService, ExternalIpAddressService>();
+        services.AddHttpClient(Atlas.AtlasTokenService.HttpClientName);
+        services.AddSingleton<Atlas.IAtlasTokenService, Atlas.AtlasTokenService>();
         services.AddTransient<IMongoDbFirewallService, MongoDbFirewallService>();
         if (o.Monitor?.EnableCommandMonitoring == true)
         {
@@ -331,7 +333,7 @@ public static class MongoDbRegistrationExtensions
                     foreach (var configurationName in o.DatabaseUsage.FirewallConfigurationNames)
                     {
                         var configuration = repositoryConfiguration.GetConfiguration(configurationName);
-                        if (configuration.AccessInfo.HasMongoDbApiAccess())
+                        if (configuration.AccessInfo.HasFirewallConfiguration())
                         {
                             var mongoDbService = mongoDbServiceFactory.GetMongoDbService(() => new DatabaseContext { ConfigurationName = configurationName });
                             var databaseHostName = mongoDbService.GetDatabaseHostName();
@@ -363,7 +365,7 @@ public static class MongoDbRegistrationExtensions
                         else
                         {
                             skipped++;
-                            o.Logger?.LogInformation("Firewall skipped for {config}: no API access info.", configurationName);
+                            o.Logger?.LogInformation("Firewall skipped for {config}: no firewall configuration.", configurationName);
                         }
                     }
                 }

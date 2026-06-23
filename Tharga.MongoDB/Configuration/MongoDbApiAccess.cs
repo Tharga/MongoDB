@@ -13,6 +13,16 @@ public record MongoDbApiAccess
     public string PrivateKey { get; init; }
 
     /// <summary>
+    /// Atlas Service Account OAuth2 client id (alternative to <see cref="PublicKey"/>/<see cref="PrivateKey"/>).
+    /// </summary>
+    public string ClientId { get; init; }
+
+    /// <summary>
+    /// Atlas Service Account OAuth2 client secret. Service-account secrets expire and must be rotated.
+    /// </summary>
+    public string ClientSecret { get; init; }
+
+    /// <summary>
     /// Value of the GroupId in Atlas MongoDB.
     /// </summary>
     public string GroupId { get; init; }
