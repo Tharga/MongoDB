@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Tharga.MongoDB.Disk;
 
 namespace Tharga.MongoDB;
 
@@ -22,6 +23,9 @@ internal class ExecuteLimiter : IExecuteLimiter, IQueueMonitor
     private readonly ConcurrentDictionary<string, bool> _warnedServerKeys = new();
     private readonly ConcurrentQueue<QueueMetricEventArgs> _metrics = new();
 
+    // Calls currently held by the limiter (queued or executing), for on-demand diagnostics.
+    private readonly ConcurrentDictionary<Guid, TrackedCall> _inFlight = new();
+
     // Atomic state for polling
     private int _totalQueueCount;
     private int _totalExecutingCount;
@@ -36,7 +40,7 @@ internal class ExecuteLimiter : IExecuteLimiter, IQueueMonitor
         _maxConcurrentOverride = options.Value.MaxConcurrent;
     }
 
-    public async Task<(T Result, ExecuteInfo Info)> ExecuteAsync<T>(Func<CancellationToken, Task<T>> action, string serverKey, string configurationName, int maxConnectionPoolSize, CancellationToken cancellationToken)
+    public async Task<(T Result, ExecuteInfo Info)> ExecuteAsync<T>(Func<CancellationToken, Task<T>> action, string serverKey, int maxConnectionPoolSize, ExecuteCallContext context, CancellationToken cancellationToken)
     {
         if (!_enabled)
         {
@@ -56,9 +60,10 @@ internal class ExecuteLimiter : IExecuteLimiter, IQueueMonitor
         }
 
         var state = _states.GetOrAdd(serverKey, _ => new PerPoolState(maxConcurrent));
-        state.TagConfiguration(configurationName);
+        state.TagConfiguration(context?.ConfigurationName);
 
         var queuedAt = Stopwatch.GetTimestamp();
+        var tracked = TrackInFlight(serverKey, context);
 
         // Mark as queued (waiting to acquire a slot)
         var queuedCount = state.IncrementQueued();
@@ -87,6 +92,7 @@ internal class ExecuteLimiter : IExecuteLimiter, IQueueMonitor
             Interlocked.Decrement(ref _totalQueueCount);
 
             // Now executing
+            tracked?.MarkExecuting();
             var executingCount = state.IncrementExecuting();
             Interlocked.Increment(ref _totalExecutingCount);
             LogCount("ExecuteConcurrent", executingCount);
@@ -141,6 +147,10 @@ internal class ExecuteLimiter : IExecuteLimiter, IQueueMonitor
 
             throw;
         }
+        finally
+        {
+            UntrackInFlight(tracked);
+        }
     }
 
     public IReadOnlyList<QueueMetricEventArgs> GetRecentMetrics()
@@ -173,6 +183,49 @@ internal class ExecuteLimiter : IExecuteLimiter, IQueueMonitor
             });
         }
         return result;
+    }
+
+    public IReadOnlyList<InFlightCallInfo> GetInFlightCalls()
+    {
+        var result = new List<InFlightCallInfo>(_inFlight.Count);
+        foreach (var (_, call) in _inFlight)
+        {
+            result.Add(new InFlightCallInfo
+            {
+                CallKey = call.CallKey,
+                ServerKey = call.ServerKey,
+                ConfigurationName = call.ConfigurationName,
+                DatabaseName = call.DatabaseName,
+                CollectionName = call.CollectionName,
+                FunctionName = call.FunctionName,
+                Operation = call.Operation,
+                IsExecuting = call.IsExecuting,
+                EnqueuedUtc = call.EnqueuedUtc,
+                Filter = RenderFilter(call.FilterProvider), // rendered here (diagnostics path), never on the hot path
+            });
+        }
+        return result;
+    }
+
+    private TrackedCall TrackInFlight(string serverKey, ExecuteCallContext context)
+    {
+        if (context == null || context.CallKey == Guid.Empty) return null;
+
+        var tracked = new TrackedCall(serverKey, context);
+        _inFlight[context.CallKey] = tracked;
+        return tracked;
+    }
+
+    private void UntrackInFlight(TrackedCall tracked)
+    {
+        if (tracked != null) _inFlight.TryRemove(tracked.CallKey, out _);
+    }
+
+    private static string RenderFilter(Func<string> provider)
+    {
+        if (provider == null) return null;
+        try { return provider(); }
+        catch { return null; }
     }
 
     private void RecordMetric(int queueCount, int executingCount, TimeSpan? waitTime)
@@ -250,5 +303,36 @@ internal class ExecuteLimiter : IExecuteLimiter, IQueueMonitor
         }
 
         public double GetAndResetWait() => Interlocked.Exchange(ref _lastWaitTimeMs, 0);
+    }
+
+    private sealed class TrackedCall
+    {
+        private int _executing;
+
+        public TrackedCall(string serverKey, ExecuteCallContext context)
+        {
+            ServerKey = serverKey;
+            CallKey = context.CallKey;
+            ConfigurationName = context.ConfigurationName;
+            DatabaseName = context.DatabaseName;
+            CollectionName = context.CollectionName;
+            FunctionName = context.FunctionName;
+            Operation = context.Operation;
+            FilterProvider = context.FilterProvider;
+            EnqueuedUtc = DateTime.UtcNow;
+        }
+
+        public Guid CallKey { get; }
+        public string ServerKey { get; }
+        public string ConfigurationName { get; }
+        public string DatabaseName { get; }
+        public string CollectionName { get; }
+        public string FunctionName { get; }
+        public Operation Operation { get; }
+        public Func<string> FilterProvider { get; }
+        public DateTime EnqueuedUtc { get; }
+
+        public bool IsExecuting => Volatile.Read(ref _executing) == 1;
+        public void MarkExecuting() => Interlocked.Exchange(ref _executing, 1);
     }
 }

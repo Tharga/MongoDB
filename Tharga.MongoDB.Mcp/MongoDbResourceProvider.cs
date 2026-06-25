@@ -1,3 +1,4 @@
+using System;
 using System.Linq;
 using System.Text.Json;
 using System.Threading;
@@ -150,6 +151,33 @@ public sealed class MongoDbResourceProvider : IMcpResourceProvider
             if (slowWithIndex.Count >= 50) break;
         }
 
+        // What the limiter is holding right now — grouped so a flood is legible. Filters render lazily here
+        // (diagnostics path), never on the execution hot path.
+        const int maxQueueGroups = 100;
+        var now = DateTime.UtcNow;
+        var inFlight = _monitor.GetInFlightCalls();
+        var queueGroups = inFlight
+            .GroupBy(c => new { c.ConfigurationName, c.DatabaseName, c.CollectionName, c.FunctionName, Operation = c.Operation.ToString(), c.Filter })
+            .Select(g => new
+            {
+                configuration = g.Key.ConfigurationName,
+                database = g.Key.DatabaseName,
+                collection = g.Key.CollectionName,
+                function = g.Key.FunctionName,
+                operation = g.Key.Operation,
+                filter = g.Key.Filter,
+                total = g.Count(),
+                queued = g.Count(x => !x.IsExecuting),
+                executing = g.Count(x => x.IsExecuting),
+                oldestQueuedSeconds = g.Where(x => !x.IsExecuting)
+                    .Select(x => (now - x.EnqueuedUtc).TotalSeconds)
+                    .DefaultIfEmpty(0)
+                    .Max(),
+            })
+            .OrderByDescending(x => x.queued)
+            .ThenByDescending(x => x.total)
+            .ToArray();
+
         var payload = new
         {
             recentCalls,
@@ -158,6 +186,14 @@ public sealed class MongoDbResourceProvider : IMcpResourceProvider
             errorSummary,
             slowCallsWithIndex = slowWithIndex,
             connectionPool = _monitor.GetConnectionPoolState(),
+            inFlightCalls = new
+            {
+                total = inFlight.Count,
+                queued = inFlight.Count(c => !c.IsExecuting),
+                executing = inFlight.Count(c => c.IsExecuting),
+                groupsTruncatedTo = queueGroups.Length > maxQueueGroups ? maxQueueGroups : (int?)null,
+                groups = queueGroups.Take(maxQueueGroups).ToArray(),
+            },
         };
 
         return new McpResourceContent

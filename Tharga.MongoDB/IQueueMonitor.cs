@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Tharga.MongoDB.Disk;
 
 namespace Tharga.MongoDB;
 
@@ -14,6 +15,36 @@ public interface IQueueMonitor
     /// carrying the configuration name(s) that have used it. Reading resets the per-pool wait-time high-water mark.
     /// </summary>
     IReadOnlyList<PoolQueueState> GetPerPoolState();
+
+    /// <summary>
+    /// The calls currently in the limiter — both queued (waiting for a pool slot) and executing. Intended for
+    /// on-demand diagnostics (e.g. via MCP): the query filter, if any, is rendered while building this list, not
+    /// on the execution path. Empty when the limiter is disabled.
+    /// </summary>
+    IReadOnlyList<InFlightCallInfo> GetInFlightCalls();
+}
+
+/// <summary>
+/// A single call currently held by the limiter — either queued (waiting for a connection-pool slot) or executing.
+/// </summary>
+public record InFlightCallInfo
+{
+    public required Guid CallKey { get; init; }
+    public required string ServerKey { get; init; }
+    public string ConfigurationName { get; init; }
+    public string DatabaseName { get; init; }
+    public string CollectionName { get; init; }
+    public string FunctionName { get; init; }
+    public Operation Operation { get; init; }
+
+    /// <summary>True once the call has acquired a pool slot and is running; false while still queued.</summary>
+    public required bool IsExecuting { get; init; }
+
+    /// <summary>When the call entered the limiter (UTC).</summary>
+    public required DateTime EnqueuedUtc { get; init; }
+
+    /// <summary>The rendered query filter, if one was supplied and could be rendered; otherwise null.</summary>
+    public string Filter { get; init; }
 }
 
 /// <summary>

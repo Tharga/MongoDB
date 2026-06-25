@@ -11,6 +11,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
 using Tharga.MongoDB.Configuration;
+using Tharga.MongoDB.Disk;
 using Tharga.MongoDB.Internals;
 using Xunit;
 
@@ -24,13 +25,21 @@ public class PerPoolQueueMetricTests
         new(Mock.Of<IOptions<ExecuteLimiterOptions>>(x => x.Value == new ExecuteLimiterOptions { Enabled = true }),
             NullLogger<ExecuteLimiter>.Instance);
 
+    private static ExecuteCallContext CtxFor(string configurationName) => new()
+    {
+        CallKey = Guid.NewGuid(),
+        ConfigurationName = configurationName,
+        FunctionName = "test",
+        Operation = Operation.Read,
+    };
+
     [Fact]
     public async Task GetPerPoolState_SplitsByServerKey_AndTagsConfiguration()
     {
         var limiter = CreateLimiter();
 
-        await limiter.ExecuteAsync(_ => Task.FromResult(0), "cluster-A", "cfgA", 100, CancellationToken.None);
-        await limiter.ExecuteAsync(_ => Task.FromResult(0), "cluster-B", "cfgB", 100, CancellationToken.None);
+        await limiter.ExecuteAsync(_ => Task.FromResult(0), "cluster-A", 100, CtxFor("cfgA"), CancellationToken.None);
+        await limiter.ExecuteAsync(_ => Task.FromResult(0), "cluster-B", 100, CtxFor("cfgB"), CancellationToken.None);
 
         var pools = limiter.GetPerPoolState();
 
@@ -44,8 +53,8 @@ public class PerPoolQueueMetricTests
     {
         var limiter = CreateLimiter();
 
-        await limiter.ExecuteAsync(_ => Task.FromResult(0), "shared-cluster", "cfg1", 100, CancellationToken.None);
-        await limiter.ExecuteAsync(_ => Task.FromResult(0), "shared-cluster", "cfg2", 100, CancellationToken.None);
+        await limiter.ExecuteAsync(_ => Task.FromResult(0), "shared-cluster", 100, CtxFor("cfg1"), CancellationToken.None);
+        await limiter.ExecuteAsync(_ => Task.FromResult(0), "shared-cluster", 100, CtxFor("cfg2"), CancellationToken.None);
 
         var pools = limiter.GetPerPoolState();
 

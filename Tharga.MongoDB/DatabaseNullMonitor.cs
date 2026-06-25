@@ -122,6 +122,8 @@ internal class DatabaseNullMonitor : IDatabaseMonitor
 
     public IReadOnlyDictionary<string, ConnectionPoolStateDto> GetPerPoolQueueState() => new Dictionary<string, ConnectionPoolStateDto>();
 
+    public IReadOnlyList<InFlightCallInfo> GetInFlightCalls() => Array.Empty<InFlightCallInfo>();
+
     public void ResetCalls() { }
 
     public Task ResetAsync() => Task.CompletedTask;

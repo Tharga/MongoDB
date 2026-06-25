@@ -183,4 +183,10 @@ public interface IDatabaseMonitor
     /// (the configuration name(s) routing through that pool).
     /// </summary>
     IReadOnlyDictionary<string, ConnectionPoolStateDto> GetPerPoolQueueState();
+
+    /// <summary>
+    /// The calls the local limiter is currently holding (queued or executing) — for diagnosing a flood.
+    /// Remote agents are not aggregated here; query each agent's own monitor for its in-flight calls.
+    /// </summary>
+    IReadOnlyList<InFlightCallInfo> GetInFlightCalls();
 }

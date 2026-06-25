@@ -1104,6 +1104,8 @@ internal class DatabaseMonitor : IDatabaseMonitor
         return result;
     }
 
+    public IReadOnlyList<InFlightCallInfo> GetInFlightCalls() => _queueMonitor.GetInFlightCalls();
+
     private static string BuildPoolLabel(IReadOnlyCollection<string> configurationNames, string serverKey, string source, bool multiSource)
     {
         var baseLabel = configurationNames is { Count: > 0 }

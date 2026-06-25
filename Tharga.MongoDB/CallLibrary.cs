@@ -20,6 +20,9 @@ internal class CallLibrary : ICallLibrary
     private readonly ConcurrentDictionary<string, int> _callCounts = new();
     private readonly ConcurrentDictionary<string, int> _callCountsBySuffix = new();
     private readonly ConcurrentDictionary<Guid, DateTime> _completedAt = new();
+    // In-flight (not-yet-final) calls, kept separate from the capped "recent" ring so a long-queued call is
+    // never evicted while it is still running — otherwise a flood pushes the stuck calls out of view.
+    private readonly ConcurrentDictionary<Guid, CallInfo> _inFlightCalls = new();
     private static readonly TimeSpan CompletedRetention = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan ThrottleInterval = TimeSpan.FromMilliseconds(500);
     private int _throttlePending;
@@ -54,6 +57,7 @@ internal class CallLibrary : ICallLibrary
         };
 
         _calls.TryAdd(e.CallKey, info);
+        _inFlightCalls.TryAdd(e.CallKey, info);
         _recentCalls.Enqueue(e.CallKey);
 
         while (_recentCalls.Count > _options.Monitor.LastCallsToKeep)
@@ -87,6 +91,7 @@ internal class CallLibrary : ICallLibrary
             if (e.Final)
             {
                 _completedAt.TryAdd(e.CallKey, DateTime.UtcNow);
+                _inFlightCalls.TryRemove(e.CallKey, out _);
             }
         }
 
@@ -120,8 +125,18 @@ internal class CallLibrary : ICallLibrary
             }
         }
 
-        // Return ongoing + recently completed
-        return _calls.Values.Where(x => !x.Final || _completedAt.ContainsKey(x.Key));
+        // In-flight calls come from their own store (never evicted while running, so a flood can't hide the
+        // stuck ones), plus the short tail of recently completed calls from the capped recent ring.
+        var result = new Dictionary<Guid, CallInfo>();
+        foreach (var call in _inFlightCalls.Values)
+        {
+            result[call.Key] = call;
+        }
+        foreach (var key in _completedAt.Keys)
+        {
+            if (_calls.TryGetValue(key, out var call)) result[key] = call;
+        }
+        return result.Values;
     }
 
     public CallInfo GetCall(Guid key)

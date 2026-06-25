@@ -142,7 +142,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                 if (operation == Operation.Delete && session == null) await DropEmptyAsync(collection);
 
                 return response;
-            }, _mongoDbService.GetServerKey(), _mongoDbService.GetConfigurationName(), _mongoDbService.GetMaxConnectionPoolSize(), cancellationToken);
+            }, _mongoDbService.GetServerKey(), _mongoDbService.GetMaxConnectionPoolSize(), BuildCallContext(callKey, functionName, operation, filter), cancellationToken);
 
             count = response.Result.Count;
             return response.Result.Data;
@@ -208,6 +208,37 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         {
             Timestamp = Stopwatch.GetTimestamp(),
             Step = nameof(FireCallStartEvent)
+        };
+    }
+
+    // Metadata handed to the limiter so it can report what is queued vs executing. The filter renders lazily
+    // (only when in-flight calls are inspected, e.g. via MCP) using the default serializer registry, so it is
+    // available while the call is still queued — without touching the collection.
+    private ExecuteCallContext BuildCallContext(Guid callKey, string functionName, Operation operation, FilterDefinition<TEntity> filter)
+    {
+        return new ExecuteCallContext
+        {
+            CallKey = callKey,
+            ConfigurationName = ConfigurationName ?? Constants.DefaultConfigurationName,
+            DatabaseName = DatabaseName,
+            CollectionName = CollectionName,
+            FunctionName = functionName,
+            Operation = operation,
+            FilterProvider = BuildQueuedFilterProvider(filter),
+        };
+    }
+
+    private static Func<string> BuildQueuedFilterProvider(FilterDefinition<TEntity> filter)
+    {
+        if (filter == null) return null;
+        return () =>
+        {
+            try
+            {
+                var serializer = BsonSerializer.LookupSerializer<TEntity>();
+                return filter.Render(new RenderArgs<TEntity>(serializer, BsonSerializer.SerializerRegistry)).ToJson();
+            }
+            catch { return null; }
         };
     }
 
@@ -1083,7 +1114,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         {
             try
             {
-                var setup = await OpenCursorWithinLimiterAsync(queryFactory, filterForObservability, steps, cancellationToken);
+                var setup = await OpenCursorWithinLimiterAsync(queryFactory, filterForObservability, steps, callKey, functionName, cancellationToken);
                 cursor = setup.Cursor;
                 collection = setup.Collection;
                 filterJsonProvider = setup.FilterJsonProvider;
@@ -1101,7 +1132,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                 bool hasMore;
                 try
                 {
-                    hasMore = await MoveNextWithinLimiterAsync(cursor, cancellationToken);
+                    hasMore = await MoveNextWithinLimiterAsync(cursor, callKey, functionName, cancellationToken);
                 }
                 catch (Exception e)
                 {
@@ -1157,6 +1188,8 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         Func<IMongoCollection<TEntity>, CancellationToken, Task<IAsyncCursor<T>>> queryFactory,
         FilterDefinition<TEntity> filterForObservability,
         List<StepResponse> steps,
+        Guid callKey,
+        string functionName,
         CancellationToken cancellationToken)
     {
         Func<string> filterJsonProvider = null;
@@ -1214,14 +1247,14 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             steps.Add(new StepResponse { Timestamp = openEndTimestamp, Step = "OpenCursor", Message = openMessage });
 
             return (cur, c);
-        }, _mongoDbService.GetServerKey(), _mongoDbService.GetConfigurationName(), _mongoDbService.GetMaxConnectionPoolSize(), cancellationToken);
+        }, _mongoDbService.GetServerKey(), _mongoDbService.GetMaxConnectionPoolSize(), BuildCallContext(callKey, functionName, Operation.Read, filterForObservability), cancellationToken);
 
         return (response.Result.cur, response.Result.c, filterJsonProvider, explainProvider);
     }
 
-    private async Task<bool> MoveNextWithinLimiterAsync<T>(IAsyncCursor<T> cursor, CancellationToken cancellationToken)
+    private async Task<bool> MoveNextWithinLimiterAsync<T>(IAsyncCursor<T> cursor, Guid callKey, string functionName, CancellationToken cancellationToken)
     {
-        var response = await _databaseExecutor.ExecuteAsync(ct => cursor.MoveNextAsync(ct), _mongoDbService.GetServerKey(), _mongoDbService.GetConfigurationName(), _mongoDbService.GetMaxConnectionPoolSize(), cancellationToken);
+        var response = await _databaseExecutor.ExecuteAsync(ct => cursor.MoveNextAsync(ct), _mongoDbService.GetServerKey(), _mongoDbService.GetMaxConnectionPoolSize(), BuildCallContext(callKey, functionName, Operation.Read, null), cancellationToken);
         return response.Result;
     }
 
