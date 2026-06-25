@@ -84,6 +84,7 @@ public class McpProviderTests
         _monitorMock.Setup(m => m.GetCallSummary()).Returns(Array.Empty<CallSummaryDto>());
         _monitorMock.Setup(m => m.GetErrorSummary()).Returns(Array.Empty<ErrorSummaryDto>());
         _monitorMock.Setup(m => m.GetSlowCallsWithIndexInfoAsync()).Returns(EmptyAsyncEnumerable<SlowCallWithIndexInfoDto>());
+        _monitorMock.Setup(m => m.GetInFlightCalls()).Returns(Array.Empty<InFlightCallInfo>());
         _monitorMock.Setup(m => m.GetConnectionPoolState()).Returns(new ConnectionPoolStateDto
         {
             QueueCount = 0,
