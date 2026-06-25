@@ -8,7 +8,7 @@
         @foreach (var source in _sourceStates)
         {
             <RadzenColumn Size="2">
-                <RadzenText TextStyle="TextStyle.Caption" Text="@source.Key" />
+                <RadzenText TextStyle="TextStyle.Caption" Text="@(source.Value.Label ?? source.Key)" />
                 <RadzenText TextStyle="TextStyle.Subtitle1" Text="@($"Queue: {source.Value.QueueCount}  Exec: {source.Value.ExecutingCount}")" />
             </RadzenColumn>
         }
@@ -18,7 +18,7 @@
     <RadzenChart Style="height: 250px;">
         @foreach (var source in _sourceSlots)
         {
-            <RadzenLineSeries Data="@source.Value" CategoryProperty="SlotIndex" ValueProperty="QueueCount" Title="@source.Key" LineType="LineType.Solid" Smooth="true">
+            <RadzenLineSeries Data="@source.Value" CategoryProperty="SlotIndex" ValueProperty="QueueCount" Title="@LabelFor(source.Key)" LineType="LineType.Solid" Smooth="true">
                 <RadzenMarkers MarkerType="MarkerType.None" />
             </RadzenLineSeries>
         }
@@ -33,7 +33,7 @@
     <RadzenChart Style="height: 250px;">
         @foreach (var source in _sourceSlots)
         {
-            <RadzenLineSeries Data="@source.Value" CategoryProperty="SlotIndex" ValueProperty="WaitTimeSec" Title="@source.Key" LineType="LineType.Solid" Smooth="true">
+            <RadzenLineSeries Data="@source.Value" CategoryProperty="SlotIndex" ValueProperty="WaitTimeSec" Title="@LabelFor(source.Key)" LineType="LineType.Solid" Smooth="true">
                 <RadzenMarkers MarkerType="MarkerType.None" />
             </RadzenLineSeries>
         }
@@ -55,8 +55,12 @@
     private IAsyncDisposable _subscription;
 
     private readonly Dictionary<string, RingBuffer> _rings = new();
+    private readonly Dictionary<string, string> _labels = new();
     private Dictionary<string, List<Slot>> _sourceSlots = new();
     private Dictionary<string, ConnectionPoolStateDto> _sourceStates = new();
+
+    // The pool key is unique ("{source}::{serverKey}"); display the friendly label (config name(s)) instead.
+    private string LabelFor(string key) => _labels.TryGetValue(key, out var label) ? label : key;
 
     protected override async Task OnInitializedAsync()
     {
@@ -83,18 +87,20 @@
 
         try
         {
-            var perSource = DatabaseMonitor.GetPerSourceQueueState();
+            var perPool = DatabaseMonitor.GetPerPoolQueueState();
 
             await InvokeAsync(() =>
             {
-                _sourceStates = new Dictionary<string, ConnectionPoolStateDto>(perSource);
+                _sourceStates = new Dictionary<string, ConnectionPoolStateDto>(perPool);
 
-                foreach (var (source, poolState) in perSource)
+                foreach (var (poolKey, poolState) in perPool)
                 {
-                    if (!_rings.ContainsKey(source))
-                        _rings[source] = new RingBuffer(TotalSlots);
+                    _labels[poolKey] = poolState.Label ?? poolKey;
 
-                    _rings[source].Add(poolState.QueueCount, poolState.LastWaitTimeMs);
+                    if (!_rings.ContainsKey(poolKey))
+                        _rings[poolKey] = new RingBuffer(TotalSlots);
+
+                    _rings[poolKey].Add(poolState.QueueCount, poolState.LastWaitTimeMs);
                 }
 
                 BuildAllSlots();

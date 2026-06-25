@@ -19,7 +19,10 @@ public sealed class MonitorQueueMetricHandler : PostMessageHandlerBase<MonitorQu
 
     public override Task Handle(MonitorQueueMetricMessage message)
     {
-        _databaseMonitor.IngestQueueMetric(message.SourceName, message.QueueCount, message.ExecutingCount, message.WaitTimeMs);
+        if (message.Pools is { Count: > 0 })
+            _databaseMonitor.IngestQueueMetric(message.SourceName, message.Pools);
+        else
+            _databaseMonitor.IngestQueueMetric(message.SourceName, message.QueueCount, message.ExecutingCount, message.WaitTimeMs);
         return Task.CompletedTask;
     }
 }

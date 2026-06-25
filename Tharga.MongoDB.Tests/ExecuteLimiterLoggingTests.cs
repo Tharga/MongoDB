@@ -11,6 +11,7 @@ namespace Tharga.MongoDB.Tests;
 public class ExecuteLimiterLoggingTests
 {
     private const string ServerKey = "test-server";
+    private const string ConfigName = "test-config";
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(5);
 
     private static ExecuteLimiter CreateLimiter(ILogger<ExecuteLimiter> logger)
@@ -40,11 +41,11 @@ public class ExecuteLimiterLoggingTests
         // Block the single concurrency slot so the next two operations pile up in the queue,
         // driving queuedCount past the > 1 threshold that emits the "Queued ..." message.
         var gate = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var blocking = limiter.ExecuteAsync(async _ => { await gate.Task; return 0; }, ServerKey, maxConnectionPoolSize: 100, CancellationToken.None);
+        var blocking = limiter.ExecuteAsync(async _ => { await gate.Task; return 0; }, ServerKey, ConfigName, maxConnectionPoolSize: 100, CancellationToken.None);
         await SpinUntil(() => limiter.GetCurrentState().ExecutingCount == 1);
 
-        var waiterA = limiter.ExecuteAsync(_ => Task.FromResult(1), ServerKey, maxConnectionPoolSize: 100, CancellationToken.None);
-        var waiterB = limiter.ExecuteAsync(_ => Task.FromResult(2), ServerKey, maxConnectionPoolSize: 100, CancellationToken.None);
+        var waiterA = limiter.ExecuteAsync(_ => Task.FromResult(1), ServerKey, ConfigName, maxConnectionPoolSize: 100, CancellationToken.None);
+        var waiterB = limiter.ExecuteAsync(_ => Task.FromResult(2), ServerKey, ConfigName, maxConnectionPoolSize: 100, CancellationToken.None);
         await SpinUntil(() => limiter.GetCurrentState().QueueCount >= 2);
 
         gate.SetResult(0);

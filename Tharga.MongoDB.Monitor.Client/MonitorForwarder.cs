@@ -176,7 +176,12 @@ internal sealed class MonitorForwarder : IHostedService, IDisposable
             if (!_clientCommunication.IsConnected) return;
             if (!_clientCommunication.HasSubscribers<LiveMonitoringMarker>()) return;
 
-            var (queueCount, executingCount, lastWaitTimeMs) = _queueMonitor.GetCurrentState();
+            var pools = _queueMonitor.GetPerPoolState();
+
+            // Aggregate scalars (back-compat for older servers + the activity guard below).
+            var queueCount = pools.Sum(p => p.QueueCount);
+            var executingCount = pools.Sum(p => p.ExecutingCount);
+            var lastWaitTimeMs = pools.Count == 0 ? 0 : pools.Max(p => p.LastWaitTimeMs);
 
             // Only send when there's activity to avoid unnecessary traffic
             if (queueCount == 0 && executingCount == 0 && lastWaitTimeMs == 0) return;
@@ -188,6 +193,14 @@ internal sealed class MonitorForwarder : IHostedService, IDisposable
                 QueueCount = queueCount,
                 ExecutingCount = executingCount,
                 WaitTimeMs = lastWaitTimeMs > 0 ? lastWaitTimeMs : null,
+                Pools = pools.Select(p => new PoolMetricDto
+                {
+                    ServerKey = p.ServerKey,
+                    ConfigurationNames = p.ConfigurationNames,
+                    QueueCount = p.QueueCount,
+                    ExecutingCount = p.ExecutingCount,
+                    WaitTimeMs = p.LastWaitTimeMs > 0 ? p.LastWaitTimeMs : null,
+                }).ToList(),
             });
         }
         catch (Exception ex)

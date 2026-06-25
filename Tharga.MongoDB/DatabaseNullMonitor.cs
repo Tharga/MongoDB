@@ -118,7 +118,9 @@ internal class DatabaseNullMonitor : IDatabaseMonitor
 
     public void IngestQueueMetric(string sourceName, int queueCount, int executingCount, double? waitTimeMs) { }
 
-    public IReadOnlyDictionary<string, ConnectionPoolStateDto> GetPerSourceQueueState() => new Dictionary<string, ConnectionPoolStateDto>();
+    public void IngestQueueMetric(string sourceName, IReadOnlyList<PoolMetricDto> pools) { }
+
+    public IReadOnlyDictionary<string, ConnectionPoolStateDto> GetPerPoolQueueState() => new Dictionary<string, ConnectionPoolStateDto>();
 
     public void ResetCalls() { }
 

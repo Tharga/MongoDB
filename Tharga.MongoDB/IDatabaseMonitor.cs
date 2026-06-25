@@ -167,12 +167,20 @@ public interface IDatabaseMonitor
     IReadOnlyDictionary<string, int> GetSubscriptions();
 
     /// <summary>
-    /// Ingest a queue metric snapshot from a remote agent.
+    /// Ingest a queue metric snapshot from a remote agent (legacy, aggregate-per-source form).
+    /// Stored as a single synthetic pool so pre-per-pool agents still surface a line.
     /// </summary>
     void IngestQueueMetric(string sourceName, int queueCount, int executingCount, double? waitTimeMs);
 
     /// <summary>
-    /// Get per-source queue state for all known sources (local + remote).
+    /// Ingest a per-pool queue metric snapshot from a remote agent.
     /// </summary>
-    IReadOnlyDictionary<string, ConnectionPoolStateDto> GetPerSourceQueueState();
+    void IngestQueueMetric(string sourceName, IReadOnlyList<PoolMetricDto> pools);
+
+    /// <summary>
+    /// Get per-connection-pool queue state for all known sources (local + remote). Keyed by a unique
+    /// <c>"{source}::{serverKey}"</c> key; each value carries a display <see cref="ConnectionPoolStateDto.Label"/>
+    /// (the configuration name(s) routing through that pool).
+    /// </summary>
+    IReadOnlyDictionary<string, ConnectionPoolStateDto> GetPerPoolQueueState();
 }

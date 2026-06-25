@@ -36,6 +36,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, System.Collections.Concurrent.ConcurrentDictionary<string, bool>> _collectionSources = new();
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> _sourceToConnectionId = new();
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, RemoteQueueState> _remoteQueueStates = new();
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, IReadOnlyList<PoolMetricDto>> _remotePoolStates = new();
 
     public event EventHandler<CollectionInfoChangedEventArgs> CollectionInfoChangedEvent;
     public event EventHandler<CollectionDroppedEventArgs> CollectionDroppedEvent;
@@ -1017,6 +1018,8 @@ internal class DatabaseMonitor : IDatabaseMonitor
 
     public void IngestQueueMetric(string sourceName, int queueCount, int executingCount, double? waitTimeMs)
     {
+        // Legacy aggregate-per-source form. Keep the aggregate (drives GetMonitorClientDetail) and
+        // store it as a single synthetic pool so it still surfaces a line in GetPerPoolQueueState.
         _remoteQueueStates[sourceName] = new RemoteQueueState
         {
             QueueCount = queueCount,
@@ -1024,29 +1027,90 @@ internal class DatabaseMonitor : IDatabaseMonitor
             LastWaitTimeMs = waitTimeMs ?? 0,
             Timestamp = DateTime.UtcNow,
         };
+        _remotePoolStates[sourceName] = new[]
+        {
+            new PoolMetricDto
+            {
+                ServerKey = string.Empty,
+                ConfigurationNames = Array.Empty<string>(),
+                QueueCount = queueCount,
+                ExecutingCount = executingCount,
+                WaitTimeMs = waitTimeMs,
+            }
+        };
     }
 
-    public IReadOnlyDictionary<string, ConnectionPoolStateDto> GetPerSourceQueueState()
+    public void IngestQueueMetric(string sourceName, IReadOnlyList<PoolMetricDto> pools)
+    {
+        pools ??= Array.Empty<PoolMetricDto>();
+        _remotePoolStates[sourceName] = pools;
+        // Maintain the aggregate per-source view for GetMonitorClientDetail.
+        _remoteQueueStates[sourceName] = new RemoteQueueState
+        {
+            QueueCount = pools.Sum(p => p.QueueCount),
+            ExecutingCount = pools.Sum(p => p.ExecutingCount),
+            LastWaitTimeMs = pools.Count == 0 ? 0 : pools.Max(p => p.WaitTimeMs ?? 0),
+            Timestamp = DateTime.UtcNow,
+        };
+    }
+
+    public IReadOnlyDictionary<string, ConnectionPoolStateDto> GetPerPoolQueueState()
     {
         var result = new Dictionary<string, ConnectionPoolStateDto>();
 
-        // Local
         var localSource = _mongoDbServiceFactory.SourceName;
-        result[localSource] = GetConnectionPoolState();
+        var localPools = _queueMonitor.GetPerPoolState(); // reads + resets per-pool wait, so call once
 
-        // Remote
-        foreach (var (source, state) in _remoteQueueStates)
+        // Suffix labels with the source when more than one source actually contributes pools, to keep lines distinct.
+        var contributingSources = new HashSet<string>();
+        if (localPools.Count > 0) contributingSources.Add(localSource);
+        foreach (var (source, pools) in _remotePoolStates)
+            if (pools.Count > 0) contributingSources.Add(source);
+        var multiSource = contributingSources.Count > 1;
+
+        // Local — one entry per physical pool.
+        foreach (var pool in localPools)
         {
-            result[source] = new ConnectionPoolStateDto
+            var key = $"{localSource}::{pool.ServerKey}";
+            result[key] = new ConnectionPoolStateDto
             {
-                QueueCount = state.QueueCount,
-                ExecutingCount = state.ExecutingCount,
-                LastWaitTimeMs = state.LastWaitTimeMs,
+                QueueCount = pool.QueueCount,
+                ExecutingCount = pool.ExecutingCount,
+                LastWaitTimeMs = pool.LastWaitTimeMs,
                 RecentMetrics = [],
+                ConfigurationNames = pool.ConfigurationNames,
+                Label = BuildPoolLabel(pool.ConfigurationNames, pool.ServerKey, localSource, multiSource),
             };
         }
 
+        // Remote — one entry per reported pool.
+        foreach (var (source, pools) in _remotePoolStates)
+        {
+            foreach (var pool in pools)
+            {
+                var key = $"{source}::{pool.ServerKey}";
+                result[key] = new ConnectionPoolStateDto
+                {
+                    QueueCount = pool.QueueCount,
+                    ExecutingCount = pool.ExecutingCount,
+                    LastWaitTimeMs = pool.WaitTimeMs ?? 0,
+                    RecentMetrics = [],
+                    ConfigurationNames = pool.ConfigurationNames,
+                    Label = BuildPoolLabel(pool.ConfigurationNames, pool.ServerKey, source, multiSource),
+                };
+            }
+        }
+
         return result;
+    }
+
+    private static string BuildPoolLabel(IReadOnlyCollection<string> configurationNames, string serverKey, string source, bool multiSource)
+    {
+        var baseLabel = configurationNames is { Count: > 0 }
+            ? string.Join(", ", configurationNames.OrderBy(x => x, StringComparer.Ordinal))
+            : string.IsNullOrEmpty(serverKey) ? source : serverKey;
+
+        return multiSource ? $"{baseLabel} @ {source}" : baseLabel;
     }
 
     private record RemoteQueueState

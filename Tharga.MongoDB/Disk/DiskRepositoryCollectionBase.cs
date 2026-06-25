@@ -142,7 +142,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                 if (operation == Operation.Delete && session == null) await DropEmptyAsync(collection);
 
                 return response;
-            }, _mongoDbService.GetServerKey(), _mongoDbService.GetMaxConnectionPoolSize(), cancellationToken);
+            }, _mongoDbService.GetServerKey(), _mongoDbService.GetConfigurationName(), _mongoDbService.GetMaxConnectionPoolSize(), cancellationToken);
 
             count = response.Result.Count;
             return response.Result.Data;
@@ -1214,14 +1214,14 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             steps.Add(new StepResponse { Timestamp = openEndTimestamp, Step = "OpenCursor", Message = openMessage });
 
             return (cur, c);
-        }, _mongoDbService.GetServerKey(), _mongoDbService.GetMaxConnectionPoolSize(), cancellationToken);
+        }, _mongoDbService.GetServerKey(), _mongoDbService.GetConfigurationName(), _mongoDbService.GetMaxConnectionPoolSize(), cancellationToken);
 
         return (response.Result.cur, response.Result.c, filterJsonProvider, explainProvider);
     }
 
     private async Task<bool> MoveNextWithinLimiterAsync<T>(IAsyncCursor<T> cursor, CancellationToken cancellationToken)
     {
-        var response = await _databaseExecutor.ExecuteAsync(ct => cursor.MoveNextAsync(ct), _mongoDbService.GetServerKey(), _mongoDbService.GetMaxConnectionPoolSize(), cancellationToken);
+        var response = await _databaseExecutor.ExecuteAsync(ct => cursor.MoveNextAsync(ct), _mongoDbService.GetServerKey(), _mongoDbService.GetConfigurationName(), _mongoDbService.GetMaxConnectionPoolSize(), cancellationToken);
         return response.Result;
     }
 

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
@@ -35,7 +36,7 @@ internal class ExecuteLimiter : IExecuteLimiter, IQueueMonitor
         _maxConcurrentOverride = options.Value.MaxConcurrent;
     }
 
-    public async Task<(T Result, ExecuteInfo Info)> ExecuteAsync<T>(Func<CancellationToken, Task<T>> action, string serverKey, int maxConnectionPoolSize, CancellationToken cancellationToken)
+    public async Task<(T Result, ExecuteInfo Info)> ExecuteAsync<T>(Func<CancellationToken, Task<T>> action, string serverKey, string configurationName, int maxConnectionPoolSize, CancellationToken cancellationToken)
     {
         if (!_enabled)
         {
@@ -55,6 +56,7 @@ internal class ExecuteLimiter : IExecuteLimiter, IQueueMonitor
         }
 
         var state = _states.GetOrAdd(serverKey, _ => new PerPoolState(maxConcurrent));
+        state.TagConfiguration(configurationName);
 
         var queuedAt = Stopwatch.GetTimestamp();
 
@@ -104,6 +106,7 @@ internal class ExecuteLimiter : IExecuteLimiter, IQueueMonitor
                 if (Interlocked.CompareExchange(ref _lastWaitTimeMs, waitMs, current) == current) break;
                 spin.SpinOnce();
             }
+            state.RecordWait(waitMs);
 
             RecordMetric(state.GetQueued(), executingCount, queueElapsed);
 
@@ -155,6 +158,23 @@ internal class ExecuteLimiter : IExecuteLimiter, IQueueMonitor
         );
     }
 
+    public IReadOnlyList<PoolQueueState> GetPerPoolState()
+    {
+        var result = new List<PoolQueueState>(_states.Count);
+        foreach (var (serverKey, state) in _states)
+        {
+            result.Add(new PoolQueueState
+            {
+                ServerKey = serverKey,
+                ConfigurationNames = state.GetConfigurations(),
+                QueueCount = state.GetQueued(),
+                ExecutingCount = state.GetExecuting(),
+                LastWaitTimeMs = state.GetAndResetWait(),
+            });
+        }
+        return result;
+    }
+
     private void RecordMetric(int queueCount, int executingCount, TimeSpan? waitTime)
     {
         var metric = new QueueMetricEventArgs
@@ -191,6 +211,8 @@ internal class ExecuteLimiter : IExecuteLimiter, IQueueMonitor
 
         private int _queued;
         private int _executing;
+        private double _lastWaitTimeMs;
+        private readonly ConcurrentDictionary<string, bool> _configurationNames = new();
 
         public PerPoolState(int maxConcurrent)
         {
@@ -204,5 +226,29 @@ internal class ExecuteLimiter : IExecuteLimiter, IQueueMonitor
         public int IncrementExecuting() => Interlocked.Increment(ref _executing);
         public int DecrementExecuting() => Interlocked.Decrement(ref _executing);
         public int GetExecuting() => Volatile.Read(ref _executing);
+
+        public void TagConfiguration(string configurationName)
+        {
+            if (!string.IsNullOrEmpty(configurationName))
+                _configurationNames.TryAdd(configurationName, true);
+        }
+
+        public IReadOnlyCollection<string> GetConfigurations() => _configurationNames.Keys.ToArray();
+
+        // Track the wait-time high-water mark since the last read (take the max, reset on read),
+        // mirroring the global _lastWaitTimeMs semantics.
+        public void RecordWait(double waitMs)
+        {
+            SpinWait spin = default;
+            while (true)
+            {
+                var current = Volatile.Read(ref _lastWaitTimeMs);
+                if (waitMs <= current) break;
+                if (Interlocked.CompareExchange(ref _lastWaitTimeMs, waitMs, current) == current) break;
+                spin.SpinOnce();
+            }
+        }
+
+        public double GetAndResetWait() => Interlocked.Exchange(ref _lastWaitTimeMs, 0);
     }
 }
