@@ -733,10 +733,15 @@ Set `StorageMode` to control where the monitor keeps its state.
     "Enabled": true,
     "StorageMode": "Database",
     "LastCallsToKeep": 1000,
-    "SlowCallsToKeep": 200
+    "SlowCallsToKeep": 200,
+    "ForwardCompletedCalls": false,
+    "QueueMetricInterval": "00:00:01",
+    "ClusterConnectionLimit": 3000
   }
 }
 ```
+
+`ForwardCompletedCalls` (default `false`) and `QueueMetricInterval` apply to agents forwarding to a central monitor; `ClusterConnectionLimit` is read by the central server to show open connections against a cluster's limit. See [Centralised monitoring](#centralised-monitoring) and the [monitoring docs](https://github.com/Tharga/MongoDB/blob/master/docs/articles/monitoring.md).
 
 #### Configuration by code
 ```csharp
@@ -747,7 +752,10 @@ services.AddMongoDB(o =>
         Enabled = true,
         StorageMode = MonitorStorageMode.Database,
         LastCallsToKeep = 1000,
-        SlowCallsToKeep = 200
+        SlowCallsToKeep = 200,
+        ForwardCompletedCalls = false,        // opt-in: forward every completed call to the central monitor
+        QueueMetricInterval = TimeSpan.FromSeconds(1),
+        ClusterConnectionLimit = 3000         // e.g. an Atlas tier's max connections (server-side)
     };
 });
 ```
@@ -948,7 +956,10 @@ app.MapGet("/api/monitor/pool", (IDatabaseMonitor m) => m.GetConnectionPoolState
 | `GetCallSummary()` | `CallSummaryDto[]` | Grouped by collection+function: count, avg/max/min elapsed |
 | `GetErrorSummary()` | `ErrorSummaryDto[]` | Errors grouped by type and collection |
 | `GetSlowCallsWithIndexInfoAsync()` | `SlowCallWithIndexInfoDto[]` | Slow calls with index coverage analysis |
-| `GetConnectionPoolState()` | `ConnectionPoolStateDto` | Queue depth, executing count, wait time, recent metrics |
+| `GetConnectionPoolState()` | `ConnectionPoolStateDto` | Aggregate queue depth, executing count, wait time, recent metrics |
+| `GetPerPoolQueueState()` | `IReadOnlyDictionary<string, ConnectionPoolStateDto>` | Queue/exec per connection pool (per cluster), across this process and all agents — one entry per source+pool, labelled by configuration |
+| `GetInFlightCalls()` | `InFlightCallInfo[]` | What the limiter is holding right now (queued vs executing) — for diagnosing a flood |
+| `GetClusterConnectionSummary()` | `ClusterConnectionSummary[]` | Open connections + capacity per cluster across all sources, vs the configured `ClusterConnectionLimit` |
 
 ---
 
@@ -992,7 +1003,7 @@ Each tool/resource is tagged below with its required level. Anything above the c
 |---|---|---|
 | `mongodb://collections` | Metadata | List of collections with stats, index info, and clean status |
 | `mongodb://clients` | Metadata | Connected remote monitoring agents |
-| `mongodb://monitoring` | DataRead | Recent and slow calls, summaries, error summary, connection pool state — calls embed filter values |
+| `mongodb://monitoring` | DataRead | Recent and slow calls, summaries, error summary, connection pool state, and `inFlightCalls` (queued vs executing, grouped by collection/function/filter) — calls embed filter values |
 
 ### Tools (System scope)
 | Tool | Level | Args |
@@ -1277,6 +1288,8 @@ builder.AddMongoDB(o =>
 |---|---|---|
 | `Enabled` | `true` | Enable or disable the limiter. |
 | `MaxConcurrent` | `null` (auto) | Maximum concurrent operations per connection pool. When `null`, auto-detected from `MaxConnectionPoolSize`. Capped at the pool size even if set higher — a warning is logged in that case. |
+
+The monitor surfaces the limiter **per pool** (one per cluster): queue/exec and depth/wait graphs per pool, what is queued vs executing right now (`GetInFlightCalls()` / the MCP `inFlightCalls` resource), and actual open connections per cluster vs a configured limit (`GetClusterConnectionSummary()` + `Monitor.ClusterConnectionLimit`). See the [monitoring docs](https://github.com/Tharga/MongoDB/blob/master/docs/articles/monitoring.md).
 
 ---
 

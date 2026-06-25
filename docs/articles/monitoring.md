@@ -17,12 +17,21 @@ Configure via `appsettings.json`:
     "Enabled": true,
     "StorageMode": "Database",
     "LastCallsToKeep": 1000,
-    "SlowCallsToKeep": 200
+    "SlowCallsToKeep": 200,
+    "ForwardCompletedCalls": false,
+    "QueueMetricInterval": "00:00:01",
+    "ClusterConnectionLimit": 3000
   }
 }
 ```
 
 Or by code via `services.AddMongoDB(o => o.Monitor = new MonitorOptions { ... })`.
+
+| Option | Where | Default | Purpose |
+|---|---|---|---|
+| `ForwardCompletedCalls` | Agent | `false` | Forward every completed call to the central monitor. Off by default — it is a large, continuous stream proportional to database activity. See [Centralised monitoring](#centralised-monitoring). |
+| `QueueMetricInterval` | Agent | `00:00:01` (1s) | How often a queue/connection snapshot is forwarded while someone is watching live. Larger = less chatter, coarser live graph. |
+| `ClusterConnectionLimit` | Server | `null` | A cluster's connection limit (e.g. an Atlas tier's max, often 3000). When set, the queue view shows total open connections as a fraction of it. See [Connection-pool usage](#connection-pool-queue-and-in-flight-calls). |
 
 ## Source identification
 
@@ -36,6 +45,34 @@ Enable driver-level command timing to see how much of "Action" time is real Mong
 - **Action**: `Driver: find 12.34ms | Other: 3.21ms`
 
 Useful for distinguishing slow database from slow serialization or application contention.
+
+## Connection pool, queue and in-flight calls
+
+Database operations pass through a per-pool concurrency limiter (one pool per cluster, keyed by the set of
+server hosts). The Blazor queue view surfaces this **per pool**, not as a single process-wide figure:
+
+- **Queue / Exec counters and the Queue-Depth / Wait-Time graphs** are drawn one line per pool, labelled by the
+  configuration name(s) routing through that pool. Configurations on separate clusters get their own lines;
+  configurations sharing a cluster collapse into one line (they share one connection pool). When agents are
+  connected, their pools appear as additional lines (source-suffixed), so local + remote are shown together.
+
+- **Connection-pool usage vs a limit.** The monitor counts the *actual* open MongoDB driver connections per
+  cluster (from the driver's connection-pool events) — this is what counts toward a cluster's connection limit,
+  unlike `Exec`, which is in-use operations only and ignores idle-but-open pooled connections. The queue view
+  shows, per cluster across **all sources (this server + every agent)**, the total open connections and the
+  total capacity (sum of each pool's `maxPoolSize`). Set `Monitor.ClusterConnectionLimit` (on the server) to your
+  cluster's limit (e.g. an Atlas tier's 3000) to see `open / limit` with a bar that warns as you approach it.
+  Read it via `IDatabaseMonitor.GetClusterConnectionSummary()`.
+
+  > Only monitored processes are counted — other clients (Compass, un-instrumented services) and the driver's
+  > per-process SDAM heartbeat connections are not. Treat the figure as a close lower bound on the cluster total.
+
+- **Inspecting the queue (in-flight calls).** When a flood stacks up behind the limiter, you can see exactly
+  *what* is queued vs executing — grouped by collection, function and (rendered on demand) filter — via the
+  [MCP monitoring resource](mcp-integration.md) and `IDatabaseMonitor.GetInFlightCalls()`. The Blazor *Ongoing*
+  call view shows in-flight calls too; these are tracked separately from the capped recent-call ring so a flood
+  no longer evicts the longest-queued calls from view. (In-flight detail is per-process: query an agent's own
+  MCP for its queued calls; the central server receives only the per-pool counts from agents.)
 
 ## Centralised monitoring
 
@@ -58,7 +95,7 @@ var app = builder.Build();
 app.UseMongoDbMonitorServer();
 ```
 
-Agents push call events fire-and-forget over [Tharga.Communication](https://www.nuget.org/packages/Tharga.Communication) (SignalR-backed). The server ingests them into its local `IDatabaseMonitor` so the [Blazor admin UI](https://www.nuget.org/packages/Tharga.MongoDB.Blazor) renders local + remote data side by side. When the server is unavailable or not configured, the agent has zero overhead.
+Agents push monitoring data fire-and-forget over [Tharga.Communication](https://www.nuget.org/packages/Tharga.Communication) (SignalR-backed). The server ingests it into its local `IDatabaseMonitor` so the [Blazor admin UI](https://www.nuget.org/packages/Tharga.MongoDB.Blazor) renders local + remote data side by side. When the server is unavailable or not configured, the agent has zero overhead. By default agents forward collection metadata and (while watched) per-pool queue/connection snapshots; forwarding of every completed call is opt-in via `Monitor.ForwardCompletedCalls` — see [What agents forward](#what-agents-forward-and-when).
 
 ## API key rotation
 
@@ -68,9 +105,15 @@ Configure both `primaryApiKey` and `secondaryApiKey` on the server during a rota
 
 When the server dashboard displays collections from remote agents, actions like *touch*, *drop index*, *restore index*, *clean* are automatically delegated to the agent that owns the collection. No extra configuration — if `Monitor.Client` and `Monitor.Server` are installed, it works out of the box.
 
-## Live subscriptions
+## What agents forward, and when
 
-Live data (queue depth, ongoing calls) is only forwarded when someone is actively viewing the relevant tab. Blazor components subscribe on mount and unsubscribe on dispose. Collection metadata and completed calls are always forwarded.
+| Data | When forwarded |
+|---|---|
+| Collection metadata (counts, sizes, indexes, clean status) | Always — a burst at connect, then on change. Small. |
+| Queue / connection per-pool snapshots | Only while someone is viewing the live queue tab (gated on an active subscription), at `QueueMetricInterval`. |
+| Completed calls | Only when `Monitor.ForwardCompletedCalls = true` (off by default). This is the large stream — leave it off unless you need per-call history on the central server. With it off, the agent's *Last/Slow calls* lists on the server stay empty (its queue/connection metrics and collection metadata still flow). |
+
+Blazor components subscribe to the live data on mount and unsubscribe on dispose, so queue/connection snapshots stop when no one is looking. Each agent reports its own forwarding configuration (call forwarding on/off, queue interval, storage mode) on connect; the **Clients** page shows it per agent (a *Call forwarding* badge, with the full set in the client detail dialog).
 
 ## Reset
 

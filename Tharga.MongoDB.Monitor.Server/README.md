@@ -22,8 +22,9 @@ Drop the Blazor admin components onto a page (see [`Tharga.MongoDB.Blazor`](http
 
 ## What it does
 
-- **Receives** call, collection-info, and queue-metric messages from connected agents.
-- **Tracks** each agent's connection state via `MonitorClientStateService` and `MonitorClientRepository` — the admin UI's `<ClientsView />` lists them.
+- **Receives** collection-info and per-pool queue/connection messages from connected agents (and completed calls when an agent opts in via `Monitor.ForwardCompletedCalls`).
+- **Aggregates connection usage per cluster** across the server and all agents, so the queue view can show total open connections vs a configured limit (`Monitor.ClusterConnectionLimit`).
+- **Tracks** each agent's connection state and reported config via `MonitorClientStateService` / `MonitorClientRepository` — the admin UI's `<ClientsView />` lists them with their forwarding settings.
 - **Bridges** agent connections into `IDatabaseMonitor` via `MonitorClientBridge`, so the calls/collections views render remote data alongside local data.
 - **Delegates remote actions** — admin tools can target a specific agent (e.g. *touch this collection on agent X*, *rebuild this index on agent Y*) through `IRemoteActionDispatcher`.
 - **Live monitoring subscriptions** — push live updates to subscribed clients via `ILiveMonitoringSubscription`.

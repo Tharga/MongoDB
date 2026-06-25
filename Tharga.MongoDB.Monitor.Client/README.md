@@ -28,11 +28,22 @@ If `sendTo` is null/empty the client is a no-op — convenient for local dev. Bo
 
 ## What it sends
 
-- **Calls** — every database operation captured by `IDatabaseMonitor` (filter, sort, latency, exception, explain plan).
-- **Collection info** — registered collections, document counts, index status.
-- **Queue metrics** — execute-limiter depth and throughput.
+- **Collection info** — registered collections, document counts, index status. Always forwarded (small).
+- **Queue & connection metrics** — per-pool execute-limiter depth/throughput and actual open-connection counts. Forwarded only while someone is viewing the live tab on the server, at `Monitor.QueueMetricInterval` (default 1s).
+- **Calls** — every completed database operation (filter, sort, latency, exception, explain plan). **Opt-in**, off by default — set `Monitor.ForwardCompletedCalls = true`. This is a large, continuous stream proportional to database activity, so enable it only when you want full per-call history on the central server.
 
-The agent appears as a connected client on the server side and can be inspected, addressed, and acted upon from there (e.g. "rebuild index on agent X" via remote action delegation).
+These are configured on the agent's `Monitor` options (same `MongoDB:Monitor` section as the core package):
+
+```json
+"MongoDB": {
+  "Monitor": {
+    "ForwardCompletedCalls": false,
+    "QueueMetricInterval": "00:00:01"
+  }
+}
+```
+
+The agent appears as a connected client on the server side — its forwarding configuration (call forwarding on/off, queue interval, storage mode) is shown on the server's **Clients** page — and it can be inspected, addressed, and acted upon from there (e.g. "rebuild index on agent X" via remote action delegation).
 
 ## Documentation
 
