@@ -24,4 +24,28 @@ public record MonitorClientDto
     /// supply a name.
     /// </summary>
     public string AuthKeyName { get; init; }
+
+    /// <summary>
+    /// The agent's reported monitor configuration (call forwarding, queue interval, …). <c>null</c> until the
+    /// agent reports it, or for agents on a version that predates status reporting.
+    /// </summary>
+    public MonitorClientStatus Status { get; init; }
+}
+
+/// <summary>
+/// The forwarding-related configuration an agent reports about itself, surfaced on the Clients page.
+/// </summary>
+public record MonitorClientStatus
+{
+    /// <summary>Whether the agent forwards every completed call (off by default — can be a large stream).</summary>
+    public required bool ForwardCompletedCalls { get; init; }
+
+    /// <summary>How often the agent forwards a queue-state snapshot, in milliseconds.</summary>
+    public required int QueueMetricIntervalMs { get; init; }
+
+    /// <summary>Where the agent persists its monitor state (e.g. Database / Memory).</summary>
+    public string StorageMode { get; init; }
+
+    /// <summary>Whether the agent captures MongoDB driver command durations.</summary>
+    public bool EnableCommandMonitoring { get; init; }
 }

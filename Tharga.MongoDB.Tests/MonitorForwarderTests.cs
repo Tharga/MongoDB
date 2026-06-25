@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Microsoft.Extensions.Options;
 using Moq;
 using Tharga.Communication.Client.Communication;
 using Tharga.MongoDB.Configuration;
@@ -35,7 +36,9 @@ public class MonitorForwarderTests : IAsyncLifetime
         _factoryMock.SetupAdd(f => f.CallEndEvent += It.IsAny<EventHandler<CallEndEventArgs>>())
             .Callback<EventHandler<CallEndEventArgs>>(h => _callEndHandler = h);
 
-        _sut = new MonitorForwarder(_factoryMock.Object, _monitorMock.Object, _queueMonitorMock.Object, _clientMock.Object);
+        // Enable completed-call forwarding so the call-forwarding paths under test are active.
+        var options = Options.Create(new DatabaseOptions { Monitor = new MonitorOptions { ForwardCompletedCalls = true } });
+        _sut = new MonitorForwarder(_factoryMock.Object, _monitorMock.Object, _queueMonitorMock.Object, _clientMock.Object, options);
     }
 
     public async ValueTask InitializeAsync()
@@ -87,6 +90,29 @@ public class MonitorForwarderTests : IAsyncLifetime
         captured.Call.Count.Should().Be(5);
         captured.Call.Exception.Should().BeNull();
         captured.Call.Final.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task When_ForwardCompletedCalls_Off_DoesNotSubscribeToCallEvents()
+    {
+        var factory = new Mock<IMongoDbServiceFactory>();
+        var monitor = new Mock<IDatabaseMonitor>();
+        var queue = new Mock<IQueueMonitor>();
+        var client = new Mock<IClientCommunication>();
+        var options = Options.Create(new DatabaseOptions { Monitor = new MonitorOptions { ForwardCompletedCalls = false } });
+        var sut = new MonitorForwarder(factory.Object, monitor.Object, queue.Object, client.Object, options);
+
+        await sut.StartAsync(CancellationToken.None);
+        try
+        {
+            factory.VerifyAdd(f => f.CallStartEvent += It.IsAny<EventHandler<CallStartEventArgs>>(), Times.Never());
+            factory.VerifyAdd(f => f.CallEndEvent += It.IsAny<EventHandler<CallEndEventArgs>>(), Times.Never());
+        }
+        finally
+        {
+            await sut.StopAsync(CancellationToken.None);
+            sut.Dispose();
+        }
     }
 
     [Fact]

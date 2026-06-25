@@ -106,6 +106,8 @@ internal class DatabaseNullMonitor : IDatabaseMonitor
 
     public void IngestClientConnected(MonitorClientDto client) { }
 
+    public void IngestClientStatus(string sourceName, MonitorClientStatus status) { }
+
     public void IngestClientDisconnected(string connectionId) { }
 
     public void IngestCollectionInfo(RemoteCollectionInfoDto collectionInfo, string connectionId = null) { }

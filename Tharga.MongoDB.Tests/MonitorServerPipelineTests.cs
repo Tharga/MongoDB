@@ -214,6 +214,7 @@ public class MonitorServerPipelineTests
         public MonitorClientDetail GetMonitorClientDetail(string sourceName, int recentCallLimit = 20) => throw new NotImplementedException();
         public System.Collections.Generic.IReadOnlyList<CollectionInfo> GetCollectionsWithFailedIndices() => throw new NotImplementedException();
         public void IngestClientConnected(MonitorClientDto client) => throw new NotImplementedException();
+        public void IngestClientStatus(string sourceName, MonitorClientStatus status) => throw new NotImplementedException();
         public void IngestClientDisconnected(string connectionId) => throw new NotImplementedException();
         public void IngestCollectionInfo(RemoteCollectionInfoDto collectionInfo, string connectionId = null) => throw new NotImplementedException();
         public System.Collections.Generic.IReadOnlyCollection<string> GetCollectionSources(string fingerprintKey) => throw new NotImplementedException();

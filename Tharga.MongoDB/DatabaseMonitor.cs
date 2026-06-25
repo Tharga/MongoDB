@@ -37,6 +37,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> _sourceToConnectionId = new();
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, RemoteQueueState> _remoteQueueStates = new();
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, IReadOnlyList<PoolMetricDto>> _remotePoolStates = new();
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, MonitorClientStatus> _clientStatus = new();
 
     public event EventHandler<CollectionInfoChangedEventArgs> CollectionInfoChangedEvent;
     public event EventHandler<CollectionDroppedEventArgs> CollectionDroppedEvent;
@@ -860,7 +861,20 @@ internal class DatabaseMonitor : IDatabaseMonitor
 
     public IEnumerable<MonitorClientDto> GetMonitorClients()
     {
-        return _monitorClients.Values;
+        return _monitorClients.Values.Select(WithStatus);
+    }
+
+    public void IngestClientStatus(string sourceName, MonitorClientStatus status)
+    {
+        if (string.IsNullOrEmpty(sourceName) || status == null) return;
+        _clientStatus[sourceName] = status;
+    }
+
+    private MonitorClientDto WithStatus(MonitorClientDto client)
+    {
+        if (!string.IsNullOrEmpty(client.SourceName) && _clientStatus.TryGetValue(client.SourceName, out var status))
+            return client with { Status = status };
+        return client;
     }
 
     public IReadOnlyList<CollectionInfo> GetCollectionsWithFailedIndices()
@@ -887,6 +901,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
 
         var client = _monitorClients.Values.FirstOrDefault(x => x.SourceName == sourceName);
         if (client == null) return null;
+        client = WithStatus(client);
 
         var collectionKeys = _collectionSources
             .Where(kvp => kvp.Value.ContainsKey(sourceName))

@@ -65,6 +65,7 @@ public static class MonitorServerRegistration
         builder.Services.AddTransient<MonitorCallHandler>();
         builder.Services.AddTransient<MonitorCollectionInfoHandler>();
         builder.Services.AddTransient<MonitorQueueMetricHandler>();
+        builder.Services.AddTransient<MonitorClientStatusHandler>();
 
         // Bridge client connection events into IDatabaseMonitor
         builder.Services.AddHostedService<MonitorClientBridge>();

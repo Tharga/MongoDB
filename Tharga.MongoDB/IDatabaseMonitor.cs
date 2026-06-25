@@ -140,6 +140,11 @@ public interface IDatabaseMonitor
     void IngestClientConnected(MonitorClientDto client);
 
     /// <summary>
+    /// Record an agent's self-reported configuration (call forwarding, queue interval, …), correlated by source name.
+    /// </summary>
+    void IngestClientStatus(string sourceName, MonitorClientStatus status);
+
+    /// <summary>
     /// Mark a monitoring agent as disconnected.
     /// </summary>
     void IngestClientDisconnected(string connectionId);

@@ -50,6 +50,22 @@ else
             <RadzenDataGridColumn Title="Machine" Property="@nameof(MonitorClientDto.Machine)" />
             <RadzenDataGridColumn Title="Application" Property="@nameof(MonitorClientDto.Type)" />
             <RadzenDataGridColumn Title="Version" Property="@nameof(MonitorClientDto.Version)" Width="120px" />
+            <RadzenDataGridColumn Title="Call forwarding" Sortable="false" Width="130px">
+                <Template>
+                    @if (context.Status == null)
+                    {
+                        <RadzenText TextStyle="TextStyle.Caption" Style="color: gray;">—</RadzenText>
+                    }
+                    else if (context.Status.ForwardCompletedCalls)
+                    {
+                        <RadzenBadge BadgeStyle="BadgeStyle.Info" Text="On" />
+                    }
+                    else
+                    {
+                        <RadzenBadge BadgeStyle="BadgeStyle.Light" Text="Off" />
+                    }
+                </Template>
+            </RadzenDataGridColumn>
             <RadzenDataGridColumn Title="Connected" Property="@nameof(MonitorClientDto.ConnectTime)" SortOrder="SortOrder.Descending" Width="180px">
                 <Template>
                     <Tharga.Blazor.DateTimeView Date="@context.ConnectTime" />
