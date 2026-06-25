@@ -89,6 +89,7 @@ public class PerPoolQueueMetricTests
             callLibrary,
             cacheMock.Object,
             queueMonitor,
+            new ConnectionPoolMonitor(),
             Options.Create(new DatabaseOptions { Monitor = new MonitorOptions() }),
             NullLogger<DatabaseMonitor>.Instance);
         monitor.Start(serviceProvider);

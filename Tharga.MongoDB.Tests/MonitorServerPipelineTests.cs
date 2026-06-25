@@ -224,5 +224,6 @@ public class MonitorServerPipelineTests
         public void IngestQueueMetric(string sourceName, System.Collections.Generic.IReadOnlyList<PoolMetricDto> pools) { }
         public System.Collections.Generic.IReadOnlyDictionary<string, ConnectionPoolStateDto> GetPerPoolQueueState() => new System.Collections.Generic.Dictionary<string, ConnectionPoolStateDto>();
         public System.Collections.Generic.IReadOnlyList<InFlightCallInfo> GetInFlightCalls() => System.Array.Empty<InFlightCallInfo>();
+        public System.Collections.Generic.IReadOnlyList<ClusterConnectionSummary> GetClusterConnectionSummary() => System.Array.Empty<ClusterConnectionSummary>();
     }
 }

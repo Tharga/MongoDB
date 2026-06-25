@@ -4,6 +4,32 @@
 @inject IServiceProvider ServiceProvider
 
 <RadzenStack Orientation="Orientation.Vertical" Gap="16px">
+
+    @if (_connectionSummaries.Count > 0)
+    {
+        <RadzenText TextStyle="TextStyle.Subtitle1" Text="Cluster connections (all sources)" />
+        <RadzenRow AlignItems="AlignItems.Start" Gap="16px">
+            @foreach (var cluster in _connectionSummaries)
+            {
+                <RadzenColumn Size="4">
+                    <RadzenText TextStyle="TextStyle.Caption" Text="@ClusterLabel(cluster)" />
+                    @if (cluster.Limit.HasValue && cluster.Limit.Value > 0)
+                    {
+                        <RadzenText TextStyle="TextStyle.Subtitle1" Text="@($"{cluster.OpenConnections:N0} / {cluster.Limit.Value:N0} open")" />
+                        <RadzenProgressBar Value="@cluster.OpenConnections" Max="@cluster.Limit.Value" ShowValue="false"
+                                           ProgressBarStyle="@ProgressStyle(cluster)" Style="height: 8px;" />
+                    }
+                    else
+                    {
+                        <RadzenText TextStyle="TextStyle.Subtitle1" Text="@($"{cluster.OpenConnections:N0} open")" />
+                    }
+                    <RadzenText TextStyle="TextStyle.Caption"
+                                Text="@($"capacity {cluster.MaxConnections:N0} · {cluster.SourceCount} source(s)")" />
+                </RadzenColumn>
+            }
+        </RadzenRow>
+    }
+
     <RadzenRow AlignItems="AlignItems.Center" Gap="16px">
         @foreach (var source in _sourceStates)
         {
@@ -58,9 +84,20 @@
     private readonly Dictionary<string, string> _labels = new();
     private Dictionary<string, List<Slot>> _sourceSlots = new();
     private Dictionary<string, ConnectionPoolStateDto> _sourceStates = new();
+    private IReadOnlyList<ClusterConnectionSummary> _connectionSummaries = [];
 
     // The pool key is unique ("{source}::{serverKey}"); display the friendly label (config name(s)) instead.
     private string LabelFor(string key) => _labels.TryGetValue(key, out var label) ? label : key;
+
+    private static string ClusterLabel(ClusterConnectionSummary c) =>
+        c.ConfigurationNames.Count > 0 ? string.Join(", ", c.ConfigurationNames) : c.ServerKey;
+
+    private static ProgressBarStyle ProgressStyle(ClusterConnectionSummary c)
+    {
+        if (!c.Limit.HasValue || c.Limit.Value <= 0) return ProgressBarStyle.Info;
+        var ratio = (double)c.OpenConnections / c.Limit.Value;
+        return ratio >= 0.9 ? ProgressBarStyle.Danger : ratio >= 0.75 ? ProgressBarStyle.Warning : ProgressBarStyle.Success;
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -88,10 +125,12 @@
         try
         {
             var perPool = DatabaseMonitor.GetPerPoolQueueState();
+            var connectionSummaries = DatabaseMonitor.GetClusterConnectionSummary();
 
             await InvokeAsync(() =>
             {
                 _sourceStates = new Dictionary<string, ConnectionPoolStateDto>(perPool);
+                _connectionSummaries = connectionSummaries;
 
                 foreach (var (poolKey, poolState) in perPool)
                 {

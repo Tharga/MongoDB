@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -21,6 +22,7 @@ internal sealed class MonitorForwarder : IHostedService, IDisposable
     private readonly IMongoDbServiceFactory _mongoDbServiceFactory;
     private readonly IDatabaseMonitor _databaseMonitor;
     private readonly IQueueMonitor _queueMonitor;
+    private readonly IConnectionPoolMonitor _connectionPoolMonitor;
     private readonly IClientCommunication _clientCommunication;
     private readonly MonitorOptions _monitorOptions;
     private readonly ILogger<MonitorForwarder> _logger;
@@ -32,6 +34,7 @@ internal sealed class MonitorForwarder : IHostedService, IDisposable
         IMongoDbServiceFactory mongoDbServiceFactory,
         IDatabaseMonitor databaseMonitor,
         IQueueMonitor queueMonitor,
+        IConnectionPoolMonitor connectionPoolMonitor,
         IClientCommunication clientCommunication,
         IOptions<DatabaseOptions> databaseOptions,
         ILogger<MonitorForwarder> logger = null)
@@ -39,6 +42,7 @@ internal sealed class MonitorForwarder : IHostedService, IDisposable
         _mongoDbServiceFactory = mongoDbServiceFactory;
         _databaseMonitor = databaseMonitor;
         _queueMonitor = queueMonitor;
+        _connectionPoolMonitor = connectionPoolMonitor;
         _clientCommunication = clientCommunication;
         _monitorOptions = databaseOptions.Value.Monitor;
         _logger = logger;
@@ -220,15 +224,36 @@ internal sealed class MonitorForwarder : IHostedService, IDisposable
             if (!_clientCommunication.IsConnected) return;
             if (!_clientCommunication.HasSubscribers<LiveMonitoringMarker>()) return;
 
-            var pools = _queueMonitor.GetPerPoolState();
+            // Merge the limiter's per-pool queue view with the actual connection counts, by server-key.
+            var byServer = new Dictionary<string, PoolMetricDto>();
+            foreach (var p in _queueMonitor.GetPerPoolState())
+            {
+                byServer[p.ServerKey] = new PoolMetricDto
+                {
+                    ServerKey = p.ServerKey,
+                    ConfigurationNames = p.ConfigurationNames,
+                    QueueCount = p.QueueCount,
+                    ExecutingCount = p.ExecutingCount,
+                    WaitTimeMs = p.LastWaitTimeMs > 0 ? p.LastWaitTimeMs : null,
+                };
+            }
+            foreach (var c in _connectionPoolMonitor.GetSnapshot())
+            {
+                var baseDto = byServer.TryGetValue(c.ServerKey, out var existing)
+                    ? existing
+                    : new PoolMetricDto { ServerKey = c.ServerKey, ConfigurationNames = Array.Empty<string>(), QueueCount = 0, ExecutingCount = 0 };
+                byServer[c.ServerKey] = baseDto with { OpenConnections = c.OpenConnections, MaxPoolSize = c.MaxPoolSize };
+            }
+            var pools = byServer.Values.ToList();
 
             // Aggregate scalars (back-compat for older servers + the activity guard below).
             var queueCount = pools.Sum(p => p.QueueCount);
             var executingCount = pools.Sum(p => p.ExecutingCount);
-            var lastWaitTimeMs = pools.Count == 0 ? 0 : pools.Max(p => p.LastWaitTimeMs);
+            var lastWaitTimeMs = pools.Count == 0 ? 0d : pools.Max(p => p.WaitTimeMs ?? 0);
+            var openConnections = pools.Sum(p => p.OpenConnections);
 
-            // Only send when there's activity to avoid unnecessary traffic
-            if (queueCount == 0 && executingCount == 0 && lastWaitTimeMs == 0) return;
+            // Send when there's queue activity OR open connections to report (so idle-but-open pools surface).
+            if (queueCount == 0 && executingCount == 0 && lastWaitTimeMs == 0 && openConnections == 0) return;
 
             await _clientCommunication.PostAsync(new MonitorQueueMetricMessage
             {
@@ -237,14 +262,7 @@ internal sealed class MonitorForwarder : IHostedService, IDisposable
                 QueueCount = queueCount,
                 ExecutingCount = executingCount,
                 WaitTimeMs = lastWaitTimeMs > 0 ? lastWaitTimeMs : null,
-                Pools = pools.Select(p => new PoolMetricDto
-                {
-                    ServerKey = p.ServerKey,
-                    ConfigurationNames = p.ConfigurationNames,
-                    QueueCount = p.QueueCount,
-                    ExecutingCount = p.ExecutingCount,
-                    WaitTimeMs = p.LastWaitTimeMs > 0 ? p.LastWaitTimeMs : null,
-                }).ToList(),
+                Pools = pools,
             });
         }
         catch (Exception ex)

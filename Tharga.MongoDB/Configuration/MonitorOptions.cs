@@ -56,6 +56,13 @@ public record MonitorOptions
     public TimeSpan QueueMetricInterval { get; set; } = TimeSpan.FromSeconds(1);
 
     /// <summary>
+    /// The maximum number of connections a cluster allows (e.g. an Atlas cluster's connection limit, 3000 on
+    /// many tiers). When set, the central monitor shows total open connections across all sources as a
+    /// fraction of this limit. When null, only the totals are shown. Configured on the monitor/server.
+    /// </summary>
+    public int? ClusterConnectionLimit { get; set; }
+
+    /// <summary>
     /// Enable MongoDB driver command monitoring. When enabled, driver-level command durations
     /// are captured and surfaced in call step data, allowing operators to distinguish slow
     /// server execution from thread pool starvation. Default is false.

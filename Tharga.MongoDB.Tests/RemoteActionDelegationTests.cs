@@ -60,6 +60,7 @@ public class RemoteActionDelegationTests
             callLibrary,
             _cacheMock.Object,
             queueMonitorMock.Object,
+            new ConnectionPoolMonitor(),
             options,
             NullLogger<DatabaseMonitor>.Instance);
 

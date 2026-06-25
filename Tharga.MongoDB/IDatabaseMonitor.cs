@@ -194,4 +194,10 @@ public interface IDatabaseMonitor
     /// Remote agents are not aggregated here; query each agent's own monitor for its in-flight calls.
     /// </summary>
     IReadOnlyList<InFlightCallInfo> GetInFlightCalls();
+
+    /// <summary>
+    /// Per-cluster open-connection totals (and capacity) aggregated across this server and all connected
+    /// agents, for comparing against a cluster's connection limit (e.g. Atlas max connections).
+    /// </summary>
+    IReadOnlyList<ClusterConnectionSummary> GetClusterConnectionSummary();
 }

@@ -126,6 +126,8 @@ internal class DatabaseNullMonitor : IDatabaseMonitor
 
     public IReadOnlyList<InFlightCallInfo> GetInFlightCalls() => Array.Empty<InFlightCallInfo>();
 
+    public IReadOnlyList<ClusterConnectionSummary> GetClusterConnectionSummary() => Array.Empty<ClusterConnectionSummary>();
+
     public void ResetCalls() { }
 
     public Task ResetAsync() => Task.CompletedTask;

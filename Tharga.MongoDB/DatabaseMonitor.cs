@@ -27,6 +27,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
     private readonly DatabaseOptions _options;
     private readonly ICollectionCache _cache;
     private readonly IQueueMonitor _queueMonitor;
+    private readonly IConnectionPoolMonitor _connectionPoolMonitor;
     private Dictionary<(string, string), StatColInfo> _staticLookup;
     private Dictionary<string, DynColInfo> _dynamicLookup;
     private readonly SemaphoreSlim _lookupLock = new(1, 1);
@@ -43,7 +44,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
     public event EventHandler<CollectionDroppedEventArgs> CollectionDroppedEvent;
     public event EventHandler MonitorClientsChanged;
 
-    public DatabaseMonitor(IMongoDbServiceFactory mongoDbServiceFactory, IMongoDbInstance mongoDbInstance, IServiceProvider serviceProvider, IRepositoryConfiguration repositoryConfiguration, ICollectionProvider collectionProvider, ICallLibrary callLibrary, ICollectionCache cache, IQueueMonitor queueMonitor, IOptions<DatabaseOptions> options, ILogger<DatabaseMonitor> logger)
+    public DatabaseMonitor(IMongoDbServiceFactory mongoDbServiceFactory, IMongoDbInstance mongoDbInstance, IServiceProvider serviceProvider, IRepositoryConfiguration repositoryConfiguration, ICollectionProvider collectionProvider, ICallLibrary callLibrary, ICollectionCache cache, IQueueMonitor queueMonitor, IConnectionPoolMonitor connectionPoolMonitor, IOptions<DatabaseOptions> options, ILogger<DatabaseMonitor> logger)
     {
         _mongoDbServiceFactory = mongoDbServiceFactory;
         _mongoDbInstance = mongoDbInstance;
@@ -53,6 +54,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
         _callLibrary = callLibrary;
         _cache = cache;
         _queueMonitor = queueMonitor;
+        _connectionPoolMonitor = connectionPoolMonitor;
         _logger = logger;
         _options = options.Value;
     }
@@ -1120,6 +1122,66 @@ internal class DatabaseMonitor : IDatabaseMonitor
     }
 
     public IReadOnlyList<InFlightCallInfo> GetInFlightCalls() => _queueMonitor.GetInFlightCalls();
+
+    public IReadOnlyList<ClusterConnectionSummary> GetClusterConnectionSummary()
+    {
+        // Aggregate actual open connections + capacity per cluster (serverKey) across every source:
+        // this process's own pools plus all reporting agents.
+        var byCluster = new Dictionary<string, ClusterAccumulator>();
+
+        ClusterAccumulator Get(string serverKey)
+        {
+            if (!byCluster.TryGetValue(serverKey, out var acc))
+                byCluster[serverKey] = acc = new ClusterAccumulator();
+            return acc;
+        }
+
+        // Local — config-name labels come from the limiter's per-pool view (may be empty if no calls yet).
+        var localSource = _mongoDbServiceFactory.SourceName;
+        var localConfigByServer = _queueMonitor.GetPerPoolState()
+            .ToDictionary(p => p.ServerKey, p => p.ConfigurationNames);
+        foreach (var pool in _connectionPoolMonitor.GetSnapshot())
+        {
+            var acc = Get(pool.ServerKey);
+            acc.Open += pool.OpenConnections;
+            acc.Max += pool.MaxPoolSize;
+            acc.Sources.Add(localSource);
+            if (localConfigByServer.TryGetValue(pool.ServerKey, out var names))
+                foreach (var n in names) acc.ConfigurationNames.Add(n);
+        }
+
+        // Remote — each agent's reported per-pool connection counts.
+        foreach (var (source, pools) in _remotePoolStates)
+        {
+            foreach (var pool in pools)
+            {
+                var acc = Get(pool.ServerKey);
+                acc.Open += pool.OpenConnections;
+                acc.Max += pool.MaxPoolSize;
+                acc.Sources.Add(source);
+                foreach (var n in pool.ConfigurationNames) acc.ConfigurationNames.Add(n);
+            }
+        }
+
+        var limit = _options.Monitor.ClusterConnectionLimit;
+        return byCluster.Select(kvp => new ClusterConnectionSummary
+        {
+            ServerKey = kvp.Key,
+            ConfigurationNames = kvp.Value.ConfigurationNames.OrderBy(x => x, StringComparer.Ordinal).ToArray(),
+            SourceCount = kvp.Value.Sources.Count,
+            OpenConnections = kvp.Value.Open,
+            MaxConnections = kvp.Value.Max,
+            Limit = limit,
+        }).ToArray();
+    }
+
+    private sealed class ClusterAccumulator
+    {
+        public int Open;
+        public int Max;
+        public readonly HashSet<string> Sources = new();
+        public readonly HashSet<string> ConfigurationNames = new();
+    }
 
     private static string BuildPoolLabel(IReadOnlyCollection<string> configurationNames, string serverKey, string source, bool multiSource)
     {
