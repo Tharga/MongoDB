@@ -140,6 +140,11 @@ public interface IDatabaseMonitor
     void IngestClientConnected(MonitorClientDto client);
 
     /// <summary>
+    /// Record an agent's self-reported configuration (call forwarding, queue interval, …), correlated by source name.
+    /// </summary>
+    void IngestClientStatus(string sourceName, MonitorClientStatus status);
+
+    /// <summary>
     /// Mark a monitoring agent as disconnected.
     /// </summary>
     void IngestClientDisconnected(string connectionId);
@@ -167,12 +172,32 @@ public interface IDatabaseMonitor
     IReadOnlyDictionary<string, int> GetSubscriptions();
 
     /// <summary>
-    /// Ingest a queue metric snapshot from a remote agent.
+    /// Ingest a queue metric snapshot from a remote agent (legacy, aggregate-per-source form).
+    /// Stored as a single synthetic pool so pre-per-pool agents still surface a line.
     /// </summary>
     void IngestQueueMetric(string sourceName, int queueCount, int executingCount, double? waitTimeMs);
 
     /// <summary>
-    /// Get per-source queue state for all known sources (local + remote).
+    /// Ingest a per-pool queue metric snapshot from a remote agent.
     /// </summary>
-    IReadOnlyDictionary<string, ConnectionPoolStateDto> GetPerSourceQueueState();
+    void IngestQueueMetric(string sourceName, IReadOnlyList<PoolMetricDto> pools);
+
+    /// <summary>
+    /// Get per-connection-pool queue state for all known sources (local + remote). Keyed by a unique
+    /// <c>"{source}::{serverKey}"</c> key; each value carries a display <see cref="ConnectionPoolStateDto.Label"/>
+    /// (the configuration name(s) routing through that pool).
+    /// </summary>
+    IReadOnlyDictionary<string, ConnectionPoolStateDto> GetPerPoolQueueState();
+
+    /// <summary>
+    /// The calls the local limiter is currently holding (queued or executing) — for diagnosing a flood.
+    /// Remote agents are not aggregated here; query each agent's own monitor for its in-flight calls.
+    /// </summary>
+    IReadOnlyList<InFlightCallInfo> GetInFlightCalls();
+
+    /// <summary>
+    /// Per-cluster open-connection totals (and capacity) aggregated across this server and all connected
+    /// agents, for comparing against a cluster's connection limit (e.g. Atlas max connections).
+    /// </summary>
+    IReadOnlyList<ClusterConnectionSummary> GetClusterConnectionSummary();
 }

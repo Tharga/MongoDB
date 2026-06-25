@@ -64,6 +64,43 @@ else
             </RadzenColumn>
         </RadzenRow>
 
+        @* --- Configuration (as reported by the agent) --- *@
+        <RadzenCard>
+            <RadzenText TextStyle="TextStyle.H6" Text="Configuration" />
+            @if (_detail.Client.Status == null)
+            {
+                <RadzenText TextStyle="TextStyle.Body2" Text="Not reported (older agent or not yet received)." Style="color: gray;" />
+            }
+            else
+            {
+                <RadzenRow>
+                    <RadzenColumn>
+                        <RadzenText TextStyle="TextStyle.Caption" Text="Call forwarding" />
+                        @if (_detail.Client.Status.ForwardCompletedCalls)
+                        {
+                            <RadzenBadge BadgeStyle="BadgeStyle.Info" Text="On" />
+                        }
+                        else
+                        {
+                            <RadzenBadge BadgeStyle="BadgeStyle.Light" Text="Off" />
+                        }
+                    </RadzenColumn>
+                    <RadzenColumn>
+                        <RadzenText TextStyle="TextStyle.Caption" Text="Queue interval" />
+                        <RadzenText Text="@($"{_detail.Client.Status.QueueMetricIntervalMs:N0} ms")" />
+                    </RadzenColumn>
+                    <RadzenColumn>
+                        <RadzenText TextStyle="TextStyle.Caption" Text="Storage mode" />
+                        <RadzenText Text="@(_detail.Client.Status.StorageMode ?? "—")" />
+                    </RadzenColumn>
+                    <RadzenColumn>
+                        <RadzenText TextStyle="TextStyle.Caption" Text="Command monitoring" />
+                        <RadzenText Text="@(_detail.Client.Status.EnableCommandMonitoring ? "On" : "Off")" />
+                    </RadzenColumn>
+                </RadzenRow>
+            }
+        </RadzenCard>
+
         @* --- Collections received --- *@
         <RadzenCard>
             <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween" AlignItems="AlignItems.Center">

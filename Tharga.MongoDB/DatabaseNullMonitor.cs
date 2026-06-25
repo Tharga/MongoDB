@@ -106,6 +106,8 @@ internal class DatabaseNullMonitor : IDatabaseMonitor
 
     public void IngestClientConnected(MonitorClientDto client) { }
 
+    public void IngestClientStatus(string sourceName, MonitorClientStatus status) { }
+
     public void IngestClientDisconnected(string connectionId) { }
 
     public void IngestCollectionInfo(RemoteCollectionInfoDto collectionInfo, string connectionId = null) { }
@@ -118,7 +120,13 @@ internal class DatabaseNullMonitor : IDatabaseMonitor
 
     public void IngestQueueMetric(string sourceName, int queueCount, int executingCount, double? waitTimeMs) { }
 
-    public IReadOnlyDictionary<string, ConnectionPoolStateDto> GetPerSourceQueueState() => new Dictionary<string, ConnectionPoolStateDto>();
+    public void IngestQueueMetric(string sourceName, IReadOnlyList<PoolMetricDto> pools) { }
+
+    public IReadOnlyDictionary<string, ConnectionPoolStateDto> GetPerPoolQueueState() => new Dictionary<string, ConnectionPoolStateDto>();
+
+    public IReadOnlyList<InFlightCallInfo> GetInFlightCalls() => Array.Empty<InFlightCallInfo>();
+
+    public IReadOnlyList<ClusterConnectionSummary> GetClusterConnectionSummary() => Array.Empty<ClusterConnectionSummary>();
 
     public void ResetCalls() { }
 

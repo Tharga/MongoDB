@@ -73,16 +73,19 @@ public static class MongoDbRegistrationExtensions
         services.AddHttpClient(Atlas.AtlasTokenService.HttpClientName);
         services.AddSingleton<Atlas.IAtlasTokenService, Atlas.AtlasTokenService>();
         services.AddTransient<IMongoDbFirewallService, MongoDbFirewallService>();
+        services.AddSingleton<ConnectionPoolMonitor>();
+        services.AddSingleton<IConnectionPoolMonitor>(sp => sp.GetRequiredService<ConnectionPoolMonitor>());
         if (o.Monitor?.EnableCommandMonitoring == true)
         {
             services.AddSingleton<CommandMonitorService>();
             services.AddSingleton<ICommandMonitorService>(sp => sp.GetRequiredService<CommandMonitorService>());
             services.AddSingleton<IMongoDbClientProvider>(sp =>
-                new MongoDbClientProvider(sp.GetRequiredService<CommandMonitorService>()));
+                new MongoDbClientProvider(sp.GetRequiredService<CommandMonitorService>(), sp.GetRequiredService<IConnectionPoolMonitor>()));
         }
         else
         {
-            services.AddSingleton<IMongoDbClientProvider>(new MongoDbClientProvider());
+            services.AddSingleton<IMongoDbClientProvider>(sp =>
+                new MongoDbClientProvider(connectionPoolMonitor: sp.GetRequiredService<IConnectionPoolMonitor>()));
         }
         services.AddSingleton<IMongoDbFirewallStateService, MongoDbFirewallStateService>();
         services.AddHttpClient(Atlas.Quilt4NetFirewallProxyClient.HttpClientName);

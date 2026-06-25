@@ -43,8 +43,8 @@ Then drop the components onto a Blazor page — they auto-discover the monitor v
 - **`<MonitorToolbar />`** — top-bar controls: configuration switcher, reset calls, reset cache.
 - **`<CollectionView />`** — table of every registered collection with status, document count, indexes, and per-collection drill-down dialog.
 - **`<CallView />`** — every database call captured by the monitor, with filter, sort, explain plan, and timing.
-- **`<ClientsView />`** — connected MongoDB clients (driver-side). Useful with `Tharga.MongoDB.Monitor.Server` when aggregating multiple agents.
-- **`<QueueView />`** — execute-limiter queue depth and throughput.
+- **`<ClientsView />`** — connected monitoring agents. Useful with `Tharga.MongoDB.Monitor.Server` when aggregating multiple agents; shows each agent's forwarding config (call-forwarding on/off, queue interval, storage mode).
+- **`<QueueView />`** — execute-limiter queue/exec and depth/wait graphs **per connection pool** (one line per cluster, labelled by configuration, across local + remote sources), plus per-cluster open-connection totals vs a configured limit (`Monitor.ClusterConnectionLimit`).
 - **`<ConfigurationsSelector />`** — switch between configured `ConnectionStrings` entries when an app talks to multiple clusters.
 
 The package is built on Radzen.Blazor — the same components and theming as the rest of your Radzen app.

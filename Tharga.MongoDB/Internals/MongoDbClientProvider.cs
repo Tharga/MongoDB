@@ -12,10 +12,12 @@ internal class MongoDbClientProvider : IMongoDbClientProvider
 {
     private readonly ConcurrentDictionary<string, Lazy<MongoClient>> _cache = new();
     private readonly CommandMonitorService _commandMonitor;
+    private readonly IConnectionPoolMonitor _connectionPoolMonitor;
 
-    public MongoDbClientProvider(CommandMonitorService commandMonitor = null)
+    public MongoDbClientProvider(CommandMonitorService commandMonitor = null, IConnectionPoolMonitor connectionPoolMonitor = null)
     {
         _commandMonitor = commandMonitor;
+        _connectionPoolMonitor = connectionPoolMonitor;
     }
 
     public MongoClient GetClient(MongoUrl mongoUrl)
@@ -30,12 +32,24 @@ internal class MongoDbClientProvider : IMongoDbClientProvider
                     ? TimeSpan.FromSeconds(5)
                     : TimeSpan.FromSeconds(10);
 
-                if (_commandMonitor != null)
+                _connectionPoolMonitor?.SetMaxPoolSize(key, settings.MaxConnectionPoolSize);
+
+                if (_commandMonitor != null || _connectionPoolMonitor != null)
                 {
                     settings.ClusterConfigurator = cb =>
                     {
-                        cb.Subscribe<CommandSucceededEvent>(e => _commandMonitor.OnCommandSucceeded(e));
-                        cb.Subscribe<CommandFailedEvent>(e => _commandMonitor.OnCommandFailed(e));
+                        if (_commandMonitor != null)
+                        {
+                            cb.Subscribe<CommandSucceededEvent>(e => _commandMonitor.OnCommandSucceeded(e));
+                            cb.Subscribe<CommandFailedEvent>(e => _commandMonitor.OnCommandFailed(e));
+                        }
+
+                        if (_connectionPoolMonitor != null)
+                        {
+                            // Count actual open pooled connections for this cluster (CMAP create/close events).
+                            cb.Subscribe<ConnectionCreatedEvent>(_ => _connectionPoolMonitor.OnConnectionCreated(key));
+                            cb.Subscribe<ConnectionClosedEvent>(_ => _connectionPoolMonitor.OnConnectionClosed(key));
+                        }
                     };
                 }
 

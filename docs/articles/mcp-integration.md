@@ -42,7 +42,7 @@ Anything above the configured level is filtered out of `tools/list` and `resourc
 |---|---|---|
 | `mongodb://collections` | Metadata | Collections with stats, indexes, clean status |
 | `mongodb://clients` | Metadata | Connected remote monitoring agents |
-| `mongodb://monitoring` | DataRead | Recent + slow calls, summaries, error summary, connection-pool state (calls embed filter values, hence the gating) |
+| `mongodb://monitoring` | DataRead | Recent + slow calls, summaries, error summary, connection-pool state, and `inFlightCalls` — what the limiter is holding right now (queued vs executing), grouped by collection / function / filter, for diagnosing a flood (calls embed filter values, hence the gating) |
 
 ## Tools
 

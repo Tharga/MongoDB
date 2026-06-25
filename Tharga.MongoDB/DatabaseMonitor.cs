@@ -27,6 +27,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
     private readonly DatabaseOptions _options;
     private readonly ICollectionCache _cache;
     private readonly IQueueMonitor _queueMonitor;
+    private readonly IConnectionPoolMonitor _connectionPoolMonitor;
     private Dictionary<(string, string), StatColInfo> _staticLookup;
     private Dictionary<string, DynColInfo> _dynamicLookup;
     private readonly SemaphoreSlim _lookupLock = new(1, 1);
@@ -36,12 +37,14 @@ internal class DatabaseMonitor : IDatabaseMonitor
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, System.Collections.Concurrent.ConcurrentDictionary<string, bool>> _collectionSources = new();
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> _sourceToConnectionId = new();
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, RemoteQueueState> _remoteQueueStates = new();
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, IReadOnlyList<PoolMetricDto>> _remotePoolStates = new();
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, MonitorClientStatus> _clientStatus = new();
 
     public event EventHandler<CollectionInfoChangedEventArgs> CollectionInfoChangedEvent;
     public event EventHandler<CollectionDroppedEventArgs> CollectionDroppedEvent;
     public event EventHandler MonitorClientsChanged;
 
-    public DatabaseMonitor(IMongoDbServiceFactory mongoDbServiceFactory, IMongoDbInstance mongoDbInstance, IServiceProvider serviceProvider, IRepositoryConfiguration repositoryConfiguration, ICollectionProvider collectionProvider, ICallLibrary callLibrary, ICollectionCache cache, IQueueMonitor queueMonitor, IOptions<DatabaseOptions> options, ILogger<DatabaseMonitor> logger)
+    public DatabaseMonitor(IMongoDbServiceFactory mongoDbServiceFactory, IMongoDbInstance mongoDbInstance, IServiceProvider serviceProvider, IRepositoryConfiguration repositoryConfiguration, ICollectionProvider collectionProvider, ICallLibrary callLibrary, ICollectionCache cache, IQueueMonitor queueMonitor, IConnectionPoolMonitor connectionPoolMonitor, IOptions<DatabaseOptions> options, ILogger<DatabaseMonitor> logger)
     {
         _mongoDbServiceFactory = mongoDbServiceFactory;
         _mongoDbInstance = mongoDbInstance;
@@ -51,6 +54,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
         _callLibrary = callLibrary;
         _cache = cache;
         _queueMonitor = queueMonitor;
+        _connectionPoolMonitor = connectionPoolMonitor;
         _logger = logger;
         _options = options.Value;
     }
@@ -859,7 +863,20 @@ internal class DatabaseMonitor : IDatabaseMonitor
 
     public IEnumerable<MonitorClientDto> GetMonitorClients()
     {
-        return _monitorClients.Values;
+        return _monitorClients.Values.Select(WithStatus);
+    }
+
+    public void IngestClientStatus(string sourceName, MonitorClientStatus status)
+    {
+        if (string.IsNullOrEmpty(sourceName) || status == null) return;
+        _clientStatus[sourceName] = status;
+    }
+
+    private MonitorClientDto WithStatus(MonitorClientDto client)
+    {
+        if (!string.IsNullOrEmpty(client.SourceName) && _clientStatus.TryGetValue(client.SourceName, out var status))
+            return client with { Status = status };
+        return client;
     }
 
     public IReadOnlyList<CollectionInfo> GetCollectionsWithFailedIndices()
@@ -886,6 +903,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
 
         var client = _monitorClients.Values.FirstOrDefault(x => x.SourceName == sourceName);
         if (client == null) return null;
+        client = WithStatus(client);
 
         var collectionKeys = _collectionSources
             .Where(kvp => kvp.Value.ContainsKey(sourceName))
@@ -1017,6 +1035,8 @@ internal class DatabaseMonitor : IDatabaseMonitor
 
     public void IngestQueueMetric(string sourceName, int queueCount, int executingCount, double? waitTimeMs)
     {
+        // Legacy aggregate-per-source form. Keep the aggregate (drives GetMonitorClientDetail) and
+        // store it as a single synthetic pool so it still surfaces a line in GetPerPoolQueueState.
         _remoteQueueStates[sourceName] = new RemoteQueueState
         {
             QueueCount = queueCount,
@@ -1024,29 +1044,152 @@ internal class DatabaseMonitor : IDatabaseMonitor
             LastWaitTimeMs = waitTimeMs ?? 0,
             Timestamp = DateTime.UtcNow,
         };
+        _remotePoolStates[sourceName] = new[]
+        {
+            new PoolMetricDto
+            {
+                ServerKey = string.Empty,
+                ConfigurationNames = Array.Empty<string>(),
+                QueueCount = queueCount,
+                ExecutingCount = executingCount,
+                WaitTimeMs = waitTimeMs,
+            }
+        };
     }
 
-    public IReadOnlyDictionary<string, ConnectionPoolStateDto> GetPerSourceQueueState()
+    public void IngestQueueMetric(string sourceName, IReadOnlyList<PoolMetricDto> pools)
+    {
+        pools ??= Array.Empty<PoolMetricDto>();
+        _remotePoolStates[sourceName] = pools;
+        // Maintain the aggregate per-source view for GetMonitorClientDetail.
+        _remoteQueueStates[sourceName] = new RemoteQueueState
+        {
+            QueueCount = pools.Sum(p => p.QueueCount),
+            ExecutingCount = pools.Sum(p => p.ExecutingCount),
+            LastWaitTimeMs = pools.Count == 0 ? 0 : pools.Max(p => p.WaitTimeMs ?? 0),
+            Timestamp = DateTime.UtcNow,
+        };
+    }
+
+    public IReadOnlyDictionary<string, ConnectionPoolStateDto> GetPerPoolQueueState()
     {
         var result = new Dictionary<string, ConnectionPoolStateDto>();
 
-        // Local
         var localSource = _mongoDbServiceFactory.SourceName;
-        result[localSource] = GetConnectionPoolState();
+        var localPools = _queueMonitor.GetPerPoolState(); // reads + resets per-pool wait, so call once
 
-        // Remote
-        foreach (var (source, state) in _remoteQueueStates)
+        // Suffix labels with the source when more than one source actually contributes pools, to keep lines distinct.
+        var contributingSources = new HashSet<string>();
+        if (localPools.Count > 0) contributingSources.Add(localSource);
+        foreach (var (source, pools) in _remotePoolStates)
+            if (pools.Count > 0) contributingSources.Add(source);
+        var multiSource = contributingSources.Count > 1;
+
+        // Local — one entry per physical pool.
+        foreach (var pool in localPools)
         {
-            result[source] = new ConnectionPoolStateDto
+            var key = $"{localSource}::{pool.ServerKey}";
+            result[key] = new ConnectionPoolStateDto
             {
-                QueueCount = state.QueueCount,
-                ExecutingCount = state.ExecutingCount,
-                LastWaitTimeMs = state.LastWaitTimeMs,
+                QueueCount = pool.QueueCount,
+                ExecutingCount = pool.ExecutingCount,
+                LastWaitTimeMs = pool.LastWaitTimeMs,
                 RecentMetrics = [],
+                ConfigurationNames = pool.ConfigurationNames,
+                Label = BuildPoolLabel(pool.ConfigurationNames, pool.ServerKey, localSource, multiSource),
             };
         }
 
+        // Remote — one entry per reported pool.
+        foreach (var (source, pools) in _remotePoolStates)
+        {
+            foreach (var pool in pools)
+            {
+                var key = $"{source}::{pool.ServerKey}";
+                result[key] = new ConnectionPoolStateDto
+                {
+                    QueueCount = pool.QueueCount,
+                    ExecutingCount = pool.ExecutingCount,
+                    LastWaitTimeMs = pool.WaitTimeMs ?? 0,
+                    RecentMetrics = [],
+                    ConfigurationNames = pool.ConfigurationNames,
+                    Label = BuildPoolLabel(pool.ConfigurationNames, pool.ServerKey, source, multiSource),
+                };
+            }
+        }
+
         return result;
+    }
+
+    public IReadOnlyList<InFlightCallInfo> GetInFlightCalls() => _queueMonitor.GetInFlightCalls();
+
+    public IReadOnlyList<ClusterConnectionSummary> GetClusterConnectionSummary()
+    {
+        // Aggregate actual open connections + capacity per cluster (serverKey) across every source:
+        // this process's own pools plus all reporting agents.
+        var byCluster = new Dictionary<string, ClusterAccumulator>();
+
+        ClusterAccumulator Get(string serverKey)
+        {
+            if (!byCluster.TryGetValue(serverKey, out var acc))
+                byCluster[serverKey] = acc = new ClusterAccumulator();
+            return acc;
+        }
+
+        // Local — config-name labels come from the limiter's per-pool view (may be empty if no calls yet).
+        var localSource = _mongoDbServiceFactory.SourceName;
+        var localConfigByServer = _queueMonitor.GetPerPoolState()
+            .ToDictionary(p => p.ServerKey, p => p.ConfigurationNames);
+        foreach (var pool in _connectionPoolMonitor.GetSnapshot())
+        {
+            var acc = Get(pool.ServerKey);
+            acc.Open += pool.OpenConnections;
+            acc.Max += pool.MaxPoolSize;
+            acc.Sources.Add(localSource);
+            if (localConfigByServer.TryGetValue(pool.ServerKey, out var names))
+                foreach (var n in names) acc.ConfigurationNames.Add(n);
+        }
+
+        // Remote — each agent's reported per-pool connection counts.
+        foreach (var (source, pools) in _remotePoolStates)
+        {
+            foreach (var pool in pools)
+            {
+                var acc = Get(pool.ServerKey);
+                acc.Open += pool.OpenConnections;
+                acc.Max += pool.MaxPoolSize;
+                acc.Sources.Add(source);
+                foreach (var n in pool.ConfigurationNames) acc.ConfigurationNames.Add(n);
+            }
+        }
+
+        var limit = _options.Monitor.ClusterConnectionLimit;
+        return byCluster.Select(kvp => new ClusterConnectionSummary
+        {
+            ServerKey = kvp.Key,
+            ConfigurationNames = kvp.Value.ConfigurationNames.OrderBy(x => x, StringComparer.Ordinal).ToArray(),
+            SourceCount = kvp.Value.Sources.Count,
+            OpenConnections = kvp.Value.Open,
+            MaxConnections = kvp.Value.Max,
+            Limit = limit,
+        }).ToArray();
+    }
+
+    private sealed class ClusterAccumulator
+    {
+        public int Open;
+        public int Max;
+        public readonly HashSet<string> Sources = new();
+        public readonly HashSet<string> ConfigurationNames = new();
+    }
+
+    private static string BuildPoolLabel(IReadOnlyCollection<string> configurationNames, string serverKey, string source, bool multiSource)
+    {
+        var baseLabel = configurationNames is { Count: > 0 }
+            ? string.Join(", ", configurationNames.OrderBy(x => x, StringComparer.Ordinal))
+            : string.IsNullOrEmpty(serverKey) ? source : serverKey;
+
+        return multiSource ? $"{baseLabel} @ {source}" : baseLabel;
     }
 
     private record RemoteQueueState

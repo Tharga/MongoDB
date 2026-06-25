@@ -214,12 +214,16 @@ public class MonitorServerPipelineTests
         public MonitorClientDetail GetMonitorClientDetail(string sourceName, int recentCallLimit = 20) => throw new NotImplementedException();
         public System.Collections.Generic.IReadOnlyList<CollectionInfo> GetCollectionsWithFailedIndices() => throw new NotImplementedException();
         public void IngestClientConnected(MonitorClientDto client) => throw new NotImplementedException();
+        public void IngestClientStatus(string sourceName, MonitorClientStatus status) => throw new NotImplementedException();
         public void IngestClientDisconnected(string connectionId) => throw new NotImplementedException();
         public void IngestCollectionInfo(RemoteCollectionInfoDto collectionInfo, string connectionId = null) => throw new NotImplementedException();
         public System.Collections.Generic.IReadOnlyCollection<string> GetCollectionSources(string fingerprintKey) => throw new NotImplementedException();
         public string FindConnectionIdBySource(string sourceName) => null;
         public System.Collections.Generic.IReadOnlyDictionary<string, int> GetSubscriptions() => new System.Collections.Generic.Dictionary<string, int>();
         public void IngestQueueMetric(string sourceName, int queueCount, int executingCount, double? waitTimeMs) { }
-        public System.Collections.Generic.IReadOnlyDictionary<string, ConnectionPoolStateDto> GetPerSourceQueueState() => new System.Collections.Generic.Dictionary<string, ConnectionPoolStateDto>();
+        public void IngestQueueMetric(string sourceName, System.Collections.Generic.IReadOnlyList<PoolMetricDto> pools) { }
+        public System.Collections.Generic.IReadOnlyDictionary<string, ConnectionPoolStateDto> GetPerPoolQueueState() => new System.Collections.Generic.Dictionary<string, ConnectionPoolStateDto>();
+        public System.Collections.Generic.IReadOnlyList<InFlightCallInfo> GetInFlightCalls() => System.Array.Empty<InFlightCallInfo>();
+        public System.Collections.Generic.IReadOnlyList<ClusterConnectionSummary> GetClusterConnectionSummary() => System.Array.Empty<ClusterConnectionSummary>();
     }
 }

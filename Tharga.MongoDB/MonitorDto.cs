@@ -77,7 +77,9 @@ public record SlowCallWithIndexInfoDto
 }
 
 /// <summary>
-/// Aggregate connection pool state.
+/// Connection pool state. When produced per pool (see <see cref="IDatabaseMonitor.GetPerPoolQueueState"/>)
+/// <see cref="Label"/> / <see cref="ConfigurationNames"/> describe which configuration(s) route through the pool;
+/// for the aggregate process-wide state they are left null.
 /// </summary>
 public record ConnectionPoolStateDto
 {
@@ -85,6 +87,54 @@ public record ConnectionPoolStateDto
     public required int ExecutingCount { get; init; }
     public required double LastWaitTimeMs { get; init; }
     public required IReadOnlyList<QueueMetricDto> RecentMetrics { get; init; }
+
+    /// <summary>Display label for the pool — the configuration name(s) routing through it (source-suffixed when ambiguous).</summary>
+    public string Label { get; init; }
+
+    /// <summary>The configuration name(s) that have used this pool.</summary>
+    public IReadOnlyCollection<string> ConfigurationNames { get; init; }
+}
+
+/// <summary>
+/// Per-pool queue snapshot used both for remote-agent ingest and over the wire
+/// (<c>MonitorQueueMetricMessage.Pools</c>).
+/// </summary>
+public record PoolMetricDto
+{
+    public required string ServerKey { get; init; }
+    public required IReadOnlyCollection<string> ConfigurationNames { get; init; }
+    public required int QueueCount { get; init; }
+    public required int ExecutingCount { get; init; }
+    public double? WaitTimeMs { get; init; }
+
+    /// <summary>Actual open driver connections for this pool (counts toward the cluster connection limit).</summary>
+    public int OpenConnections { get; init; }
+
+    /// <summary>Configured max pool size for this pool (capacity ceiling).</summary>
+    public int MaxPoolSize { get; init; }
+}
+
+/// <summary>
+/// Aggregated connection usage for one cluster (server-key) across all reporting sources (the central
+/// server plus every connected agent). Lets you see total open connections versus a configured limit
+/// (e.g. an Atlas cluster's max connections).
+/// </summary>
+public record ClusterConnectionSummary
+{
+    public required string ServerKey { get; init; }
+    public required IReadOnlyCollection<string> ConfigurationNames { get; init; }
+
+    /// <summary>Number of distinct sources (processes) contributing connections to this cluster.</summary>
+    public required int SourceCount { get; init; }
+
+    /// <summary>Total actual open connections across all sources right now.</summary>
+    public required int OpenConnections { get; init; }
+
+    /// <summary>Total capacity (sum of each source's configured max pool size) — the most connections this fleet could open.</summary>
+    public required int MaxConnections { get; init; }
+
+    /// <summary>Configured connection limit for the cluster (e.g. Atlas max), or null when not configured.</summary>
+    public int? Limit { get; init; }
 }
 
 /// <summary>

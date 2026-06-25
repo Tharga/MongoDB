@@ -1,4 +1,6 @@
-﻿namespace Tharga.MongoDB.Configuration;
+﻿using System;
+
+namespace Tharga.MongoDB.Configuration;
 
 public record MonitorOptions
 {
@@ -39,6 +41,26 @@ public record MonitorOptions
     /// When null or empty, no forwarding is configured.
     /// </summary>
     public string SendTo { get; set; }
+
+    /// <summary>
+    /// When forwarding to a central monitor (<see cref="SendTo"/>), whether to forward every completed call.
+    /// This can be a large, continuous stream proportional to database activity, so it is <b>off by default</b>.
+    /// Collection metadata and (viewer-gated) queue metrics are forwarded regardless of this setting.
+    /// </summary>
+    public bool ForwardCompletedCalls { get; set; } = false;
+
+    /// <summary>
+    /// How often the agent forwards a queue-state snapshot to the central monitor (only while someone is
+    /// watching live). Smaller is smoother on the live graph; larger is less chatter. Default is 1 second.
+    /// </summary>
+    public TimeSpan QueueMetricInterval { get; set; } = TimeSpan.FromSeconds(1);
+
+    /// <summary>
+    /// The maximum number of connections a cluster allows (e.g. an Atlas cluster's connection limit, 3000 on
+    /// many tiers). When set, the central monitor shows total open connections across all sources as a
+    /// fraction of this limit. When null, only the totals are shown. Configured on the monitor/server.
+    /// </summary>
+    public int? ClusterConnectionLimit { get; set; }
 
     /// <summary>
     /// Enable MongoDB driver command monitoring. When enabled, driver-level command durations
