@@ -38,7 +38,7 @@ public abstract class LockableTestBase : IDisposable
         });
         mocker.Use(mongoDbClientProvider);
 
-        var executeLimiter = new ExecuteLimiter(Mock.Of<IOptions<ExecuteLimiterOptions>>(x => x.Value == new ExecuteLimiterOptions { MaxConcurrent = 20 }), null);
+        var executeLimiter = new ExecuteLimiter(Mock.Of<IOptions<ExecuteLimiterOptions>>(x => x.Value == new ExecuteLimiterOptions()), null);
         mocker.Use((IExecuteLimiter)executeLimiter);
 
         var collectionPool = new Mock<ICollectionPool>(MockBehavior.Loose);

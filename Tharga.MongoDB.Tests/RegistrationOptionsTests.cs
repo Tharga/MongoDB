@@ -95,56 +95,6 @@ public class RegistrationOptionsTests
         result.Enabled.Should().BeFalse();
     }
 
-    [Fact]
-    public void Limiter_NoConfiguration_DefaultsToNull()
-    {
-        var provider = Register(BuildConfig());
-
-        var result = provider.GetRequiredService<IOptions<ExecuteLimiterOptions>>().Value;
-
-        result.MaxConcurrent.Should().BeNull();
-    }
-
-    [Fact]
-    public void Limiter_CodeConfigured_UsesCodeValue()
-    {
-        var provider = Register(BuildConfig(), o => o.Limiter.MaxConcurrent = 5);
-
-        var result = provider.GetRequiredService<IOptions<ExecuteLimiterOptions>>().Value;
-
-        result.MaxConcurrent.Should().Be(5);
-    }
-
-    [Fact]
-    public void Limiter_AppSettingsConfigured_UsesAppSettingsValue()
-    {
-        var config = BuildConfig(new Dictionary<string, string>
-        {
-            { "MongoDB:Limiter:MaxConcurrent", "10" }
-        });
-
-        var provider = Register(config);
-
-        var result = provider.GetRequiredService<IOptions<ExecuteLimiterOptions>>().Value;
-
-        result.MaxConcurrent.Should().Be(10);
-    }
-
-    [Fact]
-    public void Limiter_BothCodeAndAppSettings_CodeWins()
-    {
-        var config = BuildConfig(new Dictionary<string, string>
-        {
-            { "MongoDB:Limiter:MaxConcurrent", "10" }
-        });
-
-        var provider = Register(config, o => o.Limiter.MaxConcurrent = 5);
-
-        var result = provider.GetRequiredService<IOptions<ExecuteLimiterOptions>>().Value;
-
-        result.MaxConcurrent.Should().Be(5);
-    }
-
     // --- Monitor ---
 
     [Fact]

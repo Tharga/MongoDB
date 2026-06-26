@@ -26,6 +26,27 @@ public record DatabaseOptions
     public Func<ConfigurationName, IServiceProvider, Task<ConnectionString>> ConnectionStringLoader { get; set; }
 
     /// <summary>
+    /// Optional override for <c>MaxPoolSize</c>, applied per configuration name to the connection URL
+    /// <b>before</b> the <c>MongoClient</c> is created — so both the MongoDB driver and the execute
+    /// limiter see the same value, and configurations on the same cluster with different pool sizes
+    /// get their own <c>MongoClient</c> (the effective pool size is part of the client cache key).
+    /// <para>
+    /// Parameters: the service provider, the configuration name (e.g. <c>"Aggregator"</c>), and the
+    /// <c>MaxPoolSize</c> already present in the connection string (or the driver default of 100 if
+    /// absent). Return the pool size to use.
+    /// </para>
+    /// <code>
+    /// o.MaxPoolSizeOverride = (sp, name, csPoolSize) => name switch
+    /// {
+    ///     "Aggregator"  => Task.FromResult(500),
+    ///     "Integration" => Task.FromResult(50),
+    ///     _             => Task.FromResult(csPoolSize) // pass through if unknown
+    /// };
+    /// </code>
+    /// </summary>
+    public Func<IServiceProvider, string, int, Task<int>> MaxPoolSizeOverride { get; set; }
+
+    /// <summary>
     /// If true, all classes inheriting from IRepository will be registered. This value is default true.
     /// Use IServiceCollection to register repositories manually.
     /// </summary>

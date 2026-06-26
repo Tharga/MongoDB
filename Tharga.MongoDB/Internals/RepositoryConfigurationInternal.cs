@@ -47,7 +47,7 @@ internal class RepositoryConfigurationInternal : IRepositoryConfigurationInterna
 
             var server = mongoUrl.ToString().TrimEnd(mongoUrl.DatabaseName);
             mongoUrl = new MongoUrl($"{server}{databaseName}");
-            return mongoUrl;
+            return result.ApplyPoolSizeOverride(mongoUrl);
         }
         else
         {
@@ -58,6 +58,7 @@ internal class RepositoryConfigurationInternal : IRepositoryConfigurationInterna
             var result = _mongoUrlBuilderLoader.GetConnectionStringBuilder(_databaseContext.Value);
 
             mongoUrl = result.Builder.Build(result.ConnectionStringLoader(), _databaseContext.Value?.DatabasePart);
+            mongoUrl = result.ApplyPoolSizeOverride(mongoUrl);
 
             _databaseUrlCache.TryAdd(key, mongoUrl);
             return mongoUrl;

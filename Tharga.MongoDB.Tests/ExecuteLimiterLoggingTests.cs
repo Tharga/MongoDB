@@ -26,7 +26,7 @@ public class ExecuteLimiterLoggingTests
     private static ExecuteLimiter CreateLimiter(ILogger<ExecuteLimiter> logger)
     {
         var options = Mock.Of<IOptions<ExecuteLimiterOptions>>(x =>
-            x.Value == new ExecuteLimiterOptions { Enabled = true, MaxConcurrent = 1 });
+            x.Value == new ExecuteLimiterOptions { Enabled = true });
         return new ExecuteLimiter(options, logger);
     }
 
@@ -47,14 +47,14 @@ public class ExecuteLimiterLoggingTests
         var logger = new Mock<ILogger<ExecuteLimiter>>();
         var limiter = CreateLimiter(logger.Object);
 
-        // Block the single concurrency slot so the next two operations pile up in the queue,
-        // driving queuedCount past the > 1 threshold that emits the "Queued ..." message.
+        // Pool size of 1 -> a single concurrency slot. Block it so the next two operations pile up in the
+        // queue, driving queuedCount past the > 1 threshold that emits the "Queued ..." message.
         var gate = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var blocking = limiter.ExecuteAsync(async _ => { await gate.Task; return 0; }, ServerKey, 100, Ctx(), CancellationToken.None);
+        var blocking = limiter.ExecuteAsync(async _ => { await gate.Task; return 0; }, ServerKey, 1, Ctx(), CancellationToken.None);
         await SpinUntil(() => limiter.GetCurrentState().ExecutingCount == 1);
 
-        var waiterA = limiter.ExecuteAsync(_ => Task.FromResult(1), ServerKey, 100, Ctx(), CancellationToken.None);
-        var waiterB = limiter.ExecuteAsync(_ => Task.FromResult(2), ServerKey, 100, Ctx(), CancellationToken.None);
+        var waiterA = limiter.ExecuteAsync(_ => Task.FromResult(1), ServerKey, 1, Ctx(), CancellationToken.None);
+        var waiterB = limiter.ExecuteAsync(_ => Task.FromResult(2), ServerKey, 1, Ctx(), CancellationToken.None);
         await SpinUntil(() => limiter.GetCurrentState().QueueCount >= 2);
 
         gate.SetResult(0);
