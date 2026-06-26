@@ -1258,16 +1258,16 @@ Cursors are sort-bound: passing one issued for `sortBy: x => x.Name` to a call s
 
 ## Execute Limiter
 The built-in execute limiter queues database operations to prevent exhausting the MongoDB connection pool.
-By default it is enabled and automatically sizes itself to `MaxConnectionPoolSize` from the MongoDB driver — no configuration needed.
+It is always sized to the connection's `MaxConnectionPoolSize` (the driver default is 100) — no configuration needed.
+Set `MaxPoolSize` in the connection string, or use [`MaxPoolSizeOverride`](#per-configuration-pool-size) to control it per configuration.
 
-Operations sharing the same connection pool (i.e. the same set of servers) share a single queue, regardless of how many configuration names point to that cluster.
+Operations sharing the same connection pool — the same set of servers **and** the same `MaxConnectionPoolSize` — share a single queue, regardless of how many configuration names point to that cluster. Configurations on the same cluster with **different** pool sizes get their own `MongoClient` and their own queue.
 
 ### Configuration by `appsettings.json`
 ```json
 "MongoDB": {
   "Limiter": {
-    "Enabled": true,
-    "MaxConcurrent": 50
+    "Enabled": true
   }
 }
 ```
@@ -1278,18 +1278,36 @@ builder.AddMongoDB(o =>
 {
     o.Limiter = new ExecuteLimiterOptions
     {
-        Enabled = true,
-        MaxConcurrent = 50
+        Enabled = true
     };
 });
 ```
 
 | Setting | Default | Description |
 |---|---|---|
-| `Enabled` | `true` | Enable or disable the limiter. |
-| `MaxConcurrent` | `null` (auto) | Maximum concurrent operations per connection pool. When `null`, auto-detected from `MaxConnectionPoolSize`. Capped at the pool size even if set higher — a warning is logged in that case. |
+| `Enabled` | `true` | Enable or disable the limiter. When disabled, operations run without any concurrency restriction. The concurrency limit is always derived from `MaxConnectionPoolSize`. |
 
 The monitor surfaces the limiter **per pool** (one per cluster): queue/exec and depth/wait graphs per pool, what is queued vs executing right now (`GetInFlightCalls()` / the MCP `inFlightCalls` resource), and actual open connections per cluster vs a configured limit (`GetClusterConnectionSummary()` + `Monitor.ClusterConnectionLimit`). See the [monitoring docs](https://github.com/Tharga/MongoDB/blob/master/docs/articles/monitoring.md).
+
+### Per-configuration pool size
+`MaxConnectionPoolSize` is part of the `MongoClient` cache key, so two configurations pointing at the same cluster with different `MaxPoolSize` values each get their own client with the correct pool size — they no longer silently share whichever client was created first.
+
+To set the pool size per configuration name without separate connection strings, provide `MaxPoolSizeOverride`. It is applied to the connection URL **before** the `MongoClient` is created, so both the driver and the execute limiter see the same value:
+
+```csharp
+builder.AddMongoDB(o =>
+{
+    o.DefaultConfigurationName = "Aggregator";
+    o.MaxPoolSizeOverride = (serviceProvider, configName, connectionStringPoolSize) => configName switch
+    {
+        "Aggregator"  => Task.FromResult(500),
+        "Integration" => Task.FromResult(50),
+        _             => Task.FromResult(connectionStringPoolSize) // pass through if unknown
+    };
+});
+```
+
+The delegate receives the service provider, the configuration name, and the `MaxPoolSize` already present in the connection string (or the driver default of 100 if absent). It is `async` and invoked once per configuration when the URL is built — never on the execution hot path.
 
 ---
 

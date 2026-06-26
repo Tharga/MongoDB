@@ -17,10 +17,8 @@ internal class ExecuteLimiter : IExecuteLimiter, IQueueMonitor
     private const int MaxMetricEntries = 500;
 
     private readonly bool _enabled;
-    private readonly int? _maxConcurrentOverride;
 
     private readonly ConcurrentDictionary<string, PerPoolState> _states = new();
-    private readonly ConcurrentDictionary<string, bool> _warnedServerKeys = new();
     private readonly ConcurrentQueue<QueueMetricEventArgs> _metrics = new();
 
     // Calls currently held by the limiter (queued or executing), for on-demand diagnostics.
@@ -37,7 +35,6 @@ internal class ExecuteLimiter : IExecuteLimiter, IQueueMonitor
     {
         _logger = logger;
         _enabled = options.Value.Enabled;
-        _maxConcurrentOverride = options.Value.MaxConcurrent;
     }
 
     public async Task<(T Result, ExecuteInfo Info)> ExecuteAsync<T>(Func<CancellationToken, Task<T>> action, string serverKey, int maxConnectionPoolSize, ExecuteCallContext context, CancellationToken cancellationToken)
@@ -48,16 +45,7 @@ internal class ExecuteLimiter : IExecuteLimiter, IQueueMonitor
             return (result, new ExecuteInfo { QueueElapsed = TimeSpan.Zero, ConcurrentCount = 0, QueueCount = 0 });
         }
 
-        var maxConcurrent = _maxConcurrentOverride.HasValue
-            ? Math.Min(_maxConcurrentOverride.Value, maxConnectionPoolSize)
-            : maxConnectionPoolSize;
-
-        if (_maxConcurrentOverride.HasValue && _maxConcurrentOverride.Value > maxConnectionPoolSize
-            && _warnedServerKeys.TryAdd(serverKey, true))
-        {
-            _logger?.LogWarning("Configured MaxConcurrent ({configured}) exceeds MaxConnectionPoolSize ({poolSize}) for {serverKey}. Capping at {poolSize}.",
-                _maxConcurrentOverride.Value, maxConnectionPoolSize, serverKey, maxConnectionPoolSize);
-        }
+        var maxConcurrent = maxConnectionPoolSize;
 
         var state = _states.GetOrAdd(serverKey, _ => new PerPoolState(maxConcurrent));
         state.TagConfiguration(context?.ConfigurationName);

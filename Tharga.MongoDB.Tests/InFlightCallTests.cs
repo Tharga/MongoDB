@@ -16,9 +16,9 @@ public class InFlightCallTests
 {
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(5);
 
-    private static ExecuteLimiter CreateLimiter(int maxConcurrent) =>
+    private static ExecuteLimiter CreateLimiter() =>
         new(Mock.Of<IOptions<ExecuteLimiterOptions>>(x =>
-                x.Value == new ExecuteLimiterOptions { Enabled = true, MaxConcurrent = maxConcurrent }),
+                x.Value == new ExecuteLimiterOptions { Enabled = true }),
             NullLogger<ExecuteLimiter>.Instance);
 
     private static ExecuteCallContext Ctx(string function, Operation operation, string filterJson = null) => new()
@@ -35,17 +35,18 @@ public class InFlightCallTests
     [Fact]
     public async Task GetInFlightCalls_DistinguishesQueuedFromExecuting_WithMetadataAndRenderedFilter()
     {
-        var limiter = CreateLimiter(maxConcurrent: 1);
+        var limiter = CreateLimiter();
         var gate = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
 
+        // Pool size of 1 -> a single concurrency slot, so the second call must queue behind the first.
         // Occupy the only slot; this one is executing.
         var executing = limiter.ExecuteAsync(async _ => { await gate.Task; return 0; },
-            "srv", 100, Ctx("GetManyAsync", Operation.Read, "{ \"x\" : 1 }"), CancellationToken.None);
+            "srv", 1, Ctx("GetManyAsync", Operation.Read, "{ \"x\" : 1 }"), CancellationToken.None);
         await SpinUntil(() => limiter.GetInFlightCalls().Any(c => c.IsExecuting));
 
         // This one cannot acquire the slot; it stays queued.
         var queued = limiter.ExecuteAsync(_ => Task.FromResult(1),
-            "srv", 100, Ctx("UpdateOneAsync", Operation.Update), CancellationToken.None);
+            "srv", 1, Ctx("UpdateOneAsync", Operation.Update), CancellationToken.None);
         await SpinUntil(() => limiter.GetInFlightCalls().Count(c => !c.IsExecuting) == 1);
 
         var inFlight = limiter.GetInFlightCalls();

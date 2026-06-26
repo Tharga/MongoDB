@@ -51,7 +51,6 @@ public static class MongoDbRegistrationExtensions
             Limiter = new ExecuteLimiterOptions
             {
                 Enabled = c?.Limiter?.Enabled ?? lo.Enabled,
-                MaxConcurrent = c?.Limiter?.MaxConcurrent ?? lo.MaxConcurrent,
             }
         };
         options?.Invoke(o);

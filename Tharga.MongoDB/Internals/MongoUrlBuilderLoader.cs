@@ -1,6 +1,7 @@
 ﻿using System;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
+using MongoDB.Driver;
 using Tharga.MongoDB.Configuration;
 
 namespace Tharga.MongoDB.Internals;
@@ -16,7 +17,7 @@ internal class MongoUrlBuilderLoader : IMongoUrlBuilderLoader
         _databaseOptions = databaseOptions;
     }
 
-    public (IMongoUrlBuilder Builder, Func<string> ConnectionStringLoader) GetConnectionStringBuilder(DatabaseContext databaseContext)
+    public (IMongoUrlBuilder Builder, Func<string> ConnectionStringLoader, Func<MongoUrl, MongoUrl> ApplyPoolSizeOverride) GetConnectionStringBuilder(DatabaseContext databaseContext)
     {
         var builder = new Lazy<IMongoUrlBuilder>(() =>
         {
@@ -24,7 +25,28 @@ internal class MongoUrlBuilderLoader : IMongoUrlBuilderLoader
             return new MongoUrlBuilder(hostEnvironment);
         });
 
-        return ((IMongoUrlBuilder)_serviceProvider.GetService(typeof(IMongoUrlBuilder)) ?? builder.Value, () => GetConnectionString(databaseContext, _databaseOptions, _serviceProvider));
+        return (
+            (IMongoUrlBuilder)_serviceProvider.GetService(typeof(IMongoUrlBuilder)) ?? builder.Value,
+            () => GetConnectionString(databaseContext, _databaseOptions, _serviceProvider),
+            url => ApplyMaxPoolSizeOverride(url, databaseContext));
+    }
+
+    // Applies DatabaseOptions.MaxPoolSizeOverride to the built URL so the overridden MaxPoolSize feeds both
+    // the MongoClient settings and the client cache key (MongoDbClientProvider.GetServerKey). Runs once per
+    // URL construction (not on the hot path); sync-over-async mirrors the ConnectionStringLoader call above.
+    private MongoUrl ApplyMaxPoolSizeOverride(MongoUrl url, DatabaseContext databaseContext)
+    {
+        var ovr = _databaseOptions.MaxPoolSizeOverride;
+        if (ovr == null || url == null) return url;
+
+        var configurationName = databaseContext?.ConfigurationName?.Value.NullIfEmpty() ?? _databaseOptions.DefaultConfigurationName;
+        if (configurationName == null) return url;
+
+        var current = url.MaxConnectionPoolSize;
+        var resolved = ovr(_serviceProvider, configurationName, current).GetAwaiter().GetResult();
+        if (resolved == current) return url;
+
+        return new global::MongoDB.Driver.MongoUrlBuilder(url.ToString()) { MaxConnectionPoolSize = resolved }.ToMongoUrl();
     }
 
     private string GetConnectionString(DatabaseContext databaseContext, DatabaseOptions databaseOptions, IServiceProvider provider)

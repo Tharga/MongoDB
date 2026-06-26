@@ -48,13 +48,16 @@ Useful for distinguishing slow database from slow serialization or application c
 
 ## Connection pool, queue and in-flight calls
 
-Database operations pass through a per-pool concurrency limiter (one pool per cluster, keyed by the set of
-server hosts). The Blazor queue view surfaces this **per pool**, not as a single process-wide figure:
+Database operations pass through a per-pool concurrency limiter (one pool per `MongoClient`, keyed by the set of
+server hosts **and** the pool's `MaxConnectionPoolSize`). The Blazor queue view surfaces this **per pool**, not as
+a single process-wide figure:
 
 - **Queue / Exec counters and the Queue-Depth / Wait-Time graphs** are drawn one line per pool, labelled by the
   configuration name(s) routing through that pool. Configurations on separate clusters get their own lines;
-  configurations sharing a cluster collapse into one line (they share one connection pool). When agents are
-  connected, their pools appear as additional lines (source-suffixed), so local + remote are shown together.
+  configurations sharing a cluster *and* the same `MaxPoolSize` collapse into one line (they share one connection
+  pool), while configurations on the same cluster with different pool sizes get their own client and their own
+  line. When agents are connected, their pools appear as additional lines (source-suffixed), so local + remote are
+  shown together.
 
 - **Connection-pool usage vs a limit.** The monitor counts the *actual* open MongoDB driver connections per
   cluster (from the driver's connection-pool events) — this is what counts toward a cluster's connection limit,

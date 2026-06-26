@@ -51,7 +51,7 @@ public class FetchCollectionLockTests : IDisposable
         });
         mocker.Use(mongoDbClientProvider);
 
-        var executeLimiter = new ExecuteLimiter(Mock.Of<IOptions<ExecuteLimiterOptions>>(x => x.Value == new ExecuteLimiterOptions { MaxConcurrent = 20 }), null);
+        var executeLimiter = new ExecuteLimiter(Mock.Of<IOptions<ExecuteLimiterOptions>>(x => x.Value == new ExecuteLimiterOptions()), null);
         mocker.Use((IExecuteLimiter)executeLimiter);
 
         // Use a real CollectionPool so the double-check pattern works correctly

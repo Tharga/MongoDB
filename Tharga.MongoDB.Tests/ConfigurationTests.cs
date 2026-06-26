@@ -1,4 +1,5 @@
-﻿using System.Threading.Tasks;
+﻿using System;
+using System.Threading.Tasks;
 using FluentAssertions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
@@ -29,7 +30,7 @@ public class ConfigurationTests
         var connectionStringBuilder = new MongoUrlBuilder(hostEnvironmentMock.Object);
         var mongoUrlBuilderLoaderMock = new Mock<IMongoUrlBuilderLoader>(MockBehavior.Strict);
         mongoUrlBuilderLoaderMock.Setup(x => x.GetConnectionStringBuilder(It.IsAny<DatabaseContext>()))
-            .Returns((DatabaseContext _) => (connectionStringBuilder, () => "mongodb://localhost:27017/Tharga{environment}{part}"));
+            .Returns((DatabaseContext _) => (connectionStringBuilder, () => "mongodb://localhost:27017/Tharga{environment}{part}", new Func<global::MongoDB.Driver.MongoUrl, global::MongoDB.Driver.MongoUrl>(u => u)));
         var repositoryConfiguration = new Mock<IRepositoryConfiguration>(MockBehavior.Strict);
         var databaseContext = Mock.Of<DatabaseContext>(x => x.DatabasePart == part);
         var databaseOptions = Mock.Of<DatabaseOptions>(x => x.DefaultConfigurationName == "Default");

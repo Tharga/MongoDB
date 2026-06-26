@@ -62,6 +62,10 @@ internal class MongoDbClientProvider : IMongoDbClientProvider
 
     internal static string GetServerKey(MongoUrl url)
     {
-        return string.Join(",", url.Servers.Select(s => s.ToString()).OrderBy(x => x));
+        // MaxConnectionPoolSize is part of the key so two configurations pointing at the same cluster
+        // with different pool sizes get their own MongoClient (and their own ExecuteLimiter pool, which
+        // shares this key) instead of silently sharing whichever client was created first.
+        var servers = string.Join(",", url.Servers.Select(s => s.ToString()).OrderBy(x => x));
+        return $"{servers}|pool={url.MaxConnectionPoolSize}";
     }
 }
