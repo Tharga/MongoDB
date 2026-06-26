@@ -30,6 +30,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
     private readonly IConnectionPoolMonitor _connectionPoolMonitor;
     private Dictionary<(string, string), StatColInfo> _staticLookup;
     private Dictionary<string, DynColInfo> _dynamicLookup;
+    private Dictionary<(string, string), DynColInfo> _dynamicByNameLookup;
     private readonly SemaphoreSlim _lookupLock = new(1, 1);
     private bool _started;
     private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, MonitorClientDto> _monitorClients = new();
@@ -206,10 +207,20 @@ internal class DatabaseMonitor : IDatabaseMonitor
 
             _mongoDbServiceFactory.CollectionDroppedEvent += (s, e) =>
             {
-                var configName = e.DatabaseContext.ConfigurationName ?? _options.DefaultConfigurationName;
+                // Prefer the resolved identity carried on the event (authoritative, matches how the
+                // collection was reported); fall back to the registration-time DatabaseContext for
+                // older callers. Matching on DatabaseName too, when known, keeps a per-tenant drop
+                // from evicting the same collection in other tenant databases.
+                var collectionName = e.CollectionName ?? e.DatabaseContext?.CollectionName;
+                var databaseName = e.DatabaseName;
+                var configName = e.ConfigurationName
+                                 ?? e.DatabaseContext?.ConfigurationName?.Value
+                                 ?? _options.DefaultConfigurationName;
+
                 var keysToRemove = _cache.GetAll()
                     .Where(v => (v.ConfigurationName?.Value ?? _options.DefaultConfigurationName) == configName
-                                && v.CollectionName == e.DatabaseContext.CollectionName)
+                                && v.CollectionName == collectionName
+                                && (databaseName == null || v.DatabaseName == databaseName))
                     .Select(v => v.Key)
                     .ToList();
 
@@ -426,21 +437,16 @@ internal class DatabaseMonitor : IDatabaseMonitor
         if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
         if (collectionInfo == null) throw new ArgumentNullException(nameof(collectionInfo));
 
-        if (collectionInfo.CollectionType == null)
+        var exec = ResolveExecution(collectionInfo);
+        if (exec.Target == ExecutionTarget.Remote)
         {
-            _logger?.LogDebug("TouchAsync: Remote collection detected — {Key}", collectionInfo.Key);
-            var dispatcher = TryGetRemoteDispatcher(collectionInfo);
-            if (dispatcher.Dispatcher != null)
-            {
-                _logger?.LogDebug("TouchAsync: Delegating to agent via connection {ConnectionId}", dispatcher.ConnectionId);
-                await dispatcher.Dispatcher.TouchAsync(dispatcher.ConnectionId, collectionInfo);
-                _logger?.LogDebug("TouchAsync: Remote delegation completed.");
-                return;
-            }
-            throw new InvalidOperationException("Collection is remote-only but no connected agent was found.");
+            _logger?.LogDebug("TouchAsync: Delegating to agent via connection {ConnectionId}", exec.ConnectionId);
+            await exec.Dispatcher.TouchAsync(exec.ConnectionId, collectionInfo);
+            _logger?.LogDebug("TouchAsync: Remote delegation completed.");
+            return;
         }
-
-        if (collectionInfo.Registration == Registration.NotInCode) throw new InvalidOperationException($"{nameof(TouchAsync)} does not support {nameof(Registration)} {collectionInfo.Registration}.");
+        if (exec.Target == ExecutionTarget.None) throw RemoteUnreachable(nameof(TouchAsync), collectionInfo);
+        collectionInfo = exec.Local;
 
         var collection = _collectionProvider.GetCollection(collectionInfo.CollectionType, collectionInfo.Registration == Registration.Dynamic ? collectionInfo.ToDatabaseContext() : null);
 
@@ -490,15 +496,11 @@ internal class DatabaseMonitor : IDatabaseMonitor
         if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
         if (collectionInfo == null) throw new ArgumentNullException(nameof(collectionInfo));
 
-        if (collectionInfo.CollectionType == null)
-        {
-            var dispatcher = TryGetRemoteDispatcher(collectionInfo);
-            if (dispatcher.Dispatcher != null)
-                return await dispatcher.Dispatcher.DropIndexAsync(dispatcher.ConnectionId, collectionInfo);
-            throw new InvalidOperationException("Collection is remote-only but no connected agent was found.");
-        }
-
-        if (collectionInfo.Registration == Registration.NotInCode) throw new InvalidOperationException($"{nameof(DropIndexAsync)} does not support {nameof(Registration)} {collectionInfo.Registration}.");
+        var exec = ResolveExecution(collectionInfo);
+        if (exec.Target == ExecutionTarget.Remote)
+            return await exec.Dispatcher.DropIndexAsync(exec.ConnectionId, collectionInfo);
+        if (exec.Target == ExecutionTarget.None) throw RemoteUnreachable(nameof(DropIndexAsync), collectionInfo);
+        collectionInfo = exec.Local;
 
         var collection = _collectionProvider.GetCollection(collectionInfo.CollectionType, collectionInfo.Registration == Registration.Dynamic ? collectionInfo.ToDatabaseContext() : null);
 
@@ -520,18 +522,14 @@ internal class DatabaseMonitor : IDatabaseMonitor
         if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
         if (collectionInfo == null) throw new ArgumentNullException(nameof(collectionInfo));
 
-        if (collectionInfo.CollectionType == null)
+        var exec = ResolveExecution(collectionInfo);
+        if (exec.Target == ExecutionTarget.Remote)
         {
-            var dispatcher = TryGetRemoteDispatcher(collectionInfo);
-            if (dispatcher.Dispatcher != null)
-            {
-                await dispatcher.Dispatcher.RestoreIndexAsync(dispatcher.ConnectionId, collectionInfo, force);
-                return;
-            }
-            throw new InvalidOperationException("Collection is remote-only but no connected agent was found.");
+            await exec.Dispatcher.RestoreIndexAsync(exec.ConnectionId, collectionInfo, force);
+            return;
         }
-
-        if (collectionInfo.Registration == Registration.NotInCode) throw new InvalidOperationException($"{nameof(RestoreIndexAsync)} does not support {nameof(Registration)} {collectionInfo.Registration}.");
+        if (exec.Target == ExecutionTarget.None) throw RemoteUnreachable(nameof(RestoreIndexAsync), collectionInfo);
+        collectionInfo = exec.Local;
 
         var collection = _collectionProvider.GetCollection(collectionInfo.CollectionType, collectionInfo.Registration == Registration.Dynamic ? collectionInfo.ToDatabaseContext() : null);
 
@@ -600,15 +598,11 @@ internal class DatabaseMonitor : IDatabaseMonitor
         if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
         if (collectionInfo == null) throw new ArgumentNullException(nameof(collectionInfo));
 
-        if (collectionInfo.CollectionType == null)
-        {
-            var dispatcher = TryGetRemoteDispatcher(collectionInfo);
-            if (dispatcher.Dispatcher != null)
-                return await dispatcher.Dispatcher.GetIndexBlockersAsync(dispatcher.ConnectionId, collectionInfo, indexName);
-            throw new InvalidOperationException("Collection is remote-only but no connected agent was found.");
-        }
-
-        if (collectionInfo.Registration == Registration.NotInCode) throw new InvalidOperationException($"{nameof(GetIndexBlockersAsync)} does not support {nameof(Registration)} {collectionInfo.Registration}.");
+        var exec = ResolveExecution(collectionInfo);
+        if (exec.Target == ExecutionTarget.Remote)
+            return await exec.Dispatcher.GetIndexBlockersAsync(exec.ConnectionId, collectionInfo, indexName);
+        if (exec.Target == ExecutionTarget.None) throw RemoteUnreachable(nameof(GetIndexBlockersAsync), collectionInfo);
+        collectionInfo = exec.Local;
 
         var collection = _collectionProvider.GetCollection(collectionInfo.CollectionType, collectionInfo.Registration == Registration.Dynamic ? collectionInfo.ToDatabaseContext() : null);
 
@@ -638,15 +632,11 @@ internal class DatabaseMonitor : IDatabaseMonitor
         if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
         if (collectionInfo == null) throw new ArgumentNullException(nameof(collectionInfo));
 
-        if (collectionInfo.CollectionType == null)
-        {
-            var dispatcher = TryGetRemoteDispatcher(collectionInfo);
-            if (dispatcher.Dispatcher != null)
-                return await dispatcher.Dispatcher.CleanAsync(dispatcher.ConnectionId, collectionInfo, cleanGuids);
-            throw new InvalidOperationException("Collection is remote-only but no connected agent was found.");
-        }
-
-        if (collectionInfo.Registration == Registration.NotInCode) throw new InvalidOperationException($"{nameof(CleanAsync)} does not support {nameof(Registration)} {collectionInfo.Registration}.");
+        var exec = ResolveExecution(collectionInfo);
+        if (exec.Target == ExecutionTarget.Remote)
+            return await exec.Dispatcher.CleanAsync(exec.ConnectionId, collectionInfo, cleanGuids);
+        if (exec.Target == ExecutionTarget.None) throw RemoteUnreachable(nameof(CleanAsync), collectionInfo);
+        collectionInfo = exec.Local;
 
         var collection = _collectionProvider.GetCollection(collectionInfo.CollectionType, collectionInfo.Registration == Registration.Dynamic ? collectionInfo.ToDatabaseContext() : null);
 
@@ -947,11 +937,34 @@ internal class DatabaseMonitor : IDatabaseMonitor
     public void IngestClientDisconnected(string connectionId)
     {
         var entry = _monitorClients.Values.FirstOrDefault(x => x.ConnectionId == connectionId);
-        if (entry != null)
+        if (entry == null) return;
+
+        _monitorClients[entry.Instance] = entry with { IsConnected = false, DisconnectTime = DateTime.UtcNow };
+
+        // Drop the disconnected client's source so it no longer counts toward collection
+        // reachability or connection/queue metrics. A collection still reported by another client
+        // — or reachable by this server directly (its local source remains tagged) — survives;
+        // one left with no sources at all is a ghost from the gone agent and is removed.
+        var sourceName = entry.SourceName;
+        if (!string.IsNullOrEmpty(sourceName))
         {
-            _monitorClients[entry.Instance] = entry with { IsConnected = false, DisconnectTime = DateTime.UtcNow };
-            MonitorClientsChanged?.Invoke(this, EventArgs.Empty);
+            if (_sourceToConnectionId.TryGetValue(sourceName, out var mapped) && mapped == connectionId)
+                _sourceToConnectionId.TryRemove(sourceName, out _);
+
+            _remoteQueueStates.TryRemove(sourceName, out _);
+            _remotePoolStates.TryRemove(sourceName, out _);
+
+            foreach (var kvp in _collectionSources)
+            {
+                if (kvp.Value.TryRemove(sourceName, out _) && kvp.Value.IsEmpty)
+                {
+                    _collectionSources.TryRemove(kvp.Key, out _);
+                    _remoteCollections.TryRemove(kvp.Key, out _);
+                }
+            }
         }
+
+        MonitorClientsChanged?.Invoke(this, EventArgs.Empty);
     }
 
     public void IngestCollectionInfo(RemoteCollectionInfoDto dto, string connectionId = null)
@@ -969,6 +982,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
             Registration = registration,
             EntityTypes = dto.EntityTypes ?? [],
             CollectionType = null,
+            CollectionTypeName = dto.CollectionTypeName,
             Stats = dto.Stats,
             Index = dto.Index,
             Clean = dto.Clean,
@@ -993,6 +1007,42 @@ internal class DatabaseMonitor : IDatabaseMonitor
         }
 
         CollectionInfoChangedEvent?.Invoke(this, new CollectionInfoChangedEventArgs(info));
+    }
+
+    public void IngestCollectionDropped(string sourceName, string configurationName, string databaseName, string collectionName)
+    {
+        if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
+        if (string.IsNullOrEmpty(collectionName) || string.IsNullOrEmpty(databaseName)) return;
+
+        // Match by resolved (database, collection): the physical database name plus the physical
+        // collection name uniquely identify the collection. Configuration name is intentionally not
+        // required — an agent's drop can carry a null/unresolved config (e.g. a dynamic collection
+        // whose context didn't set one) while the original report resolved it to a default, and a
+        // strict config match would then miss. When a config is supplied, it's used as a soft filter.
+        var configName = string.IsNullOrEmpty(configurationName) ? null : configurationName;
+        var matches = _remoteCollections.Values
+            .Where(c => c.DatabaseName == databaseName
+                        && c.CollectionName == collectionName
+                        && (configName == null || (c.ConfigurationName?.Value ?? _options.DefaultConfigurationName) == configName))
+            .ToList();
+
+        foreach (var match in matches)
+        {
+            var key = match.Key;
+
+            // Drop only this agent's claim. The collection survives while another source still
+            // reports it (or the server can reach it locally — its local source stays tagged).
+            if (_collectionSources.TryGetValue(key, out var sources) && !string.IsNullOrEmpty(sourceName))
+            {
+                sources.TryRemove(sourceName, out _);
+                if (!sources.IsEmpty) continue;
+                _collectionSources.TryRemove(key, out _);
+            }
+
+            if (_remoteCollections.TryRemove(key, out var removed))
+                CollectionDroppedEvent?.Invoke(this, new CollectionDroppedEventArgs(removed.ToDatabaseContext(),
+                    removed.ConfigurationName?.Value, removed.DatabaseName, removed.CollectionName));
+        }
     }
 
     public IReadOnlyCollection<string> GetCollectionSources(string fingerprintKey)
@@ -1394,6 +1444,76 @@ internal class DatabaseMonitor : IDatabaseMonitor
 
     // --- Private helpers ---
 
+    private enum ExecutionTarget { None, Local, Remote }
+
+    private static InvalidOperationException RemoteUnreachable(string operation, CollectionInfo info)
+    {
+        return info.Registration == Registration.NotInCode
+            ? new InvalidOperationException($"{operation} does not support {nameof(Registration)} {info.Registration}.")
+            : new InvalidOperationException("Collection cannot be actioned: it is not available in this process and no connected agent reports it.");
+    }
+
+    /// <summary>
+    /// Decides how an action on <paramref name="collectionInfo"/> can be serviced right now:
+    /// directly by this process when it has the collection in code and the configuration,
+    /// otherwise by a currently-connected agent that reports it. A <see cref="Registration.NotInCode"/>
+    /// collection can be serviced by neither, since no side has code to run against it.
+    /// </summary>
+    private (ExecutionTarget Target, CollectionInfo Local, IRemoteActionDispatcher Dispatcher, string ConnectionId) ResolveExecution(CollectionInfo collectionInfo)
+    {
+        var local = TryLocalize(collectionInfo);
+        if (local != null && local.Registration != Registration.NotInCode)
+            return (ExecutionTarget.Local, local, null, null);
+
+        // NotInCode can't be actioned anywhere — don't bother dispatching.
+        if (collectionInfo.Registration != Registration.NotInCode)
+        {
+            var (dispatcher, connectionId) = TryGetRemoteDispatcher(collectionInfo);
+            if (dispatcher != null)
+                return (ExecutionTarget.Remote, null, dispatcher, connectionId);
+        }
+
+        return (ExecutionTarget.None, null, null, null);
+    }
+
+    /// <summary>
+    /// Returns a version of <paramref name="info"/> that this process can execute against — i.e.
+    /// with <see cref="CollectionInfo.CollectionType"/> resolved from local registrations — or null
+    /// when this process can't reach it (config not registered here, or collection not in code).
+    /// Runtime-reported stats/index/clean from the original entry are preserved.
+    /// </summary>
+    private CollectionInfo TryLocalize(CollectionInfo info)
+    {
+        if (info == null) return null;
+        if (info.CollectionType != null) return info; // already locally executable
+
+        var configName = info.ConfigurationName?.Value ?? _options.DefaultConfigurationName;
+        if (!GetConfigurations().Any(c => (c.Value ?? _options.DefaultConfigurationName) == configName))
+            return null;
+
+        var resolved = BuildInitialEntry(info, info.Server, info.DatabasePart, info.EntityTypes?.FirstOrDefault());
+        if (resolved.CollectionType == null) return null; // config is here, but the collection is not in code
+
+        return resolved with
+        {
+            Stats = info.Stats ?? resolved.Stats,
+            Index = info.Index ?? resolved.Index,
+            Clean = info.Clean ?? resolved.Clean,
+            Discovery = info.Discovery | resolved.Discovery,
+        };
+    }
+
+    /// <summary>
+    /// Whether any action (touch/clean/index) on this collection can currently be serviced —
+    /// either locally by this process or by a connected agent. Used by the UI to gate action buttons.
+    /// </summary>
+    public bool CanExecuteActions(CollectionInfo collectionInfo)
+    {
+        if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
+        if (collectionInfo == null) return false;
+        return ResolveExecution(collectionInfo).Target != ExecutionTarget.None;
+    }
+
     private (IRemoteActionDispatcher Dispatcher, string ConnectionId) TryGetRemoteDispatcher(CollectionInfo collectionInfo)
     {
         var dispatcher = _serviceProvider.GetService(typeof(IRemoteActionDispatcher)) as IRemoteActionDispatcher;
@@ -1445,7 +1565,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
 
     private CollectionInfo BuildInitialEntry(CollectionFingerprint fingerprint, string server, string databasePart, string entityTypeName)
     {
-        var (staticLookup, dynamicLookup) = GetLookups();
+        var (staticLookup, dynamicLookup, dynamicByNameLookup) = GetLookups();
         var configName = fingerprint.ConfigurationName?.Value ?? _options.DefaultConfigurationName;
 
         if (staticLookup.TryGetValue((configName, fingerprint.CollectionName), out var reg))
@@ -1466,7 +1586,19 @@ internal class DatabaseMonitor : IDatabaseMonitor
             };
         }
 
-        if (entityTypeName != null && dynamicLookup.TryGetValue(entityTypeName, out var dyn))
+        // Resolve the dynamic registration either by the entity-type name (learned from a live
+        // access or the persisted cache) or, failing that, by collection name — the latter lets
+        // a default-named dynamic collection be classified before it's ever accessed in-process.
+        DynColInfo dyn = null;
+        var resolvedEntityTypeName = entityTypeName;
+        if (entityTypeName != null) dynamicLookup.TryGetValue(entityTypeName, out dyn);
+        if (dyn == null && dynamicByNameLookup.TryGetValue((configName, fingerprint.CollectionName), out var byName))
+        {
+            dyn = byName;
+            resolvedEntityTypeName = byName.Type;
+        }
+
+        if (dyn != null)
         {
             return new CollectionInfo
             {
@@ -1477,7 +1609,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
                 DatabasePart = databasePart.NullIfEmpty(),
                 Discovery = dyn.Discovery | Discovery.Database,
                 Registration = Registration.Dynamic,
-                EntityTypes = [entityTypeName],
+                EntityTypes = [resolvedEntityTypeName],
                 CollectionType = dyn.CollectionType,
                 Index = new IndexInfo { Current = null, Defined = dyn.DefinedIndices },
                 CurrentSchemaFingerprint = dyn.EntityType != null ? SchemaFingerprint.Generate(dyn.EntityType) : null,
@@ -1499,23 +1631,34 @@ internal class DatabaseMonitor : IDatabaseMonitor
         };
     }
 
-    private (Dictionary<(string, string), StatColInfo> staticLookup, Dictionary<string, DynColInfo> dynamicLookup) GetLookups()
+    private (Dictionary<(string, string), StatColInfo> staticLookup, Dictionary<string, DynColInfo> dynamicLookup, Dictionary<(string, string), DynColInfo> dynamicByNameLookup) GetLookups()
     {
-        if (_staticLookup != null) return (_staticLookup, _dynamicLookup);
+        if (_staticLookup != null) return (_staticLookup, _dynamicLookup, _dynamicByNameLookup);
 
         _lookupLock.Wait();
         try
         {
-            if (_staticLookup != null) return (_staticLookup, _dynamicLookup);
+            if (_staticLookup != null) return (_staticLookup, _dynamicLookup, _dynamicByNameLookup);
 
-            _staticLookup = BuildStaticLookup(GetStaticCollectionsFromCodeCore(), _options.DefaultConfigurationName);
-            var a = GetDynamicRegistrations(_staticLookup.Select(x => new DatabaseContext { ConfigurationName = x.Key.Item1 })).ToArray();
+            var staticLookup = BuildStaticLookup(GetStaticCollectionsFromCodeCore(), _options.DefaultConfigurationName);
+            var a = GetDynamicRegistrations(staticLookup.Select(x => new DatabaseContext { ConfigurationName = x.Key.Item1 })).ToArray();
             var b = a.GroupBy(x => x.Type).ToArray();
             var c = b.Where(x => x.Count() > 1).ToArray();
             var d = b.Select(x => x.First());
             _dynamicLookup = d.ToDictionary(x => x.Type, x => x);
 
-            return (_staticLookup, _dynamicLookup);
+            // Name-keyed dynamic lookup: lets a collection discovered purely from the database
+            // (never accessed in-code in this process lifetime) be classified as Dynamic on first
+            // sight, as long as it uses the default collection name. Keyed by (config, collection
+            // name) to mirror the static lookup; a dynamic registration that overrides its name
+            // per-context can't be resolved this way and falls back to persist-on-use.
+            _dynamicByNameLookup = BuildDynamicByNameLookup(a, _options.DefaultConfigurationName);
+
+            // Assign the field that gates initialization last, so a concurrent reader either sees
+            // all lookups or takes the lock.
+            _staticLookup = staticLookup;
+
+            return (_staticLookup, _dynamicLookup, _dynamicByNameLookup);
         }
         finally
         {
@@ -1528,7 +1671,14 @@ internal class DatabaseMonitor : IDatabaseMonitor
         if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
         await _cache.ResetAsync();
 
-        // Broadcast to remote agents
+        // Drop remotely-reported state too, otherwise a reset only clears locally-scanned collections
+        // and stale remote entries linger until each agent happens to re-report. Connected agents are
+        // asked to re-send below, which repopulates these with fresh data. Source/connection maps for
+        // live agents are kept so their re-reports can still be correlated and delegated.
+        _remoteCollections.Clear();
+        _collectionSources.Clear();
+
+        // Broadcast to remote agents (clears their cache and triggers a fresh collection-info re-send).
         var dispatcher = _serviceProvider.GetService(typeof(IRemoteActionDispatcher)) as IRemoteActionDispatcher;
         if (dispatcher != null)
             await dispatcher.ResetCacheAllAsync();
@@ -1689,6 +1839,21 @@ internal class DatabaseMonitor : IDatabaseMonitor
                 g => g.First() with { EntityTypes = g.SelectMany(x => x.EntityTypes).Distinct().ToArray() });
     }
 
+    /// <summary>
+    /// Builds the name-keyed dynamic lookup used to classify a collection seen only via a database
+    /// scan (never accessed in-code) as <see cref="Registration.Dynamic"/>. Keyed by
+    /// (configuration, collection name) to mirror <see cref="BuildStaticLookup"/>. Entries without a
+    /// resolvable collection name (e.g. dynamic registrations that name themselves per-context) are
+    /// skipped; duplicate keys collapse to the first, matching the static/dynamic lookup pattern.
+    /// </summary>
+    internal static Dictionary<(string, string), DynColInfo> BuildDynamicByNameLookup(IEnumerable<DynColInfo> source, string defaultConfigurationName)
+    {
+        return source
+            .Where(x => !string.IsNullOrEmpty(x.CollectionName))
+            .GroupBy(x => (x.ConfigurationName ?? defaultConfigurationName, x.CollectionName))
+            .ToDictionary(g => g.Key, g => g.First());
+    }
+
     private IEnumerable<StatColInfo> GetStaticCollectionsFromCodeCore()
     {
         foreach (var registeredCollection in _mongoDbInstance.RegisteredCollections)
@@ -1757,6 +1922,8 @@ internal class DatabaseMonitor : IDatabaseMonitor
                             CollectionType = registeredCollection.Key,
                             DefinedIndices = collection.BuildIndexMetas().ToArray(),
                             EntityType = genericParam,
+                            ConfigurationName = databaseContext.ConfigurationName,
+                            CollectionName = collection.CollectionName,
                         };
                     }
                     else
@@ -1787,5 +1954,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
     internal record DynColInfo : ColInfo
     {
         public required string Type { get; init; }
+        public string ConfigurationName { get; init; }
+        public string CollectionName { get; init; }
     }
 }

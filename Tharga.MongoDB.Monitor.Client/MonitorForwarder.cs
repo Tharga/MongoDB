@@ -61,6 +61,7 @@ internal sealed class MonitorForwarder : IHostedService, IDisposable
         }
 
         _databaseMonitor.CollectionInfoChangedEvent += OnCollectionInfoChanged;
+        _databaseMonitor.CollectionDroppedEvent += OnCollectionDropped;
 
         var intervalMs = Math.Max(MinQueueMetricIntervalMs, (int)_monitorOptions.QueueMetricInterval.TotalMilliseconds);
         _queueMetricTimer = new Timer(OnQueueMetricTick, null, intervalMs, intervalMs);
@@ -87,6 +88,26 @@ internal sealed class MonitorForwarder : IHostedService, IDisposable
             // Report this agent's forwarding config so the central monitor can show it on the Clients page.
             await SendClientStatusAsync();
 
+            await ResendCollectionInfoAsync(cancellationToken);
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "Failed to send initial collection info.");
+        }
+    }
+
+    /// <summary>
+    /// Re-scans this agent's collections and forwards a fresh snapshot of each to the central server.
+    /// Called on startup and again when the server requests a cache reset, so the server can rebuild
+    /// its remote view from current data rather than waiting for the next incidental access.
+    /// </summary>
+    public async Task ResendCollectionInfoAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            if (!_clientCommunication.IsConnected) return;
+
             // Collect fingerprints first, then refresh stats for each.
             // GetInstancesAsync uses includeDetails: false so stats are null.
             var collections = await _databaseMonitor.GetInstancesAsync().ToListAsync(cancellationToken);
@@ -99,7 +120,7 @@ internal sealed class MonitorForwarder : IHostedService, IDisposable
                 }
                 catch (Exception ex)
                 {
-                    _logger?.LogDebug(ex, "Failed to refresh stats for {Collection} during initial sync.", info.CollectionName);
+                    _logger?.LogDebug(ex, "Failed to refresh stats for {Collection} during sync.", info.CollectionName);
                 }
             }
 
@@ -119,7 +140,7 @@ internal sealed class MonitorForwarder : IHostedService, IDisposable
         catch (OperationCanceledException) { }
         catch (Exception ex)
         {
-            _logger?.LogDebug(ex, "Failed to send initial collection info.");
+            _logger?.LogDebug(ex, "Failed to send collection info.");
         }
     }
 
@@ -131,6 +152,7 @@ internal sealed class MonitorForwarder : IHostedService, IDisposable
             _mongoDbServiceFactory.CallEndEvent -= OnCallEnd;
         }
         _databaseMonitor.CollectionInfoChangedEvent -= OnCollectionInfoChanged;
+        _databaseMonitor.CollectionDroppedEvent -= OnCollectionDropped;
         _queueMetricTimer?.Dispose();
         _pendingCalls.Clear();
         return Task.CompletedTask;
@@ -191,6 +213,23 @@ internal sealed class MonitorForwarder : IHostedService, IDisposable
         _ = ForwardCollectionInfoAsync(message);
     }
 
+    private void OnCollectionDropped(object sender, CollectionDroppedEventArgs e)
+    {
+        // Use the resolved identity carried on the event; fall back to the DatabaseContext. Without
+        // a collection name there's nothing the server can match, so skip.
+        var collectionName = e.CollectionName ?? e.DatabaseContext?.CollectionName;
+        if (string.IsNullOrEmpty(collectionName)) return;
+
+        var message = new MonitorCollectionDroppedMessage
+        {
+            SourceName = _mongoDbServiceFactory.SourceName,
+            ConfigurationName = e.ConfigurationName ?? e.DatabaseContext?.ConfigurationName?.Value,
+            DatabaseName = e.DatabaseName,
+            CollectionName = collectionName,
+        };
+        _ = ForwardCollectionDroppedAsync(message);
+    }
+
     private async Task ForwardAsync(MonitorCallMessage message)
     {
         try
@@ -214,6 +253,19 @@ internal sealed class MonitorForwarder : IHostedService, IDisposable
         catch (Exception ex)
         {
             _logger?.LogDebug(ex, "Failed to forward collection info for {Collection}.", message.CollectionName);
+        }
+    }
+
+    private async Task ForwardCollectionDroppedAsync(MonitorCollectionDroppedMessage message)
+    {
+        try
+        {
+            if (!_clientCommunication.IsConnected) return;
+            await _clientCommunication.PostAsync(message);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "Failed to forward collection drop for {Collection}.", message.CollectionName);
         }
     }
 
@@ -284,6 +336,7 @@ internal sealed class MonitorForwarder : IHostedService, IDisposable
             Discovery = info.Discovery.ToString(),
             Registration = info.Registration.ToString(),
             EntityTypes = info.EntityTypes,
+            CollectionTypeName = info.CollectionType?.Name,
             Stats = info.Stats,
             Index = info.Index,
             Clean = info.Clean,

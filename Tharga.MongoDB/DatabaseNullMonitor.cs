@@ -65,6 +65,11 @@ internal class DatabaseNullMonitor : IDatabaseMonitor
         return Task.FromResult<CleanInfo>(null);
     }
 
+    public bool CanExecuteActions(CollectionInfo collectionInfo)
+    {
+        return false;
+    }
+
     public Task<DocumentDto> GetDocumentAsync(CollectionInfo collectionInfo, string idRaw, CancellationToken cancellationToken = default)
     {
         return Task.FromResult<DocumentDto>(null);
@@ -111,6 +116,8 @@ internal class DatabaseNullMonitor : IDatabaseMonitor
     public void IngestClientDisconnected(string connectionId) { }
 
     public void IngestCollectionInfo(RemoteCollectionInfoDto collectionInfo, string connectionId = null) { }
+
+    public void IngestCollectionDropped(string sourceName, string configurationName, string databaseName, string collectionName) { }
 
     public IReadOnlyCollection<string> GetCollectionSources(string fingerprintKey) => [];
 

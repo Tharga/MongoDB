@@ -23,6 +23,7 @@ public class MonitorForwarderTests : IAsyncLifetime
 
     private EventHandler<CallStartEventArgs> _callStartHandler;
     private EventHandler<CallEndEventArgs> _callEndHandler;
+    private EventHandler<CollectionDroppedEventArgs> _collectionDroppedHandler;
 
     public MonitorForwarderTests()
     {
@@ -35,6 +36,8 @@ public class MonitorForwarderTests : IAsyncLifetime
             .Callback<EventHandler<CallStartEventArgs>>(h => _callStartHandler = h);
         _factoryMock.SetupAdd(f => f.CallEndEvent += It.IsAny<EventHandler<CallEndEventArgs>>())
             .Callback<EventHandler<CallEndEventArgs>>(h => _callEndHandler = h);
+        _monitorMock.SetupAdd(m => m.CollectionDroppedEvent += It.IsAny<EventHandler<CollectionDroppedEventArgs>>())
+            .Callback<EventHandler<CollectionDroppedEventArgs>>(h => _collectionDroppedHandler = h);
 
         // Enable completed-call forwarding so the call-forwarding paths under test are active.
         var options = Options.Create(new DatabaseOptions { Monitor = new MonitorOptions { ForwardCompletedCalls = true } });
@@ -229,6 +232,46 @@ public class MonitorForwarderTests : IAsyncLifetime
         captured.Call.Steps[0].DeltaMs.Should().BeApproximately(2, 0.1);
         captured.Call.Steps[1].Step.Should().Be("FetchCollectionAsync");
         captured.Call.Steps[1].Message.Should().Be("Initiated collection.");
+    }
+
+    [Fact]
+    public async Task CollectionDropped_ForwardsDroppedMessage_WithResolvedIdentity()
+    {
+        MonitorCollectionDroppedMessage captured = null;
+        _factoryMock.Setup(f => f.SourceName).Returns("Agent-1/Svc");
+        _clientMock.Setup(c => c.IsConnected).Returns(true);
+        _clientMock.Setup(c => c.PostAsync(It.IsAny<MonitorCollectionDroppedMessage>()))
+            .Callback<MonitorCollectionDroppedMessage>(m => captured = m)
+            .Returns(Task.CompletedTask);
+
+        var args = new CollectionDroppedEventArgs(
+            new DatabaseContext { ConfigurationName = "Default", DatabasePart = "Tenant1" },
+            configurationName: "Default", databaseName: "Tenant1Db", collectionName: "OrderEntity");
+
+        _collectionDroppedHandler.Invoke(this, args);
+        await Task.Delay(50);
+
+        captured.Should().NotBeNull();
+        captured.SourceName.Should().Be("Agent-1/Svc");
+        captured.ConfigurationName.Should().Be("Default");
+        captured.DatabaseName.Should().Be("Tenant1Db");
+        captured.CollectionName.Should().Be("OrderEntity");
+    }
+
+    [Fact]
+    public async Task CollectionDropped_NotConnected_DoesNotSend()
+    {
+        _factoryMock.Setup(f => f.SourceName).Returns("Agent-1/Svc");
+        _clientMock.Setup(c => c.IsConnected).Returns(false);
+
+        var args = new CollectionDroppedEventArgs(
+            new DatabaseContext { ConfigurationName = "Default" },
+            configurationName: "Default", databaseName: "Tenant1Db", collectionName: "OrderEntity");
+
+        _collectionDroppedHandler.Invoke(this, args);
+        await Task.Delay(50);
+
+        _clientMock.Verify(c => c.PostAsync(It.IsAny<MonitorCollectionDroppedMessage>()), Times.Never);
     }
 
     [Fact]

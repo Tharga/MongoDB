@@ -55,7 +55,7 @@ else
             }
         </RadzenRow>
 
-        <RadzenDataGrid Data="_model" TItem="CollectionModel"
+        <RadzenDataGrid @ref="_grid" Data="_model" TItem="CollectionModel"
                         AllowFiltering="true" FilterMode="FilterMode.Simple" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
                         AllowSorting="true"
                         AllowPaging="true" PageSize="8" PageSizeOptions="[8, 16, 32, 64]"
@@ -115,6 +115,7 @@ else
     private string[] _sources = [];
     private string[] _databases;
     private CollectionModel[] _model;
+    private RadzenDataGrid<CollectionModel> _grid;
     private bool _showConfiguration;
     private bool _showSource;
     private bool _showDatabase;
@@ -184,58 +185,79 @@ else
 
         if (item == null)
         {
-            // New remote collection — add it and reload
+            // New remote collection — add it and reload (ReloadDataAsync reloads the grid).
             _all = _all.Append(e.CollectionInfo).ToArray();
             UpdateFilterOptions();
             await ReloadDataAsync();
-            if (_disposed) return;
-            try { await InvokeAsync(StateHasChanged); } catch (Exception) { }
             return;
         }
 
-        item.Discovery = e.CollectionInfo.Discovery;
-        item.Stats = e.CollectionInfo.Stats;
-        item.Index = e.CollectionInfo.Index;
+        // Replace the snapshot entry wholesale so immutable fields (Registration, EntityTypes,
+        // CollectionType name) stay fresh — a later rebuild (filter/drop/refresh) would otherwise
+        // revert them. Mutating only Stats/Discovery/Index (as before) left Registration stale.
+        _all = _all.Select(x => x.Key == e.CollectionInfo.Key ? e.CollectionInfo : x).ToArray();
 
-        var m = _model?.SingleOrDefault(x => x.ConfigurationName == item.ConfigurationName && x.DatabaseName == item.DatabaseName && x.CollectionName == item.CollectionName);
-        if (m != null)
+        var m = _model?.SingleOrDefault(x => x.Key == e.CollectionInfo.Key);
+        if (m == null)
         {
-            var indexModels = e.CollectionInfo.ToIndexModel().ToArray();
-            var sources = DatabaseMonitor.GetCollectionSources(item.Key).ToArray();
-
-            m.Discovery = e.CollectionInfo.Discovery;
-            m.Stats = e.CollectionInfo.Stats;
-            m.Size = e.CollectionInfo.Stats?.Size ?? 0;
-            m.Indices = indexModels;
-            m.IndexEqualFields = e.CollectionInfo.Index == null || e.CollectionInfo.Index.Current == null ? null : indexModels.All(x => x.EqualFields);
-            m.Clean = e.CollectionInfo.Clean;
-            m.Sources = sources;
-
+            // Row isn't in the filtered model (filtered out, or filters not built yet). A rebuild
+            // surfaces it if it now matches; this fires on classification changes, not every access.
             UpdateFilterOptions();
-
-            // Per-cell re-render only — avoid the grid-wide StateHasChanged on every event.
-            m.NotifyChanged();
+            await ReloadDataAsync();
             return;
         }
 
-        if (_disposed) return;
-        try { await InvokeAsync(StateHasChanged); } catch (Exception) { }
+        var indexModels = e.CollectionInfo.ToIndexModel().ToArray();
+        var sources = DatabaseMonitor.GetCollectionSources(e.CollectionInfo.Key).ToArray();
+        var newIndexEqual = e.CollectionInfo.Index?.Current == null ? (bool?)null : indexModels.All(x => x.EqualFields);
+
+        // The grid renders these directly (columns + OnCellRender chrome). Per-cell components
+        // (Documents/Size/Calls) update on NotifyChanged without a grid render — so only pay for a
+        // grid reload when something the grid itself draws actually changed. This both fixes the
+        // stale Registration and avoids reloading the grid on every forwarded collection access.
+        var gridAffecting =
+            m.Registration != e.CollectionInfo.Registration
+            || m.Discovery != e.CollectionInfo.Discovery
+            || m.IndexEqualFields != newIndexEqual
+            || (m.Stats == null) != (e.CollectionInfo.Stats == null)
+            || (m.Clean == null) != (e.CollectionInfo.Clean == null)
+            || !m.Sources.SequenceEqual(sources);
+
+        m.Discovery = e.CollectionInfo.Discovery;
+        m.Registration = e.CollectionInfo.Registration;
+        m.Stats = e.CollectionInfo.Stats;
+        m.Size = e.CollectionInfo.Stats?.Size ?? 0;
+        m.Indices = indexModels;
+        m.IndexEqualFields = newIndexEqual;
+        m.Clean = e.CollectionInfo.Clean;
+        m.Sources = sources;
+
+        UpdateFilterOptions();
+        m.NotifyChanged();
+        if (gridAffecting)
+            await RefreshGridAsync();
     }
 
     private async void OnCollectionDropped(object sender, CollectionDroppedEventArgs e)
     {
         if (_disposed || _all == null) return;
 
-        foreach (var dropped in _all.Where(x => x.ToDatabaseContext() == e.DatabaseContext))
+        // Prefer the resolved identity carried on the event (reliable); fall back to DatabaseContext
+        // equality for older callers that didn't populate it.
+        bool Matches(CollectionInfo x) =>
+            e.DatabaseName != null
+                ? x.DatabaseName == e.DatabaseName
+                  && x.CollectionName == e.CollectionName
+                  && (e.ConfigurationName == null || x.ConfigurationName?.Value == e.ConfigurationName)
+                : x.ToDatabaseContext() == e.DatabaseContext;
+
+        foreach (var dropped in _all.Where(Matches))
         {
             InfoCache.Remove(dropped.Key);
         }
 
-        _all = _all.Where(x => x.ToDatabaseContext() != e.DatabaseContext).ToArray();
+        _all = _all.Where(x => !Matches(x)).ToArray();
         await ReloadDataAsync();
-
-        if (_disposed) return;
-        try { await InvokeAsync(StateHasChanged); } catch (Exception) { }
     }
 
     protected override async Task OnParametersSetAsync()
@@ -334,6 +356,34 @@ else
     {
         if (_disposed) return;
         if (!_visibleKeys.Contains(key)) return;
+        await RefreshGridAsync();
+    }
+
+    // For an IN-PLACE update — _model is the same array, its elements mutated (touch, revalidation).
+    // A parent StateHasChanged won't make RadzenDataGrid re-read unchanged rows, so Reload() re-applies
+    // the view over the current Data, re-running CellRender (yellow "unknown"/pink "mismatch" chrome)
+    // and the plain templates such as Indices. Marshalled since events can arrive off the UI thread.
+    private async Task RefreshGridAsync()
+    {
+        if (_disposed) return;
+        try
+        {
+            await InvokeAsync(async () =>
+            {
+                if (_grid != null) await _grid.Reload();
+                else StateHasChanged();
+            });
+        }
+        catch (ObjectDisposedException) { }
+    }
+
+    // For a REFERENCE change — _model was reassigned (rows added/removed, filters, refresh). A parent
+    // StateHasChanged pushes the new Data into the grid, which rebuilds its view (and re-runs
+    // CellRender) from it. Reload() must NOT be used here: it re-applies over the grid's still-stale
+    // Data parameter (set on the previous render), so added/removed rows wouldn't appear.
+    private async Task RenderAsync()
+    {
+        if (_disposed) return;
         try { await InvokeAsync(StateHasChanged); } catch (ObjectDisposedException) { }
     }
 
@@ -407,7 +457,9 @@ else
             .Where(x => SelectedRegistrationTypes == null || !SelectedRegistrationTypes.Any() || SelectedRegistrationTypes.Contains(x.Registration))
             .ToArray();
 
-        StateHasChanged();
+        // _model was just reassigned (new array). Trigger a parent render so the grid rebinds to it
+        // and re-renders rows + chrome; Reload() would re-apply over the stale Data parameter.
+        await RenderAsync();
     }
 
     void OnCellRender(DataGridCellRenderEventArgs<CollectionModel> args)

@@ -15,6 +15,7 @@ public record MonitorCollectionInfoMessage
     public required string Discovery { get; init; }
     public required string Registration { get; init; }
     public string[] EntityTypes { get; init; }
+    public string CollectionTypeName { get; init; }
     public CollectionStats Stats { get; init; }
     public IndexInfo Index { get; init; }
     public CleanInfo Clean { get; init; }

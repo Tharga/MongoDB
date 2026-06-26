@@ -23,7 +23,10 @@ public class MonitorClientRegistrationTests
 
         services.AddMongoDbMonitorClient(EmptyConfiguration(), sendTo: "https://hub.example/monitor");
 
-        services.Should().Contain(d => d.ServiceType == typeof(IHostedService) && d.ImplementationType == typeof(MonitorForwarder));
+        // The forwarder is a singleton so the reset handler can resolve the running instance to
+        // re-send fresh collection info, and it runs as a hosted service off that same singleton.
+        services.Should().Contain(d => d.ServiceType == typeof(MonitorForwarder) && d.Lifetime == ServiceLifetime.Singleton);
+        services.Should().Contain(d => d.ServiceType == typeof(IHostedService) && d.ImplementationFactory != null);
     }
 
     [Fact]

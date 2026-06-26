@@ -64,6 +64,7 @@ public static class MonitorServerRegistration
         // Register handler concrete types in DI so the dispatcher can resolve them.
         builder.Services.AddTransient<MonitorCallHandler>();
         builder.Services.AddTransient<MonitorCollectionInfoHandler>();
+        builder.Services.AddTransient<MonitorCollectionDroppedHandler>();
         builder.Services.AddTransient<MonitorQueueMetricHandler>();
         builder.Services.AddTransient<MonitorClientStatusHandler>();
 

@@ -194,15 +194,22 @@ public sealed class ExplainHandler : SendMessageHandlerBase<ExplainRequest, Expl
 public sealed class ResetCacheHandler : PostMessageHandlerBase<ResetCacheRequest>
 {
     private readonly IDatabaseMonitor _monitor;
+    private readonly IServiceProvider _serviceProvider;
 
-    public ResetCacheHandler(IDatabaseMonitor monitor)
+    public ResetCacheHandler(IDatabaseMonitor monitor, IServiceProvider serviceProvider)
     {
         _monitor = monitor;
+        _serviceProvider = serviceProvider;
     }
 
     public override async Task Handle(ResetCacheRequest message)
     {
         await _monitor.ResetAsync();
+
+        // Re-report fresh collection info so the server rebuilds its remote view immediately,
+        // rather than waiting for each collection to be accessed again.
+        if (_serviceProvider.GetService(typeof(MonitorForwarder)) is MonitorForwarder forwarder)
+            await forwarder.ResendCollectionInfoAsync();
     }
 }
 

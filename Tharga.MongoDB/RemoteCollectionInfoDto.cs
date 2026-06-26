@@ -14,6 +14,13 @@ public record RemoteCollectionInfoDto
     public string Discovery { get; init; }
     public string Registration { get; init; }
     public string[] EntityTypes { get; init; }
+
+    /// <summary>
+    /// Display name of the collection's .NET type. The <see cref="System.Type"/> itself can't cross
+    /// the wire (so <see cref="CollectionInfo.CollectionType"/> is null for remote collections); this
+    /// carries the name so the UI can still show it.
+    /// </summary>
+    public string CollectionTypeName { get; init; }
     public CollectionStats Stats { get; init; }
     public IndexInfo Index { get; init; }
     public CleanInfo Clean { get; init; }

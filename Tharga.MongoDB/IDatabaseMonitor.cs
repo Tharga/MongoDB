@@ -46,6 +46,15 @@ public interface IDatabaseMonitor
     Task<CleanInfo> CleanAsync(CollectionInfo collectionInfo, bool cleanGuids);
 
     /// <summary>
+    /// Whether an action (touch/clean/index) on this collection can currently be serviced — either
+    /// directly by this process (it has the collection in code and the configuration) or by a
+    /// connected agent that reports it. Returns <c>false</c> for <see cref="Registration.NotInCode"/>
+    /// collections and for remote collections whose reporting agents have all disconnected. Used by
+    /// UIs to gate action buttons so they aren't offered when every action would throw.
+    /// </summary>
+    bool CanExecuteActions(CollectionInfo collectionInfo);
+
+    /// <summary>
     /// Fetch a single raw document by id. <paramref name="idRaw"/> is auto-detected as Guid → ObjectId → string.
     /// Returns <c>null</c> when no document matches. Returned <see cref="DocumentDto.Json"/> is MongoDB Extended JSON.
     /// </summary>
@@ -153,6 +162,14 @@ public interface IDatabaseMonitor
     /// Ingest collection metadata from a remote agent.
     /// </summary>
     void IngestCollectionInfo(RemoteCollectionInfoDto collectionInfo, string connectionId = null);
+
+    /// <summary>
+    /// Ingest a collection-dropped notification from a remote agent. Removes that agent as a source
+    /// for the collection; when no source remains the collection is removed and
+    /// <see cref="CollectionDroppedEvent"/> is raised. A collection still reported by another agent
+    /// (or reachable locally) survives.
+    /// </summary>
+    void IngestCollectionDropped(string sourceName, string configurationName, string databaseName, string collectionName);
 
     /// <summary>
     /// Get the source names that have reported a given collection (by fingerprint key).

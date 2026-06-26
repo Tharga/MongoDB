@@ -6,7 +6,7 @@ public record CollectionModel : CollectionFingerprint
 {
     public CollectionStats Stats { get; set; }
     public Discovery Discovery { get; set; }
-    public required Registration Registration { get; init; }
+    public required Registration Registration { get; set; }
     public required long Size { get; set; }
     public required IndexModel[] Indices { get; set; }
     public required bool? IndexEqualFields { get; set; }

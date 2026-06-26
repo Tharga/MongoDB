@@ -15,6 +15,7 @@ internal class DynamicCommands : ContainerCommandBase
     {
         RegisterCommand<DynamicAddCommand>();
         RegisterCommand<DynamicListCommand>();
+        RegisterCommand<DynamicDropCommand>();
     }
 }
 
@@ -57,10 +58,30 @@ internal class DynamicListCommand : AsyncActionCommandBase
     }
 }
 
+internal class DynamicDropCommand : AsyncActionCommandBase
+{
+    private readonly IDynRepository _dynRepository;
+
+    public DynamicDropCommand(IDynRepository dynRepository)
+        : base("Drop")
+    {
+        _dynRepository = dynRepository;
+    }
+
+    public override async Task InvokeAsync(string[] param)
+    {
+        var instance = QueryParam<string>("Instance", param);
+
+        await _dynRepository.DropAsync(instance);
+        OutputInformation($"Dropped dynamic collection 'Dyn_{instance}'.");
+    }
+}
+
 public interface IDynRepository : IRepository
 {
     Task AddAsync(string instance, DynEntity dynEntity);
     IAsyncEnumerable<DynEntity> GetAsync(string instance);
+    Task DropAsync(string instance);
 }
 
 internal class DynRepository : IDynRepository
@@ -82,6 +103,12 @@ internal class DynRepository : IDynRepository
     {
         var collection = GetCollection(instance);
         return collection.GetAsync();
+    }
+
+    public async Task DropAsync(string instance)
+    {
+        var collection = GetCollection(instance);
+        await collection.DropCollectionAsync();
     }
 
     private IDynRepositoryCollection GetCollection(string instance)
