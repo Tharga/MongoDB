@@ -30,6 +30,20 @@ public class MonitorClientRegistrationTests
     }
 
     [Fact]
+    public void OnServices_PreservesBuiltInSubscriptionStateChangedHandler()
+    {
+        var services = new ServiceCollection();
+
+        services.AddMongoDbMonitorClient(EmptyConfiguration(), sendTo: "https://hub.example/monitor");
+
+        var provider = services.BuildServiceProvider();
+        var handlerTypes = provider.GetRequiredService<Tharga.Communication.MessageHandler.IHandlerTypeService>();
+        handlerTypes.TryGetHandler(typeof(Tharga.Communication.Contract.SubscriptionStateChanged), out _)
+            .Should().BeTrue("the client must keep Tharga.Communication's built-in subscription handler, " +
+                             "otherwise HasSubscribers<T> never turns true and agents never send live (queue) data");
+    }
+
+    [Fact]
     public void OnServices_RegistersConfigurationIfMissing()
     {
         var services = new ServiceCollection();
