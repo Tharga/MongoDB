@@ -301,12 +301,37 @@ internal sealed class MonitorForwarder : IHostedService, IDisposable
         }
     }
 
+    private (bool Connected, bool HasSubscribers, bool HasPools)? _lastLiveState;
+
+    // Logs only when the live-monitoring gating changes, so the console shows when a subscription
+    // starts/ends and why queue metrics are (not) being sent — without spamming every tick.
+    private void LogLiveStateChange(bool connected, bool hasSubscribers, bool hasPools)
+    {
+        var state = (connected, hasSubscribers, hasPools);
+        if (_lastLiveState == state) return;
+        _lastLiveState = state;
+
+        if (!connected)
+            _logger?.LogInformation("Live monitoring: not connected to the monitor server — not sending queue metrics.");
+        else if (!hasSubscribers)
+            _logger?.LogInformation("Live monitoring: no server subscriber (Queue view closed) — not sending queue metrics.");
+        else if (!hasPools)
+            _logger?.LogInformation("Live monitoring: subscription active, but no connection pool yet (access MongoDB first) — nothing to send.");
+        else
+            _logger?.LogInformation("Live monitoring: subscription active — sending queue metrics.");
+    }
+
     private async void OnQueueMetricTick(object state)
     {
         try
         {
-            if (!_clientCommunication.IsConnected) return;
-            if (!_clientCommunication.HasSubscribers<LiveMonitoringMarker>()) return;
+            var connected = _clientCommunication.IsConnected;
+            var hasSubscribers = connected && _clientCommunication.HasSubscribers<LiveMonitoringMarker>();
+            if (!connected || !hasSubscribers)
+            {
+                LogLiveStateChange(connected, hasSubscribers, false);
+                return;
+            }
 
             // Merge the limiter's per-pool queue view with the actual connection counts, by server-key.
             var byServer = new Dictionary<string, PoolMetricDto>();
@@ -329,6 +354,7 @@ internal sealed class MonitorForwarder : IHostedService, IDisposable
                 byServer[c.ServerKey] = baseDto with { OpenConnections = c.OpenConnections, MaxPoolSize = c.MaxPoolSize };
             }
             var pools = byServer.Values.ToList();
+            LogLiveStateChange(connected, hasSubscribers, pools.Count > 0);
 
             // A live view is watching (gated above). Report whenever the agent has any pool to show —
             // even fully idle (all zeros) — so an idle agent still surfaces a line alongside the active
