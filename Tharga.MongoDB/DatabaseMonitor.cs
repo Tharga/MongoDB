@@ -837,6 +837,8 @@ internal class DatabaseMonitor : IDatabaseMonitor
     public void IngestCall(CallDto call)
     {
         _callLibrary.IngestCall(FromCallDto(call));
+        LogComm(call.SourceName, CommunicationDirection.Inbound, "Call",
+            $"{call.FunctionName} {call.CollectionName} ({call.Operation}){(call.Final ? "" : " [ongoing]")}");
     }
 
     public void ResetCalls()
@@ -860,6 +862,8 @@ internal class DatabaseMonitor : IDatabaseMonitor
     {
         if (string.IsNullOrEmpty(sourceName) || status == null) return;
         _clientStatus[sourceName] = status;
+        LogComm(sourceName, CommunicationDirection.Inbound, "ClientStatus",
+            $"forwarding={status.ForwardCompletedCalls}, queueInterval={status.QueueMetricIntervalMs}ms, commandMonitoring={status.EnableCommandMonitoring}");
     }
 
     public async Task<bool> SetClientCallForwardingAsync(string sourceName, bool enabled, CancellationToken cancellationToken = default)
@@ -873,6 +877,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
         if (_serviceProvider.GetService(typeof(IRemoteActionDispatcher)) is not IRemoteActionDispatcher dispatcher)
             throw new InvalidOperationException("Remote action dispatching is not available.");
 
+        LogComm(sourceName, CommunicationDirection.Outbound, "SetCallForwarding", $"enabled={enabled}");
         var state = await dispatcher.SetCallForwardingAsync(connectionId, enabled, cancellationToken);
 
         // Reflect immediately; the agent also re-reports its status via IngestClientStatus.
@@ -952,6 +957,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
     public void IngestClientConnected(MonitorClientDto client)
     {
         _monitorClients[client.Instance] = client;
+        LogComm(client.SourceName, CommunicationDirection.Inbound, "Connected", client.Machine);
         MonitorClientsChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -961,6 +967,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
         if (entry == null) return;
 
         _monitorClients[entry.Instance] = entry with { IsConnected = false, DisconnectTime = DateTime.UtcNow };
+        LogComm(entry.SourceName, CommunicationDirection.Inbound, "Disconnected", entry.Machine);
 
         // Drop the disconnected client's source so it no longer counts toward collection
         // reachability or connection/queue metrics. A collection still reported by another client
@@ -1011,6 +1018,8 @@ internal class DatabaseMonitor : IDatabaseMonitor
 
         var key = info.Key;
         _remoteCollections[key] = info;
+        LogComm(dto.SourceName, CommunicationDirection.Inbound, "CollectionInfo",
+            $"{dto.DatabaseName}.{dto.CollectionName} [{dto.Registration}]");
 
         // Track source
         var sources = _collectionSources.GetOrAdd(key, _ => new System.Collections.Concurrent.ConcurrentDictionary<string, bool>());
@@ -1034,6 +1043,8 @@ internal class DatabaseMonitor : IDatabaseMonitor
     {
         if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
         if (string.IsNullOrEmpty(collectionName) || string.IsNullOrEmpty(databaseName)) return;
+
+        LogComm(sourceName, CommunicationDirection.Inbound, "CollectionDropped", $"{databaseName}.{collectionName}");
 
         // Match by resolved (database, collection): the physical database name plus the physical
         // collection name uniquely identify the collection. Configuration name is intentionally not
@@ -1088,6 +1099,25 @@ internal class DatabaseMonitor : IDatabaseMonitor
         CollectionInfoChangedEvent?.Invoke(this, new CollectionInfoChangedEventArgs(info));
     }
 
+    private Internals.ICommunicationLog _communicationLog;
+    private Internals.ICommunicationLog CommunicationLog =>
+        _communicationLog ??= _serviceProvider.GetService(typeof(Internals.ICommunicationLog)) as Internals.ICommunicationLog;
+
+    private void LogComm(string sourceName, CommunicationDirection direction, string messageType, string summary)
+    {
+        if (string.IsNullOrEmpty(sourceName)) return;
+        CommunicationLog?.Record(sourceName, direction, messageType, summary);
+    }
+
+    private string SourceForConnection(string connectionId) =>
+        connectionId == null ? null : _monitorClients.Values.FirstOrDefault(x => x.ConnectionId == connectionId)?.SourceName;
+
+    public IReadOnlyList<CommunicationEvent> GetClientCommunication(string sourceName)
+    {
+        if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
+        return CommunicationLog?.Get(sourceName) ?? [];
+    }
+
     public string FindConnectionIdBySource(string sourceName)
     {
         if (string.IsNullOrEmpty(sourceName)) return null;
@@ -1106,6 +1136,8 @@ internal class DatabaseMonitor : IDatabaseMonitor
 
     public void IngestQueueMetric(string sourceName, int queueCount, int executingCount, double? waitTimeMs)
     {
+        LogComm(sourceName, CommunicationDirection.Inbound, "QueueMetric", $"Q {queueCount} · E {executingCount} (aggregate)");
+
         // Legacy aggregate-per-source form. Keep the aggregate (drives GetMonitorClientDetail) and
         // store it as a single synthetic pool so it still surfaces a line in GetPerPoolQueueState.
         _remoteQueueStates[sourceName] = new RemoteQueueState
@@ -1131,6 +1163,8 @@ internal class DatabaseMonitor : IDatabaseMonitor
     public void IngestQueueMetric(string sourceName, IReadOnlyList<PoolMetricDto> pools)
     {
         pools ??= Array.Empty<PoolMetricDto>();
+        LogComm(sourceName, CommunicationDirection.Inbound, "QueueMetric",
+            $"{pools.Count} pool(s) · Q {pools.Sum(p => p.QueueCount)} · E {pools.Sum(p => p.ExecutingCount)} · open {pools.Sum(p => p.OpenConnections)}");
         _remotePoolStates[sourceName] = pools;
         // Maintain the aggregate per-source view for GetMonitorClientDetail.
         _remoteQueueStates[sourceName] = new RemoteQueueState

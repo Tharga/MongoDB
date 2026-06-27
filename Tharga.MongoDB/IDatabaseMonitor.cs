@@ -144,6 +144,12 @@ public interface IDatabaseMonitor
     MonitorClientDetail GetMonitorClientDetail(string sourceName, int recentCallLimit = 20);
 
     /// <summary>
+    /// Recent SignalR messages exchanged with a given agent (newest first), for the per-agent
+    /// Communication diagnostic view. Bounded, in-memory; empty when monitoring isn't enabled.
+    /// </summary>
+    IReadOnlyList<CommunicationEvent> GetClientCommunication(string sourceName);
+
+    /// <summary>
     /// Register a connected monitoring agent.
     /// </summary>
     void IngestClientConnected(MonitorClientDto client);

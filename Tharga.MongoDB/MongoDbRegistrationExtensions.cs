@@ -224,6 +224,7 @@ public static class MongoDbRegistrationExtensions
                 services.AddSingleton<ICollectionCache, MemoryCollectionCache>();
             services.AddSingleton<IDatabaseMonitor, DatabaseMonitor>();
             services.AddSingleton<ICallLibrary, CallLibrary>();
+            services.AddSingleton<Internals.ICommunicationLog, Internals.CommunicationLog>();
         }
         else
         {

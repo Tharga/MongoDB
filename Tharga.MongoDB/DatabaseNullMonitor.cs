@@ -109,6 +109,8 @@ internal class DatabaseNullMonitor : IDatabaseMonitor
 
     public MonitorClientDetail GetMonitorClientDetail(string sourceName, int recentCallLimit = 20) => null;
 
+    public IReadOnlyList<CommunicationEvent> GetClientCommunication(string sourceName) => [];
+
     public void IngestClientConnected(MonitorClientDto client) { }
 
     public void IngestClientStatus(string sourceName, MonitorClientStatus status) { }

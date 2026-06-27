@@ -178,6 +178,36 @@ else
                         </RadzenRow>
                     }
                 </RadzenTabsItem>
+
+                <RadzenTabsItem Text="@($"Communication ({_communication.Count:N0})")">
+                    <RadzenText TextStyle="TextStyle.Caption"
+                                Text="Recent SignalR messages this server has exchanged with the agent (newest first). Inbound = received from the agent; Outbound = sent to it. Bounded, in-memory diagnostic."
+                                Style="color: gray;" />
+                    @if (_communication.Count == 0)
+                    {
+                        <RadzenText TextStyle="TextStyle.Body2" Text="No messages recorded yet." Style="color: gray;" />
+                    }
+                    else
+                    {
+                        <RadzenDataGrid Data="_communication" TItem="CommunicationEvent" AllowSorting="true" Density="Density.Compact" AllowPaging="false">
+                            <Columns>
+                                <RadzenDataGridColumn Title="Time" Property="@nameof(CommunicationEvent.Timestamp)" SortOrder="SortOrder.Descending" Width="170px">
+                                    <Template>
+                                        <Tharga.Blazor.DateTimeView Date="@context.Timestamp" />
+                                    </Template>
+                                </RadzenDataGridColumn>
+                                <RadzenDataGridColumn Title="Direction" Property="@nameof(CommunicationEvent.Direction)" Width="110px">
+                                    <Template>
+                                        <RadzenBadge BadgeStyle="@(context.Direction == CommunicationDirection.Inbound ? BadgeStyle.Success : BadgeStyle.Info)"
+                                                     Text="@(context.Direction == CommunicationDirection.Inbound ? "In" : "Out")" />
+                                    </Template>
+                                </RadzenDataGridColumn>
+                                <RadzenDataGridColumn Title="Message" Property="@nameof(CommunicationEvent.MessageType)" Width="160px" />
+                                <RadzenDataGridColumn Title="Detail" Property="@nameof(CommunicationEvent.Summary)" />
+                            </Columns>
+                        </RadzenDataGrid>
+                    }
+                </RadzenTabsItem>
             </Tabs>
         </RadzenTabs>
 
@@ -196,6 +226,7 @@ else
     public int RecentCallLimit { get; set; } = 20;
 
     private MonitorClientDetail _detail;
+    private IReadOnlyList<CommunicationEvent> _communication = [];
     private bool _busy;
 
     // When the agent has reported its config and call forwarding is off, no calls will ever arrive —
@@ -240,7 +271,8 @@ else
 
     private void Reload()
     {
-        if (Client?.SourceName == null) { _detail = null; return; }
+        if (Client?.SourceName == null) { _detail = null; _communication = []; return; }
         _detail = DatabaseMonitor.GetMonitorClientDetail(Client.SourceName, RecentCallLimit);
+        _communication = DatabaseMonitor.GetClientCommunication(Client.SourceName);
     }
 }
