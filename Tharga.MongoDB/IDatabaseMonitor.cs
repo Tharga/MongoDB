@@ -150,6 +150,12 @@ public interface IDatabaseMonitor
     IReadOnlyList<CommunicationEvent> GetClientCommunication(string sourceName);
 
     /// <summary>
+    /// Record a SignalR message in the per-agent Communication log. For server-side components
+    /// (handlers, dispatcher, subscription service) to surface traffic they send/receive.
+    /// </summary>
+    void RecordClientCommunication(string sourceName, CommunicationDirection direction, string messageType, string summary);
+
+    /// <summary>
     /// Register a connected monitoring agent.
     /// </summary>
     void IngestClientConnected(MonitorClientDto client);

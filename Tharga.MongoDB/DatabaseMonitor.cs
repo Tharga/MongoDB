@@ -1118,6 +1118,9 @@ internal class DatabaseMonitor : IDatabaseMonitor
         return CommunicationLog?.Get(sourceName) ?? [];
     }
 
+    public void RecordClientCommunication(string sourceName, CommunicationDirection direction, string messageType, string summary)
+        => LogComm(sourceName, direction, messageType, summary);
+
     public string FindConnectionIdBySource(string sourceName)
     {
         if (string.IsNullOrEmpty(sourceName)) return null;

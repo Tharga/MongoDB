@@ -111,6 +111,8 @@ internal class DatabaseNullMonitor : IDatabaseMonitor
 
     public IReadOnlyList<CommunicationEvent> GetClientCommunication(string sourceName) => [];
 
+    public void RecordClientCommunication(string sourceName, CommunicationDirection direction, string messageType, string summary) { }
+
     public void IngestClientConnected(MonitorClientDto client) { }
 
     public void IngestClientStatus(string sourceName, MonitorClientStatus status) { }
