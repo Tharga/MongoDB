@@ -1,4 +1,5 @@
 using Blazored.LocalStorage;
+using Microsoft.Extensions.Logging;
 using Radzen;
 using Tharga.Blazor.Framework;
 using Tharga.MongoDB;
@@ -37,6 +38,14 @@ builder.AddMongoDB(o =>
 });
 
 builder.AddMongoDbMonitorServer(_ => { });
+
+// Sample diagnostic file log. Tharga.* at Trace so the full monitor/communication flow is captured.
+var serverLogPath = Path.Combine(Path.GetTempPath(), "tharga-monitor-server.log");
+builder.Logging.AddProvider(new Tharga.TemplateBlazor.Web.FileLoggerProvider(serverLogPath));
+builder.Logging.AddFilter<Tharga.TemplateBlazor.Web.FileLoggerProvider>(null, LogLevel.Information);
+builder.Logging.AddFilter<Tharga.TemplateBlazor.Web.FileLoggerProvider>("Tharga", LogLevel.Trace);
+builder.Logging.AddFilter<Tharga.TemplateBlazor.Web.FileLoggerProvider>("Microsoft", LogLevel.Warning);
+Console.WriteLine($"[sample] File logging to {serverLogPath}");
 
 builder.Services.AddThargaMcp(mcp =>
 {

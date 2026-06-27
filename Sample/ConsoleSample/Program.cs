@@ -17,6 +17,14 @@ var builder = Host.CreateApplicationBuilder(args);
 builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
 
+// Sample diagnostic file log. Tharga.* at Trace so the full monitor/communication flow is captured.
+var clientLogPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "tharga-monitor-console.log");
+builder.Logging.AddProvider(new ConsoleSample.FileLoggerProvider(clientLogPath));
+builder.Logging.AddFilter<ConsoleSample.FileLoggerProvider>(null, LogLevel.Information);
+builder.Logging.AddFilter<ConsoleSample.FileLoggerProvider>("Tharga", LogLevel.Trace);
+builder.Logging.AddFilter<ConsoleSample.FileLoggerProvider>("Microsoft", LogLevel.Warning);
+Console.WriteLine($"[sample] File logging to {clientLogPath}");
+
 builder.Services.AddMongoDB(builder.Configuration, o =>
 {
     o.Monitor.Enabled = true;
