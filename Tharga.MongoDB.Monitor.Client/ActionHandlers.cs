@@ -214,6 +214,35 @@ public sealed class ResetCacheHandler : PostMessageHandlerBase<ResetCacheRequest
 }
 
 /// <summary>
+/// Handles set-call-forwarding requests from the central server by toggling the local forwarder.
+/// </summary>
+public sealed class SetCallForwardingHandler : SendMessageHandlerBase<SetCallForwardingRequest, SetCallForwardingResponse>
+{
+    private readonly IServiceProvider _serviceProvider;
+
+    public SetCallForwardingHandler(IServiceProvider serviceProvider)
+    {
+        _serviceProvider = serviceProvider;
+    }
+
+    public override async Task<SetCallForwardingResponse> Handle(SetCallForwardingRequest message)
+    {
+        try
+        {
+            if (_serviceProvider.GetService(typeof(MonitorForwarder)) is not MonitorForwarder forwarder)
+                return new SetCallForwardingResponse { Error = "Call forwarding is not available on this agent." };
+
+            var state = await forwarder.SetCallForwardingAsync(message.Enabled);
+            return new SetCallForwardingResponse { Success = true, ForwardCompletedCalls = state };
+        }
+        catch (Exception e)
+        {
+            return new SetCallForwardingResponse { Error = e.Message };
+        }
+    }
+}
+
+/// <summary>
 /// Handles clear call history requests from the central server by executing locally.
 /// </summary>
 public sealed class ClearCallHistoryHandler : PostMessageHandlerBase<ClearCallHistoryRequest>

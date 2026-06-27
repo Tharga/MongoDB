@@ -29,6 +29,7 @@ internal sealed class MonitorForwarder : IHostedService, IDisposable
     private readonly ConcurrentDictionary<Guid, CallStartEventArgs> _pendingCalls = new();
     private Timer _queueMetricTimer;
     private bool _forwardCompletedCalls;
+    private readonly object _callForwardingLock = new();
 
     public MonitorForwarder(
         IMongoDbServiceFactory mongoDbServiceFactory,
@@ -156,6 +157,37 @@ internal sealed class MonitorForwarder : IHostedService, IDisposable
         _queueMetricTimer?.Dispose();
         _pendingCalls.Clear();
         return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Turns completed-call forwarding on or off at runtime (the server can drive this per agent).
+    /// Subscribing to call events is what enables forwarding, so this attaches/detaches them, then
+    /// re-reports the agent's status so the central monitor reflects the new state. Returns the
+    /// resulting state.
+    /// </summary>
+    public async Task<bool> SetCallForwardingAsync(bool enabled)
+    {
+        lock (_callForwardingLock)
+        {
+            if (enabled != _forwardCompletedCalls)
+            {
+                if (enabled)
+                {
+                    _mongoDbServiceFactory.CallStartEvent += OnCallStart;
+                    _mongoDbServiceFactory.CallEndEvent += OnCallEnd;
+                }
+                else
+                {
+                    _mongoDbServiceFactory.CallStartEvent -= OnCallStart;
+                    _mongoDbServiceFactory.CallEndEvent -= OnCallEnd;
+                    _pendingCalls.Clear();
+                }
+                _forwardCompletedCalls = enabled;
+            }
+        }
+
+        await SendClientStatusAsync();
+        return _forwardCompletedCalls;
     }
 
     private async Task SendClientStatusAsync()
@@ -298,14 +330,16 @@ internal sealed class MonitorForwarder : IHostedService, IDisposable
             }
             var pools = byServer.Values.ToList();
 
-            // Aggregate scalars (back-compat for older servers + the activity guard below).
+            // A live view is watching (gated above). Report whenever the agent has any pool to show —
+            // even fully idle (all zeros) — so an idle agent still surfaces a line alongside the active
+            // ones in the live Queue view. Only skip when there are no pools at all (the agent hasn't
+            // touched MongoDB yet), since an empty report would produce no line anyway.
+            if (pools.Count == 0) return;
+
+            // Aggregate scalars (back-compat for older servers).
             var queueCount = pools.Sum(p => p.QueueCount);
             var executingCount = pools.Sum(p => p.ExecutingCount);
-            var lastWaitTimeMs = pools.Count == 0 ? 0d : pools.Max(p => p.WaitTimeMs ?? 0);
-            var openConnections = pools.Sum(p => p.OpenConnections);
-
-            // Send when there's queue activity OR open connections to report (so idle-but-open pools surface).
-            if (queueCount == 0 && executingCount == 0 && lastWaitTimeMs == 0 && openConnections == 0) return;
+            var lastWaitTimeMs = pools.Max(p => p.WaitTimeMs ?? 0);
 
             await _clientCommunication.PostAsync(new MonitorQueueMetricMessage
             {

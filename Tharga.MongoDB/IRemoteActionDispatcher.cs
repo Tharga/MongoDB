@@ -19,4 +19,10 @@ public interface IRemoteActionDispatcher
     Task<string> GetExplainAsync(string connectionId, Guid callKey, CancellationToken cancellationToken = default);
     Task ResetCacheAllAsync(CancellationToken cancellationToken = default);
     Task ClearCallHistoryAllAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Turns completed-call forwarding on or off on a specific connected agent. Returns the agent's
+    /// resulting state.
+    /// </summary>
+    Task<bool> SetCallForwardingAsync(string connectionId, bool enabled, CancellationToken cancellationToken = default);
 }

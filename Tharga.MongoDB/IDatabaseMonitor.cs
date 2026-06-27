@@ -154,6 +154,13 @@ public interface IDatabaseMonitor
     void IngestClientStatus(string sourceName, MonitorClientStatus status);
 
     /// <summary>
+    /// Turn completed-call forwarding on or off on a connected agent (by source name). The agent
+    /// re-reports its status afterward; the returned value is its resulting state. Throws when the
+    /// agent isn't connected or remote dispatch isn't available.
+    /// </summary>
+    Task<bool> SetClientCallForwardingAsync(string sourceName, bool enabled, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Mark a monitoring agent as disconnected.
     /// </summary>
     void IngestClientDisconnected(string connectionId);

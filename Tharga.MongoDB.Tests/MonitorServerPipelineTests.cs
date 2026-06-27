@@ -216,6 +216,7 @@ public class MonitorServerPipelineTests
         public System.Collections.Generic.IReadOnlyList<CollectionInfo> GetCollectionsWithFailedIndices() => throw new NotImplementedException();
         public void IngestClientConnected(MonitorClientDto client) => throw new NotImplementedException();
         public void IngestClientStatus(string sourceName, MonitorClientStatus status) => throw new NotImplementedException();
+        public Task<bool> SetClientCallForwardingAsync(string sourceName, bool enabled, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public void IngestClientDisconnected(string connectionId) => throw new NotImplementedException();
         public void IngestCollectionInfo(RemoteCollectionInfoDto collectionInfo, string connectionId = null) => throw new NotImplementedException();
         public void IngestCollectionDropped(string sourceName, string configurationName, string databaseName, string collectionName) => throw new NotImplementedException();

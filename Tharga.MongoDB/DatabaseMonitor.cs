@@ -862,6 +862,27 @@ internal class DatabaseMonitor : IDatabaseMonitor
         _clientStatus[sourceName] = status;
     }
 
+    public async Task<bool> SetClientCallForwardingAsync(string sourceName, bool enabled, CancellationToken cancellationToken = default)
+    {
+        if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
+        if (string.IsNullOrEmpty(sourceName)) throw new ArgumentException("Source name is required.", nameof(sourceName));
+
+        var connectionId = FindConnectionIdBySource(sourceName);
+        if (connectionId == null) throw new InvalidOperationException("Agent is not connected.");
+
+        if (_serviceProvider.GetService(typeof(IRemoteActionDispatcher)) is not IRemoteActionDispatcher dispatcher)
+            throw new InvalidOperationException("Remote action dispatching is not available.");
+
+        var state = await dispatcher.SetCallForwardingAsync(connectionId, enabled, cancellationToken);
+
+        // Reflect immediately; the agent also re-reports its status via IngestClientStatus.
+        if (_clientStatus.TryGetValue(sourceName, out var status) && status != null)
+            _clientStatus[sourceName] = status with { ForwardCompletedCalls = state };
+        MonitorClientsChanged?.Invoke(this, EventArgs.Empty);
+
+        return state;
+    }
+
     private MonitorClientDto WithStatus(MonitorClientDto client)
     {
         if (!string.IsNullOrEmpty(client.SourceName) && _clientStatus.TryGetValue(client.SourceName, out var status))

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Concurrent;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -276,6 +277,32 @@ public class RemoteCollectionReachabilityTests
         result.Should().NotBeNull();
         result.CollectionType.Should().BeNull("a remote collection's Type can't be reconstructed");
         result.CollectionTypeName.Should().Be("DynRepositoryCollection");
+    }
+
+    [Fact]
+    public async Task SetClientCallForwarding_DispatchesToConnectedAgent_AndUpdatesStatus()
+    {
+        var collection = RemoteCollection();
+        IngestWithAgent(collection, "Agent-1/Svc", "conn-1");
+        _monitor.IngestClientStatus("Agent-1/Svc", new MonitorClientStatus { ForwardCompletedCalls = false, QueueMetricIntervalMs = 100 });
+
+        _dispatcherMock
+            .Setup(d => d.SetCallForwardingAsync("conn-1", true, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        var result = await _monitor.SetClientCallForwardingAsync("Agent-1/Svc", true);
+
+        result.Should().BeTrue();
+        _dispatcherMock.Verify(d => d.SetCallForwardingAsync("conn-1", true, It.IsAny<CancellationToken>()), Times.Once);
+        _monitor.GetMonitorClients().Single(c => c.SourceName == "Agent-1/Svc").Status.ForwardCompletedCalls.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task SetClientCallForwarding_Throws_WhenAgentNotConnected()
+    {
+        var act = () => _monitor.SetClientCallForwardingAsync("Ghost/Svc", true);
+
+        await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("*not connected*");
     }
 
     [Fact]
