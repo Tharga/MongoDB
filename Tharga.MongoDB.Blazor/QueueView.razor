@@ -30,12 +30,18 @@
         </RadzenRow>
     }
 
-    <RadzenRow AlignItems="AlignItems.Center" Gap="16px">
-        @foreach (var source in _sourceStates)
+    @* Grouped by configuration (≈ the Atlas connection pool). Each source — this server and every
+       connected agent — has its own pool to that cluster, shown as a row under the configuration. *@
+    <RadzenRow AlignItems="AlignItems.Start" Gap="16px">
+        @foreach (var group in GroupByConfiguration())
         {
-            <RadzenColumn Size="2">
-                <RadzenText TextStyle="TextStyle.Caption" Text="@(source.Value.Label ?? source.Key)" />
-                <RadzenText TextStyle="TextStyle.Subtitle1" Text="@($"Queue: {source.Value.QueueCount}  Exec: {source.Value.ExecutingCount}")" />
+            <RadzenColumn Size="3">
+                <RadzenText TextStyle="TextStyle.Subtitle2" Text="@group.Configuration" />
+                @foreach (var pool in group.Pools)
+                {
+                    <RadzenText TextStyle="TextStyle.Body2"
+                                Text="@($"{pool.Source} — Queue: {pool.State.QueueCount}  Exec: {pool.State.ExecutingCount}")" />
+                }
             </RadzenColumn>
         }
     </RadzenRow>
@@ -88,6 +94,38 @@
 
     // The pool key is unique ("{source}::{serverKey}"); display the friendly label (config name(s)) instead.
     private string LabelFor(string key) => _labels.TryGetValue(key, out var label) ? label : key;
+
+    // Group the per-pool states by configuration (the logical Atlas pool). Each entry under a group is
+    // one source's pool to that configuration — this server and every connected agent.
+    private IReadOnlyList<PoolGroup> GroupByConfiguration()
+    {
+        return _sourceStates
+            .Select(kvp => new PoolEntry(
+                SourceOf(kvp.Key),
+                kvp.Value.ConfigurationNames is { Count: > 0 }
+                    ? string.Join(", ", kvp.Value.ConfigurationNames)
+                    : ServerKeyOf(kvp.Key),
+                kvp.Value))
+            .GroupBy(x => x.Configuration)
+            .OrderBy(g => g.Key, StringComparer.Ordinal)
+            .Select(g => new PoolGroup(g.Key, g.OrderBy(x => x.Source, StringComparer.Ordinal).ToList()))
+            .ToList();
+    }
+
+    private static string SourceOf(string poolKey)
+    {
+        var i = poolKey.IndexOf("::", StringComparison.Ordinal);
+        return i >= 0 ? poolKey[..i] : poolKey;
+    }
+
+    private static string ServerKeyOf(string poolKey)
+    {
+        var i = poolKey.IndexOf("::", StringComparison.Ordinal);
+        return i >= 0 ? poolKey[(i + 2)..] : poolKey;
+    }
+
+    private sealed record PoolEntry(string Source, string Configuration, ConnectionPoolStateDto State);
+    private sealed record PoolGroup(string Configuration, IReadOnlyList<PoolEntry> Pools);
 
     private static string ClusterLabel(ClusterConnectionSummary c) =>
         c.ConfigurationNames.Count > 0 ? string.Join(", ", c.ConfigurationNames) : c.ServerKey;
