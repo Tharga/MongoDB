@@ -189,7 +189,9 @@ else
                     }
                     else
                     {
-                        <RadzenDataGrid Data="_communication" TItem="CommunicationEvent" AllowSorting="true" Density="Density.Compact" AllowPaging="false">
+                        <RadzenDataGrid Data="_communication" TItem="CommunicationEvent" AllowSorting="true" Density="Density.Compact"
+                                        AllowPaging="true" PageSize="10" PageSizeOptions="[10, 25, 50]" ShowPagingSummary="true"
+                                        PagingSummaryFormat="@("{2:N0} messages, page {0} of {1}")">
                             <Columns>
                                 <RadzenDataGridColumn Title="Time" Property="@nameof(CommunicationEvent.Timestamp)" SortOrder="SortOrder.Descending" Width="170px">
                                     <Template>
