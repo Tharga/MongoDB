@@ -35,7 +35,7 @@ internal sealed class LiveMonitoringSubscriptionService : ILiveMonitoringSubscri
 
         var counts = _serverCommunication.GetSubscriptions();
         var topicCount = counts.TryGetValue(LiveTopic, out var c) ? c : -1;
-        _logger?.LogInformation("Live monitoring SubscribeAsync: topic {Topic} now has {Count} subscriber(s) on the server. Notifying agents.", LiveTopic, topicCount);
+        _logger?.LogDebug("Live monitoring SubscribeAsync: topic {Topic} now has {Count} subscriber(s) on the server. Notifying agents.", LiveTopic, topicCount);
 
         // Explicitly tell all connected agents a subscriber is active. The framework auto-pushes this
         // on the 0<->1 boundary, but that hasn't been reaching agents (they never start sending queue
@@ -55,11 +55,20 @@ internal sealed class LiveMonitoringSubscriptionService : ILiveMonitoringSubscri
     {
         var connectedClients = _databaseMonitor.GetMonitorClients().Where(x => x.IsConnected).ToArray();
         var sources = string.Join(", ", connectedClients.Select(x => x.SourceName ?? "(no source)"));
-        _logger?.LogInformation("Broadcasting SubscriptionStateChanged(Topic={Topic}, HasSubscribers={HasSubscribers}) via PostToAll. Connected agents: {Count} [{Sources}].",
-            LiveTopic, hasSubscribers, connectedClients.Length, sources);
+        _logger?.LogDebug("Broadcasting live-monitoring state (Active={HasSubscribers}) to agents via PostToAll. Connected agents: {Count} [{Sources}].",
+            hasSubscribers, connectedClients.Length, sources);
 
         try
         {
+            // Explicit, fully server-controlled signal — the reliable path. The agent has a dedicated
+            // handler (SetLiveMonitoringActiveHandler) that flips its local flag and logs receipt.
+            await _serverCommunication.PostToAllAsync(new SetLiveMonitoringActiveMessage
+            {
+                Active = hasSubscribers,
+            });
+
+            // Also send the framework's SubscriptionStateChanged for back-compat with the built-in
+            // HasSubscribers tracker (kept as a secondary signal; the explicit message above is primary).
             await _serverCommunication.PostToAllAsync(new SubscriptionStateChanged
             {
                 Topic = LiveTopic,
@@ -67,7 +76,7 @@ internal sealed class LiveMonitoringSubscriptionService : ILiveMonitoringSubscri
                 HasSubscribers = hasSubscribers,
             });
 
-            _logger?.LogInformation("PostToAll SubscriptionStateChanged(HasSubscribers={HasSubscribers}) completed.", hasSubscribers);
+            _logger?.LogDebug("PostToAll SetLiveMonitoringActive(Active={HasSubscribers}) + SubscriptionStateChanged completed.", hasSubscribers);
 
             // Surface it in each connected agent's Communication log.
             foreach (var client in connectedClients)
@@ -86,7 +95,7 @@ internal sealed class LiveMonitoringSubscriptionService : ILiveMonitoringSubscri
     {
         // Tell agents to stop only when the last subscriber has actually gone (use the real count).
         var remaining = _serverCommunication.GetSubscriptions().TryGetValue(LiveTopic, out var count) ? count : 0;
-        _logger?.LogInformation("Live monitoring subscription disposed: topic {Topic} now has {Count} subscriber(s) remaining.", LiveTopic, remaining);
+        _logger?.LogDebug("Live monitoring subscription disposed: topic {Topic} now has {Count} subscriber(s) remaining.", LiveTopic, remaining);
         if (remaining <= 0)
             await BroadcastAsync(false);
     }

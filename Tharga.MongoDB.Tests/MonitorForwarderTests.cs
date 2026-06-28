@@ -41,7 +41,7 @@ public class MonitorForwarderTests : IAsyncLifetime
 
         // Enable completed-call forwarding so the call-forwarding paths under test are active.
         var options = Options.Create(new DatabaseOptions { Monitor = new MonitorOptions { ForwardCompletedCalls = true } });
-        _sut = new MonitorForwarder(_factoryMock.Object, _monitorMock.Object, _queueMonitorMock.Object, new Mock<IConnectionPoolMonitor>().Object, _clientMock.Object, options);
+        _sut = new MonitorForwarder(_factoryMock.Object, _monitorMock.Object, _queueMonitorMock.Object, new Mock<IConnectionPoolMonitor>().Object, _clientMock.Object, new LiveMonitoringState(), options);
     }
 
     public async ValueTask InitializeAsync()
@@ -103,7 +103,7 @@ public class MonitorForwarderTests : IAsyncLifetime
         var queue = new Mock<IQueueMonitor>();
         var client = new Mock<IClientCommunication>();
         var options = Options.Create(new DatabaseOptions { Monitor = new MonitorOptions { ForwardCompletedCalls = false } });
-        var sut = new MonitorForwarder(factory.Object, monitor.Object, queue.Object, new Mock<IConnectionPoolMonitor>().Object, client.Object, options);
+        var sut = new MonitorForwarder(factory.Object, monitor.Object, queue.Object, new Mock<IConnectionPoolMonitor>().Object, client.Object, new LiveMonitoringState(), options);
 
         await sut.StartAsync(CancellationToken.None);
         try

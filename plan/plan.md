@@ -176,6 +176,45 @@ Calls → Queue. Logs (`%TEMP%/tharga-monitor-{server,console}.log`) show:
   (1) the server broadcasts, (2) PostToAll throws, (3) the agent receives but doesn't
   flip. Then apply the precise fix (likely Phase 3(a): explicit agent-owned signal).
 
+## Root cause CONFIRMED + fix applied (this turn)
+Second manual run (13:00, logs read) was decisive:
+- **Server** logged: `SubscribeAsync … 1 subscriber`, `Broadcasting SubscriptionStateChanged(HasSubscribers=True) … Connected agents: 1 [PLUTO/ConsoleSample]`, `PostToAll … completed` (no exception). **The server broadcasts fine.**
+- **Agent** logged every tick (incl. all after the broadcast) as `connected=True, hasSubscribers<LiveMonitoringMarker>=False` for 2+ minutes. **The agent's HasSubscribers never flips.**
+- ⇒ The framework's `SubscriptionStateChanged → client tracker → HasSubscribers` chain is the broken link in the real deployment (works in the loopback test, not here). Confirmed (a)/(b).
+
+### Fix: explicit, server-owned signal (Phase 3(a)) — DONE, awaiting user re-run
+- New `SetLiveMonitoringActiveMessage { bool Active }` (Monitor.Client).
+- New `SetLiveMonitoringActiveHandler` (Monitor.Client): logs every receipt ("Received
+  SetLiveMonitoringActive(Active=…)") and sets the new internal singleton `LiveMonitoringState`.
+- `MonitorForwarder.OnQueueMetricTick` now gates on `LiveMonitoringState.Active ||
+  HasSubscribers<LiveMonitoringMarker>()` (explicit flag primary, framework tracker fallback).
+- Server `LiveMonitoringSubscriptionService.BroadcastAsync` now `PostToAll`s
+  `SetLiveMonitoringActiveMessage` (then the legacy `SubscriptionStateChanged` for back-compat).
+- `MonitorClientBridge` connect-replay also sends `SetLiveMonitoringActive(true)` for the live topic.
+- 5 new unit tests (`LiveMonitoringSignalTests`); suite 352 pass / 0 fail.
+- The handler's receipt log makes the next run conclusive: if the agent logs "Received
+  SetLiveMonitoringActive(Active=True)" → server→agent push works and the fix is effective; if not
+  → server→agent push is broken at the transport level (bigger issue) and we pivot there.
+
+**VERIFIED WORKING (13:16 run).** Server log shows: `PostToAll SetLiveMonitoringActive(Active=True)
+… completed`, then the agent forwards `MonitorQueueMetricMessage` every second with its real pool
+(`localhost:27017|pool=100`), including `ExecutingCount=1, WaitTimeMs=9.2` during `sample list`.
+Closing the Queue view → `Active=False` → forwarding stops; reopening → `Active=True` again. The
+Queue view shows the console's per-pool line. **Bug fixed.**
+
+### Log-level tuning (post-fix, this turn)
+- Removed the per-tick "Queue metric tick" Trace (was a diagnostic; on-change `LogLiveStateChange`
+  remains the operator signal).
+- Server `LiveMonitoringSubscriptionService` + `MonitorClientBridge` subscribe/broadcast/replay logs:
+  Information → **Debug** (low-frequency operational events; failure path stays Warning).
+- Agent `SetLiveMonitoringActiveHandler` receipt log: Information → **Debug**.
+- Net: at Information a consumer sees only the on-change "live monitoring active/stopped" line; Debug
+  shows the operational events; Trace is reserved for framework per-message detail.
+- NOTE: the per-second `SignalRHub: PostMessageAsync response from agent` flood in the sample logs is
+  **framework** (Tharga.Communication) Trace, surfacing only because the sample file loggers set
+  `Tharga` = Trace. Tune the sample filter (e.g. `Tharga.Communication` = Debug) if quieter sample
+  logs are wanted — not a library concern.
+
 ## Last session
 Built the Phase-1 self-verification test (`LiveMonitoringIntegrationTests.cs`) over a
 real loopback Kestrel + real SignalR client. It is **green and stable**. This settled

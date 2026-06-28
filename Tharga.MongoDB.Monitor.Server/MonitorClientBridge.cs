@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using Tharga.Communication.Contract;
 using Tharga.Communication.Server;
 using Tharga.Communication.Server.Communication;
+using Tharga.MongoDB.Monitor.Client;
 
 namespace Tharga.MongoDB.Monitor.Server;
 
@@ -15,6 +16,8 @@ namespace Tharga.MongoDB.Monitor.Server;
 /// </summary>
 internal sealed class MonitorClientBridge : IHostedService
 {
+    private static readonly string LiveTopic = typeof(LiveMonitoringMarker).FullName;
+
     private readonly MonitorClientStateService _clientStateService;
     private readonly IDatabaseMonitor _databaseMonitor;
     private readonly IServerCommunication _serverCommunication;
@@ -72,19 +75,27 @@ internal sealed class MonitorClientBridge : IHostedService
         try
         {
             var subscriptions = _serverCommunication.GetSubscriptions();
-            _logger?.LogInformation("Agent connected ({ConnectionId}). Replaying {Count} active subscription(s): [{Topics}].",
+            _logger?.LogDebug("Agent connected ({ConnectionId}). Replaying {Count} active subscription(s): [{Topics}].",
                 connectionId, subscriptions.Count, string.Join(", ", subscriptions.Keys));
 
             foreach (var (topic, count) in subscriptions)
             {
                 if (count <= 0) continue;
-                _logger?.LogInformation("Replaying SubscriptionStateChanged(Topic={Topic}, HasSubscribers=true) to agent {ConnectionId}.", topic, connectionId);
+                _logger?.LogDebug("Replaying SubscriptionStateChanged(Topic={Topic}, HasSubscribers=true) to agent {ConnectionId}.", topic, connectionId);
                 await _serverCommunication.PostAsync(connectionId, new SubscriptionStateChanged
                 {
                     Topic = topic,
                     Key = null,
                     HasSubscribers = true,
                 });
+
+                // Also replay the explicit live-monitoring signal so an agent connecting while a Queue
+                // view is already open starts forwarding queue metrics without waiting for the next subscribe.
+                if (topic == LiveTopic)
+                {
+                    _logger?.LogDebug("Replaying SetLiveMonitoringActive(Active=true) to agent {ConnectionId}.", connectionId);
+                    await _serverCommunication.PostAsync(connectionId, new SetLiveMonitoringActiveMessage { Active = true });
+                }
             }
         }
         catch (Exception ex)

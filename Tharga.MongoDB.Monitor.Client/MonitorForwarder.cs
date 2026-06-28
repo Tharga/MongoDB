@@ -24,6 +24,7 @@ internal sealed class MonitorForwarder : IHostedService, IDisposable
     private readonly IQueueMonitor _queueMonitor;
     private readonly IConnectionPoolMonitor _connectionPoolMonitor;
     private readonly IClientCommunication _clientCommunication;
+    private readonly LiveMonitoringState _liveMonitoringState;
     private readonly MonitorOptions _monitorOptions;
     private readonly ILogger<MonitorForwarder> _logger;
     private readonly ConcurrentDictionary<Guid, CallStartEventArgs> _pendingCalls = new();
@@ -37,6 +38,7 @@ internal sealed class MonitorForwarder : IHostedService, IDisposable
         IQueueMonitor queueMonitor,
         IConnectionPoolMonitor connectionPoolMonitor,
         IClientCommunication clientCommunication,
+        LiveMonitoringState liveMonitoringState,
         IOptions<DatabaseOptions> databaseOptions,
         ILogger<MonitorForwarder> logger = null)
     {
@@ -45,6 +47,7 @@ internal sealed class MonitorForwarder : IHostedService, IDisposable
         _queueMonitor = queueMonitor;
         _connectionPoolMonitor = connectionPoolMonitor;
         _clientCommunication = clientCommunication;
+        _liveMonitoringState = liveMonitoringState;
         _monitorOptions = databaseOptions.Value.Monitor;
         _logger = logger;
     }
@@ -326,8 +329,11 @@ internal sealed class MonitorForwarder : IHostedService, IDisposable
         try
         {
             var connected = _clientCommunication.IsConnected;
-            var hasSubscribers = connected && _clientCommunication.HasSubscribers<LiveMonitoringMarker>();
-            _logger?.LogTrace("Queue metric tick: connected={Connected}, hasSubscribers<LiveMonitoringMarker>={HasSubscribers}.", connected, hasSubscribers);
+            // Prefer the explicit server-pushed flag (SetLiveMonitoringActiveMessage). Fall back to the
+            // framework's HasSubscribers as a secondary signal — the explicit flag is what makes this
+            // reliable across deployments where the built-in subscription propagation doesn't reach agents.
+            var hasSubscribers = connected
+                && (_liveMonitoringState.Active || _clientCommunication.HasSubscribers<LiveMonitoringMarker>());
             if (!connected || !hasSubscribers)
             {
                 LogLiveStateChange(connected, hasSubscribers, false);

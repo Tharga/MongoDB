@@ -53,6 +53,11 @@ public static class MonitorClientRegistration
         if (existing != null) builder.Services.Remove(existing);
         builder.Services.AddSingleton<IHandlerTypeService>(new HandlerTypeService(defaultHandlers));
 
+        // Explicit live-monitoring flag, set by SetLiveMonitoringActiveHandler from server-pushed
+        // SetLiveMonitoringActiveMessage and read by MonitorForwarder. Replaces the unreliable
+        // HasSubscribers<LiveMonitoringMarker>() dependency.
+        builder.Services.AddSingleton<LiveMonitoringState>();
+
         // Register as a singleton and run the hosted service off the same instance, so the
         // ResetCacheHandler can resolve it and trigger a fresh collection-info re-send on reset.
         builder.Services.AddSingleton<MonitorForwarder>();

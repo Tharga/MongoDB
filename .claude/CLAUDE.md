@@ -6,7 +6,12 @@
    - Do not proceed until I have confirmed how to handle them (commit, stash, or discard)
 2. Check if `.claude/mission.md` exists and read it.
    - Follow **all** file references listed under "External References" — read each one (shared-instructions, backlog, incoming requests, etc.)
-   - If a path uses `$DOC_ROOT`, resolve it via the environment variable defined in `~/.claude/settings.json`.
+   - **Environment preflight — do this before reading any reference and before any work.** Several External References live under `$DOC_ROOT` (the SynologyDrive Notes folder), so the session cannot run without it. Resolve `$DOC_ROOT` from the environment variable defined in `~/.claude/settings.json`.
+     - If `$DOC_ROOT` is **unset/empty**, does not point to an existing directory, or **any** `$DOC_ROOT/...` reference cannot be read: **STOP — do not continue the session.** Ask me to prepare the environment by adding the following to `~/.claude/settings.json` and then **restarting the session** (the env var is only loaded at startup):
+       ```json
+       { "env": { "DOC_ROOT": "<absolute path to the SynologyDrive Notes folder on this machine>" } }
+       ```
+     - Do not guess paths, skip a reference, or proceed on partial information — every External Reference must be readable before work begins.
 3. Check if `plan/` exists in the project root.
    - If `plan/plan.md` exists, summarize what has been done and what the next step is.
    - If `plan/feature.md` exists, read the current feature scope.
