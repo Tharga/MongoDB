@@ -22,6 +22,9 @@ var clientLogPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "tharga
 builder.Logging.AddProvider(new ConsoleSample.FileLoggerProvider(clientLogPath));
 builder.Logging.AddFilter<ConsoleSample.FileLoggerProvider>(null, LogLevel.Information);
 builder.Logging.AddFilter<ConsoleSample.FileLoggerProvider>("Tharga", LogLevel.Trace);
+// Tharga.Communication logs every forwarded message at Trace (one per second); keep it at Debug so the
+// per-message flood stays out of the log while Tharga.MongoDB.* remains at Trace.
+builder.Logging.AddFilter<ConsoleSample.FileLoggerProvider>("Tharga.Communication", LogLevel.Debug);
 builder.Logging.AddFilter<ConsoleSample.FileLoggerProvider>("Microsoft", LogLevel.Warning);
 Console.WriteLine($"[sample] File logging to {clientLogPath}");
 

@@ -44,6 +44,9 @@ var serverLogPath = Path.Combine(Path.GetTempPath(), "tharga-monitor-server.log"
 builder.Logging.AddProvider(new Tharga.TemplateBlazor.Web.FileLoggerProvider(serverLogPath));
 builder.Logging.AddFilter<Tharga.TemplateBlazor.Web.FileLoggerProvider>(null, LogLevel.Information);
 builder.Logging.AddFilter<Tharga.TemplateBlazor.Web.FileLoggerProvider>("Tharga", LogLevel.Trace);
+// Tharga.Communication logs every forwarded message at Trace (one per second per agent); keep it at
+// Debug so the per-message flood stays out of the log while Tharga.MongoDB.* remains at Trace.
+builder.Logging.AddFilter<Tharga.TemplateBlazor.Web.FileLoggerProvider>("Tharga.Communication", LogLevel.Debug);
 builder.Logging.AddFilter<Tharga.TemplateBlazor.Web.FileLoggerProvider>("Microsoft", LogLevel.Warning);
 Console.WriteLine($"[sample] File logging to {serverLogPath}");
 
