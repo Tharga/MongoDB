@@ -1233,62 +1233,129 @@ internal class DatabaseMonitor : IDatabaseMonitor
 
     public IReadOnlyList<ClusterConnectionSummary> GetClusterConnectionSummary()
     {
-        // Aggregate actual open connections + capacity per cluster (serverKey) across every source:
-        // this process's own pools plus all reporting agents.
-        var byCluster = new Dictionary<string, ClusterAccumulator>();
+        // Aggregate actual open connections + capacity per cluster (host) across every source: this
+        // process's own pools plus all reporting agents. cluster -> serverKey(pool) -> source.
+        var byCluster = new Dictionary<string, Dictionary<string, PoolAccumulator>>();
 
-        ClusterAccumulator Get(string serverKey)
+        PoolAccumulator GetPool(string serverKey)
         {
-            if (!byCluster.TryGetValue(serverKey, out var acc))
-                byCluster[serverKey] = acc = new ClusterAccumulator();
+            // Group pools under their cluster (server host(s)); pools that differ only in max pool size
+            // collapse to the same cluster but stay distinct pools.
+            var cluster = MongoDbClientProvider.ClusterOf(serverKey);
+            if (!byCluster.TryGetValue(cluster, out var poolsByKey))
+                byCluster[cluster] = poolsByKey = new Dictionary<string, PoolAccumulator>();
+            if (!poolsByKey.TryGetValue(serverKey, out var acc))
+                poolsByKey[serverKey] = acc = new PoolAccumulator();
             return acc;
         }
 
-        // Local — config-name labels come from the limiter's per-pool view (may be empty if no calls yet).
+        void AddSource(string serverKey, string source, int open, int max, IEnumerable<string> configNames, int queue, int exec)
+        {
+            var acc = GetPool(serverKey);
+            var s = acc.SourceByName.TryGetValue(source, out var existing) ? existing : acc.SourceByName[source] = new SourceAccumulator();
+            s.Open += open;
+            s.Max += max;
+            s.Queue += queue;
+            s.Exec += exec;
+            if (configNames != null)
+                foreach (var n in configNames) acc.ConfigurationNames.Add(n);
+        }
+
+        // Local — config-name labels and queue/exec come from the limiter's per-pool view (read once;
+        // reading resets the wait-time high-water mark). May be empty if no calls have run yet.
         var localSource = _mongoDbServiceFactory.SourceName;
-        var localConfigByServer = _queueMonitor.GetPerPoolState()
-            .ToDictionary(p => p.ServerKey, p => p.ConfigurationNames);
+        var localByServer = _queueMonitor.GetPerPoolState()
+            .ToDictionary(p => p.ServerKey, p => p);
         foreach (var pool in _connectionPoolMonitor.GetSnapshot())
         {
-            var acc = Get(pool.ServerKey);
-            acc.Open += pool.OpenConnections;
-            acc.Max += pool.MaxPoolSize;
-            acc.Sources.Add(localSource);
-            if (localConfigByServer.TryGetValue(pool.ServerKey, out var names))
-                foreach (var n in names) acc.ConfigurationNames.Add(n);
+            localByServer.TryGetValue(pool.ServerKey, out var q);
+            AddSource(pool.ServerKey, localSource, pool.OpenConnections, pool.MaxPoolSize,
+                q?.ConfigurationNames, q?.QueueCount ?? 0, q?.ExecutingCount ?? 0);
         }
 
-        // Remote — each agent's reported per-pool connection counts.
+        // Remote — each agent's reported per-pool connection + queue counts.
         foreach (var (source, pools) in _remotePoolStates)
-        {
             foreach (var pool in pools)
-            {
-                var acc = Get(pool.ServerKey);
-                acc.Open += pool.OpenConnections;
-                acc.Max += pool.MaxPoolSize;
-                acc.Sources.Add(source);
-                foreach (var n in pool.ConfigurationNames) acc.ConfigurationNames.Add(n);
-            }
-        }
+                AddSource(pool.ServerKey, source, pool.OpenConnections, pool.MaxPoolSize,
+                    pool.ConfigurationNames, pool.QueueCount, pool.ExecutingCount);
 
-        var limit = _options.Monitor.ClusterConnectionLimit;
-        return byCluster.Select(kvp => new ClusterConnectionSummary
-        {
-            ServerKey = kvp.Key,
-            ConfigurationNames = kvp.Value.ConfigurationNames.OrderBy(x => x, StringComparer.Ordinal).ToArray(),
-            SourceCount = kvp.Value.Sources.Count,
-            OpenConnections = kvp.Value.Open,
-            MaxConnections = kvp.Value.Max,
-            Limit = limit,
-        }).ToArray();
+        var resolver = _options.Monitor.ClusterConnectionLimitResolver;
+        var globalLimit = _options.Monitor.ClusterConnectionLimit;
+        return byCluster
+            .OrderBy(c => c.Key, StringComparer.Ordinal)
+            .Select(c =>
+            {
+                var pools = c.Value.OrderBy(p => p.Key, StringComparer.Ordinal).Select(p =>
+                {
+                    var sources = p.Value.SourceByName
+                        .OrderBy(s => s.Key, StringComparer.Ordinal)
+                        .Select(s => new ClusterPoolSourceConnections
+                        {
+                            Source = s.Key,
+                            OpenConnections = s.Value.Open,
+                            MaxPoolSize = s.Value.Max,
+                            QueueCount = s.Value.Queue,
+                            ExecutingCount = s.Value.Exec,
+                        })
+                        .ToArray();
+                    return new ClusterPoolSummary
+                    {
+                        ServerKey = p.Key,
+                        // Every source on one server-key shares the same max pool size (it is part of the key).
+                        MaxPoolSize = sources.Length > 0 ? sources[0].MaxPoolSize : 0,
+                        ConfigurationNames = p.Value.ConfigurationNames.OrderBy(x => x, StringComparer.Ordinal).ToArray(),
+                        SourceCount = sources.Length,
+                        OpenConnections = sources.Sum(s => s.OpenConnections),
+                        QueueCount = sources.Sum(s => s.QueueCount),
+                        ExecutingCount = sources.Sum(s => s.ExecutingCount),
+                        Sources = sources,
+                    };
+                }).ToArray();
+
+                var configNames = pools.SelectMany(p => p.ConfigurationNames).Distinct().OrderBy(x => x, StringComparer.Ordinal).ToArray();
+
+                // Per-cluster limit: resolver first (e.g. a tier lookup or a runtime-updated value), then the
+                // single global fallback, then "no limit" (null) — which renders as a total with no bar.
+                int? limit = null;
+                if (resolver != null)
+                {
+                    var ctx = new ClusterConnectionLimitContext
+                    {
+                        Cluster = c.Key,
+                        IsAtlas = MongoDbClientProvider.IsAtlasCluster(c.Key),
+                        ConfigurationNames = configNames,
+                    };
+                    try { limit = resolver(_serviceProvider, ctx); }
+                    catch (Exception ex) { _logger?.LogDebug(ex, "ClusterConnectionLimitResolver threw for cluster {Cluster}.", c.Key); }
+                }
+                limit ??= globalLimit;
+
+                return new ClusterConnectionSummary
+                {
+                    Cluster = c.Key,
+                    ConfigurationNames = configNames,
+                    SourceCount = pools.SelectMany(p => p.Sources.Select(s => s.Source)).Distinct().Count(),
+                    OpenConnections = pools.Sum(p => p.OpenConnections),
+                    MaxConnections = pools.Sum(p => p.Sources.Sum(s => s.MaxPoolSize)),
+                    Limit = limit,
+                    Pools = pools,
+                };
+            })
+            .ToArray();
     }
 
-    private sealed class ClusterAccumulator
+    private sealed class PoolAccumulator
+    {
+        public readonly Dictionary<string, SourceAccumulator> SourceByName = new();
+        public readonly HashSet<string> ConfigurationNames = new();
+    }
+
+    private sealed class SourceAccumulator
     {
         public int Open;
         public int Max;
-        public readonly HashSet<string> Sources = new();
-        public readonly HashSet<string> ConfigurationNames = new();
+        public int Queue;
+        public int Exec;
     }
 
     private static string BuildPoolLabel(IReadOnlyCollection<string> configurationNames, string serverKey, string source, bool multiSource)

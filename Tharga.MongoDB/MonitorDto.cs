@@ -115,26 +115,93 @@ public record PoolMetricDto
 }
 
 /// <summary>
-/// Aggregated connection usage for one cluster (server-key) across all reporting sources (the central
-/// server plus every connected agent). Lets you see total open connections versus a configured limit
-/// (e.g. an Atlas cluster's max connections).
+/// Aggregated connection usage for one <b>cluster</b> (the server host(s) — the thing you connect <i>to</i>)
+/// across all reporting sources (the central server plus every connected agent). This is the top of a
+/// three-level hierarchy that keeps the dimensions distinct:
+/// <list type="bullet">
+/// <item><b>Cluster</b> (this record) — one MongoDB deployment, identified by its host(s). The summed
+/// <see cref="OpenConnections"/> is what counts against a server-side limit (e.g. an Atlas tier's max).</item>
+/// <item><b>Pool</b> (<see cref="ClusterPoolSummary"/>) — a distinct client connection pool to that cluster.
+/// Two configurations to the same cluster share one pool unless they differ in max pool size, in which case
+/// the cluster carries more than one pool.</item>
+/// <item><b>Source</b> (<see cref="ClusterPoolSourceConnections"/>) — one process's pool (this server or a
+/// single agent); the unit you'd point at to say "that one client/server item".</item>
+/// </list>
 /// </summary>
 public record ClusterConnectionSummary
 {
-    public required string ServerKey { get; init; }
+    /// <summary>The cluster identity — the server host(s) connected to, e.g. <c>localhost:27017</c>. Shared by every pool below.</summary>
+    public required string Cluster { get; init; }
+
+    /// <summary>Every configuration name that routes through this cluster (union across its pools).</summary>
     public required IReadOnlyCollection<string> ConfigurationNames { get; init; }
 
     /// <summary>Number of distinct sources (processes) contributing connections to this cluster.</summary>
     public required int SourceCount { get; init; }
 
-    /// <summary>Total actual open connections across all sources right now.</summary>
+    /// <summary>Total actual open connections across every pool and source — the figure that counts against <see cref="Limit"/>.</summary>
     public required int OpenConnections { get; init; }
 
-    /// <summary>Total capacity (sum of each source's configured max pool size) — the most connections this fleet could open.</summary>
+    /// <summary>Total capacity (sum of each source-pool's configured max pool size) — the most connections this fleet could open.</summary>
     public required int MaxConnections { get; init; }
 
     /// <summary>Configured connection limit for the cluster (e.g. Atlas max), or null when not configured.</summary>
     public int? Limit { get; init; }
+
+    /// <summary>The distinct connection pools to this cluster (one per server-key). Usually one; more than one when configurations differ in max pool size.</summary>
+    public required IReadOnlyList<ClusterPoolSummary> Pools { get; init; }
+}
+
+/// <summary>
+/// One connection pool within a <see cref="ClusterConnectionSummary"/> — a distinct server-key (cluster host(s)
+/// + max pool size) — aggregated across every source that holds such a pool.
+/// </summary>
+public record ClusterPoolSummary
+{
+    public required string ServerKey { get; init; }
+
+    /// <summary>The configured max pool size for this pool (the per-pool, per-source connection ceiling, e.g. 100).</summary>
+    public required int MaxPoolSize { get; init; }
+
+    /// <summary>Configuration name(s) that route through this pool.</summary>
+    public required IReadOnlyCollection<string> ConfigurationNames { get; init; }
+
+    /// <summary>Number of distinct sources (processes) that hold this pool.</summary>
+    public required int SourceCount { get; init; }
+
+    /// <summary>Total open connections in this pool across all sources.</summary>
+    public required int OpenConnections { get; init; }
+
+    /// <summary>Calls waiting for a slot in this pool's limiter, summed across sources. The queue is per pool — this is its real home.</summary>
+    public required int QueueCount { get; init; }
+
+    /// <summary>Calls currently executing through this pool's limiter, summed across sources.</summary>
+    public required int ExecutingCount { get; init; }
+
+    /// <summary>Per-source breakdown — one entry per process holding this pool.</summary>
+    public required IReadOnlyList<ClusterPoolSourceConnections> Sources { get; init; }
+}
+
+/// <summary>
+/// One process's contribution to a pool — the most granular "single client/server item": how many connections
+/// this one source currently has open and the cap it can reach.
+/// </summary>
+public record ClusterPoolSourceConnections
+{
+    /// <summary>The reporting source (process), e.g. <c>MACHINE/App</c>.</summary>
+    public required string Source { get; init; }
+
+    /// <summary>Open connections this source currently holds in the pool.</summary>
+    public required int OpenConnections { get; init; }
+
+    /// <summary>This source's configured max pool size (the per-process ceiling).</summary>
+    public required int MaxPoolSize { get; init; }
+
+    /// <summary>Calls this source currently has waiting for a slot in the pool's limiter.</summary>
+    public required int QueueCount { get; init; }
+
+    /// <summary>Calls this source currently has executing through the pool's limiter.</summary>
+    public required int ExecutingCount { get; init; }
 }
 
 /// <summary>

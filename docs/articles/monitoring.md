@@ -31,7 +31,8 @@ Or by code via `services.AddMongoDB(o => o.Monitor = new MonitorOptions { ... })
 |---|---|---|---|
 | `ForwardCompletedCalls` | Agent | `false` | Forward every completed call to the central monitor. Off by default — it is a large, continuous stream proportional to database activity. See [Centralised monitoring](#centralised-monitoring). |
 | `QueueMetricInterval` | Agent | `00:00:01` (1s) | How often a queue/connection snapshot is forwarded while someone is watching live. Larger = less chatter, coarser live graph. |
-| `ClusterConnectionLimit` | Server | `null` | A cluster's connection limit (e.g. an Atlas tier's max, often 3000). When set, the queue view shows total open connections as a fraction of it. See [Connection-pool usage](#connection-pool-queue-and-in-flight-calls). |
+| `ClusterConnectionLimit` | Server | `null` | A single connection limit applied to **every** cluster the resolver doesn't handle. Use only when all clusters share one limit; otherwise leave null and use the resolver. |
+| `ClusterConnectionLimitResolver` | Server | `null` | `Func<IServiceProvider, ClusterConnectionLimitContext, int?>` — resolves the limit **per cluster** (e.g. each Atlas tier's max, or `null` for self-hosted). Mirrors `MaxPoolSizeOverride`; the `IServiceProvider` lets it read a value an external feature updates at runtime. Called on the render path, so it must be fast (read a cached value, no I/O). The context carries the cluster host, an `IsAtlas` flag (host on `mongodb.net`), and the config names. Falls back to `ClusterConnectionLimit`, then to no bar. See [Connection-pool usage](#connection-pool-queue-and-in-flight-calls). |
 
 ## Source identification
 
@@ -65,7 +66,11 @@ a single process-wide figure:
   shows, per cluster across **all sources (this server + every agent)**, the total open connections and the
   total capacity (sum of each pool's `maxPoolSize`). Set `Monitor.ClusterConnectionLimit` (on the server) to your
   cluster's limit (e.g. an Atlas tier's 3000) to see `open / limit` with a bar that warns as you approach it.
-  Read it via `IDatabaseMonitor.GetClusterConnectionSummary()`.
+  Read it via `IDatabaseMonitor.GetClusterConnectionSummary()`, which returns a three-level breakdown that keeps
+  the dimensions distinct: **cluster** (the host you connect to — the grouping and the summed total) →
+  **pool** (`ClusterPoolSummary`, one per server-key; a cluster carries more than one only when configurations
+  differ in max pool size) → **source** (`ClusterPoolSourceConnections`, one process — the single client/server
+  item). The cluster's `OpenConnections` is the sum across every pool and source.
 
   > Only monitored processes are counted — other clients (Compass, un-instrumented services) and the driver's
   > per-process SDAM heartbeat connections are not. Treat the figure as a close lower bound on the cluster total.

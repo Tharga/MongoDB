@@ -741,7 +741,7 @@ Set `StorageMode` to control where the monitor keeps its state.
 }
 ```
 
-`ForwardCompletedCalls` (default `false`) and `QueueMetricInterval` apply to agents forwarding to a central monitor; `ClusterConnectionLimit` is read by the central server to show open connections against a cluster's limit. See [Centralised monitoring](#centralised-monitoring) and the [monitoring docs](https://github.com/Tharga/MongoDB/blob/master/docs/articles/monitoring.md).
+`ForwardCompletedCalls` (default `false`) and `QueueMetricInterval` apply to agents forwarding to a central monitor; `ClusterConnectionLimit` is read by the central server to show open connections against a cluster's limit (one value for every cluster). For mixed deployments — different Atlas tiers, or self-hosted — set `ClusterConnectionLimitResolver` in code (below) to resolve the limit per cluster instead. See [Centralised monitoring](#centralised-monitoring) and the [monitoring docs](https://github.com/Tharga/MongoDB/blob/master/docs/articles/monitoring.md).
 
 #### Configuration by code
 ```csharp
@@ -755,7 +755,10 @@ services.AddMongoDB(o =>
         SlowCallsToKeep = 200,
         ForwardCompletedCalls = false,        // opt-in: forward every completed call to the central monitor
         QueueMetricInterval = TimeSpan.FromSeconds(1),
-        ClusterConnectionLimit = 3000         // e.g. an Atlas tier's max connections (server-side)
+        // Per-cluster connection limit (drives the "open / limit" bar). Resolve per cluster so mixed
+        // deployments — different Atlas tiers, or self-hosted — each show the right ceiling, or none:
+        ClusterConnectionLimitResolver = (sp, ctx) => ctx.IsAtlas ? 3000 : (int?)null
+        // ClusterConnectionLimit = 3000      // alternative: one limit for every cluster
     };
 });
 ```
@@ -959,7 +962,7 @@ app.MapGet("/api/monitor/pool", (IDatabaseMonitor m) => m.GetConnectionPoolState
 | `GetConnectionPoolState()` | `ConnectionPoolStateDto` | Aggregate queue depth, executing count, wait time, recent metrics |
 | `GetPerPoolQueueState()` | `IReadOnlyDictionary<string, ConnectionPoolStateDto>` | Queue/exec per connection pool (per cluster), across this process and all agents — one entry per source+pool, labelled by configuration |
 | `GetInFlightCalls()` | `InFlightCallInfo[]` | What the limiter is holding right now (queued vs executing) — for diagnosing a flood |
-| `GetClusterConnectionSummary()` | `ClusterConnectionSummary[]` | Open connections + capacity per cluster across all sources, vs the configured `ClusterConnectionLimit` |
+| `GetClusterConnectionSummary()` | `ClusterConnectionSummary[]` | Open connections + capacity per cluster across all sources, vs the configured `ClusterConnectionLimit`. Three-level breakdown: cluster (host) → pool (server-key) → source (process) |
 
 ---
 

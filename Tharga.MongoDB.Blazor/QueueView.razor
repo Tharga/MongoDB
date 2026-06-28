@@ -7,50 +7,64 @@
 
     @if (_connectionSummaries.Count > 0)
     {
-        <RadzenText TextStyle="TextStyle.Subtitle1" Text="Cluster connections (all sources)" />
+        <RadzenText TextStyle="TextStyle.Subtitle1" Text="Cluster connections" />
+        <RadzenText TextStyle="TextStyle.Caption" Style="margin-top:-8px;"
+                    Text="Each card is one cluster (the server you connect to). The headline is the sum of open connections across every pool and source targeting it — the figure that counts against the cluster's limit. Below it, each pool, and within each pool one row per source (a single client/server process)." />
         <RadzenRow AlignItems="AlignItems.Start" Gap="16px">
             @foreach (var cluster in _connectionSummaries)
             {
-                <RadzenColumn Size="4">
-                    <RadzenText TextStyle="TextStyle.Caption" Text="@ClusterLabel(cluster)" />
-                    @if (cluster.Limit.HasValue && cluster.Limit.Value > 0)
-                    {
-                        <RadzenText TextStyle="TextStyle.Subtitle1" Text="@($"{cluster.OpenConnections:N0} / {cluster.Limit.Value:N0} open")" />
-                        <RadzenProgressBar Value="@cluster.OpenConnections" Max="@cluster.Limit.Value" ShowValue="false"
-                                           ProgressBarStyle="@ProgressStyle(cluster)" Style="height: 8px;" />
-                    }
-                    else
-                    {
-                        <RadzenText TextStyle="TextStyle.Subtitle1" Text="@($"{cluster.OpenConnections:N0} open")" />
-                    }
-                    <RadzenText TextStyle="TextStyle.Caption"
-                                Text="@($"capacity {cluster.MaxConnections:N0} · {cluster.SourceCount} source(s)")" />
+                <RadzenColumn Size="12" SizeSM="6" SizeMD="4">
+                    <RadzenCard Style="height:100%;">
+                        @* Level 1 — CLUSTER: the grouping and the sum. *@
+                        <RadzenText TextStyle="TextStyle.Overline" Text="Cluster" Style="margin:0; opacity:0.7;" />
+                        <RadzenText TextStyle="TextStyle.Subtitle2" Text="@cluster.Cluster" Style="margin:0 0 4px 0;" />
+                        @if (cluster.Limit.HasValue && cluster.Limit.Value > 0)
+                        {
+                            <RadzenText TextStyle="TextStyle.H6" Style="margin:0;" Text="@($"{cluster.OpenConnections:N0} / {cluster.Limit.Value:N0}")" />
+                            <RadzenProgressBar Value="@cluster.OpenConnections" Max="@cluster.Limit.Value" ShowValue="false"
+                                               ProgressBarStyle="@ProgressStyle(cluster)" Style="height: 8px;" />
+                        }
+                        else
+                        {
+                            <RadzenText TextStyle="TextStyle.H6" Style="margin:0;" Text="@($"{cluster.OpenConnections:N0} open")" />
+                        }
+                        <RadzenText TextStyle="TextStyle.Caption" Style="opacity:0.7;"
+                                    Text="@($"sum across {cluster.SourceCount} source(s) · {cluster.Pools.Count} pool(s) · capacity {cluster.MaxConnections:N0}")" />
+
+                        @* Level 2 — POOL: a distinct client pool (server-key) — also where the limiter queue lives.
+                           Level 3 — SOURCE: one process, with its open connections and its queued/executing calls. *@
+                        @foreach (var pool in cluster.Pools)
+                        {
+                            <RadzenStack Orientation="Orientation.Vertical" Gap="1px"
+                                         Style="@($"margin-top:8px; padding-left:8px; border-left:3px solid {ColorFor(pool.ServerKey)};")">
+                                <RadzenText TextStyle="TextStyle.Caption" Style="margin:0; font-weight:600;">
+                                    Pool · @PoolConfigLabel(pool) · cap @pool.MaxPoolSize/source · @pool.OpenConnections open ·
+                                    Q <span style="@MetricStyle(pool.QueueCount, pool.ServerKey)">@pool.QueueCount</span>
+                                    / Exec <span style="@MetricStyle(pool.ExecutingCount, pool.ServerKey)">@pool.ExecutingCount</span>
+                                </RadzenText>
+                                @foreach (var src in pool.Sources)
+                                {
+                                    <RadzenText TextStyle="TextStyle.Caption" Style="margin:0; padding-left:8px; opacity:0.85;">
+                                        • @src.Source: @src.OpenConnections / @src.MaxPoolSize open ·
+                                        Q <span style="@MetricStyle(src.QueueCount, pool.ServerKey)">@src.QueueCount</span>
+                                        / Exec <span style="@MetricStyle(src.ExecutingCount, pool.ServerKey)">@src.ExecutingCount</span>
+                                    </RadzenText>
+                                }
+                            </RadzenStack>
+                        }
+                    </RadzenCard>
                 </RadzenColumn>
             }
         </RadzenRow>
     }
 
-    @* Grouped by configuration (≈ the Atlas connection pool). Each source — this server and every
-       connected agent — has its own pool to that cluster, shown as a row under the configuration. *@
-    <RadzenRow AlignItems="AlignItems.Start" Gap="16px">
-        @foreach (var group in GroupByConfiguration())
-        {
-            <RadzenColumn Size="3">
-                <RadzenText TextStyle="TextStyle.Subtitle2" Text="@group.Configuration" />
-                @foreach (var pool in group.Pools)
-                {
-                    <RadzenText TextStyle="TextStyle.Body2"
-                                Text="@($"{pool.Source} — Queue: {pool.State.QueueCount}  Exec: {pool.State.ExecutingCount}")" />
-                }
-            </RadzenColumn>
-        }
-    </RadzenRow>
-
-    <RadzenText TextStyle="TextStyle.Subtitle1" Text="Queue Depth" />
+    @* One line per pool (queue summed / wait = worst across that pool's sources). Per-source detail stays in the
+       cards above — so the graph stays readable even with many connected clients. *@
+    <RadzenText TextStyle="TextStyle.Subtitle1" Text="Queue Depth (per pool)" />
     <RadzenChart Style="height: 250px;">
-        @foreach (var source in _sourceSlots)
+        @foreach (var pool in _poolSlots)
         {
-            <RadzenLineSeries Data="@source.Value" CategoryProperty="SlotIndex" ValueProperty="QueueCount" Title="@LabelFor(source.Key)" LineType="LineType.Solid" Smooth="true">
+            <RadzenLineSeries Data="@pool.Value" CategoryProperty="SlotIndex" ValueProperty="QueueCount" Title="@LabelFor(pool.Key)" Stroke="@ColorFor(pool.Key)" LineType="LineType.Solid" Smooth="true">
                 <RadzenMarkers MarkerType="MarkerType.None" />
             </RadzenLineSeries>
         }
@@ -58,14 +72,14 @@
         <RadzenValueAxis Min="0">
             <RadzenGridLines Visible="true" />
         </RadzenValueAxis>
-        <RadzenLegend Visible="@(_sourceSlots.Count > 1)" />
+        <RadzenLegend Visible="false" />
     </RadzenChart>
 
-    <RadzenText TextStyle="TextStyle.Subtitle1" Text="Wait Time (s)" />
+    <RadzenText TextStyle="TextStyle.Subtitle1" Text="Wait Time (s, per pool)" />
     <RadzenChart Style="height: 250px;">
-        @foreach (var source in _sourceSlots)
+        @foreach (var pool in _poolSlots)
         {
-            <RadzenLineSeries Data="@source.Value" CategoryProperty="SlotIndex" ValueProperty="WaitTimeSec" Title="@LabelFor(source.Key)" LineType="LineType.Solid" Smooth="true">
+            <RadzenLineSeries Data="@pool.Value" CategoryProperty="SlotIndex" ValueProperty="WaitTimeSec" Title="@LabelFor(pool.Key)" Stroke="@ColorFor(pool.Key)" LineType="LineType.Solid" Smooth="true">
                 <RadzenMarkers MarkerType="MarkerType.None" />
             </RadzenLineSeries>
         }
@@ -73,7 +87,7 @@
         <RadzenValueAxis Min="0">
             <RadzenGridLines Visible="true" />
         </RadzenValueAxis>
-        <RadzenLegend Visible="@(_sourceSlots.Count > 1)" />
+        <RadzenLegend Visible="false" />
     </RadzenChart>
 
 </RadzenStack>
@@ -86,37 +100,23 @@
     private bool _disposed;
     private IAsyncDisposable _subscription;
 
+    // Charts and colours are keyed by pool (serverKey) — one line per pool, queue summed across that pool's
+    // sources. Per-source detail lives in the cards, so the graph stays readable with many connected clients.
     private readonly Dictionary<string, RingBuffer> _rings = new();
     private readonly Dictionary<string, string> _labels = new();
-    private Dictionary<string, List<Slot>> _sourceSlots = new();
-    private Dictionary<string, ConnectionPoolStateDto> _sourceStates = new();
+    private Dictionary<string, List<Slot>> _poolSlots = new();
     private IReadOnlyList<ClusterConnectionSummary> _connectionSummaries = [];
 
-    // The pool key is unique ("{source}::{serverKey}"); display the friendly label (config name(s)) instead.
-    private string LabelFor(string key) => _labels.TryGetValue(key, out var label) ? label : key;
+    // Stable colour per pool (serverKey), assigned first-seen. The same colour drives the chart line (Stroke),
+    // the card's pool dot/border, and the Q/Exec outlines on its source rows — so they all read as one pool.
+    private static readonly string[] SeriesColors =
+        ["#2196F3", "#FF9800", "#4CAF50", "#E91E63", "#00BCD4", "#9C27B0", "#FFC107", "#8BC34A", "#F44336", "#3F51B5"];
+    private readonly Dictionary<string, string> _poolColors = new();
 
-    // Group the per-pool states by configuration (the logical Atlas pool). Each entry under a group is
-    // one source's pool to that configuration — this server and every connected agent.
-    private IReadOnlyList<PoolGroup> GroupByConfiguration()
-    {
-        return _sourceStates
-            .Select(kvp => new PoolEntry(
-                SourceOf(kvp.Key),
-                kvp.Value.ConfigurationNames is { Count: > 0 }
-                    ? string.Join(", ", kvp.Value.ConfigurationNames)
-                    : ServerKeyOf(kvp.Key),
-                kvp.Value))
-            .GroupBy(x => x.Configuration)
-            .OrderBy(g => g.Key, StringComparer.Ordinal)
-            .Select(g => new PoolGroup(g.Key, g.OrderBy(x => x.Source, StringComparer.Ordinal).ToList()))
-            .ToList();
-    }
+    // Charts/colours are keyed by serverKey; show the friendly label (config name(s)) instead.
+    private string LabelFor(string serverKey) => _labels.TryGetValue(serverKey, out var label) ? label : serverKey;
 
-    private static string SourceOf(string poolKey)
-    {
-        var i = poolKey.IndexOf("::", StringComparison.Ordinal);
-        return i >= 0 ? poolKey[..i] : poolKey;
-    }
+    private string ColorFor(string serverKey) => _poolColors.TryGetValue(serverKey, out var c) ? c : "#9e9e9e";
 
     private static string ServerKeyOf(string poolKey)
     {
@@ -124,11 +124,13 @@
         return i >= 0 ? poolKey[(i + 2)..] : poolKey;
     }
 
-    private sealed record PoolEntry(string Source, string Configuration, ConnectionPoolStateDto State);
-    private sealed record PoolGroup(string Configuration, IReadOnlyList<PoolEntry> Pools);
+    // Outline the metric in its pool's line colour only when active (> 0); otherwise leave it plain so the eye
+    // is drawn to the pools that are actually queuing/executing.
+    private string MetricStyle(int value, string serverKey)
+        => value <= 0 ? "" : $"border:1px solid {ColorFor(serverKey)}; border-radius:4px; padding:0 4px; color:{ColorFor(serverKey)}; font-weight:600;";
 
-    private static string ClusterLabel(ClusterConnectionSummary c) =>
-        c.ConfigurationNames.Count > 0 ? string.Join(", ", c.ConfigurationNames) : c.ServerKey;
+    private static string PoolConfigLabel(ClusterPoolSummary p) =>
+        p.ConfigurationNames.Count > 0 ? string.Join(", ", p.ConfigurationNames) : p.ServerKey;
 
     private static ProgressBarStyle ProgressStyle(ClusterConnectionSummary c)
     {
@@ -167,17 +169,32 @@
 
             await InvokeAsync(() =>
             {
-                _sourceStates = new Dictionary<string, ConnectionPoolStateDto>(perPool);
                 _connectionSummaries = connectionSummaries;
 
+                // Collapse the per-source ("{source}::{serverKey}") states into one entry per pool (serverKey):
+                // queue summed, wait = worst (max) across the pool's sources.
+                var byPool = new Dictionary<string, (int Queue, double Wait, IReadOnlyCollection<string> Configs)>();
                 foreach (var (poolKey, poolState) in perPool)
                 {
-                    _labels[poolKey] = poolState.Label ?? poolKey;
+                    var serverKey = ServerKeyOf(poolKey);
+                    byPool.TryGetValue(serverKey, out var agg);
+                    agg.Queue += poolState.QueueCount;
+                    agg.Wait = Math.Max(agg.Wait, poolState.LastWaitTimeMs);
+                    if (poolState.ConfigurationNames is { Count: > 0 }) agg.Configs = poolState.ConfigurationNames;
+                    byPool[serverKey] = agg;
+                }
 
-                    if (!_rings.ContainsKey(poolKey))
-                        _rings[poolKey] = new RingBuffer(TotalSlots);
+                foreach (var (serverKey, agg) in byPool)
+                {
+                    _labels[serverKey] = agg.Configs is { Count: > 0 } ? string.Join(", ", agg.Configs) : serverKey;
 
-                    _rings[poolKey].Add(poolState.QueueCount, poolState.LastWaitTimeMs);
+                    if (!_poolColors.ContainsKey(serverKey))
+                        _poolColors[serverKey] = SeriesColors[_poolColors.Count % SeriesColors.Length];
+
+                    if (!_rings.ContainsKey(serverKey))
+                        _rings[serverKey] = new RingBuffer(TotalSlots);
+
+                    _rings[serverKey].Add(agg.Queue, agg.Wait);
                 }
 
                 BuildAllSlots();
@@ -190,11 +207,11 @@
     private void BuildAllSlots()
     {
         var result = new Dictionary<string, List<Slot>>();
-        foreach (var (source, ring) in _rings)
+        foreach (var (serverKey, ring) in _rings)
         {
-            result[source] = ring.BuildSlots();
+            result[serverKey] = ring.BuildSlots();
         }
-        _sourceSlots = result;
+        _poolSlots = result;
     }
 
     private class RingBuffer
