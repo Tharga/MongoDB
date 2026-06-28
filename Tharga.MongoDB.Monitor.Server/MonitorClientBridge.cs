@@ -2,6 +2,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Tharga.Communication.Contract;
 using Tharga.Communication.Server;
 using Tharga.Communication.Server.Communication;
@@ -17,12 +18,14 @@ internal sealed class MonitorClientBridge : IHostedService
     private readonly MonitorClientStateService _clientStateService;
     private readonly IDatabaseMonitor _databaseMonitor;
     private readonly IServerCommunication _serverCommunication;
+    private readonly ILogger<MonitorClientBridge> _logger;
 
-    public MonitorClientBridge(MonitorClientStateService clientStateService, IDatabaseMonitor databaseMonitor, IServerCommunication serverCommunication)
+    public MonitorClientBridge(MonitorClientStateService clientStateService, IDatabaseMonitor databaseMonitor, IServerCommunication serverCommunication, ILogger<MonitorClientBridge> logger = null)
     {
         _clientStateService = clientStateService;
         _databaseMonitor = databaseMonitor;
         _serverCommunication = serverCommunication;
+        _logger = logger;
     }
 
     public Task StartAsync(CancellationToken cancellationToken)
@@ -68,9 +71,14 @@ internal sealed class MonitorClientBridge : IHostedService
     {
         try
         {
-            foreach (var (topic, count) in _serverCommunication.GetSubscriptions())
+            var subscriptions = _serverCommunication.GetSubscriptions();
+            _logger?.LogInformation("Agent connected ({ConnectionId}). Replaying {Count} active subscription(s): [{Topics}].",
+                connectionId, subscriptions.Count, string.Join(", ", subscriptions.Keys));
+
+            foreach (var (topic, count) in subscriptions)
             {
                 if (count <= 0) continue;
+                _logger?.LogInformation("Replaying SubscriptionStateChanged(Topic={Topic}, HasSubscribers=true) to agent {ConnectionId}.", topic, connectionId);
                 await _serverCommunication.PostAsync(connectionId, new SubscriptionStateChanged
                 {
                     Topic = topic,
@@ -79,9 +87,10 @@ internal sealed class MonitorClientBridge : IHostedService
                 });
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // Best-effort: a transient post failure on connect must not disrupt connection handling.
+            // Best-effort: a transient post failure on connect must not disrupt connection handling — but log it.
+            _logger?.LogWarning(ex, "Failed to replay subscriptions to agent {ConnectionId}.", connectionId);
         }
     }
 

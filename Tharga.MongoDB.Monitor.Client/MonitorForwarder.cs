@@ -327,6 +327,7 @@ internal sealed class MonitorForwarder : IHostedService, IDisposable
         {
             var connected = _clientCommunication.IsConnected;
             var hasSubscribers = connected && _clientCommunication.HasSubscribers<LiveMonitoringMarker>();
+            _logger?.LogTrace("Queue metric tick: connected={Connected}, hasSubscribers<LiveMonitoringMarker>={HasSubscribers}.", connected, hasSubscribers);
             if (!connected || !hasSubscribers)
             {
                 LogLiveStateChange(connected, hasSubscribers, false);

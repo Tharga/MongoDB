@@ -148,6 +148,34 @@ broadcast not reaching agents (now superseded by the explicit broadcast), and/or
   or restart for new allow rules to take effect.
 - Mongo is local at `mongodb://localhost:27017`; sample server https `:7205` (+ http `:5205`).
 
+## Manual test FAILED (real Blazor app) — reopened
+User ran the real stack (server https://localhost:7205 + ConsoleSample agent) and opened
+Calls → Queue. Logs (`%TEMP%/tharga-monitor-{server,console}.log`) show:
+- Agent connects, sends status/collection info (agent→server works).
+- Server registers the subscription (visible under Clients as
+  `Tharga.MongoDB.Monitor.Client.LiveMonitoringMarker`).
+- **Agent's `HasSubscribers<LiveMonitoringMarker>()` never flips true** — the live-state
+  log stays at "no server subscriber" for the whole session; no metrics sent.
+- So the **server→agent subscription notification isn't landing** in the real
+  deployment — the exact path the isolated test passes. (a)/(b) are back in play for
+  the real app; the loopback test couldn't distinguish working delivery.
+- `LogComm` only writes the broadcast to the in-memory Communication log, **not** the
+  file log — so the file couldn't show whether the server actually broadcast.
+
+### Diagnostic logging added (this turn) — awaiting user re-run
+- `LiveMonitoringSubscriptionService`: ILogger added. Logs SubscribeAsync (server-side
+  subscriber count), BroadcastAsync (connected-agent count + sources, PostToAll
+  completion), unsubscribe, and **surfaces the previously-swallowed PostToAll exception**
+  as a Warning.
+- `MonitorClientBridge.ReplaySubscriptionsAsync`: logs replayed topics on agent connect
+  and surfaces its previously-swallowed exception.
+- `MonitorForwarder.OnQueueMetricTick`: per-tick Trace of `connected` + `hasSubscribers`
+  so the agent log shows exactly what it observes each second (catches a rapid flip).
+- All at Information/Trace under `Tharga.*`, which both sample file logs capture.
+- Suite: 347 pass / 0 fail. Next: user re-runs, then read both logs to pinpoint whether
+  (1) the server broadcasts, (2) PostToAll throws, (3) the agent receives but doesn't
+  flip. Then apply the precise fix (likely Phase 3(a): explicit agent-owned signal).
+
 ## Last session
 Built the Phase-1 self-verification test (`LiveMonitoringIntegrationTests.cs`) over a
 real loopback Kestrel + real SignalR client. It is **green and stable**. This settled
