@@ -76,18 +76,24 @@ Goal: reproduce the flow without a human + browser.
 - [x] Test is deterministic — bounded `WaitUntilAsync` polling (15s ceiling), no
       fixed sleeps. Tagged `[Trait("Category","Integration")]`.
 
-### 1b. MCP diagnostic tools (secondary; also a real ops win)
-- [ ] Look at `Tharga.MongoDB.Mcp` (how tools are defined; `AddThargaMcp` + `mcp.AddMongoDB()` in the web sample) and add read-only monitoring tools:
-      `get_monitor_clients`, `get_per_pool_queue_state`, `get_client_communication`.
-- [ ] Add an action tool `hold_live_subscription(seconds)` that opens a real
-      `ILiveMonitoringSubscription` for N seconds — lets an agent trigger the live
-      flow headlessly (no browser) and then read queue/communication state.
-- [ ] These let me drive + observe the running stack over MCP without the UI.
+### 1b. MCP diagnostic tools (chosen as the in-app verification path)  → DONE
+Added to `Tharga.MongoDB.Mcp/MongoDbToolProvider.cs` (all `DataAccessLevel.Metadata`,
+so listed/callable at the default access level):
+- [x] `mongodb.get_monitor_clients` — connected agents + their forwarding config.
+- [x] `mongodb.get_per_pool_queue_state` — per-pool queue state across server + all
+      agents, plus active subscriptions. The key tool to confirm live metrics flow.
+- [x] `mongodb.get_client_communication(sourceName)` — per-agent inbound/outbound log.
+- [x] `mongodb.hold_live_subscription(seconds=5,max60)` — opens a real
+      `ILiveMonitoringSubscription` for N seconds (resolved optionally via
+      `IServiceProvider`; errors cleanly if the monitor server isn't installed), then
+      snapshots per-pool state + clients. Drives the live flow headlessly — no browser.
+- [x] 7 unit tests added in `McpProviderTests.cs` (count theory updated to 10/15/16);
+      full non-Database suite 346 pass / 1 known-flaky fail. Web sample already wires
+      `AddMongoDbMonitorServer` + `mcp.AddMongoDB()`, so the tools work there.
 
-### 1c. Sample headless trigger (fallback only)
-- [ ] Temp `GET /api/monitor/test-subscribe?seconds=N` endpoint (holds a real
-      subscription) + a non-interactive console `--script "dynamic add a"` mode so
-      the running stack can be driven via HTTP. Remove when done.
+### 1c. Sample headless trigger (fallback only)  → NOT NEEDED
+- [x] Skipped — 1a (test) + 1b (MCP tools) cover headless drive+observe. No temp
+      endpoint or console `--script` mode was created.
 
 ## Phase 2 — Pinpoint the break  → RESOLVED: mechanism is sound
 The integration test + code inspection settle all four hypotheses:
