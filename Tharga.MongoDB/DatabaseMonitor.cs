@@ -1333,6 +1333,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
                 return new ClusterConnectionSummary
                 {
                     Cluster = c.Key,
+                    IsAtlas = MongoDbClientProvider.IsAtlasCluster(c.Key),
                     ConfigurationNames = configNames,
                     SourceCount = pools.SelectMany(p => p.Sources.Select(s => s.Source)).Distinct().Count(),
                     OpenConnections = pools.Sum(p => p.OpenConnections),

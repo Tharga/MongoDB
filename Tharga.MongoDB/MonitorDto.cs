@@ -133,6 +133,9 @@ public record ClusterConnectionSummary
     /// <summary>The cluster identity — the server host(s) connected to, e.g. <c>localhost:27017</c>. Shared by every pool below.</summary>
     public required string Cluster { get; init; }
 
+    /// <summary>True when the cluster looks like an Atlas deployment (host on <c>mongodb.net</c>); false for self-hosted / unknown.</summary>
+    public bool IsAtlas { get; init; }
+
     /// <summary>Every configuration name that routes through this cluster (union across its pools).</summary>
     public required IReadOnlyCollection<string> ConfigurationNames { get; init; }
 

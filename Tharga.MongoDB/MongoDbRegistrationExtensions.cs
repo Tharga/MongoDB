@@ -54,6 +54,12 @@ public static class MongoDbRegistrationExtensions
             }
         };
         options?.Invoke(o);
+
+        // Default per-cluster connection-limit source: the editable config store (Blazor ClusterConfigView
+        // writes it, the resolver reads its cache). Skipped when the app supplied its own resolver.
+        if (o.Monitor != null)
+            o.Monitor.ClusterConnectionLimitResolver ??= (sp, ctx) => sp.GetService<IClusterConfigStore>()?.GetEffectiveLimit(ctx.Cluster);
+
         services.AddSingleton(Options.Create(o));
         services.AddSingleton(Options.Create(o.Limiter));
 
@@ -74,6 +80,7 @@ public static class MongoDbRegistrationExtensions
         services.AddTransient<IMongoDbFirewallService, MongoDbFirewallService>();
         services.AddSingleton<ConnectionPoolMonitor>();
         services.AddSingleton<IConnectionPoolMonitor>(sp => sp.GetRequiredService<ConnectionPoolMonitor>());
+        services.AddSingleton<IClusterConfigStore, MongoDbClusterConfigStore>();
         if (o.Monitor?.EnableCommandMonitoring == true)
         {
             services.AddSingleton<CommandMonitorService>();

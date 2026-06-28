@@ -17,7 +17,11 @@
                     <RadzenCard Style="height:100%;">
                         @* Level 1 — CLUSTER: the grouping and the sum. *@
                         <RadzenText TextStyle="TextStyle.Overline" Text="Cluster" Style="margin:0; opacity:0.7;" />
-                        <RadzenText TextStyle="TextStyle.Subtitle2" Text="@cluster.Cluster" Style="margin:0 0 4px 0;" />
+                        <RadzenText TextStyle="TextStyle.Subtitle2" Text="@ClusterDisplay(cluster)" Style="margin:0;" title="@cluster.Cluster" />
+                        @if (ClusterDisplay(cluster) != cluster.Cluster)
+                        {
+                            <RadzenText TextStyle="TextStyle.Caption" Text="@cluster.Cluster" Style="margin:0 0 4px 0; opacity:0.6;" />
+                        }
                         @if (cluster.Limit.HasValue && cluster.Limit.Value > 0)
                         {
                             <RadzenText TextStyle="TextStyle.H6" Style="margin:0;" Text="@($"{cluster.OpenConnections:N0} / {cluster.Limit.Value:N0}")" />
@@ -106,6 +110,7 @@
     private readonly Dictionary<string, string> _labels = new();
     private Dictionary<string, List<Slot>> _poolSlots = new();
     private IReadOnlyList<ClusterConnectionSummary> _connectionSummaries = [];
+    private IClusterConfigStore _configStore;
 
     // Stable colour per pool (serverKey), assigned first-seen. The same colour drives the chart line (Stroke),
     // the card's pool dot/border, and the Q/Exec outlines on its source rows — so they all read as one pool.
@@ -132,16 +137,28 @@
     private static string PoolConfigLabel(ClusterPoolSummary p) =>
         p.ConfigurationNames.Count > 0 ? string.Join(", ", p.ConfigurationNames) : p.ServerKey;
 
-    private static ProgressBarStyle ProgressStyle(ClusterConnectionSummary c)
+    // Display name: the configured alias if set, otherwise the raw cluster host.
+    private string ClusterDisplay(ClusterConnectionSummary c)
+    {
+        var alias = _configStore?.Get(c.Cluster)?.Alias;
+        return string.IsNullOrWhiteSpace(alias) ? c.Cluster : alias;
+    }
+
+    private ProgressBarStyle ProgressStyle(ClusterConnectionSummary c)
     {
         if (!c.Limit.HasValue || c.Limit.Value <= 0) return ProgressBarStyle.Info;
+        var cfg = _configStore?.Get(c.Cluster);
+        var warn = cfg?.WarnThreshold ?? 0.75;
+        var danger = cfg?.DangerThreshold ?? 0.90;
         var ratio = (double)c.OpenConnections / c.Limit.Value;
-        return ratio >= 0.9 ? ProgressBarStyle.Danger : ratio >= 0.75 ? ProgressBarStyle.Warning : ProgressBarStyle.Success;
+        return ratio >= danger ? ProgressBarStyle.Danger : ratio >= warn ? ProgressBarStyle.Warning : ProgressBarStyle.Success;
     }
 
     protected override async Task OnInitializedAsync()
     {
         BuildAllSlots();
+
+        _configStore = ServiceProvider.GetService(typeof(IClusterConfigStore)) as IClusterConfigStore;
 
         var liveMonitoring = ServiceProvider.GetService(typeof(ILiveMonitoringSubscription)) as ILiveMonitoringSubscription;
         if (liveMonitoring != null)
