@@ -17,6 +17,7 @@ internal class SampleCommands : ContainerCommandBase
         RegisterCommand<CountCommand>();
         RegisterCommand<ListCommand>();
         RegisterCommand<BurstCommand>();
+        RegisterCommand<DropCommand>();
         RegisterCommand<MonitorInfoCommand>();
     }
 }
@@ -85,6 +86,23 @@ internal class BurstCommand : AsyncActionCommandBase
         await Task.WhenAll(tasks);
         //OutputInformation("Complete.");
         _logger.LogInformation("Complete.");
+    }
+}
+
+internal class DropCommand : AsyncActionCommandBase
+{
+    private readonly ISampleRepository _sampleRepository;
+
+    public DropCommand(ISampleRepository sampleRepository)
+        : base("Drop")
+    {
+        _sampleRepository = sampleRepository;
+    }
+
+    public override async Task InvokeAsync(string[] param)
+    {
+        await _sampleRepository.DropAsync();
+        OutputInformation("Collection dropped.");
     }
 }
 

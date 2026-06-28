@@ -28,10 +28,18 @@ builder.Logging.AddFilter<ConsoleSample.FileLoggerProvider>("Tharga.Communicatio
 builder.Logging.AddFilter<ConsoleSample.FileLoggerProvider>("Microsoft", LogLevel.Warning);
 Console.WriteLine($"[sample] File logging to {clientLogPath}");
 
+// Monitoring data is keyed by SourceName (not by connection), so two instances of this exe on the same
+// machine would otherwise collide under the default "Machine/Exe" name and clobber each other's metrics.
+// Set SAMPLE_INSTANCE (e.g. 1, 2) before launching each window to give each its own source.
+//   PowerShell:  $env:SAMPLE_INSTANCE = "1"
+var instanceTag = Environment.GetEnvironmentVariable("SAMPLE_INSTANCE");
+
 builder.Services.AddMongoDB(builder.Configuration, o =>
 {
     o.Monitor.Enabled = true;
     o.Monitor.EnableCommandMonitoring = true;
+    if (!string.IsNullOrWhiteSpace(instanceTag))
+        o.Monitor.SourceName = $"{Environment.MachineName}/ConsoleSample-{instanceTag}";
 });
 
 builder.AddMongoDbMonitorClient(sendTo: "https://localhost:7205");

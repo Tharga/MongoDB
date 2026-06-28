@@ -26,4 +26,9 @@ internal class SampleRepository : ISampleRepository
     {
         return _collection.CountAsync();
     }
+
+    public Task DropAsync()
+    {
+        return _collection.DropCollectionAsync();
+    }
 }

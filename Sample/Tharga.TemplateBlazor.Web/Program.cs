@@ -35,9 +35,19 @@ builder.AddMongoDB(o =>
     o.AssureIndex = AssureIndexMode.BySchema;
     o.Monitor.StorageMode = MonitorStorageMode.Database;
     o.Monitor.EnableCommandMonitoring = true;
+    // Per-cluster connection limit drives the "X / limit" bar in the Queue view. Resolved per cluster so
+    // mixed deployments (different Atlas tiers, or self-hosted) each show the right ceiling — or none.
+    // Here both clusters are self-hosted localhost: we pin a small demo limit on localhost:27017 to show the
+    // bar, and return null for the 127.0.0.1 "Archive" cluster so it shows the open total with no bar.
+    // A real app would map Atlas tiers (ctx.IsAtlas) or read a runtime/external value via sp here.
+    o.Monitor.ClusterConnectionLimitResolver = (sp, ctx) =>
+        ctx.Cluster.StartsWith("localhost", StringComparison.OrdinalIgnoreCase) ? 200 : (int?)null;
 });
 
 builder.AddMongoDbMonitorServer(_ => { });
+
+// Demo helper for the Queue view: opens connections across several configs/clusters (see the class docs).
+builder.Services.AddScoped<Tharga.TemplateBlazor.Web.Features.ClusterDemo.ClusterConnectionDemo>();
 
 // Sample diagnostic file log. Tharga.* at Trace so the full monitor/communication flow is captured.
 var serverLogPath = Path.Combine(Path.GetTempPath(), "tharga-monitor-server.log");
