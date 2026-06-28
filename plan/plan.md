@@ -215,6 +215,21 @@ Queue view shows the console's per-pool line. **Bug fixed.**
   `Tharga` = Trace. Tune the sample filter (e.g. `Tharga.Communication` = Debug) if quieter sample
   logs are wanted — not a library concern.
 
+## Docs + sample log filters (this turn)
+- Sample file loggers (both ConsoleSample + web): added `Tharga.Communication` = Debug so the
+  per-second `SignalRHub PostMessageAsync` flood is suppressed while `Tharga.MongoDB.*` stays at Trace.
+- Docs updated for the new MCP tools + headless live-monitoring diagnostics:
+  - `docs/articles/mcp-integration.md`: 4 new tools in the table + a "Live-monitoring diagnostics" section.
+  - `docs/articles/monitoring.md`: noted the explicit `SetLiveMonitoringActiveMessage` signal + pointer
+    to the headless MCP diagnostics.
+  - `Tharga.MongoDB.Mcp/README.md`: new tools listed; fixed pre-existing error (compare_schema is DataRead).
+  - root `README.md`: 4 new tools in the MCP table + "Live-monitoring diagnostics" subsection.
+- Both samples build clean.
+
+### Remaining for close-out (not done)
+- NuGet re-check (`dotnet outdated`), archive `plan/` → Plan dir `done/`, `git rm -r plan`, final
+  close-out commit, push, open PR. Awaiting user go-ahead.
+
 ## Last session
 Built the Phase-1 self-verification test (`LiveMonitoringIntegrationTests.cs`) over a
 real loopback Kestrel + real SignalR client. It is **green and stable**. This settled

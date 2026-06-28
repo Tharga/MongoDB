@@ -1020,8 +1020,16 @@ Each tool/resource is tagged below with its required level. Anything above the c
 | `mongodb.get_document` | DataRead | `databaseName`, `collectionName`, `id`, optional `configurationName`; returns the raw document as MongoDB Extended JSON. `id` is auto-detected as Guid → ObjectId → string |
 | `mongodb.list_documents` | DataRead | `databaseName`, `collectionName`, optional `configurationName`, `limit` (default 20, max 200), `skip`, `filter` (JSON string), `sort` (JSON string `{"field":1}`); returns up to N raw documents |
 | `mongodb.compare_schema` | DataRead | `databaseName`, `collectionName`, optional `configurationName`, `sampleSize` (default 50, max 500); three-way diff between the C# entity properties, registered entity-type names, and the field set observed in sampled documents |
+| `mongodb.get_monitor_clients` | Metadata | (no args) connected monitoring agents with source, machine, version, connection state, and forwarding config |
+| `mongodb.get_per_pool_queue_state` | Metadata | (no args) live per-pool queue/executing state across this server and every reporting agent (keyed `{source}::{serverKey}`), plus active subscriptions |
+| `mongodb.get_client_communication` | Metadata | `sourceName`; recent inbound/outbound message log for one agent |
+| `mongodb.hold_live_subscription` | Metadata | `seconds` (default 5, max 60); opens a live-monitoring subscription for N seconds, then returns the per-pool queue state observed — drives queue-metric forwarding headlessly. Requires the monitor server |
 
 Providers are registered with `McpScope.System`, so they are only exposed on the system-level MCP endpoint.
+
+### Live-monitoring diagnostics
+
+Agents forward queue metrics only while a live subscriber is present (normally the **Calls → Queue** view). The monitoring tools above let an agent reproduce and observe that flow without a browser: `mongodb.hold_live_subscription` opens a subscription for N seconds (connected agents begin forwarding), then `mongodb.get_per_pool_queue_state` confirms the metrics arriving, while `mongodb.get_monitor_clients` / `mongodb.get_client_communication` show which agents are connected and the messages crossing the wire.
 
 ### Document inspection
 

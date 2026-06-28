@@ -35,12 +35,16 @@ The provider is registered on the `System` MCP scope, so it only surfaces to sys
 **Tools (Metadata level — default)**
 - `mongodb.touch` — initialise a collection (assure indexes, etc.)
 - `mongodb.rebuild_index` — drop & recreate a named index
-- `mongodb.drop_index`, `mongodb.reset_cache`, `mongodb.clear_call_history`, `mongodb.compare_schema`
+- `mongodb.drop_index`, `mongodb.reset_cache`, `mongodb.clear_call_history`
+- `mongodb.get_monitor_clients` — connected agents and their forwarding config
+- `mongodb.get_per_pool_queue_state` — live per-pool queue/exec state across server + agents
+- `mongodb.get_client_communication` — inbound/outbound message log for one agent
+- `mongodb.hold_live_subscription` — hold a live subscription for N seconds, then snapshot per-pool state (drives queue-metric forwarding headlessly)
 
 **Tools (DataRead)**
 - `mongodb.get_document` — raw BSON-as-JSON for a single document by id (auto-detects ObjectId / Guid / string)
 - `mongodb.list_documents` — paged listing with optional filter and sort
-- `mongodb.find_duplicates`, `mongodb.explain`
+- `mongodb.find_duplicates`, `mongodb.explain`, `mongodb.compare_schema`
 
 **Tools (DataReadWrite)**
 - `mongodb.clean` — apply collection cleaners

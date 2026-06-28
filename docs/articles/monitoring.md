@@ -116,7 +116,9 @@ When the server dashboard displays collections from remote agents, actions like 
 | Queue / connection per-pool snapshots | Only while someone is viewing the live queue tab (gated on an active subscription), at `QueueMetricInterval`. |
 | Completed calls | Only when `Monitor.ForwardCompletedCalls = true` (off by default). This is the large stream — leave it off unless you need per-call history on the central server. With it off, the agent's *Last/Slow calls* lists on the server stay empty (its queue/connection metrics and collection metadata still flow). |
 
-Blazor components subscribe to the live data on mount and unsubscribe on dispose, so queue/connection snapshots stop when no one is looking. Each agent reports its own forwarding configuration (call forwarding on/off, queue interval, storage mode) on connect; the **Clients** page shows it per agent (a *Call forwarding* badge, with the full set in the client detail dialog).
+Blazor components subscribe to the live data on mount and unsubscribe on dispose, so queue/connection snapshots stop when no one is looking. The server signals each agent to start/stop forwarding via an explicit message (`SetLiveMonitoringActiveMessage`); the agent gates its queue-metric timer on that signal. Each agent reports its own forwarding configuration (call forwarding on/off, queue interval, storage mode) on connect; the **Clients** page shows it per agent (a *Call forwarding* badge, with the full set in the client detail dialog).
+
+You can also drive and observe this live flow **headlessly** — without opening the Queue view in a browser — via the [MCP monitoring tools](mcp-integration.md#live-monitoring-diagnostics) (`hold_live_subscription`, `get_per_pool_queue_state`, `get_monitor_clients`, `get_client_communication`). Useful for verifying an agent is forwarding queue metrics from a script or an AI agent.
 
 ## Reset
 

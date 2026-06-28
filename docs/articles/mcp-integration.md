@@ -60,6 +60,20 @@ Anything above the configured level is filtered out of `tools/list` and `resourc
 | `mongodb.get_document` | DataRead | `id` is auto-detected as Guid → ObjectId → string; returns MongoDB Extended JSON |
 | `mongodb.list_documents` | DataRead | `limit` (default 20, max 200), `skip`, JSON `filter`, JSON `sort` |
 | `mongodb.compare_schema` | DataRead | three-way diff: C# entity properties vs registered type names vs field set observed in sample (default 50 docs, max 500) |
+| `mongodb.get_monitor_clients` | Metadata | connected agents (source, machine, version, connection state, forwarding config) |
+| `mongodb.get_per_pool_queue_state` | Metadata | per-connection-pool queue/executing state across this server and every reporting agent, plus active subscriptions |
+| `mongodb.get_client_communication` | Metadata | `sourceName`; recent inbound/outbound message log for one agent |
+| `mongodb.hold_live_subscription` | Metadata | `seconds` (default 5, max 60); opens a live-monitoring subscription for N seconds, then returns the per-pool queue state observed |
+
+## Live-monitoring diagnostics
+
+Queue metrics are only forwarded by agents while a live subscriber is present (normally the **Calls → Queue** view in the monitor UI). The four monitoring tools above let an agent drive and observe that flow headlessly — no browser required:
+
+- `mongodb.hold_live_subscription` opens a real subscription for N seconds. While held, connected agents start forwarding queue metrics; the tool then returns the per-pool state it observed. This is the headless equivalent of opening the Queue view.
+- `mongodb.get_per_pool_queue_state` shows the live per-pool queue/executing counts keyed by `{source}::{serverKey}` — use it to confirm metrics are flowing from a given agent.
+- `mongodb.get_monitor_clients` / `mongodb.get_client_communication` show which agents are connected and the messages crossing the wire (useful when an agent isn't reporting).
+
+These require the monitor **server** (`AddMongoDbMonitorServer`) to be installed in the process; `hold_live_subscription` returns a clear error otherwise.
 
 ## Document inspection
 
