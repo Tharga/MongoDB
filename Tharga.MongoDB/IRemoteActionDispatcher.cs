@@ -25,4 +25,9 @@ public interface IRemoteActionDispatcher
     /// resulting state.
     /// </summary>
     Task<bool> SetCallForwardingAsync(string connectionId, bool enabled, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Turns command monitoring on or off on a specific connected agent. Returns the agent's resulting state.
+    /// </summary>
+    Task<bool> SetCommandMonitoringAsync(string connectionId, bool enabled, CancellationToken cancellationToken = default);
 }

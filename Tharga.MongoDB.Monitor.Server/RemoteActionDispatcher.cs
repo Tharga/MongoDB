@@ -150,4 +150,18 @@ internal sealed class RemoteActionDispatcher : IRemoteActionDispatcher
 
         return response.Value.ForwardCompletedCalls;
     }
+
+    public async Task<bool> SetCommandMonitoringAsync(string connectionId, bool enabled, CancellationToken cancellationToken = default)
+    {
+        var response = await _serverCommunication.SendMessageAsync<SetCommandMonitoringRequest, SetCommandMonitoringResponse>(
+            connectionId,
+            new SetCommandMonitoringRequest { Enabled = enabled });
+
+        if (!response.IsSuccess)
+            throw new InvalidOperationException($"Remote set command monitoring failed: {response.Message}");
+        if (!response.Value.Success)
+            throw new InvalidOperationException($"Remote set command monitoring failed: {response.Value.Error}");
+
+        return response.Value.EnableCommandMonitoring;
+    }
 }

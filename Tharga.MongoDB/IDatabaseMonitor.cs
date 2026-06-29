@@ -172,6 +172,19 @@ public interface IDatabaseMonitor
     /// </summary>
     Task<bool> SetClientCallForwardingAsync(string sourceName, bool enabled, CancellationToken cancellationToken = default);
 
+    /// <summary>Whether driver command monitoring is currently capturing in this process.</summary>
+    bool CommandMonitoringEnabled { get; }
+
+    /// <summary>Turn driver command monitoring capture on or off in this process (the listener is always subscribed).</summary>
+    void SetCommandMonitoring(bool enabled);
+
+    /// <summary>
+    /// Turn command monitoring on or off on a connected agent (by source name). The agent re-reports its
+    /// status afterward; the returned value is its resulting state. Throws when the agent isn't connected or
+    /// remote dispatch isn't available.
+    /// </summary>
+    Task<bool> SetClientCommandMonitoringAsync(string sourceName, bool enabled, CancellationToken cancellationToken = default);
+
     /// <summary>
     /// Mark a monitoring agent as disconnected.
     /// </summary>

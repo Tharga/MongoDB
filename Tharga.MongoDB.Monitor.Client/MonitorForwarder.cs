@@ -206,6 +206,13 @@ internal sealed class MonitorForwarder : IHostedService, IDisposable
         return _forwardCompletedCalls;
     }
 
+    public async Task<bool> SetCommandMonitoringAsync(bool enabled)
+    {
+        _databaseMonitor.SetCommandMonitoring(enabled);
+        await SendClientStatusAsync();
+        return _databaseMonitor.CommandMonitoringEnabled;
+    }
+
     private async Task SendClientStatusAsync()
     {
         try
@@ -219,7 +226,7 @@ internal sealed class MonitorForwarder : IHostedService, IDisposable
                 ForwardCompletedCalls = _forwardCompletedCalls,
                 QueueMetricIntervalMs = intervalMs,
                 StorageMode = _monitorOptions.StorageMode.ToString(),
-                EnableCommandMonitoring = _monitorOptions.EnableCommandMonitoring,
+                EnableCommandMonitoring = _databaseMonitor.CommandMonitoringEnabled,
             });
         }
         catch (Exception ex)

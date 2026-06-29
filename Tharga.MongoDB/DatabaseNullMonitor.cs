@@ -119,6 +119,12 @@ internal class DatabaseNullMonitor : IDatabaseMonitor
 
     public Task<bool> SetClientCallForwardingAsync(string sourceName, bool enabled, CancellationToken cancellationToken = default) => Task.FromResult(false);
 
+    public bool CommandMonitoringEnabled => false;
+
+    public void SetCommandMonitoring(bool enabled) { }
+
+    public Task<bool> SetClientCommandMonitoringAsync(string sourceName, bool enabled, CancellationToken cancellationToken = default) => Task.FromResult(false);
+
     public void IngestClientDisconnected(string connectionId) { }
 
     public void IngestCollectionInfo(RemoteCollectionInfoDto collectionInfo, string connectionId = null) { }

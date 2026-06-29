@@ -243,6 +243,35 @@ public sealed class SetCallForwardingHandler : SendMessageHandlerBase<SetCallFor
 }
 
 /// <summary>
+/// Handles a set-command-monitoring request from the central server by toggling capture on this agent.
+/// </summary>
+public sealed class SetCommandMonitoringHandler : SendMessageHandlerBase<SetCommandMonitoringRequest, SetCommandMonitoringResponse>
+{
+    private readonly IServiceProvider _serviceProvider;
+
+    public SetCommandMonitoringHandler(IServiceProvider serviceProvider)
+    {
+        _serviceProvider = serviceProvider;
+    }
+
+    public override async Task<SetCommandMonitoringResponse> Handle(SetCommandMonitoringRequest message)
+    {
+        try
+        {
+            if (_serviceProvider.GetService(typeof(MonitorForwarder)) is not MonitorForwarder forwarder)
+                return new SetCommandMonitoringResponse { Error = "Command monitoring is not available on this agent." };
+
+            var state = await forwarder.SetCommandMonitoringAsync(message.Enabled);
+            return new SetCommandMonitoringResponse { Success = true, EnableCommandMonitoring = state };
+        }
+        catch (Exception e)
+        {
+            return new SetCommandMonitoringResponse { Error = e.Message };
+        }
+    }
+}
+
+/// <summary>
 /// Handles clear call history requests from the central server by executing locally.
 /// </summary>
 public sealed class ClearCallHistoryHandler : PostMessageHandlerBase<ClearCallHistoryRequest>

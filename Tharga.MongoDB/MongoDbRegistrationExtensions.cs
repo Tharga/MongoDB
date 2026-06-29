@@ -82,18 +82,18 @@ public static class MongoDbRegistrationExtensions
         services.AddSingleton<ConnectionPoolMonitor>();
         services.AddSingleton<IConnectionPoolMonitor>(sp => sp.GetRequiredService<ConnectionPoolMonitor>());
         services.AddSingleton<IClusterConfigStore, MongoDbClusterConfigStore>();
-        if (o.Monitor?.EnableCommandMonitoring == true)
+        // Always register + subscribe the command monitor so capture can be toggled at runtime (locally or from
+        // the central monitor). Capture starts in the configured state; when off the handlers no-op (idle cost
+        // is just the driver raising the event), and nothing is stored.
+        services.AddSingleton(sp =>
         {
-            services.AddSingleton<CommandMonitorService>();
-            services.AddSingleton<ICommandMonitorService>(sp => sp.GetRequiredService<CommandMonitorService>());
-            services.AddSingleton<IMongoDbClientProvider>(sp =>
-                new MongoDbClientProvider(sp.GetRequiredService<CommandMonitorService>(), sp.GetRequiredService<IConnectionPoolMonitor>()));
-        }
-        else
-        {
-            services.AddSingleton<IMongoDbClientProvider>(sp =>
-                new MongoDbClientProvider(connectionPoolMonitor: sp.GetRequiredService<IConnectionPoolMonitor>()));
-        }
+            var svc = new CommandMonitorService(sp.GetRequiredService<ILogger<CommandMonitorService>>());
+            svc.Enabled = o.Monitor?.EnableCommandMonitoring == true;
+            return svc;
+        });
+        services.AddSingleton<ICommandMonitorService>(sp => sp.GetRequiredService<CommandMonitorService>());
+        services.AddSingleton<IMongoDbClientProvider>(sp =>
+            new MongoDbClientProvider(sp.GetRequiredService<CommandMonitorService>(), sp.GetRequiredService<IConnectionPoolMonitor>()));
         services.AddSingleton<IMongoDbFirewallStateService, MongoDbFirewallStateService>();
         services.AddHttpClient(Atlas.Quilt4NetFirewallProxyClient.HttpClientName);
         services.AddSingleton<Atlas.Quilt4NetFirewallProxyClient>();

@@ -964,6 +964,37 @@ internal class DatabaseMonitor : IDatabaseMonitor
         return state;
     }
 
+    public bool CommandMonitoringEnabled =>
+        (_serviceProvider.GetService(typeof(Internals.ICommandMonitorService)) as Internals.ICommandMonitorService)?.Enabled ?? false;
+
+    public void SetCommandMonitoring(bool enabled)
+    {
+        if (_serviceProvider.GetService(typeof(Internals.ICommandMonitorService)) is Internals.ICommandMonitorService svc)
+            svc.Enabled = enabled;
+    }
+
+    public async Task<bool> SetClientCommandMonitoringAsync(string sourceName, bool enabled, CancellationToken cancellationToken = default)
+    {
+        if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
+        if (string.IsNullOrEmpty(sourceName)) throw new ArgumentException("Source name is required.", nameof(sourceName));
+
+        var connectionId = FindConnectionIdBySource(sourceName);
+        if (connectionId == null) throw new InvalidOperationException("Agent is not connected.");
+
+        if (_serviceProvider.GetService(typeof(IRemoteActionDispatcher)) is not IRemoteActionDispatcher dispatcher)
+            throw new InvalidOperationException("Remote action dispatching is not available.");
+
+        LogComm(sourceName, CommunicationDirection.Outbound, "SetCommandMonitoring", $"enabled={enabled}");
+        var state = await dispatcher.SetCommandMonitoringAsync(connectionId, enabled, cancellationToken);
+
+        // Reflect immediately; the agent also re-reports its status.
+        if (_clientStatus.TryGetValue(sourceName, out var status) && status != null)
+            _clientStatus[sourceName] = status with { EnableCommandMonitoring = state };
+        MonitorClientsChanged?.Invoke(this, EventArgs.Empty);
+
+        return state;
+    }
+
     private MonitorClientDto WithStatus(MonitorClientDto client)
     {
         if (!string.IsNullOrEmpty(client.SourceName) && _clientStatus.TryGetValue(client.SourceName, out var status))

@@ -13,14 +13,30 @@ internal class CommandMonitorService : ICommandMonitorService
     private const int MaxEntries = 2000;
     private readonly ILogger<CommandMonitorService> _logger;
     private readonly ConcurrentQueue<CommandEntry> _entries = new();
+    private volatile bool _enabled;
 
     public CommandMonitorService(ILogger<CommandMonitorService> logger)
     {
         _logger = logger;
     }
 
+    /// <summary>
+    /// Whether driver commands are captured. The listener is always subscribed (so this can be flipped at
+    /// runtime, locally or from the central monitor); when false, the handlers no-op and nothing is stored.
+    /// </summary>
+    public bool Enabled
+    {
+        get => _enabled;
+        set
+        {
+            _enabled = value;
+            if (!value) while (_entries.TryDequeue(out _)) { } // free whatever was buffered
+        }
+    }
+
     public void OnCommandSucceeded(CommandSucceededEvent e)
     {
+        if (!_enabled) return;
         var entry = new CommandEntry
         {
             CommandName = e.CommandName,
@@ -37,6 +53,7 @@ internal class CommandMonitorService : ICommandMonitorService
 
     public void OnCommandFailed(CommandFailedEvent e)
     {
+        if (!_enabled) return;
         var entry = new CommandEntry
         {
             CommandName = e.CommandName,
@@ -94,5 +111,8 @@ internal class CommandMonitorService : ICommandMonitorService
 
 internal interface ICommandMonitorService
 {
+    /// <summary>Whether driver commands are currently being captured (runtime-toggleable).</summary>
+    bool Enabled { get; set; }
+
     CommandMonitorService.CommandEntry[] TakeSince(long sinceTimestamp);
 }

@@ -149,3 +149,17 @@ public record SetCallForwardingResponse
     public bool ForwardCompletedCalls { get; init; }
     public string Error { get; init; }
 }
+
+/// <summary>Request to turn command monitoring on or off on an agent.</summary>
+public record SetCommandMonitoringRequest
+{
+    public bool Enabled { get; init; }
+}
+
+/// <summary>Response from a set-command-monitoring action, carrying the agent's resulting state.</summary>
+public record SetCommandMonitoringResponse
+{
+    public bool Success { get; init; }
+    public bool EnableCommandMonitoring { get; init; }
+    public string Error { get; init; }
+}

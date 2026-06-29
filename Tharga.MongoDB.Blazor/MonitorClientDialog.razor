@@ -99,7 +99,15 @@ else
                     </RadzenColumn>
                     <RadzenColumn>
                         <RadzenText TextStyle="TextStyle.Caption" Text="Command monitoring" />
-                        <RadzenText Text="@(_detail.Client.Status.EnableCommandMonitoring ? "On" : "Off")" />
+                        <div>
+                            <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" AlignItems="AlignItems.Center">
+                                <RadzenSwitch Value="@_detail.Client.Status.EnableCommandMonitoring"
+                                              Disabled="@(_busy || !_detail.Client.IsConnected)"
+                                              Change="@ToggleCommandMonitoringAsync"
+                                              title="@(_detail.Client.IsConnected ? "Turn driver command monitoring on/off on this agent" : "Agent is disconnected")" />
+                                <RadzenText TextStyle="TextStyle.Body2" Text="@(_detail.Client.Status.EnableCommandMonitoring ? "On" : "Off")" />
+                            </RadzenStack>
+                        </div>
                     </RadzenColumn>
                 </RadzenRow>
             }
@@ -266,6 +274,26 @@ else
         finally
         {
             // Re-read so the switch reflects the agent's actual state (and reverts on failure).
+            _busy = false;
+            Reload();
+        }
+    }
+
+    private async Task ToggleCommandMonitoringAsync(bool enabled)
+    {
+        if (Client?.SourceName == null) return;
+        _busy = true;
+        try
+        {
+            await DatabaseMonitor.SetClientCommandMonitoringAsync(Client.SourceName, enabled);
+            NotificationService.Notify(new NotificationMessage { Summary = $"Command monitoring turned {(enabled ? "on" : "off")}." });
+        }
+        catch (Exception e)
+        {
+            NotificationService.Notify(new NotificationMessage { Severity = NotificationSeverity.Error, Summary = "Failed to change command monitoring.", Detail = e.Message });
+        }
+        finally
+        {
             _busy = false;
             Reload();
         }

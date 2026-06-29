@@ -286,6 +286,9 @@ public class LiveMonitoringIntegrationTests
         public IReadOnlyList<CommunicationEvent> GetClientCommunication(string sourceName) => Array.Empty<CommunicationEvent>();
         public IReadOnlyList<CollectionInfo> GetCollectionsWithFailedIndices() => Array.Empty<CollectionInfo>();
         public Task<bool> SetClientCallForwardingAsync(string sourceName, bool enabled, CancellationToken cancellationToken = default) => Task.FromResult(false);
+        public bool CommandMonitoringEnabled => false;
+        public void SetCommandMonitoring(bool enabled) { }
+        public Task<bool> SetClientCommandMonitoringAsync(string sourceName, bool enabled, CancellationToken cancellationToken = default) => Task.FromResult(false);
         public void IngestCollectionInfo(RemoteCollectionInfoDto collectionInfo, string connectionId = null) { }
         public void IngestCollectionDropped(string sourceName, string configurationName, string databaseName, string collectionName, string connectionId = null) { }
         public IReadOnlyCollection<string> GetCollectionSources(string fingerprintKey) => Array.Empty<string>();

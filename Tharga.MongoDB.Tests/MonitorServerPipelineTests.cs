@@ -219,6 +219,9 @@ public class MonitorServerPipelineTests
         public void IngestClientConnected(MonitorClientDto client) => throw new NotImplementedException();
         public void IngestClientStatus(string sourceName, MonitorClientStatus status, string connectionId = null) => throw new NotImplementedException();
         public Task<bool> SetClientCallForwardingAsync(string sourceName, bool enabled, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public bool CommandMonitoringEnabled => false;
+        public void SetCommandMonitoring(bool enabled) { }
+        public Task<bool> SetClientCommandMonitoringAsync(string sourceName, bool enabled, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public void IngestClientDisconnected(string connectionId) => throw new NotImplementedException();
         public void IngestCollectionInfo(RemoteCollectionInfoDto collectionInfo, string connectionId = null) => throw new NotImplementedException();
         public void IngestCollectionDropped(string sourceName, string configurationName, string databaseName, string collectionName, string connectionId = null) => throw new NotImplementedException();
