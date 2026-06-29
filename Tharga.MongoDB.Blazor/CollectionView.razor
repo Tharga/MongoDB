@@ -63,9 +63,11 @@ else
                         CellRender="@OnCellRender"
                         Page="@OnGridPaged">
             <Columns>
-                <RadzenDataGridColumn Title="Source" Visible="@_showSource" Sortable="false" Filterable="false" Width="200px">
+                <RadzenDataGridColumn Title="Source" Visible="@_showSource" Sortable="false" Filterable="false" Width="200px" CssClass="css-source">
                     <Template>
-                        @string.Join(", ", context.Sources)
+                        <span title="@SourceTooltip(context)">
+                            @string.Join(", ", context.Sources)@(ReachOnlyCount(context) > 0 ? $" (+{ReachOnlyCount(context)})" : "")
+                        </span>
                     </Template>
                 </RadzenDataGridColumn>
                 <RadzenDataGridColumn Title="Configuration" Property="@nameof(CollectionModel.ConfigurationName)" Visible="@_showConfiguration" />
@@ -140,6 +142,7 @@ else
         _revalidator = new RevalidationQueue(RevalidateOneAsync);
         DatabaseMonitor.CollectionInfoChangedEvent += OnCollectionInfoChanged;
         DatabaseMonitor.CollectionDroppedEvent += OnCollectionDropped;
+        DatabaseMonitor.MonitorClientsChanged += OnMonitorClientsChanged;
         CallLibrary.CallChanged += OnCallChanged;
         await base.OnInitializedAsync();
     }
@@ -151,6 +154,7 @@ else
         _disposed = true;
         DatabaseMonitor.CollectionInfoChangedEvent -= OnCollectionInfoChanged;
         DatabaseMonitor.CollectionDroppedEvent -= OnCollectionDropped;
+        DatabaseMonitor.MonitorClientsChanged -= OnMonitorClientsChanged;
         CallLibrary.CallChanged -= OnCallChanged;
         _revalidator?.Dispose();
     }
@@ -231,6 +235,9 @@ else
         m.IndexEqualFields = newIndexEqual;
         m.Clean = e.CollectionInfo.Clean;
         m.Sources = sources;
+        // A source accessing this collection necessarily has access to its database — keep the "could reach"
+        // set a superset of the accessors (full cross-collection refresh happens on the next reload).
+        m.DatabaseSources = (m.DatabaseSources ?? []).Union(sources).OrderBy(s => s, StringComparer.Ordinal).ToArray();
 
         UpdateFilterOptions();
         m.NotifyChanged();
@@ -258,6 +265,23 @@ else
 
         _all = _all.Where(x => !Matches(x)).ToArray();
         await ReloadDataAsync();
+    }
+
+    // An agent connecting/disconnecting changes who can reach each collection. Recompute sources so the
+    // Source tooltip drops the gone agent and the "no source can reach it" highlight appears. The collection
+    // itself stays in view (it lingers in _all) — only its reachability changed.
+    private async void OnMonitorClientsChanged(object sender, EventArgs e)
+    {
+        if (_disposed || _all == null) return;
+        try
+        {
+            await InvokeAsync(async () =>
+            {
+                UpdateFilterOptions();
+                await ReloadDataAsync();
+            });
+        }
+        catch (ObjectDisposedException) { }
     }
 
     protected override async Task OnParametersSetAsync()
@@ -399,7 +423,9 @@ else
     {
         _sources = _all.SelectMany(x => DatabaseMonitor.GetCollectionSources(x.Key)).Distinct().Order().ToArray();
         _databases = _all.Select(x => x.DatabaseName).Distinct().Order().ToArray();
-        _showSource = _sources.Length > 1;
+        // Show the Source column with >1 source, or whenever a collection has no source left that can reach it
+        // (e.g. after its only agent disconnected) so the "orphaned" yellow highlight is visible.
+        _showSource = _sources.Length > 1 || _all.Any(x => !DatabaseMonitor.GetCollectionSources(x.Key).Any());
         _showDatabase = _databases.Length > 1;
         _showConfiguration = _all.Select(x => x.ConfigurationName).Distinct().Count() > 1;
     }
@@ -414,9 +440,42 @@ else
         await ReloadDataAsync();
     }
 
+    // Sources with access to the database that have NOT actually accessed this collection (the "+N" hint).
+    private static int ReachOnlyCount(CollectionModel m)
+    {
+        if (m.DatabaseSources is not { Length: > 0 }) return 0;
+        var accessed = m.Sources ?? [];
+        return m.DatabaseSources.Count(s => !accessed.Contains(s));
+    }
+
+    // Tooltip listing every source with access to this collection's physical database, marking which have
+    // actually accessed this collection versus which could reach it (e.g. via a different configuration).
+    private static string SourceTooltip(CollectionModel m)
+    {
+        var db = string.IsNullOrEmpty(m.Server) ? m.DatabaseName : $"{m.Server}/{m.DatabaseName}";
+        var accessed = new HashSet<string>(m.Sources ?? [], StringComparer.Ordinal);
+        var all = m.DatabaseSources is { Length: > 0 } ? m.DatabaseSources : (m.Sources ?? []);
+        if (all.Length == 0) return $"No sources recorded for {db}.";
+        var lines = all.Select(s => accessed.Contains(s) ? $"{s} — accessed" : $"{s} — could reach");
+        return $"Access to {db}:\n" + string.Join("\n", lines);
+    }
+
     private async Task ReloadDataAsync()
     {
         var callCountsBySuffix = CallLibrary.GetCallCountsBySuffix();
+
+        // Sources that could reach each physical database (server + database name): the union of every
+        // source that has reported a collection there — even via a different configuration name. This is the
+        // "could access" set behind the Source tooltip.
+        var dbSources = new Dictionary<(string Server, string Database), HashSet<string>>();
+        foreach (var x in _all)
+        {
+            var key = (x.Server ?? "", x.DatabaseName ?? "");
+            if (!dbSources.TryGetValue(key, out var set))
+                dbSources[key] = set = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var s in DatabaseMonitor.GetCollectionSources(x.Key))
+                set.Add(s);
+        }
 
         // Build all models with sources
         var allModels = _all
@@ -428,6 +487,9 @@ else
 
                 var sources = DatabaseMonitor.GetCollectionSources(x.Key).ToArray();
                 var isLocal = x.CollectionType != null;
+                var databaseSources = dbSources.TryGetValue((x.Server ?? "", x.DatabaseName ?? ""), out var ds)
+                    ? ds.OrderBy(s => s, StringComparer.Ordinal).ToArray()
+                    : sources;
 
                 return new CollectionModel
                 {
@@ -435,6 +497,7 @@ else
                     Stats = x.Stats,
                     DatabaseName = x.DatabaseName,
                     CollectionName = x.CollectionName,
+                    Server = x.Server,
                     Discovery = x.Discovery,
                     Registration = x.Registration,
                     Size = x.Stats?.Size ?? 0,
@@ -445,6 +508,7 @@ else
                     Clean = x.Clean,
                     CallCount = count,
                     Sources = sources,
+                    DatabaseSources = databaseSources,
                     IsLocal = isLocal,
                 };
             })
@@ -505,6 +569,12 @@ else
         else if (cssClass.StartsWith("css-clean"))
         {
             string color = args.Data.Clean == null ? "lightyellow" : null;
+            SetColor(args, color);
+        }
+        else if (cssClass.StartsWith("css-source"))
+        {
+            // No source can currently reach this collection's database (e.g. its only agent disconnected).
+            string color = args.Data.DatabaseSources is { Length: > 0 } ? null : "lightyellow";
             SetColor(args, color);
         }
     }

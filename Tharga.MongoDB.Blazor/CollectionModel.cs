@@ -13,6 +13,17 @@ public record CollectionModel : CollectionFingerprint
     public CleanInfo Clean { get; set; }
     public int CallCount { get; set; }
     public string[] Sources { get; set; } = [];
+
+    /// <summary>The cluster host serving this collection's database. Used to identify the physical database across configurations.</summary>
+    public string Server { get; init; }
+
+    /// <summary>
+    /// Every source (this server + agents) that has reported a collection in the same physical database
+    /// (same <see cref="Server"/> + <see cref="CollectionFingerprint.DatabaseName"/>) — i.e. has a connection
+    /// that could reach this collection, even via a different configuration name. Superset of <see cref="Sources"/>.
+    /// </summary>
+    public string[] DatabaseSources { get; set; } = [];
+
     public bool IsLocal { get; init; }
 
     /// <summary>

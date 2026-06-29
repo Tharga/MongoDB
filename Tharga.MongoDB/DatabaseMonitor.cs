@@ -295,6 +295,12 @@ internal class DatabaseMonitor : IDatabaseMonitor
 
         if (_cache.TryGet(fingerprint.Key, out var cached))
         {
+            // Only probe the live database when this server actually has the configuration. An agent-reported
+            // collection on a config we don't have (e.g. lingering in the cache after the agent disconnected)
+            // would otherwise throw "Cannot find ConnectionStrings/<name>"; return the cached info instead.
+            if (!IsConfigurationLocal(fingerprint.ConfigurationName?.Value))
+                return cached;
+
             var mongoDbService = GetMongoDbService(fingerprint);
             if (await mongoDbService.DoesCollectionExist(fingerprint.CollectionName))
                 return cached;
@@ -303,7 +309,18 @@ internal class DatabaseMonitor : IDatabaseMonitor
             return null;
         }
 
+        // Not cached and not reachable locally — nothing to load (a remote-only collection lives in _remoteCollections, handled above).
+        if (!IsConfigurationLocal(fingerprint.ConfigurationName?.Value))
+            return null;
+
         return await LoadAndCacheAsync(fingerprint);
+    }
+
+    /// <summary>True when this process has the given configuration registered (so it can open a connection to it).</summary>
+    private bool IsConfigurationLocal(string configName)
+    {
+        var name = configName ?? _options.DefaultConfigurationName;
+        return GetConfigurations().Any(c => (c.Value ?? _options.DefaultConfigurationName) == name);
     }
 
     public async IAsyncEnumerable<CollectionInfo> GetInstancesAsync(bool fullDatabaseScan, string filter)
@@ -1652,14 +1669,17 @@ internal class DatabaseMonitor : IDatabaseMonitor
         var sources = GetCollectionSources(collectionInfo.Key);
         _logger?.LogDebug("TryGetRemoteDispatcher: Collection {Key} has {Count} sources: [{Sources}]", collectionInfo.Key, sources.Count, string.Join(", ", sources));
 
-        foreach (var source in sources)
-        {
-            var connectionId = FindConnectionIdBySource(source);
-            _logger?.LogDebug("TryGetRemoteDispatcher: Source {Source} → ConnectionId {ConnectionId}", source, connectionId ?? "(null)");
-            if (connectionId != null) return (dispatcher, connectionId);
-        }
+        // Spread action load across every connected agent that reports this collection rather than always
+        // hammering the first one. (Local execution is preferred earlier, in ResolveExecution.)
+        var connectionIds = sources
+            .Select(FindConnectionIdBySource)
+            .Where(id => id != null)
+            .ToArray();
+        if (connectionIds.Length == 0) return (null, null);
 
-        return (null, null);
+        var connectionId = connectionIds[Random.Shared.Next(connectionIds.Length)];
+        _logger?.LogDebug("TryGetRemoteDispatcher: picked ConnectionId {ConnectionId} of {Count} connected source(s).", connectionId, connectionIds.Length);
+        return (dispatcher, connectionId);
     }
 
     private async Task<CollectionInfo> LoadAndCacheAsync(CollectionFingerprint fingerprint)
