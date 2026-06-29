@@ -106,6 +106,12 @@ public static class MonitorServerRegistration
     public static WebApplication UseMongoDbMonitorServer(this WebApplication app, string pattern = null)
     {
         app.UseThargaCommunicationServer(pattern ?? MonitorConstants.DefaultHubPattern);
+
+        // The monitor server consumes its own calls locally (the Blazor monitor UI), so its calls are always
+        // "consumed" — record them fully regardless of CallRecordingLevel.
+        var recordingState = app.Services.GetService<MonitorRecordingState>();
+        if (recordingState != null) recordingState.CallsConsumed = true;
+
         return app;
     }
 }

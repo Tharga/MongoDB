@@ -86,6 +86,14 @@ public record MonitorOptions
     /// Should NOT be always-on in production due to volume.
     /// </summary>
     public bool EnableCommandMonitoring { get; set; }
+
+    /// <summary>
+    /// How much per-call data to record (see <see cref="CallRecordingLevel"/>). Recording is wasted work when
+    /// nothing consumes it, so the default <see cref="CallRecordingLevel.OnDemand"/> keeps the lightweight call
+    /// record always but builds the step timeline only while forwarding is on or a live viewer is attached. A
+    /// headless agent can drop to <see cref="CallRecordingLevel.WhenConsumed"/> to record nothing while idle.
+    /// </summary>
+    public CallRecordingLevel CallRecordingLevel { get; set; } = CallRecordingLevel.OnDemand;
 }
 
 /// <summary>

@@ -26,6 +26,7 @@ internal sealed class MonitorForwarder : IHostedService, IDisposable
     private readonly IClientCommunication _clientCommunication;
     private readonly LiveMonitoringState _liveMonitoringState;
     private readonly MonitorOptions _monitorOptions;
+    private readonly MonitorRecordingState _recordingState;
     private readonly ILogger<MonitorForwarder> _logger;
     private readonly ConcurrentDictionary<Guid, CallStartEventArgs> _pendingCalls = new();
     private Timer _queueMetricTimer;
@@ -40,6 +41,7 @@ internal sealed class MonitorForwarder : IHostedService, IDisposable
         IClientCommunication clientCommunication,
         LiveMonitoringState liveMonitoringState,
         IOptions<DatabaseOptions> databaseOptions,
+        MonitorRecordingState recordingState = null,
         ILogger<MonitorForwarder> logger = null)
     {
         _mongoDbServiceFactory = mongoDbServiceFactory;
@@ -49,12 +51,22 @@ internal sealed class MonitorForwarder : IHostedService, IDisposable
         _clientCommunication = clientCommunication;
         _liveMonitoringState = liveMonitoringState;
         _monitorOptions = databaseOptions.Value.Monitor;
+        _recordingState = recordingState;
         _logger = logger;
+    }
+
+    // The agent's calls are "consumed" while forwarding is on or a live viewer is attached. Drives
+    // CallRecordingLevel gating (OnDemand step capture / WhenConsumed recording) on the agent.
+    private void UpdateCallsConsumed()
+    {
+        if (_recordingState != null)
+            _recordingState.CallsConsumed = _forwardCompletedCalls || _liveMonitoringState.Active;
     }
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
         _forwardCompletedCalls = _monitorOptions.ForwardCompletedCalls;
+        UpdateCallsConsumed();
 
         // Completed-call forwarding is opt-in (it can be a large, continuous stream). Only subscribe to call
         // events when enabled — otherwise we don't even track pending calls.
@@ -186,6 +198,7 @@ internal sealed class MonitorForwarder : IHostedService, IDisposable
                     _pendingCalls.Clear();
                 }
                 _forwardCompletedCalls = enabled;
+                UpdateCallsConsumed();
             }
         }
 
@@ -328,6 +341,9 @@ internal sealed class MonitorForwarder : IHostedService, IDisposable
     {
         try
         {
+            // Keep the "calls consumed" signal current as the live-viewer state changes (≤ one interval lag).
+            UpdateCallsConsumed();
+
             var connected = _clientCommunication.IsConnected;
             // Prefer the explicit server-pushed flag (SetLiveMonitoringActiveMessage). Fall back to the
             // framework's HasSubscribers as a secondary signal — the explicit flag is what makes this

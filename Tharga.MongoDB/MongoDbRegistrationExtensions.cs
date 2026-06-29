@@ -62,6 +62,7 @@ public static class MongoDbRegistrationExtensions
 
         services.AddSingleton(Options.Create(o));
         services.AddSingleton(Options.Create(o.Limiter));
+        services.AddSingleton(new MonitorRecordingState { Level = o.Monitor?.CallRecordingLevel ?? Configuration.CallRecordingLevel.OnDemand });
 
         BsonSerializer.TryRegisterSerializer(new FlexibleGuidSerializer(o.GuidStorageFormat));
 
@@ -120,6 +121,7 @@ public static class MongoDbRegistrationExtensions
                 factory.SourceName = o.Monitor.SourceName;
             factory.AllowDelayedCommit = o.AllowDelayedCommit;
             factory.CommandMonitor = serviceProvider.GetService<ICommandMonitorService>();
+            factory.RecordingState = serviceProvider.GetService<MonitorRecordingState>();
             return factory;
         });
         services.AddTransient<IRepositoryConfigurationLoader>(serviceProvider =>
