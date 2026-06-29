@@ -163,7 +163,7 @@ public interface IDatabaseMonitor
     /// <summary>
     /// Record an agent's self-reported configuration (call forwarding, queue interval, …), correlated by source name.
     /// </summary>
-    void IngestClientStatus(string sourceName, MonitorClientStatus status);
+    void IngestClientStatus(string sourceName, MonitorClientStatus status, string connectionId = null);
 
     /// <summary>
     /// Turn completed-call forwarding on or off on a connected agent (by source name). The agent

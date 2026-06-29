@@ -875,12 +875,26 @@ internal class DatabaseMonitor : IDatabaseMonitor
         return _monitorClients.Values.Select(WithStatus);
     }
 
-    public void IngestClientStatus(string sourceName, MonitorClientStatus status)
+    public void IngestClientStatus(string sourceName, MonitorClientStatus status, string connectionId = null)
     {
         if (string.IsNullOrEmpty(sourceName) || status == null) return;
         _clientStatus[sourceName] = status;
         LogComm(sourceName, CommunicationDirection.Inbound, "ClientStatus",
             $"forwarding={status.ForwardCompletedCalls}, queueInterval={status.QueueMetricIntervalMs}ms, commandMonitoring={status.EnableCommandMonitoring}");
+
+        // Correlate the source with its connection so the client entry carries its SourceName even before it
+        // reports a collection — status arrives on connect. Without this, GetMonitorClientDetail can't resolve
+        // a just-connected agent and the per-agent detail dialog stays on the loading spinner.
+        if (!string.IsNullOrEmpty(connectionId))
+        {
+            _sourceToConnectionId[sourceName] = connectionId;
+            var client = _monitorClients.Values.FirstOrDefault(x => x.ConnectionId == connectionId);
+            if (client != null && client.SourceName != sourceName)
+            {
+                _monitorClients[client.Instance] = client with { SourceName = sourceName };
+                MonitorClientsChanged?.Invoke(this, EventArgs.Empty);
+            }
+        }
     }
 
     public async Task<bool> SetClientCallForwardingAsync(string sourceName, bool enabled, CancellationToken cancellationToken = default)

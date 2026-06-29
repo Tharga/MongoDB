@@ -244,7 +244,7 @@ public class LiveMonitoringIntegrationTests
 
         public void RecordClientCommunication(string sourceName, CommunicationDirection direction, string messageType, string summary) { }
 
-        public void IngestClientStatus(string sourceName, MonitorClientStatus status) { }
+        public void IngestClientStatus(string sourceName, MonitorClientStatus status, string connectionId = null) { }
 
         public void IngestClientDisconnected(string connectionId) { }
 

@@ -115,7 +115,7 @@ internal class DatabaseNullMonitor : IDatabaseMonitor
 
     public void IngestClientConnected(MonitorClientDto client) { }
 
-    public void IngestClientStatus(string sourceName, MonitorClientStatus status) { }
+    public void IngestClientStatus(string sourceName, MonitorClientStatus status, string connectionId = null) { }
 
     public Task<bool> SetClientCallForwardingAsync(string sourceName, bool enabled, CancellationToken cancellationToken = default) => Task.FromResult(false);
 

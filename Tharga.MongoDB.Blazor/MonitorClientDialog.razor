@@ -273,8 +273,13 @@ else
 
     private void Reload()
     {
-        if (Client?.SourceName == null) { _detail = null; _communication = []; return; }
-        _detail = DatabaseMonitor.GetMonitorClientDetail(Client.SourceName, RecentCallLimit);
-        _communication = DatabaseMonitor.GetClientCommunication(Client.SourceName);
+        if (Client == null) { _detail = null; _communication = []; return; }
+
+        // Fall back to the agent we already have if no enriched detail is available (e.g. SourceName not yet
+        // correlated, or no data reported). This avoids an endless loading spinner — the dialog always opens.
+        var sourceName = Client.SourceName;
+        _detail = (sourceName != null ? DatabaseMonitor.GetMonitorClientDetail(sourceName, RecentCallLimit) : null)
+                  ?? new MonitorClientDetail { Client = Client, CollectionKeys = [], RecentCalls = [] };
+        _communication = sourceName != null ? DatabaseMonitor.GetClientCommunication(sourceName) : [];
     }
 }
