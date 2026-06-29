@@ -1,5 +1,4 @@
 using Blazored.LocalStorage;
-using Microsoft.Extensions.Logging;
 using Radzen;
 using Tharga.Blazor.Framework;
 using Tharga.MongoDB;
@@ -34,7 +33,7 @@ builder.AddMongoDB(o =>
     o.DefaultConfigurationName = "Core";
     o.AssureIndex = AssureIndexMode.BySchema;
     o.Monitor.StorageMode = MonitorStorageMode.Database;
-    o.Monitor.EnableCommandMonitoring = true;
+    o.Monitor.EnableCommandMonitoring = false;
     // Per-cluster connection limit drives the "X / limit" bar in the Queue view. We leave the resolver unset,
     // so the built-in store-backed default is used: set each cluster's limit/tier/alias/thresholds at runtime
     // in the "Config" tab (ClusterConfigView). A real app could instead set its own resolver here (e.g. mapping

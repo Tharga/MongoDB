@@ -37,7 +37,7 @@ var instanceTag = Environment.GetEnvironmentVariable("SAMPLE_INSTANCE");
 builder.Services.AddMongoDB(builder.Configuration, o =>
 {
     o.Monitor.Enabled = true;
-    o.Monitor.EnableCommandMonitoring = true;
+    o.Monitor.EnableCommandMonitoring = false;
     if (!string.IsNullOrWhiteSpace(instanceTag))
     {
         o.Monitor.SourceName = $"{Environment.MachineName}/ConsoleSample-{instanceTag}";
