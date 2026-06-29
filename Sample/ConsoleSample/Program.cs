@@ -19,13 +19,13 @@ builder.Logging.AddConsole();
 
 // Sample diagnostic file log. Tharga.* at Trace so the full monitor/communication flow is captured.
 var clientLogPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "tharga-monitor-console.log");
-builder.Logging.AddProvider(new ConsoleSample.FileLoggerProvider(clientLogPath));
-builder.Logging.AddFilter<ConsoleSample.FileLoggerProvider>(null, LogLevel.Information);
-builder.Logging.AddFilter<ConsoleSample.FileLoggerProvider>("Tharga", LogLevel.Trace);
+builder.Logging.AddProvider(new FileLoggerProvider(clientLogPath));
+builder.Logging.AddFilter<FileLoggerProvider>(null, LogLevel.Information);
+builder.Logging.AddFilter<FileLoggerProvider>("Tharga", LogLevel.Trace);
 // Tharga.Communication logs every forwarded message at Trace (one per second); keep it at Debug so the
 // per-message flood stays out of the log while Tharga.MongoDB.* remains at Trace.
-builder.Logging.AddFilter<ConsoleSample.FileLoggerProvider>("Tharga.Communication", LogLevel.Debug);
-builder.Logging.AddFilter<ConsoleSample.FileLoggerProvider>("Microsoft", LogLevel.Warning);
+builder.Logging.AddFilter<FileLoggerProvider>("Tharga.Communication", LogLevel.Debug);
+builder.Logging.AddFilter<FileLoggerProvider>("Microsoft", LogLevel.Warning);
 Console.WriteLine($"[sample] File logging to {clientLogPath}");
 
 // Monitoring data is keyed by SourceName (not by connection), so two instances of this exe on the same
@@ -39,7 +39,9 @@ builder.Services.AddMongoDB(builder.Configuration, o =>
     o.Monitor.Enabled = true;
     o.Monitor.EnableCommandMonitoring = true;
     if (!string.IsNullOrWhiteSpace(instanceTag))
+    {
         o.Monitor.SourceName = $"{Environment.MachineName}/ConsoleSample-{instanceTag}";
+    }
 });
 
 builder.AddMongoDbMonitorClient(sendTo: "https://localhost:7205");

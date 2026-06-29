@@ -5,6 +5,7 @@ using ConsoleSample.SampleRepo;
 using Microsoft.Extensions.Logging;
 using MongoDB.Bson;
 using Tharga.Console.Commands.Base;
+using Tharga.MongoDB;
 
 namespace ConsoleSample;
 
@@ -18,6 +19,7 @@ internal class SampleCommands : ContainerCommandBase
         RegisterCommand<ListCommand>();
         RegisterCommand<BurstCommand>();
         RegisterCommand<DropCommand>();
+        RegisterCommand<SharedCommand>();
         RegisterCommand<MonitorInfoCommand>();
     }
 }
@@ -86,6 +88,29 @@ internal class BurstCommand : AsyncActionCommandBase
         await Task.WhenAll(tasks);
         //OutputInformation("Complete.");
         _logger.LogInformation("Complete.");
+    }
+}
+
+// Accesses a collection in a database the SERVER also uses (config "Shared" -> Tharga_MongoDB_Shared, collection
+// "ClusterDemo" — the same one the server's ClusterConnectionDemo bursts). Both processes then show up as sources
+// for that collection in the monitor, demonstrating a collection both the client and server can access.
+internal class SharedCommand : AsyncActionCommandBase
+{
+    private readonly ICollectionProvider _collectionProvider;
+
+    public SharedCommand(ICollectionProvider collectionProvider)
+        : base("Shared")
+    {
+        _collectionProvider = collectionProvider;
+    }
+
+    public override async Task InvokeAsync(string[] param)
+    {
+        var collection = _collectionProvider.GetCollection<ISampleRepositoryCollection, SampleEntity>(
+            new DatabaseContext { ConfigurationName = "Shared", CollectionName = "ClusterDemo" });
+        await collection.AddAsync(new SampleEntity { Id = ObjectId.GenerateNewId() });
+        var count = await collection.CountAsync();
+        OutputInformation($"Shared collection 'ClusterDemo' (config 'Shared') now has {count} documents. The server can access this same collection.");
     }
 }
 

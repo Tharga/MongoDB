@@ -16,13 +16,16 @@ namespace Tharga.TemplateBlazor.Web.Features.ClusterDemo;
 /// <i>second pool under the same cluster</i>.</item>
 /// <item><b>Archive</b> — <c>127.0.0.1:27017?maxPoolSize=8</c>: same physical server, different host string ⇒ a
 /// <i>separate cluster</i>.</item>
+/// <item><b>Shared</b> — <c>localhost:27017/Tharga_MongoDB_Shared</c> (fixed db name, no environment token): the
+/// ConsoleSample client can point its own "Shared" config at the same database + collection name (<c>ClusterDemo</c>),
+/// so that collection shows <i>both</i> the server and the client as sources.</item>
 /// </list>
 /// Run the ConsoleSample agent alongside (it also targets <c>localhost:27017</c>) to see a second <i>source</i>
 /// summed into the localhost cluster.
 /// </summary>
 public sealed class ClusterConnectionDemo
 {
-    public static readonly IReadOnlyList<string> Configurations = new[] { "Core", "Reporting", "Archive" };
+    public static readonly IReadOnlyList<string> Configurations = new[] { "Core", "Reporting", "Archive", "Shared" };
 
     private readonly ICollectionProvider _collectionProvider;
 
