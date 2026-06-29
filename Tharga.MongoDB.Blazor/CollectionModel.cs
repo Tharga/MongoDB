@@ -14,6 +14,14 @@ public record CollectionModel : CollectionFingerprint
     public int CallCount { get; set; }
     public string[] Sources { get; set; } = [];
 
+    /// <summary>
+    /// String projection of <see cref="CollectionFingerprint.ConfigurationName"/> for the grid. Radzen builds
+    /// filter/sort expressions against the bound property's type; binding the column to the <c>ConfigurationName</c>
+    /// value object makes it create a string constant against that type ("Argument types do not match"), so the
+    /// column binds here instead.
+    /// </summary>
+    public string ConfigurationNameText => ConfigurationName?.Value;
+
     /// <summary>The cluster host serving this collection's database. Used to identify the physical database across configurations.</summary>
     public string Server { get; init; }
 
