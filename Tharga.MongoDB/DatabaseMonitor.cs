@@ -41,6 +41,10 @@ internal class DatabaseMonitor : IDatabaseMonitor
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, IReadOnlyList<PoolMetricDto>> _remotePoolStates = new();
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, MonitorClientStatus> _clientStatus = new();
 
+    // Per-process effective source identity, keyed by the connection's Instance GUID (stable across reconnects).
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, string> _instanceEffectiveSource = new();
+    private readonly object _effectiveSourceLock = new();
+
     public event EventHandler<CollectionInfoChangedEventArgs> CollectionInfoChangedEvent;
     public event EventHandler<CollectionDroppedEventArgs> CollectionDroppedEvent;
     public event EventHandler MonitorClientsChanged;
@@ -851,10 +855,50 @@ internal class DatabaseMonitor : IDatabaseMonitor
         };
     }
 
-    public void IngestCall(CallDto call)
+    /// <summary>
+    /// The source-identity string used to key all of an agent's data. Equal to the agent's reported
+    /// <paramref name="reportedSourceName"/> when unique; disambiguated by the connection's per-process
+    /// <c>Instance</c> when another live process already uses that name — so two instances on one machine
+    /// with the same name stay separate, and a reconnect (same Instance) keeps the same identity. Without a
+    /// connection (local tagging, direct test calls) the reported name is returned unchanged.
+    /// </summary>
+    private string ResolveEffectiveSource(string connectionId, string reportedSourceName)
     {
+        if (string.IsNullOrEmpty(connectionId) || string.IsNullOrEmpty(reportedSourceName))
+            return reportedSourceName;
+
+        if (_monitorClients.Values.FirstOrDefault(x => x.ConnectionId == connectionId)?.Instance is not { } instanceId)
+            return reportedSourceName;
+
+        if (_instanceEffectiveSource.TryGetValue(instanceId, out var existing))
+            return existing;
+
+        lock (_effectiveSourceLock)
+        {
+            if (_instanceEffectiveSource.TryGetValue(instanceId, out existing))
+                return existing;
+
+            var taken = new HashSet<string>(_instanceEffectiveSource.Values, StringComparer.Ordinal);
+            var effective = reportedSourceName;
+            if (taken.Contains(effective))
+            {
+                effective = $"{reportedSourceName} ({instanceId.ToString("N")[..4]})";
+                if (taken.Contains(effective)) effective = $"{reportedSourceName} ({instanceId})";
+            }
+
+            _instanceEffectiveSource[instanceId] = effective;
+            return effective;
+        }
+    }
+
+    public void IngestCall(CallDto call, string connectionId = null)
+    {
+        var effectiveSource = ResolveEffectiveSource(connectionId, call?.SourceName);
+        if (call != null && effectiveSource != call.SourceName)
+            call = call with { SourceName = effectiveSource };
+
         _callLibrary.IngestCall(FromCallDto(call));
-        LogComm(call.SourceName, CommunicationDirection.Inbound, "Call",
+        LogComm(effectiveSource, CommunicationDirection.Inbound, "Call",
             $"{call.FunctionName} {call.CollectionName} ({call.Operation}){(call.Final ? "" : " [ongoing]")}");
     }
 
@@ -878,20 +922,21 @@ internal class DatabaseMonitor : IDatabaseMonitor
     public void IngestClientStatus(string sourceName, MonitorClientStatus status, string connectionId = null)
     {
         if (string.IsNullOrEmpty(sourceName) || status == null) return;
-        _clientStatus[sourceName] = status;
-        LogComm(sourceName, CommunicationDirection.Inbound, "ClientStatus",
+        var effectiveSource = ResolveEffectiveSource(connectionId, sourceName);
+        _clientStatus[effectiveSource] = status;
+        LogComm(effectiveSource, CommunicationDirection.Inbound, "ClientStatus",
             $"forwarding={status.ForwardCompletedCalls}, queueInterval={status.QueueMetricIntervalMs}ms, commandMonitoring={status.EnableCommandMonitoring}");
 
-        // Correlate the source with its connection so the client entry carries its SourceName even before it
-        // reports a collection — status arrives on connect. Without this, GetMonitorClientDetail can't resolve
-        // a just-connected agent and the per-agent detail dialog stays on the loading spinner.
+        // Correlate the source with its connection so the client entry carries its (effective) SourceName even
+        // before it reports a collection — status arrives on connect. Without this, GetMonitorClientDetail can't
+        // resolve a just-connected agent and the per-agent detail dialog stays on the loading spinner.
         if (!string.IsNullOrEmpty(connectionId))
         {
-            _sourceToConnectionId[sourceName] = connectionId;
+            _sourceToConnectionId[effectiveSource] = connectionId;
             var client = _monitorClients.Values.FirstOrDefault(x => x.ConnectionId == connectionId);
-            if (client != null && client.SourceName != sourceName)
+            if (client != null && client.SourceName != effectiveSource)
             {
-                _monitorClients[client.Instance] = client with { SourceName = sourceName };
+                _monitorClients[client.Instance] = client with { SourceName = effectiveSource };
                 MonitorClientsChanged?.Invoke(this, EventArgs.Empty);
             }
         }
@@ -1047,34 +1092,38 @@ internal class DatabaseMonitor : IDatabaseMonitor
             Clean = dto.Clean,
         };
 
+        var effectiveSource = ResolveEffectiveSource(connectionId, dto.SourceName);
+
         var key = info.Key;
         _remoteCollections[key] = info;
-        LogComm(dto.SourceName, CommunicationDirection.Inbound, "CollectionInfo",
+        LogComm(effectiveSource, CommunicationDirection.Inbound, "CollectionInfo",
             $"{dto.DatabaseName}.{dto.CollectionName} [{dto.Registration}]");
 
-        // Track source
+        // Track source (by its effective, per-process identity)
         var sources = _collectionSources.GetOrAdd(key, _ => new System.Collections.Concurrent.ConcurrentDictionary<string, bool>());
-        sources[dto.SourceName] = true;
+        sources[effectiveSource] = true;
 
         // Map source to connection for action delegation
-        if (!string.IsNullOrEmpty(connectionId) && !string.IsNullOrEmpty(dto.SourceName))
+        if (!string.IsNullOrEmpty(connectionId) && !string.IsNullOrEmpty(effectiveSource))
         {
-            _sourceToConnectionId[dto.SourceName] = connectionId;
+            _sourceToConnectionId[effectiveSource] = connectionId;
 
-            // Update client SourceName if known
+            // Carry the effective source name on the client entry so the Clients list and detail dialog
+            // resolve the right agent even when two processes share a reported name.
             var client = _monitorClients.Values.FirstOrDefault(x => x.ConnectionId == connectionId);
-            if (client != null)
-                _monitorClients[client.Instance] = client with { SourceName = dto.SourceName };
+            if (client != null && client.SourceName != effectiveSource)
+                _monitorClients[client.Instance] = client with { SourceName = effectiveSource };
         }
 
         CollectionInfoChangedEvent?.Invoke(this, new CollectionInfoChangedEventArgs(info));
     }
 
-    public void IngestCollectionDropped(string sourceName, string configurationName, string databaseName, string collectionName)
+    public void IngestCollectionDropped(string sourceName, string configurationName, string databaseName, string collectionName, string connectionId = null)
     {
         if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
         if (string.IsNullOrEmpty(collectionName) || string.IsNullOrEmpty(databaseName)) return;
 
+        sourceName = ResolveEffectiveSource(connectionId, sourceName);
         LogComm(sourceName, CommunicationDirection.Inbound, "CollectionDropped", $"{databaseName}.{collectionName}");
 
         // Match by resolved (database, collection): the physical database name plus the physical
@@ -1168,8 +1217,9 @@ internal class DatabaseMonitor : IDatabaseMonitor
         return subscription?.GetSubscriptions() ?? new Dictionary<string, int>();
     }
 
-    public void IngestQueueMetric(string sourceName, int queueCount, int executingCount, double? waitTimeMs)
+    public void IngestQueueMetric(string sourceName, int queueCount, int executingCount, double? waitTimeMs, string connectionId = null)
     {
+        sourceName = ResolveEffectiveSource(connectionId, sourceName);
         LogComm(sourceName, CommunicationDirection.Inbound, "QueueMetric", $"Q {queueCount} · E {executingCount} (aggregate)");
 
         // Legacy aggregate-per-source form. Keep the aggregate (drives GetMonitorClientDetail) and
@@ -1194,8 +1244,9 @@ internal class DatabaseMonitor : IDatabaseMonitor
         };
     }
 
-    public void IngestQueueMetric(string sourceName, IReadOnlyList<PoolMetricDto> pools)
+    public void IngestQueueMetric(string sourceName, IReadOnlyList<PoolMetricDto> pools, string connectionId = null)
     {
+        sourceName = ResolveEffectiveSource(connectionId, sourceName);
         pools ??= Array.Empty<PoolMetricDto>();
         LogComm(sourceName, CommunicationDirection.Inbound, "QueueMetric",
             $"{pools.Count} pool(s) · Q {pools.Sum(p => p.QueueCount)} · E {pools.Sum(p => p.ExecutingCount)} · open {pools.Sum(p => p.OpenConnections)}");

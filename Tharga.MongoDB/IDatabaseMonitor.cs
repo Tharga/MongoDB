@@ -80,7 +80,7 @@ public interface IDatabaseMonitor
     /// Ingest an externally produced call (e.g. from a remote agent) into the monitor pipeline.
     /// The call will appear in GetCalls, summaries, and Blazor components.
     /// </summary>
-    void IngestCall(CallDto call);
+    void IngestCall(CallDto call, string connectionId = null);
 
     void ResetCalls();
     Task ResetAsync();
@@ -188,7 +188,7 @@ public interface IDatabaseMonitor
     /// <see cref="CollectionDroppedEvent"/> is raised. A collection still reported by another agent
     /// (or reachable locally) survives.
     /// </summary>
-    void IngestCollectionDropped(string sourceName, string configurationName, string databaseName, string collectionName);
+    void IngestCollectionDropped(string sourceName, string configurationName, string databaseName, string collectionName, string connectionId = null);
 
     /// <summary>
     /// Get the source names that have reported a given collection (by fingerprint key).
@@ -211,12 +211,12 @@ public interface IDatabaseMonitor
     /// Ingest a queue metric snapshot from a remote agent (legacy, aggregate-per-source form).
     /// Stored as a single synthetic pool so pre-per-pool agents still surface a line.
     /// </summary>
-    void IngestQueueMetric(string sourceName, int queueCount, int executingCount, double? waitTimeMs);
+    void IngestQueueMetric(string sourceName, int queueCount, int executingCount, double? waitTimeMs, string connectionId = null);
 
     /// <summary>
     /// Ingest a per-pool queue metric snapshot from a remote agent.
     /// </summary>
-    void IngestQueueMetric(string sourceName, IReadOnlyList<PoolMetricDto> pools);
+    void IngestQueueMetric(string sourceName, IReadOnlyList<PoolMetricDto> pools, string connectionId = null);
 
     /// <summary>
     /// Get per-connection-pool queue state for all known sources (local + remote). Keyed by a unique

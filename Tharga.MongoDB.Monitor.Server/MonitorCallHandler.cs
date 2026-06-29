@@ -19,7 +19,7 @@ public sealed class MonitorCallHandler : PostMessageHandlerBase<MonitorCallMessa
 
     public override Task Handle(MonitorCallMessage message)
     {
-        _databaseMonitor.IngestCall(message.Call);
+        _databaseMonitor.IngestCall(message.Call, ConnectionId);
         return Task.CompletedTask;
     }
 }

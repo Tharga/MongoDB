@@ -16,8 +16,8 @@ public class MonitorCallHandlerTests
         // Arrange
         var monitorMock = new Mock<IDatabaseMonitor>();
         CallDto captured = null;
-        monitorMock.Setup(m => m.IngestCall(It.IsAny<CallDto>()))
-            .Callback<CallDto>(c => captured = c);
+        monitorMock.Setup(m => m.IngestCall(It.IsAny<CallDto>(), It.IsAny<string>()))
+            .Callback<CallDto, string>((c, _) => captured = c);
 
         var sut = new MonitorCallHandler(monitorMock.Object);
         var callDto = new CallDto
@@ -40,7 +40,7 @@ public class MonitorCallHandlerTests
         await sut.Handle(message);
 
         // Assert
-        monitorMock.Verify(m => m.IngestCall(It.IsAny<CallDto>()), Times.Once);
+        monitorMock.Verify(m => m.IngestCall(It.IsAny<CallDto>(), It.IsAny<string>()), Times.Once);
         captured.Should().NotBeNull();
         captured.Key.Should().Be(callDto.Key);
         captured.SourceName.Should().Be("RemoteAgent");

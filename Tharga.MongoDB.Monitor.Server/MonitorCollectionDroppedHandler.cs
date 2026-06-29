@@ -19,7 +19,7 @@ public sealed class MonitorCollectionDroppedHandler : PostMessageHandlerBase<Mon
 
     public override Task Handle(MonitorCollectionDroppedMessage message)
     {
-        _databaseMonitor.IngestCollectionDropped(message.SourceName, message.ConfigurationName, message.DatabaseName, message.CollectionName);
+        _databaseMonitor.IngestCollectionDropped(message.SourceName, message.ConfigurationName, message.DatabaseName, message.CollectionName, ConnectionId);
         return Task.CompletedTask;
     }
 }

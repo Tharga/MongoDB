@@ -212,12 +212,12 @@ public class LiveMonitoringIntegrationTests
                     .Last(p => p.ServerKey == serverKey);
         }
 
-        public void IngestQueueMetric(string sourceName, IReadOnlyList<PoolMetricDto> pools)
+        public void IngestQueueMetric(string sourceName, IReadOnlyList<PoolMetricDto> pools, string connectionId = null)
         {
             lock (_lock) _poolMetrics.Add((sourceName, pools));
         }
 
-        public void IngestQueueMetric(string sourceName, int queueCount, int executingCount, double? waitTimeMs)
+        public void IngestQueueMetric(string sourceName, int queueCount, int executingCount, double? waitTimeMs, string connectionId = null)
         {
             lock (_lock)
                 _poolMetrics.Add((sourceName,
@@ -255,7 +255,7 @@ public class LiveMonitoringIntegrationTests
         }
 
         // --- Unused by the live-monitoring path: safe defaults ---
-        public void IngestCall(CallDto call) { }
+        public void IngestCall(CallDto call, string connectionId = null) { }
         public event EventHandler<CollectionInfoChangedEventArgs> CollectionInfoChangedEvent { add { } remove { } }
         public event EventHandler<CollectionDroppedEventArgs> CollectionDroppedEvent { add { } remove { } }
         public event EventHandler MonitorClientsChanged { add { } remove { } }
@@ -287,7 +287,7 @@ public class LiveMonitoringIntegrationTests
         public IReadOnlyList<CollectionInfo> GetCollectionsWithFailedIndices() => Array.Empty<CollectionInfo>();
         public Task<bool> SetClientCallForwardingAsync(string sourceName, bool enabled, CancellationToken cancellationToken = default) => Task.FromResult(false);
         public void IngestCollectionInfo(RemoteCollectionInfoDto collectionInfo, string connectionId = null) { }
-        public void IngestCollectionDropped(string sourceName, string configurationName, string databaseName, string collectionName) { }
+        public void IngestCollectionDropped(string sourceName, string configurationName, string databaseName, string collectionName, string connectionId = null) { }
         public IReadOnlyCollection<string> GetCollectionSources(string fingerprintKey) => Array.Empty<string>();
         public string FindConnectionIdBySource(string sourceName) => null;
         public IReadOnlyDictionary<string, int> GetSubscriptions() => new Dictionary<string, int>();

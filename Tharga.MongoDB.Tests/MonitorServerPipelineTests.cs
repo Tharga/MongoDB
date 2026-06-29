@@ -154,7 +154,7 @@ public class MonitorServerPipelineTests
 
         public IngestOnlyMonitor(CallLibrary callLibrary) => _callLibrary = callLibrary;
 
-        public void IngestCall(CallDto call)
+        public void IngestCall(CallDto call, string connectionId = null)
         {
             Enum.TryParse<Disk.Operation>(call.Operation, out var operation);
             var callInfo = new CallInfo
@@ -221,12 +221,12 @@ public class MonitorServerPipelineTests
         public Task<bool> SetClientCallForwardingAsync(string sourceName, bool enabled, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public void IngestClientDisconnected(string connectionId) => throw new NotImplementedException();
         public void IngestCollectionInfo(RemoteCollectionInfoDto collectionInfo, string connectionId = null) => throw new NotImplementedException();
-        public void IngestCollectionDropped(string sourceName, string configurationName, string databaseName, string collectionName) => throw new NotImplementedException();
+        public void IngestCollectionDropped(string sourceName, string configurationName, string databaseName, string collectionName, string connectionId = null) => throw new NotImplementedException();
         public System.Collections.Generic.IReadOnlyCollection<string> GetCollectionSources(string fingerprintKey) => throw new NotImplementedException();
         public string FindConnectionIdBySource(string sourceName) => null;
         public System.Collections.Generic.IReadOnlyDictionary<string, int> GetSubscriptions() => new System.Collections.Generic.Dictionary<string, int>();
-        public void IngestQueueMetric(string sourceName, int queueCount, int executingCount, double? waitTimeMs) { }
-        public void IngestQueueMetric(string sourceName, System.Collections.Generic.IReadOnlyList<PoolMetricDto> pools) { }
+        public void IngestQueueMetric(string sourceName, int queueCount, int executingCount, double? waitTimeMs, string connectionId = null) { }
+        public void IngestQueueMetric(string sourceName, System.Collections.Generic.IReadOnlyList<PoolMetricDto> pools, string connectionId = null) { }
         public System.Collections.Generic.IReadOnlyDictionary<string, ConnectionPoolStateDto> GetPerPoolQueueState() => new System.Collections.Generic.Dictionary<string, ConnectionPoolStateDto>();
         public System.Collections.Generic.IReadOnlyList<InFlightCallInfo> GetInFlightCalls() => System.Array.Empty<InFlightCallInfo>();
         public System.Collections.Generic.IReadOnlyList<ClusterConnectionSummary> GetClusterConnectionSummary() => System.Array.Empty<ClusterConnectionSummary>();

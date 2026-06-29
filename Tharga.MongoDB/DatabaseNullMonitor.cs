@@ -101,7 +101,7 @@ internal class DatabaseNullMonitor : IDatabaseMonitor
         yield break;
     }
 
-    public void IngestCall(CallDto call) { }
+    public void IngestCall(CallDto call, string connectionId = null) { }
 
     public IEnumerable<MonitorClientDto> GetMonitorClients() { yield break; }
 
@@ -123,7 +123,7 @@ internal class DatabaseNullMonitor : IDatabaseMonitor
 
     public void IngestCollectionInfo(RemoteCollectionInfoDto collectionInfo, string connectionId = null) { }
 
-    public void IngestCollectionDropped(string sourceName, string configurationName, string databaseName, string collectionName) { }
+    public void IngestCollectionDropped(string sourceName, string configurationName, string databaseName, string collectionName, string connectionId = null) { }
 
     public IReadOnlyCollection<string> GetCollectionSources(string fingerprintKey) => [];
 
@@ -131,9 +131,9 @@ internal class DatabaseNullMonitor : IDatabaseMonitor
 
     public IReadOnlyDictionary<string, int> GetSubscriptions() => new Dictionary<string, int>();
 
-    public void IngestQueueMetric(string sourceName, int queueCount, int executingCount, double? waitTimeMs) { }
+    public void IngestQueueMetric(string sourceName, int queueCount, int executingCount, double? waitTimeMs, string connectionId = null) { }
 
-    public void IngestQueueMetric(string sourceName, IReadOnlyList<PoolMetricDto> pools) { }
+    public void IngestQueueMetric(string sourceName, IReadOnlyList<PoolMetricDto> pools, string connectionId = null) { }
 
     public IReadOnlyDictionary<string, ConnectionPoolStateDto> GetPerPoolQueueState() => new Dictionary<string, ConnectionPoolStateDto>();
 

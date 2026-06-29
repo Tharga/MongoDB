@@ -171,6 +171,44 @@ public class ConnectionSummaryTests
         monitor.GetClusterConnectionSummary().Single().Limit.Should().BeNull();
     }
 
+    [Fact]
+    public void TwoInstancesSameSourceName_StaySeparate_AndReconnectReattaches()
+    {
+        var connectionMonitor = new ConnectionPoolMonitor();
+        var queueMonitor = new Mock<IQueueMonitor>();
+        queueMonitor.Setup(q => q.GetPerPoolState()).Returns(Array.Empty<PoolQueueState>());
+        var monitor = CreateMonitor("Server", queueMonitor.Object, connectionMonitor, clusterConnectionLimit: null);
+
+        var instanceA = Guid.NewGuid();
+        var instanceB = Guid.NewGuid();
+        monitor.IngestClientConnected(Client(instanceA, "conn-A"));
+        monitor.IngestClientConnected(Client(instanceB, "conn-B"));
+
+        // Both processes report the SAME source name, on different connections.
+        var pool = new PoolMetricDto { ServerKey = "host:27017|pool=100", ConfigurationNames = new[] { "Core" }, QueueCount = 0, ExecutingCount = 0, OpenConnections = 3, MaxPoolSize = 100 };
+        monitor.IngestQueueMetric("PC/App", new[] { pool }, "conn-A");
+        monitor.IngestQueueMetric("PC/App", new[] { pool }, "conn-B");
+
+        // The cluster's pool now carries two distinct sources (one per instance), not one merged.
+        monitor.GetClusterConnectionSummary().Single().Pools.Single().SourceCount.Should().Be(2);
+
+        // Reconnect instance A on a new connection id — same Instance keeps the same effective source (still 2).
+        monitor.IngestClientConnected(Client(instanceA, "conn-A2"));
+        monitor.IngestQueueMetric("PC/App", new[] { pool }, "conn-A2");
+        monitor.GetClusterConnectionSummary().Single().Pools.Single().SourceCount.Should().Be(2);
+    }
+
+    private static MonitorClientDto Client(Guid instance, string connectionId) => new()
+    {
+        Instance = instance,
+        ConnectionId = connectionId,
+        Machine = "PC",
+        Type = "App",
+        Version = "1.0",
+        IsConnected = true,
+        ConnectTime = DateTime.UtcNow,
+    };
+
     private static DatabaseMonitor CreateMonitor(string sourceName, IQueueMonitor queueMonitor, IConnectionPoolMonitor connectionMonitor, int? clusterConnectionLimit,
         Func<IServiceProvider, ClusterConnectionLimitContext, int?> resolver = null)
     {
