@@ -31,7 +31,12 @@ Or by code via `services.AddMongoDB(o => o.Monitor = new MonitorOptions { ... })
 |---|---|---|---|
 | `ForwardCompletedCalls` | Agent | `false` | Forward every completed call to the central monitor. Off by default — it is a large, continuous stream proportional to database activity. See [Centralised monitoring](#centralised-monitoring). |
 | `QueueMetricInterval` | Agent | `00:00:01` (1s) | How often a queue/connection snapshot is forwarded while someone is watching live. Larger = less chatter, coarser live graph. |
-| `ClusterConnectionLimit` | Server | `null` | A cluster's connection limit (e.g. an Atlas tier's max, often 3000). When set, the queue view shows total open connections as a fraction of it. See [Connection-pool usage](#connection-pool-queue-and-in-flight-calls). |
+| `CallRecordingLevel` | Any | `OnDemand` | How much per-call data to record. `Full` always records calls + step timeline; `OnDemand` (default) records the lightweight call always but builds the step timeline only while consumed (forwarding on or a live viewer); `WhenConsumed` records nothing until consumed (best for headless agents). The monitor server always counts as a consumer. |
+| `EnableCommandMonitoring` | Any | `false` | Capture driver command durations (the `Driver: … \| Other: …` breakdown on call steps). The listener is always subscribed, so capture can be toggled at runtime — locally (`IDatabaseMonitor.SetCommandMonitoring`) or per-agent from the Clients dialog (`SetClientCommandMonitoringAsync`). This is the startup default. |
+| `ClusterConnectionLimit` | Server | `null` | A single connection limit applied to **every** cluster the resolver doesn't handle. Use only when all clusters share one limit; otherwise leave null and use the resolver. |
+| `ClusterConnectionLimitResolver` | Server | store-backed | `Func<IServiceProvider, ClusterConnectionLimitContext, int?>` — resolves the limit **per cluster** (e.g. each Atlas tier's max, or `null` for self-hosted). Mirrors `MaxPoolSizeOverride`; the `IServiceProvider` lets it read a value an external feature updates at runtime. Called on the render path, so it must be fast (read a cached value, no I/O). The context carries the cluster host, an `IsAtlas` flag (host on `mongodb.net`), and the config names. Falls back to `ClusterConnectionLimit`, then to no bar. **When unset, defaults to the editable config store** (below). |
+
+When you don't supply a resolver, limits come from a per-cluster config store (`IClusterConfigStore`, persisted in a `_monitorConfig` collection) that the `<ClusterConfigView />` Blazor component edits at runtime: per cluster you set an **Atlas tier** (auto-fills the known limit) or a **manual limit**, a **display alias**, and **warn/danger thresholds** for the bar. To drive limits from an external source instead (e.g. an Atlas-API poller), set `ClusterConnectionLimitResolver` to read your own cached value. See [Connection-pool usage](#connection-pool-queue-and-in-flight-calls).
 
 ## Source identification
 
@@ -65,7 +70,11 @@ a single process-wide figure:
   shows, per cluster across **all sources (this server + every agent)**, the total open connections and the
   total capacity (sum of each pool's `maxPoolSize`). Set `Monitor.ClusterConnectionLimit` (on the server) to your
   cluster's limit (e.g. an Atlas tier's 3000) to see `open / limit` with a bar that warns as you approach it.
-  Read it via `IDatabaseMonitor.GetClusterConnectionSummary()`.
+  Read it via `IDatabaseMonitor.GetClusterConnectionSummary()`, which returns a three-level breakdown that keeps
+  the dimensions distinct: **cluster** (the host you connect to — the grouping and the summed total) →
+  **pool** (`ClusterPoolSummary`, one per server-key; a cluster carries more than one only when configurations
+  differ in max pool size) → **source** (`ClusterPoolSourceConnections`, one process — the single client/server
+  item). The cluster's `OpenConnections` is the sum across every pool and source.
 
   > Only monitored processes are counted — other clients (Compass, un-instrumented services) and the driver's
   > per-process SDAM heartbeat connections are not. Treat the figure as a close lower bound on the cluster total.
@@ -116,7 +125,9 @@ When the server dashboard displays collections from remote agents, actions like 
 | Queue / connection per-pool snapshots | Only while someone is viewing the live queue tab (gated on an active subscription), at `QueueMetricInterval`. |
 | Completed calls | Only when `Monitor.ForwardCompletedCalls = true` (off by default). This is the large stream — leave it off unless you need per-call history on the central server. With it off, the agent's *Last/Slow calls* lists on the server stay empty (its queue/connection metrics and collection metadata still flow). |
 
-Blazor components subscribe to the live data on mount and unsubscribe on dispose, so queue/connection snapshots stop when no one is looking. Each agent reports its own forwarding configuration (call forwarding on/off, queue interval, storage mode) on connect; the **Clients** page shows it per agent (a *Call forwarding* badge, with the full set in the client detail dialog).
+Blazor components subscribe to the live data on mount and unsubscribe on dispose, so queue/connection snapshots stop when no one is looking. The server signals each agent to start/stop forwarding via an explicit message (`SetLiveMonitoringActiveMessage`); the agent gates its queue-metric timer on that signal. Each agent reports its own forwarding configuration (call forwarding on/off, queue interval, storage mode) on connect; the **Clients** page shows it per agent (a *Call forwarding* badge, with the full set in the client detail dialog).
+
+You can also drive and observe this live flow **headlessly** — without opening the Queue view in a browser — via the [MCP monitoring tools](mcp-integration.md#live-monitoring-diagnostics) (`hold_live_subscription`, `get_per_pool_queue_state`, `get_monitor_clients`, `get_client_communication`). Useful for verifying an agent is forwarding queue metrics from a script or an AI agent.
 
 ## Reset
 

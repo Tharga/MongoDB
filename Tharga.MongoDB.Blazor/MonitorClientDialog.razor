@@ -1,5 +1,6 @@
 @using Tharga.Toolkit
 @inject IDatabaseMonitor DatabaseMonitor
+@inject NotificationService NotificationService
 
 @if (Client == null)
 {
@@ -47,9 +48,11 @@ else
             </RadzenColumn>
         </RadzenRow>
         <RadzenRow>
-            <RadzenColumn>
+            <RadzenColumn Size="4">
                 <RadzenText TextStyle="TextStyle.Caption" Text="Connected" />
-                <Tharga.Blazor.DateTimeView Date="@_detail.Client.ConnectTime" />
+                <div>
+                    <Tharga.Blazor.DateTimeView Date="@_detail.Client.ConnectTime" />
+                </div>
             </RadzenColumn>
             <RadzenColumn>
                 <RadzenText TextStyle="TextStyle.Caption" Text="Disconnected" />
@@ -76,14 +79,15 @@ else
                 <RadzenRow>
                     <RadzenColumn>
                         <RadzenText TextStyle="TextStyle.Caption" Text="Call forwarding" />
-                        @if (_detail.Client.Status.ForwardCompletedCalls)
-                        {
-                            <RadzenBadge BadgeStyle="BadgeStyle.Info" Text="On" />
-                        }
-                        else
-                        {
-                            <RadzenBadge BadgeStyle="BadgeStyle.Light" Text="Off" />
-                        }
+                        <div>
+                            <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" AlignItems="AlignItems.Center">
+                                <RadzenSwitch Value="@_detail.Client.Status.ForwardCompletedCalls"
+                                              Disabled="@(_busy || !_detail.Client.IsConnected)"
+                                              Change="@ToggleCallForwardingAsync"
+                                              title="@(_detail.Client.IsConnected ? "Turn completed-call forwarding on/off on this agent" : "Agent is disconnected")" />
+                                <RadzenText TextStyle="TextStyle.Body2" Text="@(_detail.Client.Status.ForwardCompletedCalls ? "On" : "Off")" />
+                            </RadzenStack>
+                        </div>
                     </RadzenColumn>
                     <RadzenColumn>
                         <RadzenText TextStyle="TextStyle.Caption" Text="Queue interval" />
@@ -95,91 +99,127 @@ else
                     </RadzenColumn>
                     <RadzenColumn>
                         <RadzenText TextStyle="TextStyle.Caption" Text="Command monitoring" />
-                        <RadzenText Text="@(_detail.Client.Status.EnableCommandMonitoring ? "On" : "Off")" />
+                        <div>
+                            <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" AlignItems="AlignItems.Center">
+                                <RadzenSwitch Value="@_detail.Client.Status.EnableCommandMonitoring"
+                                              Disabled="@(_busy || !_detail.Client.IsConnected)"
+                                              Change="@ToggleCommandMonitoringAsync"
+                                              title="@(_detail.Client.IsConnected ? "Turn driver command monitoring on/off on this agent" : "Agent is disconnected")" />
+                                <RadzenText TextStyle="TextStyle.Body2" Text="@(_detail.Client.Status.EnableCommandMonitoring ? "On" : "Off")" />
+                            </RadzenStack>
+                        </div>
                     </RadzenColumn>
                 </RadzenRow>
             }
         </RadzenCard>
 
-        @* --- Collections received --- *@
-        <RadzenCard>
-            <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween" AlignItems="AlignItems.Center">
-                <RadzenText TextStyle="TextStyle.H6" Text="Collections received" />
-                <RadzenBadge BadgeStyle="BadgeStyle.Light" Text="@($"{_detail.CollectionKeys.Count:N0}")" />
-            </RadzenStack>
-            @if (_detail.CollectionKeys.Count == 0)
-            {
-                <RadzenText TextStyle="TextStyle.Body2" Text="No collections reported yet." Style="color: gray;" />
-            }
-            else
-            {
-                <div style="max-height: 200px; overflow-y: auto;">
-                    @foreach (var key in _detail.CollectionKeys)
+        @* --- Activity tabs --- *@
+        <RadzenTabs>
+            <Tabs>
+                <RadzenTabsItem Text="@($"Collections received ({_detail.CollectionKeys.Count:N0})")">
+                    @if (_detail.CollectionKeys.Count == 0)
                     {
-                        <div><RadzenText TextStyle="TextStyle.Body2" Text="@key" /></div>
+                        <RadzenText TextStyle="TextStyle.Body2" Text="No collections reported yet." Style="color: gray;" />
                     }
-                </div>
-            }
-        </RadzenCard>
+                    else
+                    {
+                        <div style="max-height: 300px; overflow-y: auto;">
+                            @foreach (var key in _detail.CollectionKeys)
+                            {
+                                <div><RadzenText TextStyle="TextStyle.Body2" Text="@key" /></div>
+                            }
+                        </div>
+                    }
+                </RadzenTabsItem>
 
-        @* --- Recent calls --- *@
-        <RadzenCard>
-            <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween" AlignItems="AlignItems.Center">
-                <RadzenText TextStyle="TextStyle.H6" Text="Recent calls" />
-                <RadzenBadge BadgeStyle="BadgeStyle.Light" Text="@($"{_detail.RecentCalls.Count:N0}")" />
-            </RadzenStack>
-            @if (_detail.RecentCalls.Count == 0)
-            {
-                <RadzenText TextStyle="TextStyle.Body2" Text="No calls received yet." Style="color: gray;" />
-            }
-            else
-            {
-                <RadzenDataGrid Data="_detail.RecentCalls" TItem="CallInfo" AllowSorting="true" Density="Density.Compact"
-                                AllowPaging="false">
-                    <Columns>
-                        <RadzenDataGridColumn Title="Start" Property="@nameof(CallInfo.StartTime)" SortOrder="SortOrder.Descending">
-                            <Template>
-                                <Tharga.Blazor.DateTimeView Date="@context.StartTime" />
-                            </Template>
-                        </RadzenDataGridColumn>
-                        <RadzenDataGridColumn Title="Collection" Property="@($"{nameof(CallInfo.Fingerprint)}.{nameof(CallInfo.Fingerprint.CollectionName)}")" />
-                        <RadzenDataGridColumn Title="Function" Property="@nameof(CallInfo.FunctionName)" />
-                        <RadzenDataGridColumn Title="Operation" Property="@nameof(CallInfo.Operation)" />
-                        <RadzenDataGridColumn Title="Elapsed" Property="@nameof(CallInfo.Elapsed)">
-                            <Template>
-                                <Tharga.Blazor.TimeSpanView TimeSpan="@context.Elapsed" />
-                            </Template>
-                        </RadzenDataGridColumn>
-                    </Columns>
-                </RadzenDataGrid>
-            }
-        </RadzenCard>
+                <RadzenTabsItem Text="@($"Recent calls ({_detail.RecentCalls.Count:N0})")">
+                    @if (_detail.RecentCalls.Count == 0)
+                    {
+                        <RadzenText TextStyle="TextStyle.Body2" Text="@RecentCallsEmptyMessage" Style="color: gray;" />
+                    }
+                    else
+                    {
+                        <RadzenDataGrid Data="_detail.RecentCalls" TItem="CallInfo" AllowSorting="true" Density="Density.Compact"
+                                        AllowPaging="false">
+                            <Columns>
+                                <RadzenDataGridColumn Title="Start" Property="@nameof(CallInfo.StartTime)" SortOrder="SortOrder.Descending">
+                                    <Template>
+                                        <Tharga.Blazor.DateTimeView Date="@context.StartTime" />
+                                    </Template>
+                                </RadzenDataGridColumn>
+                                <RadzenDataGridColumn Title="Collection" Property="@($"{nameof(CallInfo.Fingerprint)}.{nameof(CallInfo.Fingerprint.CollectionName)}")" />
+                                <RadzenDataGridColumn Title="Function" Property="@nameof(CallInfo.FunctionName)" />
+                                <RadzenDataGridColumn Title="Operation" Property="@nameof(CallInfo.Operation)" />
+                                <RadzenDataGridColumn Title="Elapsed" Property="@nameof(CallInfo.Elapsed)">
+                                    <Template>
+                                        <Tharga.Blazor.TimeSpanView TimeSpan="@context.Elapsed" />
+                                    </Template>
+                                </RadzenDataGridColumn>
+                            </Columns>
+                        </RadzenDataGrid>
+                    }
+                </RadzenTabsItem>
 
-        @* --- Latest queue snapshot --- *@
-        <RadzenCard>
-            <RadzenText TextStyle="TextStyle.H6" Text="Latest queue snapshot" />
-            @if (_detail.QueueState == null)
-            {
-                <RadzenText TextStyle="TextStyle.Body2" Text="No queue metrics reported yet." Style="color: gray;" />
-            }
-            else
-            {
-                <RadzenRow>
-                    <RadzenColumn>
-                        <RadzenText TextStyle="TextStyle.Caption" Text="Queued" />
-                        <RadzenText Text="@($"{_detail.QueueState.QueueCount:N0}")" />
-                    </RadzenColumn>
-                    <RadzenColumn>
-                        <RadzenText TextStyle="TextStyle.Caption" Text="Executing" />
-                        <RadzenText Text="@($"{_detail.QueueState.ExecutingCount:N0}")" />
-                    </RadzenColumn>
-                    <RadzenColumn>
-                        <RadzenText TextStyle="TextStyle.Caption" Text="Last Wait (ms)" />
-                        <RadzenText Text="@($"{_detail.QueueState.LastWaitTimeMs:N1}")" />
-                    </RadzenColumn>
-                </RadzenRow>
-            }
-        </RadzenCard>
+                <RadzenTabsItem Text="Latest queue snapshot">
+                    @if (_detail.QueueState == null)
+                    {
+                        <RadzenText TextStyle="TextStyle.Body2" Text="No queue metrics reported yet." Style="color: gray;" />
+                        <RadzenText TextStyle="TextStyle.Caption"
+                                    Text="Agents send queue metrics only while a live Queue view is open (Calls → Queue) — and only once they have a connection pool (i.e. have accessed MongoDB). Open that view to start collecting them for this agent."
+                                    Style="color: gray;" />
+                    }
+                    else
+                    {
+                        <RadzenRow>
+                            <RadzenColumn>
+                                <RadzenText TextStyle="TextStyle.Caption" Text="Queued" />
+                                <RadzenText Text="@($"{_detail.QueueState.QueueCount:N0}")" />
+                            </RadzenColumn>
+                            <RadzenColumn>
+                                <RadzenText TextStyle="TextStyle.Caption" Text="Executing" />
+                                <RadzenText Text="@($"{_detail.QueueState.ExecutingCount:N0}")" />
+                            </RadzenColumn>
+                            <RadzenColumn>
+                                <RadzenText TextStyle="TextStyle.Caption" Text="Last Wait (ms)" />
+                                <RadzenText Text="@($"{_detail.QueueState.LastWaitTimeMs:N1}")" />
+                            </RadzenColumn>
+                        </RadzenRow>
+                    }
+                </RadzenTabsItem>
+
+                <RadzenTabsItem Text="@($"Communication ({_communication.Count:N0})")">
+                    <RadzenText TextStyle="TextStyle.Caption"
+                                Text="Recent SignalR messages this server has exchanged with the agent (newest first). Inbound = received from the agent; Outbound = sent to it. Bounded, in-memory diagnostic."
+                                Style="color: gray;" />
+                    @if (_communication.Count == 0)
+                    {
+                        <RadzenText TextStyle="TextStyle.Body2" Text="No messages recorded yet." Style="color: gray;" />
+                    }
+                    else
+                    {
+                        <RadzenDataGrid Data="_communication" TItem="CommunicationEvent" AllowSorting="true" Density="Density.Compact"
+                                        AllowPaging="true" PageSize="10" PageSizeOptions="[10, 25, 50]" ShowPagingSummary="true"
+                                        PagingSummaryFormat="@("{2:N0} messages, page {0} of {1}")">
+                            <Columns>
+                                <RadzenDataGridColumn Title="Time" Property="@nameof(CommunicationEvent.Timestamp)" SortOrder="SortOrder.Descending" Width="170px">
+                                    <Template>
+                                        <Tharga.Blazor.DateTimeView Date="@context.Timestamp" />
+                                    </Template>
+                                </RadzenDataGridColumn>
+                                <RadzenDataGridColumn Title="Direction" Property="@nameof(CommunicationEvent.Direction)" Width="110px">
+                                    <Template>
+                                        <RadzenBadge BadgeStyle="@(context.Direction == CommunicationDirection.Inbound ? BadgeStyle.Success : BadgeStyle.Info)"
+                                                     Text="@(context.Direction == CommunicationDirection.Inbound ? "In" : "Out")" />
+                                    </Template>
+                                </RadzenDataGridColumn>
+                                <RadzenDataGridColumn Title="Message" Property="@nameof(CommunicationEvent.MessageType)" Width="160px" />
+                                <RadzenDataGridColumn Title="Detail" Property="@nameof(CommunicationEvent.Summary)" />
+                            </Columns>
+                        </RadzenDataGrid>
+                    }
+                </RadzenTabsItem>
+            </Tabs>
+        </RadzenTabs>
 
         @* --- Actions --- *@
         <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
@@ -196,6 +236,15 @@ else
     public int RecentCallLimit { get; set; } = 20;
 
     private MonitorClientDetail _detail;
+    private IReadOnlyList<CommunicationEvent> _communication = [];
+    private bool _busy;
+
+    // When the agent has reported its config and call forwarding is off, no calls will ever arrive —
+    // say so, rather than the ambiguous "none yet". If the config isn't known, keep the neutral message.
+    private string RecentCallsEmptyMessage =>
+        _detail?.Client.Status is { ForwardCompletedCalls: false }
+            ? "Call forwarding is off."
+            : "No calls received yet.";
 
     protected override void OnParametersSet()
     {
@@ -209,9 +258,56 @@ else
         return Task.CompletedTask;
     }
 
+    private async Task ToggleCallForwardingAsync(bool enabled)
+    {
+        if (Client?.SourceName == null) return;
+        _busy = true;
+        try
+        {
+            await DatabaseMonitor.SetClientCallForwardingAsync(Client.SourceName, enabled);
+            NotificationService.Notify(new NotificationMessage { Summary = $"Call forwarding turned {(enabled ? "on" : "off")}." });
+        }
+        catch (Exception e)
+        {
+            NotificationService.Notify(new NotificationMessage { Severity = NotificationSeverity.Error, Summary = "Failed to change call forwarding.", Detail = e.Message });
+        }
+        finally
+        {
+            // Re-read so the switch reflects the agent's actual state (and reverts on failure).
+            _busy = false;
+            Reload();
+        }
+    }
+
+    private async Task ToggleCommandMonitoringAsync(bool enabled)
+    {
+        if (Client?.SourceName == null) return;
+        _busy = true;
+        try
+        {
+            await DatabaseMonitor.SetClientCommandMonitoringAsync(Client.SourceName, enabled);
+            NotificationService.Notify(new NotificationMessage { Summary = $"Command monitoring turned {(enabled ? "on" : "off")}." });
+        }
+        catch (Exception e)
+        {
+            NotificationService.Notify(new NotificationMessage { Severity = NotificationSeverity.Error, Summary = "Failed to change command monitoring.", Detail = e.Message });
+        }
+        finally
+        {
+            _busy = false;
+            Reload();
+        }
+    }
+
     private void Reload()
     {
-        if (Client?.SourceName == null) { _detail = null; return; }
-        _detail = DatabaseMonitor.GetMonitorClientDetail(Client.SourceName, RecentCallLimit);
+        if (Client == null) { _detail = null; _communication = []; return; }
+
+        // Fall back to the agent we already have if no enriched detail is available (e.g. SourceName not yet
+        // correlated, or no data reported). This avoids an endless loading spinner — the dialog always opens.
+        var sourceName = Client.SourceName;
+        _detail = (sourceName != null ? DatabaseMonitor.GetMonitorClientDetail(sourceName, RecentCallLimit) : null)
+                  ?? new MonitorClientDetail { Client = Client, CollectionKeys = [], RecentCalls = [] };
+        _communication = sourceName != null ? DatabaseMonitor.GetClientCommunication(sourceName) : [];
     }
 }

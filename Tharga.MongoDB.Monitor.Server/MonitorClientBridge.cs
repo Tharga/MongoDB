@@ -2,8 +2,11 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using Tharga.Communication.Contract;
 using Tharga.Communication.Server;
 using Tharga.Communication.Server.Communication;
+using Tharga.MongoDB.Monitor.Client;
 
 namespace Tharga.MongoDB.Monitor.Server;
 
@@ -13,13 +16,19 @@ namespace Tharga.MongoDB.Monitor.Server;
 /// </summary>
 internal sealed class MonitorClientBridge : IHostedService
 {
+    private static readonly string LiveTopic = typeof(LiveMonitoringMarker).FullName;
+
     private readonly MonitorClientStateService _clientStateService;
     private readonly IDatabaseMonitor _databaseMonitor;
+    private readonly IServerCommunication _serverCommunication;
+    private readonly ILogger<MonitorClientBridge> _logger;
 
-    public MonitorClientBridge(MonitorClientStateService clientStateService, IDatabaseMonitor databaseMonitor)
+    public MonitorClientBridge(MonitorClientStateService clientStateService, IDatabaseMonitor databaseMonitor, IServerCommunication serverCommunication, ILogger<MonitorClientBridge> logger = null)
     {
         _clientStateService = clientStateService;
         _databaseMonitor = databaseMonitor;
+        _serverCommunication = serverCommunication;
+        _logger = logger;
     }
 
     public Task StartAsync(CancellationToken cancellationToken)
@@ -51,6 +60,48 @@ internal sealed class MonitorClientBridge : IHostedService
                 ConnectTime = info.ConnectTime,
                 AuthKeyName = info.KeyName,
             });
+
+            // Replay current subscription state to the freshly-connected agent. Tharga.Communication
+            // only pushes SubscriptionStateChanged on the 0<->1 boundary, so an agent that connects
+            // (or reconnects) while a subscription is already active would otherwise never learn of
+            // it — and would never start sending live data (e.g. queue metrics gated on
+            // HasSubscribers<LiveMonitoringMarker>).
+            _ = ReplaySubscriptionsAsync(info.ConnectionId);
+        }
+    }
+
+    private async Task ReplaySubscriptionsAsync(string connectionId)
+    {
+        try
+        {
+            var subscriptions = _serverCommunication.GetSubscriptions();
+            _logger?.LogDebug("Agent connected ({ConnectionId}). Replaying {Count} active subscription(s): [{Topics}].",
+                connectionId, subscriptions.Count, string.Join(", ", subscriptions.Keys));
+
+            foreach (var (topic, count) in subscriptions)
+            {
+                if (count <= 0) continue;
+                _logger?.LogDebug("Replaying SubscriptionStateChanged(Topic={Topic}, HasSubscribers=true) to agent {ConnectionId}.", topic, connectionId);
+                await _serverCommunication.PostAsync(connectionId, new SubscriptionStateChanged
+                {
+                    Topic = topic,
+                    Key = null,
+                    HasSubscribers = true,
+                });
+
+                // Also replay the explicit live-monitoring signal so an agent connecting while a Queue
+                // view is already open starts forwarding queue metrics without waiting for the next subscribe.
+                if (topic == LiveTopic)
+                {
+                    _logger?.LogDebug("Replaying SetLiveMonitoringActive(Active=true) to agent {ConnectionId}.", connectionId);
+                    await _serverCommunication.PostAsync(connectionId, new SetLiveMonitoringActiveMessage { Active = true });
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            // Best-effort: a transient post failure on connect must not disrupt connection handling — but log it.
+            _logger?.LogWarning(ex, "Failed to replay subscriptions to agent {ConnectionId}.", connectionId);
         }
     }
 

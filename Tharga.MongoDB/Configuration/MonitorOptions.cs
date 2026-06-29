@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 
 namespace Tharga.MongoDB.Configuration;
 
@@ -56,11 +57,27 @@ public record MonitorOptions
     public TimeSpan QueueMetricInterval { get; set; } = TimeSpan.FromSeconds(1);
 
     /// <summary>
-    /// The maximum number of connections a cluster allows (e.g. an Atlas cluster's connection limit, 3000 on
-    /// many tiers). When set, the central monitor shows total open connections across all sources as a
-    /// fraction of this limit. When null, only the totals are shown. Configured on the monitor/server.
+    /// A single connection limit applied to <b>every</b> cluster that <see cref="ClusterConnectionLimitResolver"/>
+    /// does not resolve. Only useful when every monitored cluster shares the same limit; for mixed deployments
+    /// (e.g. localhost + Atlas, or different Atlas tiers) leave this null and use the resolver instead.
+    /// When neither yields a value, the cluster shows its open-connection total with no limit bar.
     /// </summary>
     public int? ClusterConnectionLimit { get; set; }
+
+    /// <summary>
+    /// Resolves the connection limit <b>per cluster</b> (e.g. each Atlas tier's max, or "unknown" for a
+    /// self-hosted node). Return the limit, or <c>null</c> to fall back to <see cref="ClusterConnectionLimit"/>
+    /// and then to "no limit". Mirrors <see cref="DatabaseOptions.MaxPoolSizeOverride"/>: the
+    /// <see cref="IServiceProvider"/> is passed in, so the delegate can read a service that an external feature
+    /// (e.g. an Atlas-API poller) updates at runtime. Called on the monitor render path, so it must be fast and
+    /// non-blocking — read a cached value, do not perform I/O here.
+    /// <code>
+    /// o.Monitor.ClusterConnectionLimitResolver = (sp, ctx) => ctx.IsAtlas
+    ///     ? sp.GetRequiredService&lt;IMyTierCache&gt;().LimitFor(ctx.Cluster) // runtime/external value
+    ///     : null;                                                          // self-hosted: no known limit
+    /// </code>
+    /// </summary>
+    public Func<IServiceProvider, ClusterConnectionLimitContext, int?> ClusterConnectionLimitResolver { get; set; }
 
     /// <summary>
     /// Enable MongoDB driver command monitoring. When enabled, driver-level command durations
@@ -69,4 +86,27 @@ public record MonitorOptions
     /// Should NOT be always-on in production due to volume.
     /// </summary>
     public bool EnableCommandMonitoring { get; set; }
+
+    /// <summary>
+    /// How much per-call data to record (see <see cref="CallRecordingLevel"/>). Recording is wasted work when
+    /// nothing consumes it, so the default <see cref="CallRecordingLevel.OnDemand"/> keeps the lightweight call
+    /// record always but builds the step timeline only while forwarding is on or a live viewer is attached. A
+    /// headless agent can drop to <see cref="CallRecordingLevel.WhenConsumed"/> to record nothing while idle.
+    /// </summary>
+    public CallRecordingLevel CallRecordingLevel { get; set; } = CallRecordingLevel.OnDemand;
+}
+
+/// <summary>
+/// The cluster a <see cref="MonitorOptions.ClusterConnectionLimitResolver"/> is being asked about.
+/// </summary>
+public sealed record ClusterConnectionLimitContext
+{
+    /// <summary>The cluster identity — the server host(s) connected to, e.g. <c>localhost:27017</c> or <c>cluster0.ab12.mongodb.net</c>.</summary>
+    public required string Cluster { get; init; }
+
+    /// <summary>True when the cluster looks like an Atlas deployment (host on <c>mongodb.net</c>); false for self-hosted / unknown.</summary>
+    public required bool IsAtlas { get; init; }
+
+    /// <summary>The configuration name(s) that route through this cluster.</summary>
+    public required IReadOnlyCollection<string> ConfigurationNames { get; init; }
 }

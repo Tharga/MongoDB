@@ -23,7 +23,24 @@ public class MonitorClientRegistrationTests
 
         services.AddMongoDbMonitorClient(EmptyConfiguration(), sendTo: "https://hub.example/monitor");
 
-        services.Should().Contain(d => d.ServiceType == typeof(IHostedService) && d.ImplementationType == typeof(MonitorForwarder));
+        // The forwarder is a singleton so the reset handler can resolve the running instance to
+        // re-send fresh collection info, and it runs as a hosted service off that same singleton.
+        services.Should().Contain(d => d.ServiceType == typeof(MonitorForwarder) && d.Lifetime == ServiceLifetime.Singleton);
+        services.Should().Contain(d => d.ServiceType == typeof(IHostedService) && d.ImplementationFactory != null);
+    }
+
+    [Fact]
+    public void OnServices_PreservesBuiltInSubscriptionStateChangedHandler()
+    {
+        var services = new ServiceCollection();
+
+        services.AddMongoDbMonitorClient(EmptyConfiguration(), sendTo: "https://hub.example/monitor");
+
+        var provider = services.BuildServiceProvider();
+        var handlerTypes = provider.GetRequiredService<Tharga.Communication.MessageHandler.IHandlerTypeService>();
+        handlerTypes.TryGetHandler(typeof(Tharga.Communication.Contract.SubscriptionStateChanged), out _)
+            .Should().BeTrue("the client must keep Tharga.Communication's built-in subscription handler, " +
+                             "otherwise HasSubscribers<T> never turns true and agents never send live (queue) data");
     }
 
     [Fact]

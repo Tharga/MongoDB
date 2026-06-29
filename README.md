@@ -741,7 +741,7 @@ Set `StorageMode` to control where the monitor keeps its state.
 }
 ```
 
-`ForwardCompletedCalls` (default `false`) and `QueueMetricInterval` apply to agents forwarding to a central monitor; `ClusterConnectionLimit` is read by the central server to show open connections against a cluster's limit. See [Centralised monitoring](#centralised-monitoring) and the [monitoring docs](https://github.com/Tharga/MongoDB/blob/master/docs/articles/monitoring.md).
+`ForwardCompletedCalls` (default `false`) and `QueueMetricInterval` apply to agents forwarding to a central monitor; `ClusterConnectionLimit` is read by the central server to show open connections against a cluster's limit (one value for every cluster). For mixed deployments — different Atlas tiers, or self-hosted — set `ClusterConnectionLimitResolver` in code (below) to resolve the limit per cluster instead. See [Centralised monitoring](#centralised-monitoring) and the [monitoring docs](https://github.com/Tharga/MongoDB/blob/master/docs/articles/monitoring.md).
 
 #### Configuration by code
 ```csharp
@@ -755,7 +755,18 @@ services.AddMongoDB(o =>
         SlowCallsToKeep = 200,
         ForwardCompletedCalls = false,        // opt-in: forward every completed call to the central monitor
         QueueMetricInterval = TimeSpan.FromSeconds(1),
-        ClusterConnectionLimit = 3000         // e.g. an Atlas tier's max connections (server-side)
+        // How much per-call data to record. OnDemand (default) keeps the lightweight call always but builds the
+        // step timeline only while consumed (forwarding on or a live viewer). WhenConsumed records nothing while
+        // idle — best for a headless agent. Full always records everything.
+        CallRecordingLevel = CallRecordingLevel.OnDemand,
+        // Capture driver command durations (the "Driver: … | Other: …" step breakdown). This is the startup
+        // default; the listener is always subscribed, so it can be toggled at runtime — locally via
+        // IDatabaseMonitor.SetCommandMonitoring, or per-agent from the Clients dialog (SetClientCommandMonitoringAsync).
+        EnableCommandMonitoring = false,
+        // Per-cluster connection limit (drives the "open / limit" bar). Resolve per cluster so mixed
+        // deployments — different Atlas tiers, or self-hosted — each show the right ceiling, or none:
+        ClusterConnectionLimitResolver = (sp, ctx) => ctx.IsAtlas ? 3000 : (int?)null
+        // ClusterConnectionLimit = 3000      // alternative: one limit for every cluster
     };
 });
 ```
@@ -959,7 +970,7 @@ app.MapGet("/api/monitor/pool", (IDatabaseMonitor m) => m.GetConnectionPoolState
 | `GetConnectionPoolState()` | `ConnectionPoolStateDto` | Aggregate queue depth, executing count, wait time, recent metrics |
 | `GetPerPoolQueueState()` | `IReadOnlyDictionary<string, ConnectionPoolStateDto>` | Queue/exec per connection pool (per cluster), across this process and all agents — one entry per source+pool, labelled by configuration |
 | `GetInFlightCalls()` | `InFlightCallInfo[]` | What the limiter is holding right now (queued vs executing) — for diagnosing a flood |
-| `GetClusterConnectionSummary()` | `ClusterConnectionSummary[]` | Open connections + capacity per cluster across all sources, vs the configured `ClusterConnectionLimit` |
+| `GetClusterConnectionSummary()` | `ClusterConnectionSummary[]` | Open connections + capacity per cluster across all sources, vs the configured `ClusterConnectionLimit`. Three-level breakdown: cluster (host) → pool (server-key) → source (process) |
 
 ---
 
@@ -1020,8 +1031,16 @@ Each tool/resource is tagged below with its required level. Anything above the c
 | `mongodb.get_document` | DataRead | `databaseName`, `collectionName`, `id`, optional `configurationName`; returns the raw document as MongoDB Extended JSON. `id` is auto-detected as Guid → ObjectId → string |
 | `mongodb.list_documents` | DataRead | `databaseName`, `collectionName`, optional `configurationName`, `limit` (default 20, max 200), `skip`, `filter` (JSON string), `sort` (JSON string `{"field":1}`); returns up to N raw documents |
 | `mongodb.compare_schema` | DataRead | `databaseName`, `collectionName`, optional `configurationName`, `sampleSize` (default 50, max 500); three-way diff between the C# entity properties, registered entity-type names, and the field set observed in sampled documents |
+| `mongodb.get_monitor_clients` | Metadata | (no args) connected monitoring agents with source, machine, version, connection state, and forwarding config |
+| `mongodb.get_per_pool_queue_state` | Metadata | (no args) live per-pool queue/executing state across this server and every reporting agent (keyed `{source}::{serverKey}`), plus active subscriptions |
+| `mongodb.get_client_communication` | Metadata | `sourceName`; recent inbound/outbound message log for one agent |
+| `mongodb.hold_live_subscription` | Metadata | `seconds` (default 5, max 60); opens a live-monitoring subscription for N seconds, then returns the per-pool queue state observed — drives queue-metric forwarding headlessly. Requires the monitor server |
 
 Providers are registered with `McpScope.System`, so they are only exposed on the system-level MCP endpoint.
+
+### Live-monitoring diagnostics
+
+Agents forward queue metrics only while a live subscriber is present (normally the **Calls → Queue** view). The monitoring tools above let an agent reproduce and observe that flow without a browser: `mongodb.hold_live_subscription` opens a subscription for N seconds (connected agents begin forwarding), then `mongodb.get_per_pool_queue_state` confirms the metrics arriving, while `mongodb.get_monitor_clients` / `mongodb.get_client_communication` show which agents are connected and the messages crossing the wire.
 
 ### Document inspection
 

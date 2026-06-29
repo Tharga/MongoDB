@@ -45,7 +45,9 @@ else
                 </RadzenStack>
             </RadzenColumn>
             }
-            @if (_databases.Length > 1)
+            @* Database is meaningless for the Queue view — pools are per configuration (per Atlas
+               cluster), and many databases share one pool — so only show it for the call lists. *@
+            @if (_databases.Length > 1 && SelectedTab != "Queue")
             {
             <RadzenColumn>
                 <RadzenStack Orientation="Orientation.Vertical">
@@ -124,6 +126,8 @@ else
 }
 
 @code {
+    [Parameter] public string InitialView { get; set; }
+
     private string[] _sources;
     private string[] _databases;
     private string[] _collections;
@@ -136,6 +140,7 @@ else
     private CallInfo[] _all;
     private bool _disposed;
 
+    private static readonly string[] ValidViews = ["Last", "Slow", "Ongoing", "Queue"];
     private string SelectedTab { get; set; } = "Last";
     private IEnumerable<string> SelectedSources { get; set; }
     private IEnumerable<string> SelectedDatabases { get; set; }
@@ -179,6 +184,8 @@ else
 
     protected override async Task OnInitializedAsync()
     {
+        if (InitialView != null && ValidViews.Contains(InitialView, StringComparer.OrdinalIgnoreCase))
+            SelectedTab = ValidViews.First(v => string.Equals(v, InitialView, StringComparison.OrdinalIgnoreCase));
         CallLibrary.CallChanged += OnCallChanged;
         await base.OnInitializedAsync();
     }

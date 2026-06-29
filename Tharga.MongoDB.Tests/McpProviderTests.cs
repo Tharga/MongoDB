@@ -26,8 +26,12 @@ public class McpProviderTests
         _contextMock.Setup(c => c.IsDeveloper).Returns(true);
     }
 
-    private MongoDbToolProvider CreateToolProvider(DataAccessLevel level = DataAccessLevel.DataReadWrite)
-        => new(_monitorMock.Object, new MongoDbMcpOptions { DataAccess = level });
+    private MongoDbToolProvider CreateToolProvider(DataAccessLevel level = DataAccessLevel.DataReadWrite, ILiveMonitoringSubscription liveSubscription = null)
+    {
+        var serviceProvider = new Mock<IServiceProvider>();
+        serviceProvider.Setup(s => s.GetService(typeof(ILiveMonitoringSubscription))).Returns(liveSubscription);
+        return new(_monitorMock.Object, new MongoDbMcpOptions { DataAccess = level }, serviceProvider.Object);
+    }
 
     private MongoDbResourceProvider CreateResourceProvider(DataAccessLevel level = DataAccessLevel.DataReadWrite)
         => new(_monitorMock.Object, new MongoDbMcpOptions { DataAccess = level });
@@ -136,9 +140,9 @@ public class McpProviderTests
     }
 
     [Theory]
-    [InlineData(DataAccessLevel.Metadata, 6)]
-    [InlineData(DataAccessLevel.DataRead, 11)]
-    [InlineData(DataAccessLevel.DataReadWrite, 12)]
+    [InlineData(DataAccessLevel.Metadata, 10)]
+    [InlineData(DataAccessLevel.DataRead, 15)]
+    [InlineData(DataAccessLevel.DataReadWrite, 16)]
     public async Task ToolProvider_ListTools_FiltersByAccessLevel(DataAccessLevel level, int expectedCount)
     {
         var provider = CreateToolProvider(level);
@@ -595,6 +599,182 @@ public class McpProviderTests
         await provider.CallToolAsync("mongodb.compare_schema", args, _contextMock.Object, CancellationToken.None);
 
         _monitorMock.Verify(m => m.CompareSchemaAsync(It.IsAny<CollectionInfo>(), 50, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    // ---------- Live monitoring diagnostics (new in this feature) ----------
+
+    [Fact]
+    public async Task ToolProvider_ListTools_AtMetadata_IncludesLiveMonitoringTools()
+    {
+        var provider = CreateToolProvider(DataAccessLevel.Metadata);
+        var tools = await provider.ListToolsAsync(_contextMock.Object, CancellationToken.None);
+
+        tools.Select(t => t.Name).Should().Contain([
+            "mongodb.get_monitor_clients",
+            "mongodb.get_per_pool_queue_state",
+            "mongodb.get_client_communication",
+            "mongodb.hold_live_subscription",
+        ]);
+    }
+
+    [Fact]
+    public async Task ToolProvider_GetMonitorClients_ReturnsClients()
+    {
+        _monitorMock.Setup(m => m.GetMonitorClients()).Returns([
+            new MonitorClientDto
+            {
+                Instance = Guid.NewGuid(),
+                ConnectionId = "conn-1",
+                Machine = "host-1",
+                Type = "ConsoleSample",
+                Version = "1.0.0",
+                IsConnected = true,
+                ConnectTime = DateTime.UtcNow,
+                SourceName = "ConsoleSample/Agent",
+            }
+        ]);
+
+        var provider = CreateToolProvider();
+        var args = JsonDocument.Parse("{}").RootElement;
+
+        var result = await provider.CallToolAsync("mongodb.get_monitor_clients", args, _contextMock.Object, CancellationToken.None);
+
+        result.IsError.Should().BeFalse();
+        var doc = JsonDocument.Parse(result.Content[0].Text);
+        doc.RootElement.GetProperty("count").GetInt32().Should().Be(1);
+        doc.RootElement.GetProperty("clients").GetArrayLength().Should().Be(1);
+        _monitorMock.Verify(m => m.GetMonitorClients(), Times.Once);
+    }
+
+    [Fact]
+    public async Task ToolProvider_GetPerPoolQueueState_ReturnsPoolsAndSubscriptions()
+    {
+        _monitorMock.Setup(m => m.GetPerPoolQueueState()).Returns(new Dictionary<string, ConnectionPoolStateDto>
+        {
+            ["agent::server-1"] = new ConnectionPoolStateDto
+            {
+                QueueCount = 3,
+                ExecutingCount = 1,
+                LastWaitTimeMs = 5,
+                RecentMetrics = [],
+                ConfigurationNames = ["Default"],
+                Label = "Default",
+            },
+        });
+        _monitorMock.Setup(m => m.GetSubscriptions()).Returns(new Dictionary<string, int>
+        {
+            ["Tharga.MongoDB.Monitor.Client.LiveMonitoringMarker"] = 1,
+        });
+
+        var provider = CreateToolProvider();
+        var args = JsonDocument.Parse("{}").RootElement;
+
+        var result = await provider.CallToolAsync("mongodb.get_per_pool_queue_state", args, _contextMock.Object, CancellationToken.None);
+
+        result.IsError.Should().BeFalse();
+        var doc = JsonDocument.Parse(result.Content[0].Text);
+        doc.RootElement.GetProperty("count").GetInt32().Should().Be(1);
+        doc.RootElement.GetProperty("pools").GetProperty("agent::server-1").GetProperty("QueueCount").GetInt32().Should().Be(3);
+        doc.RootElement.GetProperty("subscriptions").EnumerateObject().Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task ToolProvider_GetClientCommunication_ReturnsEvents()
+    {
+        _monitorMock.Setup(m => m.GetClientCommunication("ConsoleSample/Agent")).Returns([
+            new CommunicationEvent
+            {
+                Timestamp = DateTime.UtcNow,
+                Direction = CommunicationDirection.Outbound,
+                MessageType = "SubscriptionState",
+                Summary = "LiveMonitoring hasSubscribers=True",
+            }
+        ]);
+
+        var provider = CreateToolProvider();
+        var args = JsonDocument.Parse("""{"sourceName":"ConsoleSample/Agent"}""").RootElement;
+
+        var result = await provider.CallToolAsync("mongodb.get_client_communication", args, _contextMock.Object, CancellationToken.None);
+
+        result.IsError.Should().BeFalse();
+        var doc = JsonDocument.Parse(result.Content[0].Text);
+        doc.RootElement.GetProperty("sourceName").GetString().Should().Be("ConsoleSample/Agent");
+        doc.RootElement.GetProperty("count").GetInt32().Should().Be(1);
+        _monitorMock.Verify(m => m.GetClientCommunication("ConsoleSample/Agent"), Times.Once);
+    }
+
+    [Fact]
+    public async Task ToolProvider_HoldLiveSubscription_WithoutMonitorServer_ReturnsError()
+    {
+        var provider = CreateToolProvider(liveSubscription: null);
+        var args = JsonDocument.Parse("""{"seconds":1}""").RootElement;
+
+        var result = await provider.CallToolAsync("mongodb.hold_live_subscription", args, _contextMock.Object, CancellationToken.None);
+
+        result.IsError.Should().BeTrue();
+        result.Content[0].Text.Should().Contain("not available");
+    }
+
+    [Fact]
+    public async Task ToolProvider_HoldLiveSubscription_SubscribesAndDisposes_ThenSnapshotsState()
+    {
+        var fakeSubscription = new FakeLiveSubscription();
+        _monitorMock.Setup(m => m.GetPerPoolQueueState()).Returns(new Dictionary<string, ConnectionPoolStateDto>());
+        _monitorMock.Setup(m => m.GetMonitorClients()).Returns(Array.Empty<MonitorClientDto>());
+
+        var provider = CreateToolProvider(liveSubscription: fakeSubscription);
+        var args = JsonDocument.Parse("""{"seconds":1}""").RootElement;
+
+        var result = await provider.CallToolAsync("mongodb.hold_live_subscription", args, _contextMock.Object, CancellationToken.None);
+
+        result.IsError.Should().BeFalse();
+        fakeSubscription.SubscribeCount.Should().Be(1);
+        fakeSubscription.Disposed.Should().BeTrue("the subscription must be released after the hold window");
+        var doc = JsonDocument.Parse(result.Content[0].Text);
+        doc.RootElement.GetProperty("heldSeconds").GetInt32().Should().Be(1);
+    }
+
+    [Fact]
+    public async Task ToolProvider_HoldLiveSubscription_ClampsSecondsToMax()
+    {
+        var fakeSubscription = new FakeLiveSubscription();
+        _monitorMock.Setup(m => m.GetPerPoolQueueState()).Returns(new Dictionary<string, ConnectionPoolStateDto>());
+        _monitorMock.Setup(m => m.GetMonitorClients()).Returns(Array.Empty<MonitorClientDto>());
+
+        var provider = CreateToolProvider(liveSubscription: fakeSubscription);
+        // 0 is below the floor and must clamp up to 1 (we assert the floor, not the 60s ceiling, to keep the test fast).
+        var args = JsonDocument.Parse("""{"seconds":0}""").RootElement;
+
+        var result = await provider.CallToolAsync("mongodb.hold_live_subscription", args, _contextMock.Object, CancellationToken.None);
+
+        result.IsError.Should().BeFalse();
+        var doc = JsonDocument.Parse(result.Content[0].Text);
+        doc.RootElement.GetProperty("heldSeconds").GetInt32().Should().Be(1);
+    }
+
+    private sealed class FakeLiveSubscription : ILiveMonitoringSubscription
+    {
+        public int SubscribeCount { get; private set; }
+        public bool Disposed { get; private set; }
+
+        public Task<IAsyncDisposable> SubscribeAsync()
+        {
+            SubscribeCount++;
+            return Task.FromResult<IAsyncDisposable>(new Handle(this));
+        }
+
+        public IReadOnlyDictionary<string, int> GetSubscriptions() => new Dictionary<string, int>();
+
+        private sealed class Handle : IAsyncDisposable
+        {
+            private readonly FakeLiveSubscription _owner;
+            public Handle(FakeLiveSubscription owner) => _owner = owner;
+            public ValueTask DisposeAsync()
+            {
+                _owner.Disposed = true;
+                return ValueTask.CompletedTask;
+            }
+        }
     }
 
     // ---------- Helpers ----------

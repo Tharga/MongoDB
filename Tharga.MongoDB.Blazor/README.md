@@ -41,10 +41,11 @@ Then drop the components onto a Blazor page — they auto-discover the monitor v
 ## Components
 
 - **`<MonitorToolbar />`** — top-bar controls: configuration switcher, reset calls, reset cache.
-- **`<CollectionView />`** — table of every registered collection with status, document count, indexes, and per-collection drill-down dialog.
+- **`<CollectionView />`** — table of every registered collection with status, document count, indexes, and per-collection drill-down dialog. The Source column shows which sources have accessed each collection; hover it for the full set with access to the same physical database (server + database name) — including sources that could reach it via a different configuration — with a `(+N)` hint when there are more than have accessed it.
 - **`<CallView />`** — every database call captured by the monitor, with filter, sort, explain plan, and timing.
 - **`<ClientsView />`** — connected monitoring agents. Useful with `Tharga.MongoDB.Monitor.Server` when aggregating multiple agents; shows each agent's forwarding config (call-forwarding on/off, queue interval, storage mode).
-- **`<QueueView />`** — execute-limiter queue/exec and depth/wait graphs **per connection pool** (one line per cluster, labelled by configuration, across local + remote sources), plus per-cluster open-connection totals vs a configured limit (`Monitor.ClusterConnectionLimit`).
+- **`<QueueView />`** — a cluster → pool → source breakdown of open connections (summed per cluster vs each cluster's limit), with queue/executing folded in, plus depth/wait graphs with **one line per pool** (matching colours, no legend — the cards are the key).
+- **`<ClusterConfigView />`** — edit per-cluster settings at runtime: connection limit (Atlas tier picker or manual), display alias, and bar warn/danger thresholds. Persisted centrally (shared across instances) and read by `<QueueView />`.
 - **`<ConfigurationsSelector />`** — switch between configured `ConnectionStrings` entries when an app talks to multiple clusters.
 
 The package is built on Radzen.Blazor — the same components and theming as the rest of your Radzen app.

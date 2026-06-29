@@ -49,7 +49,6 @@ internal class ExternalIpAddressService : IExternalIpAddressService
                 }
                 catch (Exception)
                 {
-                    Debugger.Break();
                     throw;
                 }
             }

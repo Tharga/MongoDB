@@ -1,0 +1,134 @@
+@using Tharga.MongoDB
+@inject IDatabaseMonitor DatabaseMonitor
+@inject IClusterConfigStore ConfigStore
+
+<RadzenStack Orientation="Orientation.Vertical" Gap="12px">
+    <RadzenText TextStyle="TextStyle.Subtitle1" Text="Cluster configuration" />
+    <RadzenText TextStyle="TextStyle.Caption"
+                Text="Per-cluster settings used by the Queue view. For Atlas clusters pick a tier to fill the connection limit; for self-hosted set it manually (or leave blank for no limit). Saved centrally and shared across instances." />
+
+    @if (_rows.Count == 0)
+    {
+        <RadzenText TextStyle="TextStyle.Body2" Text="No clusters discovered yet — access a database (or connect an agent) so a cluster appears here." />
+    }
+
+    @foreach (var row in _rows)
+    {
+        <RadzenCard>
+            <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="6px" Style="margin-bottom:8px;">
+                <RadzenText TextStyle="TextStyle.Subtitle2" Text="@row.Cluster" Style="margin:0;" />
+                <RadzenBadge BadgeStyle="@(row.IsAtlas ? BadgeStyle.Info : BadgeStyle.Light)" Text="@(row.IsAtlas ? "Atlas" : "self-hosted")" />
+            </RadzenStack>
+
+            <RadzenStack Orientation="Orientation.Horizontal" Gap="16px" Style="flex-wrap:wrap; align-items:flex-end;">
+                <div>
+                    <RadzenText TextStyle="TextStyle.Caption" Text="Alias" Style="margin:0;" />
+                    <RadzenTextBox @bind-Value="row.Alias" Placeholder="@row.Cluster" Style="width:200px;" />
+                </div>
+                <div>
+                    <RadzenText TextStyle="TextStyle.Caption" Text="Atlas tier" Style="margin:0;" />
+                    <RadzenDropDown @bind-Value="row.Tier" Data="_tiers" AllowClear="true" Placeholder="(none)" Style="width:120px;" Change="@(_ => OnTierChanged(row))" />
+                </div>
+                <div>
+                    <RadzenText TextStyle="TextStyle.Caption" Text="Limit" Style="margin:0;" />
+                    <RadzenNumeric @bind-Value="row.Limit" Min="0" Disabled="@(!string.IsNullOrEmpty(row.Tier))" Placeholder="none" Style="width:110px;" />
+                </div>
+                <div>
+                    <RadzenText TextStyle="TextStyle.Caption" Text="Warn %" Style="margin:0;" />
+                    <RadzenNumeric @bind-Value="row.WarnPct" Min="0" Max="100" Placeholder="75" Style="width:90px;" />
+                </div>
+                <div>
+                    <RadzenText TextStyle="TextStyle.Caption" Text="Danger %" Style="margin:0;" />
+                    <RadzenNumeric @bind-Value="row.DangerPct" Min="0" Max="100" Placeholder="90" Style="width:90px;" />
+                </div>
+                <RadzenButton Text="@(row.Saved ? "Saved" : "Save")" Icon="save" ButtonStyle="ButtonStyle.Primary"
+                              Disabled="@row.Saving" Click="@(() => SaveAsync(row))" />
+            </RadzenStack>
+            <RadzenText TextStyle="TextStyle.Caption" Style="margin-top:4px; opacity:0.7;"
+                        Text="@EffectiveText(row)" />
+        </RadzenCard>
+    }
+</RadzenStack>
+
+@code {
+    private readonly List<Row> _rows = new();
+    private readonly string[] _tiers = AtlasTier.Names.ToArray();
+
+    protected override void OnInitialized() => Reload();
+
+    public void Reload()
+    {
+        _rows.Clear();
+
+        // Clusters currently visible to the monitor, unioned with any previously-saved clusters.
+        var clusters = DatabaseMonitor.GetClusterConnectionSummary()
+            .Select(c => (c.Cluster, c.IsAtlas))
+            .ToList();
+        var known = new HashSet<string>(clusters.Select(c => c.Cluster), StringComparer.Ordinal);
+        foreach (var e in ConfigStore.GetAll())
+            if (known.Add(e.Cluster))
+                clusters.Add((e.Cluster, MongoDbCluster.IsAtlas(e.Cluster)));
+
+        foreach (var (cluster, isAtlas) in clusters.OrderBy(c => c.Cluster, StringComparer.Ordinal))
+        {
+            var cfg = ConfigStore.Get(cluster);
+            _rows.Add(new Row
+            {
+                Cluster = cluster,
+                IsAtlas = isAtlas,
+                Alias = cfg?.Alias,
+                Tier = cfg?.Tier,
+                Limit = cfg?.Limit,
+                WarnPct = cfg?.WarnThreshold is { } w ? Math.Round(w * 100) : (double?)null,
+                DangerPct = cfg?.DangerThreshold is { } d ? Math.Round(d * 100) : (double?)null,
+            });
+        }
+    }
+
+    private static void OnTierChanged(Row row)
+    {
+        // When a tier is chosen, the manual limit is ignored (shown disabled); clear it for clarity.
+        if (!string.IsNullOrEmpty(row.Tier)) row.Limit = null;
+    }
+
+    private async Task SaveAsync(Row row)
+    {
+        row.Saving = true;
+        try
+        {
+            await ConfigStore.SetAsync(new ClusterConfigEntry
+            {
+                Cluster = row.Cluster,
+                Alias = string.IsNullOrWhiteSpace(row.Alias) ? null : row.Alias.Trim(),
+                Tier = string.IsNullOrEmpty(row.Tier) ? null : row.Tier,
+                Limit = string.IsNullOrEmpty(row.Tier) ? row.Limit : null,
+                WarnThreshold = row.WarnPct.HasValue ? row.WarnPct.Value / 100.0 : null,
+                DangerThreshold = row.DangerPct.HasValue ? row.DangerPct.Value / 100.0 : null,
+            });
+            row.Saved = true;
+        }
+        finally
+        {
+            row.Saving = false;
+        }
+    }
+
+    private static string EffectiveText(Row row)
+    {
+        var limit = AtlasTier.LimitFor(row.Tier) ?? row.Limit;
+        return limit.HasValue ? $"Effective limit: {limit.Value:N0} connections" : "No limit set — the Queue view shows the open total without a bar.";
+    }
+
+    private sealed class Row
+    {
+        public string Cluster;
+        public bool IsAtlas;
+        public string Alias;
+        public string Tier;
+        public int? Limit;
+        public double? WarnPct;
+        public double? DangerPct;
+        public bool Saving;
+        public bool Saved;
+    }
+}

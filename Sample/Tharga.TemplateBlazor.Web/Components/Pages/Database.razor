@@ -1,4 +1,7 @@
 @page "/database"
+@using Tharga.Blazor.Framework.Buttons
+@using Tharga.TemplateBlazor.Web.Features.ClusterDemo
+@inject ClusterConnectionDemo ClusterDemo
 
 <RadzenCard Style="margin-bottom: 6px;">
     <Tharga.MongoDB.Blazor.MonitorToolbar OnCallsReset="OnCallsReset" OnCacheReset="OnCacheReset" />
@@ -15,12 +18,44 @@
         <RadzenTabsItem Text="Clients">
             <Tharga.MongoDB.Blazor.ClientsView />
         </RadzenTabsItem>
+        <RadzenTabsItem Text="Queue">
+            <RadzenCard Style="margin-bottom: 12px;">
+                <RadzenText TextStyle="TextStyle.Subtitle2" Text="Open demo connections" />
+                <RadzenText TextStyle="TextStyle.Caption"
+                            Text="All three configs hit the one local mongod. Core & Reporting are the same cluster (localhost:27017) as two pools (Core max 10, Reporting max 5); Archive (127.0.0.1, max 8) is a separate cluster. Pool sizes are set via the connection strings, so even a modest burst saturates them — watch open connections pin at the cap and a real queue form. Reads only. Run the ConsoleSample agent to add a second source to the localhost cluster." />
+                <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="8px" Style="margin-top: 8px; flex-wrap: wrap;">
+                    <RadzenText TextStyle="TextStyle.Caption" Text="Concurrent reads" Style="margin:0;" />
+                    <RadzenNumeric @bind-Value="_burstCount" Min="1" Max="1000" Style="width: 100px;" />
+                    <StandardButton Text="Burst all clusters" Click="@(() => Burst(null))" />
+                    @foreach (var cfg in ClusterConnectionDemo.Configurations)
+                    {
+                        var c = cfg;
+                        <StandardButton Text="@($"Burst {c}")" Click="@(() => Burst(c))" />
+                    }
+                </RadzenStack>
+            </RadzenCard>
+            <Tharga.MongoDB.Blazor.QueueView />
+        </RadzenTabsItem>
+        <RadzenTabsItem Text="Config">
+            <Tharga.MongoDB.Blazor.ClusterConfigView />
+        </RadzenTabsItem>
     </Tabs>
 </RadzenTabs>
 
 @code {
     private Tharga.MongoDB.Blazor.CollectionView _collectionView;
     private Tharga.MongoDB.Blazor.CallView _callView;
+
+    private int _burstCount = 50;
+
+    private async Task Burst(string configurationName)
+    {
+        var concurrency = _burstCount;
+        if (configurationName == null)
+            await ClusterDemo.BurstAllAsync(concurrency);
+        else
+            await ClusterDemo.BurstAsync(configurationName, concurrency);
+    }
 
     private async Task OnCallsReset()
     {

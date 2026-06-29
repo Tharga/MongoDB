@@ -194,15 +194,80 @@ public sealed class ExplainHandler : SendMessageHandlerBase<ExplainRequest, Expl
 public sealed class ResetCacheHandler : PostMessageHandlerBase<ResetCacheRequest>
 {
     private readonly IDatabaseMonitor _monitor;
+    private readonly IServiceProvider _serviceProvider;
 
-    public ResetCacheHandler(IDatabaseMonitor monitor)
+    public ResetCacheHandler(IDatabaseMonitor monitor, IServiceProvider serviceProvider)
     {
         _monitor = monitor;
+        _serviceProvider = serviceProvider;
     }
 
     public override async Task Handle(ResetCacheRequest message)
     {
         await _monitor.ResetAsync();
+
+        // Re-report fresh collection info so the server rebuilds its remote view immediately,
+        // rather than waiting for each collection to be accessed again.
+        if (_serviceProvider.GetService(typeof(MonitorForwarder)) is MonitorForwarder forwarder)
+            await forwarder.ResendCollectionInfoAsync();
+    }
+}
+
+/// <summary>
+/// Handles set-call-forwarding requests from the central server by toggling the local forwarder.
+/// </summary>
+public sealed class SetCallForwardingHandler : SendMessageHandlerBase<SetCallForwardingRequest, SetCallForwardingResponse>
+{
+    private readonly IServiceProvider _serviceProvider;
+
+    public SetCallForwardingHandler(IServiceProvider serviceProvider)
+    {
+        _serviceProvider = serviceProvider;
+    }
+
+    public override async Task<SetCallForwardingResponse> Handle(SetCallForwardingRequest message)
+    {
+        try
+        {
+            if (_serviceProvider.GetService(typeof(MonitorForwarder)) is not MonitorForwarder forwarder)
+                return new SetCallForwardingResponse { Error = "Call forwarding is not available on this agent." };
+
+            var state = await forwarder.SetCallForwardingAsync(message.Enabled);
+            return new SetCallForwardingResponse { Success = true, ForwardCompletedCalls = state };
+        }
+        catch (Exception e)
+        {
+            return new SetCallForwardingResponse { Error = e.Message };
+        }
+    }
+}
+
+/// <summary>
+/// Handles a set-command-monitoring request from the central server by toggling capture on this agent.
+/// </summary>
+public sealed class SetCommandMonitoringHandler : SendMessageHandlerBase<SetCommandMonitoringRequest, SetCommandMonitoringResponse>
+{
+    private readonly IServiceProvider _serviceProvider;
+
+    public SetCommandMonitoringHandler(IServiceProvider serviceProvider)
+    {
+        _serviceProvider = serviceProvider;
+    }
+
+    public override async Task<SetCommandMonitoringResponse> Handle(SetCommandMonitoringRequest message)
+    {
+        try
+        {
+            if (_serviceProvider.GetService(typeof(MonitorForwarder)) is not MonitorForwarder forwarder)
+                return new SetCommandMonitoringResponse { Error = "Command monitoring is not available on this agent." };
+
+            var state = await forwarder.SetCommandMonitoringAsync(message.Enabled);
+            return new SetCommandMonitoringResponse { Success = true, EnableCommandMonitoring = state };
+        }
+        catch (Exception e)
+        {
+            return new SetCommandMonitoringResponse { Error = e.Message };
+        }
     }
 }
 

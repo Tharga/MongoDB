@@ -154,7 +154,7 @@ public class MonitorServerPipelineTests
 
         public IngestOnlyMonitor(CallLibrary callLibrary) => _callLibrary = callLibrary;
 
-        public void IngestCall(CallDto call)
+        public void IngestCall(CallDto call, string connectionId = null)
         {
             Enum.TryParse<Disk.Operation>(call.Operation, out var operation);
             var callInfo = new CallInfo
@@ -196,6 +196,7 @@ public class MonitorServerPipelineTests
         public Task<IndexAssureSummary> RestoreAllIndicesAsync(Func<CollectionInfo, bool> filter = null, IProgress<IndexAssureProgress> progress = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<System.Collections.Generic.IEnumerable<string[]>> GetIndexBlockersAsync(CollectionInfo collectionInfo, string indexName) => throw new NotImplementedException();
         public Task<CleanInfo> CleanAsync(CollectionInfo collectionInfo, bool cleanGuids) => throw new NotImplementedException();
+        public bool CanExecuteActions(CollectionInfo collectionInfo) => throw new NotImplementedException();
         public Task<DocumentDto> GetDocumentAsync(CollectionInfo collectionInfo, string idRaw, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<DocumentListDto> ListDocumentsAsync(CollectionInfo collectionInfo, DocumentListQuery query, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<SchemaComparisonDto> CompareSchemaAsync(CollectionInfo collectionInfo, int sampleSize, CancellationToken cancellationToken = default) => throw new NotImplementedException();
@@ -212,16 +213,23 @@ public class MonitorServerPipelineTests
         public event EventHandler MonitorClientsChanged { add { } remove { } }
         public System.Collections.Generic.IEnumerable<MonitorClientDto> GetMonitorClients() => throw new NotImplementedException();
         public MonitorClientDetail GetMonitorClientDetail(string sourceName, int recentCallLimit = 20) => throw new NotImplementedException();
+        public System.Collections.Generic.IReadOnlyList<CommunicationEvent> GetClientCommunication(string sourceName) => throw new NotImplementedException();
+        public void RecordClientCommunication(string sourceName, CommunicationDirection direction, string messageType, string summary) => throw new NotImplementedException();
         public System.Collections.Generic.IReadOnlyList<CollectionInfo> GetCollectionsWithFailedIndices() => throw new NotImplementedException();
         public void IngestClientConnected(MonitorClientDto client) => throw new NotImplementedException();
-        public void IngestClientStatus(string sourceName, MonitorClientStatus status) => throw new NotImplementedException();
+        public void IngestClientStatus(string sourceName, MonitorClientStatus status, string connectionId = null) => throw new NotImplementedException();
+        public Task<bool> SetClientCallForwardingAsync(string sourceName, bool enabled, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public bool CommandMonitoringEnabled => false;
+        public void SetCommandMonitoring(bool enabled) { }
+        public Task<bool> SetClientCommandMonitoringAsync(string sourceName, bool enabled, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public void IngestClientDisconnected(string connectionId) => throw new NotImplementedException();
         public void IngestCollectionInfo(RemoteCollectionInfoDto collectionInfo, string connectionId = null) => throw new NotImplementedException();
+        public void IngestCollectionDropped(string sourceName, string configurationName, string databaseName, string collectionName, string connectionId = null) => throw new NotImplementedException();
         public System.Collections.Generic.IReadOnlyCollection<string> GetCollectionSources(string fingerprintKey) => throw new NotImplementedException();
         public string FindConnectionIdBySource(string sourceName) => null;
         public System.Collections.Generic.IReadOnlyDictionary<string, int> GetSubscriptions() => new System.Collections.Generic.Dictionary<string, int>();
-        public void IngestQueueMetric(string sourceName, int queueCount, int executingCount, double? waitTimeMs) { }
-        public void IngestQueueMetric(string sourceName, System.Collections.Generic.IReadOnlyList<PoolMetricDto> pools) { }
+        public void IngestQueueMetric(string sourceName, int queueCount, int executingCount, double? waitTimeMs, string connectionId = null) { }
+        public void IngestQueueMetric(string sourceName, System.Collections.Generic.IReadOnlyList<PoolMetricDto> pools, string connectionId = null) { }
         public System.Collections.Generic.IReadOnlyDictionary<string, ConnectionPoolStateDto> GetPerPoolQueueState() => new System.Collections.Generic.Dictionary<string, ConnectionPoolStateDto>();
         public System.Collections.Generic.IReadOnlyList<InFlightCallInfo> GetInFlightCalls() => System.Array.Empty<InFlightCallInfo>();
         public System.Collections.Generic.IReadOnlyList<ClusterConnectionSummary> GetClusterConnectionSummary() => System.Array.Empty<ClusterConnectionSummary>();

@@ -33,10 +33,28 @@ builder.AddMongoDB(o =>
     o.DefaultConfigurationName = "Core";
     o.AssureIndex = AssureIndexMode.BySchema;
     o.Monitor.StorageMode = MonitorStorageMode.Database;
-    o.Monitor.EnableCommandMonitoring = true;
+    o.Monitor.EnableCommandMonitoring = false;
+    // Per-cluster connection limit drives the "X / limit" bar in the Queue view. We leave the resolver unset,
+    // so the built-in store-backed default is used: set each cluster's limit/tier/alias/thresholds at runtime
+    // in the "Config" tab (ClusterConfigView). A real app could instead set its own resolver here (e.g. mapping
+    // Atlas tiers via ctx.IsAtlas, or reading a value an external Quilt4Net poller updates).
 });
 
 builder.AddMongoDbMonitorServer(_ => { });
+
+// Demo helper for the Queue view: opens connections across several configs/clusters (see the class docs).
+builder.Services.AddScoped<Tharga.TemplateBlazor.Web.Features.ClusterDemo.ClusterConnectionDemo>();
+
+// Sample diagnostic file log. Tharga.* at Trace so the full monitor/communication flow is captured.
+var serverLogPath = Path.Combine(Path.GetTempPath(), "tharga-monitor-server.log");
+builder.Logging.AddProvider(new Tharga.TemplateBlazor.Web.FileLoggerProvider(serverLogPath));
+builder.Logging.AddFilter<Tharga.TemplateBlazor.Web.FileLoggerProvider>(null, LogLevel.Information);
+builder.Logging.AddFilter<Tharga.TemplateBlazor.Web.FileLoggerProvider>("Tharga", LogLevel.Trace);
+// Tharga.Communication logs every forwarded message at Trace (one per second per agent); keep it at
+// Debug so the per-message flood stays out of the log while Tharga.MongoDB.* remains at Trace.
+builder.Logging.AddFilter<Tharga.TemplateBlazor.Web.FileLoggerProvider>("Tharga.Communication", LogLevel.Debug);
+builder.Logging.AddFilter<Tharga.TemplateBlazor.Web.FileLoggerProvider>("Microsoft", LogLevel.Warning);
+Console.WriteLine($"[sample] File logging to {serverLogPath}");
 
 builder.Services.AddThargaMcp(mcp =>
 {

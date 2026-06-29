@@ -25,6 +25,13 @@ public sealed class MongoDbToolProvider : IMcpToolProvider
     private const string GetDocumentToolName = "mongodb.get_document";
     private const string ListDocumentsToolName = "mongodb.list_documents";
     private const string CompareSchemaToolName = "mongodb.compare_schema";
+    private const string GetMonitorClientsToolName = "mongodb.get_monitor_clients";
+    private const string GetPerPoolQueueStateToolName = "mongodb.get_per_pool_queue_state";
+    private const string GetClientCommunicationToolName = "mongodb.get_client_communication";
+    private const string HoldLiveSubscriptionToolName = "mongodb.hold_live_subscription";
+
+    private const int DefaultHoldSeconds = 5;
+    private const int MaxHoldSeconds = 60;
 
     private static readonly JsonElement CollectionArgSchema = JsonSerializer.Deserialize<JsonElement>("""
         {
@@ -101,6 +108,25 @@ public sealed class MongoDbToolProvider : IMcpToolProvider
         {
           "type": "object",
           "properties": {}
+        }
+        """);
+
+    private static readonly JsonElement GetClientCommunicationArgSchema = JsonSerializer.Deserialize<JsonElement>("""
+        {
+          "type": "object",
+          "properties": {
+            "sourceName": { "type": "string", "description": "The agent source name (as reported by get_monitor_clients)." }
+          },
+          "required": ["sourceName"]
+        }
+        """);
+
+    private static readonly JsonElement HoldLiveSubscriptionArgSchema = JsonSerializer.Deserialize<JsonElement>("""
+        {
+          "type": "object",
+          "properties": {
+            "seconds": { "type": "integer", "description": "How long to hold the live subscription before snapshotting (default 5, capped at 60)." }
+          }
         }
         """);
 
@@ -220,6 +246,30 @@ public sealed class MongoDbToolProvider : IMcpToolProvider
             Description = "Three-way diff between the C# entity properties, registered entity-type names, and the field set observed in sampled documents. Useful for schema-drift diagnosis (DataRead — samples real docs).",
             InputSchema = CompareSchemaArgSchema,
         },
+        new McpToolDescriptor
+        {
+            Name = GetMonitorClientsToolName,
+            Description = "List monitoring agents known to this server (source, machine, type, version, connection state, forwarding config, last queue/exec counts). Metadata only.",
+            InputSchema = EmptyArgSchema,
+        },
+        new McpToolDescriptor
+        {
+            Name = GetPerPoolQueueStateToolName,
+            Description = "Current per-connection-pool queue state across this server and every reporting agent. One entry per {source}::{serverKey} with queue/executing counts, wait time, and configuration names. Use this to verify live queue metrics are flowing from agents. Metadata only.",
+            InputSchema = EmptyArgSchema,
+        },
+        new McpToolDescriptor
+        {
+            Name = GetClientCommunicationToolName,
+            Description = "Recent inbound/outbound communication log for one agent source (message type, direction, summary, timestamp). Useful for diagnosing whether subscription-state and queue-metric messages are crossing the wire. Metadata only.",
+            InputSchema = GetClientCommunicationArgSchema,
+        },
+        new McpToolDescriptor
+        {
+            Name = HoldLiveSubscriptionToolName,
+            Description = "Open a live-monitoring subscription for N seconds (default 5, max 60), then return the per-pool queue state and active subscriptions observed. Drives the live-data flow headlessly so connected agents start forwarding queue metrics without a browser open on the Queue view. Requires the monitor server to be installed. Metadata only.",
+            InputSchema = HoldLiveSubscriptionArgSchema,
+        },
     ];
 
     private static readonly IReadOnlyDictionary<string, DataAccessLevel> ToolLevels =
@@ -237,15 +287,21 @@ public sealed class MongoDbToolProvider : IMcpToolProvider
             [GetDocumentToolName] = DataAccessLevel.DataRead,
             [ListDocumentsToolName] = DataAccessLevel.DataRead,
             [CompareSchemaToolName] = DataAccessLevel.DataRead,
+            [GetMonitorClientsToolName] = DataAccessLevel.Metadata,
+            [GetPerPoolQueueStateToolName] = DataAccessLevel.Metadata,
+            [GetClientCommunicationToolName] = DataAccessLevel.Metadata,
+            [HoldLiveSubscriptionToolName] = DataAccessLevel.Metadata,
         };
 
     private readonly IDatabaseMonitor _monitor;
     private readonly MongoDbMcpOptions _options;
+    private readonly IServiceProvider _serviceProvider;
 
-    public MongoDbToolProvider(IDatabaseMonitor monitor, MongoDbMcpOptions options)
+    public MongoDbToolProvider(IDatabaseMonitor monitor, MongoDbMcpOptions options, IServiceProvider serviceProvider)
     {
         _monitor = monitor;
         _options = options;
+        _serviceProvider = serviceProvider;
     }
 
     public McpScope Scope => McpScope.System;
@@ -285,6 +341,10 @@ public sealed class MongoDbToolProvider : IMcpToolProvider
                 GetDocumentToolName => await GetDocumentAsync(arguments, cancellationToken),
                 ListDocumentsToolName => await ListDocumentsAsync(arguments, cancellationToken),
                 CompareSchemaToolName => await CompareSchemaAsync(arguments, cancellationToken),
+                GetMonitorClientsToolName => GetMonitorClients(),
+                GetPerPoolQueueStateToolName => GetPerPoolQueueState(),
+                GetClientCommunicationToolName => GetClientCommunication(arguments),
+                HoldLiveSubscriptionToolName => await HoldLiveSubscriptionAsync(arguments, cancellationToken),
                 _ => Error($"Unknown tool: {toolName}"),
             };
         }
@@ -472,6 +532,64 @@ public sealed class MongoDbToolProvider : IMcpToolProvider
             sampledCount = result.SampledCount,
             entityTypes = result.EntityTypes,
             fields = result.Fields,
+        });
+    }
+
+    private McpToolResult GetMonitorClients()
+    {
+        var clients = _monitor.GetMonitorClients().ToArray();
+        return Ok(new
+        {
+            count = clients.Length,
+            clients,
+        });
+    }
+
+    private McpToolResult GetPerPoolQueueState()
+    {
+        var state = _monitor.GetPerPoolQueueState();
+        return Ok(new
+        {
+            count = state.Count,
+            pools = state,
+            subscriptions = _monitor.GetSubscriptions(),
+        });
+    }
+
+    private McpToolResult GetClientCommunication(JsonElement arguments)
+    {
+        var sourceName = arguments.GetProperty("sourceName").GetString();
+        if (string.IsNullOrWhiteSpace(sourceName)) return Error("sourceName is required.");
+
+        var events = _monitor.GetClientCommunication(sourceName);
+        return Ok(new
+        {
+            sourceName,
+            count = events.Count,
+            events,
+        });
+    }
+
+    private async Task<McpToolResult> HoldLiveSubscriptionAsync(JsonElement arguments, CancellationToken cancellationToken)
+    {
+        if (_serviceProvider.GetService(typeof(ILiveMonitoringSubscription)) is not ILiveMonitoringSubscription subscription)
+            return Error("Live monitoring is not available — the monitor server (AddMongoDbMonitorServer) is not installed in this process.");
+
+        var seconds = arguments.TryGetProperty("seconds", out var s) && s.ValueKind == JsonValueKind.Number ? s.GetInt32() : DefaultHoldSeconds;
+        seconds = Math.Clamp(seconds, 1, MaxHoldSeconds);
+
+        await using (await subscription.SubscribeAsync())
+        {
+            await Task.Delay(TimeSpan.FromSeconds(seconds), cancellationToken);
+        }
+
+        var state = _monitor.GetPerPoolQueueState();
+        return Ok(new
+        {
+            heldSeconds = seconds,
+            poolCount = state.Count,
+            pools = state,
+            clients = _monitor.GetMonitorClients().ToArray(),
         });
     }
 

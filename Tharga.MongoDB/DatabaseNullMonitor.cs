@@ -65,6 +65,11 @@ internal class DatabaseNullMonitor : IDatabaseMonitor
         return Task.FromResult<CleanInfo>(null);
     }
 
+    public bool CanExecuteActions(CollectionInfo collectionInfo)
+    {
+        return false;
+    }
+
     public Task<DocumentDto> GetDocumentAsync(CollectionInfo collectionInfo, string idRaw, CancellationToken cancellationToken = default)
     {
         return Task.FromResult<DocumentDto>(null);
@@ -96,7 +101,7 @@ internal class DatabaseNullMonitor : IDatabaseMonitor
         yield break;
     }
 
-    public void IngestCall(CallDto call) { }
+    public void IngestCall(CallDto call, string connectionId = null) { }
 
     public IEnumerable<MonitorClientDto> GetMonitorClients() { yield break; }
 
@@ -104,13 +109,27 @@ internal class DatabaseNullMonitor : IDatabaseMonitor
 
     public MonitorClientDetail GetMonitorClientDetail(string sourceName, int recentCallLimit = 20) => null;
 
+    public IReadOnlyList<CommunicationEvent> GetClientCommunication(string sourceName) => [];
+
+    public void RecordClientCommunication(string sourceName, CommunicationDirection direction, string messageType, string summary) { }
+
     public void IngestClientConnected(MonitorClientDto client) { }
 
-    public void IngestClientStatus(string sourceName, MonitorClientStatus status) { }
+    public void IngestClientStatus(string sourceName, MonitorClientStatus status, string connectionId = null) { }
+
+    public Task<bool> SetClientCallForwardingAsync(string sourceName, bool enabled, CancellationToken cancellationToken = default) => Task.FromResult(false);
+
+    public bool CommandMonitoringEnabled => false;
+
+    public void SetCommandMonitoring(bool enabled) { }
+
+    public Task<bool> SetClientCommandMonitoringAsync(string sourceName, bool enabled, CancellationToken cancellationToken = default) => Task.FromResult(false);
 
     public void IngestClientDisconnected(string connectionId) { }
 
     public void IngestCollectionInfo(RemoteCollectionInfoDto collectionInfo, string connectionId = null) { }
+
+    public void IngestCollectionDropped(string sourceName, string configurationName, string databaseName, string collectionName, string connectionId = null) { }
 
     public IReadOnlyCollection<string> GetCollectionSources(string fingerprintKey) => [];
 
@@ -118,9 +137,9 @@ internal class DatabaseNullMonitor : IDatabaseMonitor
 
     public IReadOnlyDictionary<string, int> GetSubscriptions() => new Dictionary<string, int>();
 
-    public void IngestQueueMetric(string sourceName, int queueCount, int executingCount, double? waitTimeMs) { }
+    public void IngestQueueMetric(string sourceName, int queueCount, int executingCount, double? waitTimeMs, string connectionId = null) { }
 
-    public void IngestQueueMetric(string sourceName, IReadOnlyList<PoolMetricDto> pools) { }
+    public void IngestQueueMetric(string sourceName, IReadOnlyList<PoolMetricDto> pools, string connectionId = null) { }
 
     public IReadOnlyDictionary<string, ConnectionPoolStateDto> GetPerPoolQueueState() => new Dictionary<string, ConnectionPoolStateDto>();
 

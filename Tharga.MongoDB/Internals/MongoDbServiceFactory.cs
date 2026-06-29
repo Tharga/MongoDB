@@ -39,6 +39,9 @@ internal class MongoDbServiceFactory : IMongoDbServiceFactory
     public bool AllowDelayedCommit { get; internal set; } = true;
     internal ICommandMonitorService CommandMonitor { get; set; }
 
+    /// <summary>Runtime gate for how much per-call data is recorded. Null = record everything (back-compat).</summary>
+    internal MonitorRecordingState RecordingState { get; set; }
+
     public event EventHandler<CollectionAccessEventArgs> CollectionAccessEvent;
     public event EventHandler<IndexUpdatedEventArgs> IndexUpdatedEvent;
     public event EventHandler<CollectionDroppedEventArgs> CollectionDroppedEvent;
@@ -93,11 +96,21 @@ internal class MongoDbServiceFactory : IMongoDbServiceFactory
 
     public void OnCallStart(object sender, CallStartEventArgs e)
     {
+        // Recording gate: skip entirely when nothing consumes calls (CallRecordingLevel.WhenConsumed while idle).
+        if (RecordingState is { ShouldRecord: false }) return;
         CallStartEvent?.Invoke(sender, e);
     }
 
     public void OnCallEnd(object sender, CallEndEventArgs e)
     {
+        var state = RecordingState;
+        if (state != null)
+        {
+            if (!state.ShouldRecord) return;
+            // OnDemand while idle: keep the lightweight call, drop the (unconsumed) step timeline.
+            if (!state.ShouldRecordSteps && e.Steps is { Count: > 0 })
+                e = new CallEndEventArgs(e.CallKey, e.Elapsed, e.Exception, e.Count, steps: [], e.FilterJsonProvider, e.ExplainProvider, e.Final);
+        }
         CallEndEvent?.Invoke(sender, e);
     }
 }

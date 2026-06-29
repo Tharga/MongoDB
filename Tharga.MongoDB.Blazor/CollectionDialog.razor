@@ -48,6 +48,12 @@ else
         </RadzenRow>
         <RadzenRow>
             <RadzenColumn>
+                <RadzenText TextStyle="TextStyle.Caption" Text="Collection Type" />
+                <RadzenText Text="@(_model.CollectionType?.Name ?? _model.CollectionTypeName ?? "—")" />
+            </RadzenColumn>
+        </RadzenRow>
+        <RadzenRow>
+            <RadzenColumn>
                 <RadzenText TextStyle="TextStyle.Caption" Text="Document Count"/>
                 <RadzenText Text="@(_model.Stats != null ? $"{_model.Stats.DocumentCount:N0}" : "—")" title="@(_model.Stats?.UpdatedAt?.ToLocalDateTimeString())" />
             </RadzenColumn>
@@ -121,8 +127,9 @@ else
     [Parameter]
     public CollectionFingerprint Fingerprint { get; set; }
 
+    private bool _canExecute;
     private bool IsRemote => _model?.CollectionType == null;
-    private bool CanTouch => _model != null && !_busy && (_model.Registration != Registration.NotInCode || IsRemote);
+    private bool CanTouch => _model != null && !_busy && _canExecute;
     private bool CanDrop => CanTouch && (_model.Index?.Current?.Any() ?? false);
     private bool CanRestore => CanTouch && _indexModel.Any(x => !x.EqualFields);
     private bool CanClean => CanTouch;
@@ -153,6 +160,7 @@ else
         if (_disposed || e.CollectionInfo.Key != Fingerprint?.Key) return;
         _model = e.CollectionInfo;
         _indexModel = _model.ToIndexModel().ToArray();
+        _canExecute = DatabaseMonitor.CanExecuteActions(_model);
         _loadError = null;
         if (_disposed) return;
         try { await InvokeAsync(StateHasChanged); } catch (Exception) { }
@@ -251,6 +259,7 @@ else
 
         _indexModel = response.ToIndexModel().ToArray();
         _model = response;
+        _canExecute = DatabaseMonitor.CanExecuteActions(response);
         _loadError = null;
 
         StateHasChanged();

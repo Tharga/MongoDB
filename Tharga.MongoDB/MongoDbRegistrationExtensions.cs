@@ -54,8 +54,15 @@ public static class MongoDbRegistrationExtensions
             }
         };
         options?.Invoke(o);
+
+        // Default per-cluster connection-limit source: the editable config store (Blazor ClusterConfigView
+        // writes it, the resolver reads its cache). Skipped when the app supplied its own resolver.
+        if (o.Monitor != null)
+            o.Monitor.ClusterConnectionLimitResolver ??= (sp, ctx) => sp.GetService<IClusterConfigStore>()?.GetEffectiveLimit(ctx.Cluster);
+
         services.AddSingleton(Options.Create(o));
         services.AddSingleton(Options.Create(o.Limiter));
+        services.AddSingleton(new MonitorRecordingState { Level = o.Monitor?.CallRecordingLevel ?? Configuration.CallRecordingLevel.OnDemand });
 
         BsonSerializer.TryRegisterSerializer(new FlexibleGuidSerializer(o.GuidStorageFormat));
 
@@ -74,18 +81,19 @@ public static class MongoDbRegistrationExtensions
         services.AddTransient<IMongoDbFirewallService, MongoDbFirewallService>();
         services.AddSingleton<ConnectionPoolMonitor>();
         services.AddSingleton<IConnectionPoolMonitor>(sp => sp.GetRequiredService<ConnectionPoolMonitor>());
-        if (o.Monitor?.EnableCommandMonitoring == true)
+        services.AddSingleton<IClusterConfigStore, MongoDbClusterConfigStore>();
+        // Always register + subscribe the command monitor so capture can be toggled at runtime (locally or from
+        // the central monitor). Capture starts in the configured state; when off the handlers no-op (idle cost
+        // is just the driver raising the event), and nothing is stored.
+        services.AddSingleton(sp =>
         {
-            services.AddSingleton<CommandMonitorService>();
-            services.AddSingleton<ICommandMonitorService>(sp => sp.GetRequiredService<CommandMonitorService>());
-            services.AddSingleton<IMongoDbClientProvider>(sp =>
-                new MongoDbClientProvider(sp.GetRequiredService<CommandMonitorService>(), sp.GetRequiredService<IConnectionPoolMonitor>()));
-        }
-        else
-        {
-            services.AddSingleton<IMongoDbClientProvider>(sp =>
-                new MongoDbClientProvider(connectionPoolMonitor: sp.GetRequiredService<IConnectionPoolMonitor>()));
-        }
+            var svc = new CommandMonitorService(sp.GetRequiredService<ILogger<CommandMonitorService>>());
+            svc.Enabled = o.Monitor?.EnableCommandMonitoring == true;
+            return svc;
+        });
+        services.AddSingleton<ICommandMonitorService>(sp => sp.GetRequiredService<CommandMonitorService>());
+        services.AddSingleton<IMongoDbClientProvider>(sp =>
+            new MongoDbClientProvider(sp.GetRequiredService<CommandMonitorService>(), sp.GetRequiredService<IConnectionPoolMonitor>()));
         services.AddSingleton<IMongoDbFirewallStateService, MongoDbFirewallStateService>();
         services.AddHttpClient(Atlas.Quilt4NetFirewallProxyClient.HttpClientName);
         services.AddSingleton<Atlas.Quilt4NetFirewallProxyClient>();
@@ -113,6 +121,7 @@ public static class MongoDbRegistrationExtensions
                 factory.SourceName = o.Monitor.SourceName;
             factory.AllowDelayedCommit = o.AllowDelayedCommit;
             factory.CommandMonitor = serviceProvider.GetService<ICommandMonitorService>();
+            factory.RecordingState = serviceProvider.GetService<MonitorRecordingState>();
             return factory;
         });
         services.AddTransient<IRepositoryConfigurationLoader>(serviceProvider =>
@@ -224,6 +233,7 @@ public static class MongoDbRegistrationExtensions
                 services.AddSingleton<ICollectionCache, MemoryCollectionCache>();
             services.AddSingleton<IDatabaseMonitor, DatabaseMonitor>();
             services.AddSingleton<ICallLibrary, CallLibrary>();
+            services.AddSingleton<Internals.ICommunicationLog, Internals.CommunicationLog>();
         }
         else
         {

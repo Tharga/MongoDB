@@ -24,11 +24,14 @@ internal sealed class MonitorForwarder : IHostedService, IDisposable
     private readonly IQueueMonitor _queueMonitor;
     private readonly IConnectionPoolMonitor _connectionPoolMonitor;
     private readonly IClientCommunication _clientCommunication;
+    private readonly LiveMonitoringState _liveMonitoringState;
     private readonly MonitorOptions _monitorOptions;
+    private readonly MonitorRecordingState _recordingState;
     private readonly ILogger<MonitorForwarder> _logger;
     private readonly ConcurrentDictionary<Guid, CallStartEventArgs> _pendingCalls = new();
     private Timer _queueMetricTimer;
     private bool _forwardCompletedCalls;
+    private readonly object _callForwardingLock = new();
 
     public MonitorForwarder(
         IMongoDbServiceFactory mongoDbServiceFactory,
@@ -36,7 +39,9 @@ internal sealed class MonitorForwarder : IHostedService, IDisposable
         IQueueMonitor queueMonitor,
         IConnectionPoolMonitor connectionPoolMonitor,
         IClientCommunication clientCommunication,
+        LiveMonitoringState liveMonitoringState,
         IOptions<DatabaseOptions> databaseOptions,
+        MonitorRecordingState recordingState = null,
         ILogger<MonitorForwarder> logger = null)
     {
         _mongoDbServiceFactory = mongoDbServiceFactory;
@@ -44,13 +49,24 @@ internal sealed class MonitorForwarder : IHostedService, IDisposable
         _queueMonitor = queueMonitor;
         _connectionPoolMonitor = connectionPoolMonitor;
         _clientCommunication = clientCommunication;
+        _liveMonitoringState = liveMonitoringState;
         _monitorOptions = databaseOptions.Value.Monitor;
+        _recordingState = recordingState;
         _logger = logger;
+    }
+
+    // The agent's calls are "consumed" while forwarding is on or a live viewer is attached. Drives
+    // CallRecordingLevel gating (OnDemand step capture / WhenConsumed recording) on the agent.
+    private void UpdateCallsConsumed()
+    {
+        if (_recordingState != null)
+            _recordingState.CallsConsumed = _forwardCompletedCalls || _liveMonitoringState.Active;
     }
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
         _forwardCompletedCalls = _monitorOptions.ForwardCompletedCalls;
+        UpdateCallsConsumed();
 
         // Completed-call forwarding is opt-in (it can be a large, continuous stream). Only subscribe to call
         // events when enabled — otherwise we don't even track pending calls.
@@ -61,6 +77,7 @@ internal sealed class MonitorForwarder : IHostedService, IDisposable
         }
 
         _databaseMonitor.CollectionInfoChangedEvent += OnCollectionInfoChanged;
+        _databaseMonitor.CollectionDroppedEvent += OnCollectionDropped;
 
         var intervalMs = Math.Max(MinQueueMetricIntervalMs, (int)_monitorOptions.QueueMetricInterval.TotalMilliseconds);
         _queueMetricTimer = new Timer(OnQueueMetricTick, null, intervalMs, intervalMs);
@@ -87,6 +104,26 @@ internal sealed class MonitorForwarder : IHostedService, IDisposable
             // Report this agent's forwarding config so the central monitor can show it on the Clients page.
             await SendClientStatusAsync();
 
+            await ResendCollectionInfoAsync(cancellationToken);
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "Failed to send initial collection info.");
+        }
+    }
+
+    /// <summary>
+    /// Re-scans this agent's collections and forwards a fresh snapshot of each to the central server.
+    /// Called on startup and again when the server requests a cache reset, so the server can rebuild
+    /// its remote view from current data rather than waiting for the next incidental access.
+    /// </summary>
+    public async Task ResendCollectionInfoAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            if (!_clientCommunication.IsConnected) return;
+
             // Collect fingerprints first, then refresh stats for each.
             // GetInstancesAsync uses includeDetails: false so stats are null.
             var collections = await _databaseMonitor.GetInstancesAsync().ToListAsync(cancellationToken);
@@ -99,7 +136,7 @@ internal sealed class MonitorForwarder : IHostedService, IDisposable
                 }
                 catch (Exception ex)
                 {
-                    _logger?.LogDebug(ex, "Failed to refresh stats for {Collection} during initial sync.", info.CollectionName);
+                    _logger?.LogDebug(ex, "Failed to refresh stats for {Collection} during sync.", info.CollectionName);
                 }
             }
 
@@ -119,7 +156,7 @@ internal sealed class MonitorForwarder : IHostedService, IDisposable
         catch (OperationCanceledException) { }
         catch (Exception ex)
         {
-            _logger?.LogDebug(ex, "Failed to send initial collection info.");
+            _logger?.LogDebug(ex, "Failed to send collection info.");
         }
     }
 
@@ -131,9 +168,49 @@ internal sealed class MonitorForwarder : IHostedService, IDisposable
             _mongoDbServiceFactory.CallEndEvent -= OnCallEnd;
         }
         _databaseMonitor.CollectionInfoChangedEvent -= OnCollectionInfoChanged;
+        _databaseMonitor.CollectionDroppedEvent -= OnCollectionDropped;
         _queueMetricTimer?.Dispose();
         _pendingCalls.Clear();
         return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Turns completed-call forwarding on or off at runtime (the server can drive this per agent).
+    /// Subscribing to call events is what enables forwarding, so this attaches/detaches them, then
+    /// re-reports the agent's status so the central monitor reflects the new state. Returns the
+    /// resulting state.
+    /// </summary>
+    public async Task<bool> SetCallForwardingAsync(bool enabled)
+    {
+        lock (_callForwardingLock)
+        {
+            if (enabled != _forwardCompletedCalls)
+            {
+                if (enabled)
+                {
+                    _mongoDbServiceFactory.CallStartEvent += OnCallStart;
+                    _mongoDbServiceFactory.CallEndEvent += OnCallEnd;
+                }
+                else
+                {
+                    _mongoDbServiceFactory.CallStartEvent -= OnCallStart;
+                    _mongoDbServiceFactory.CallEndEvent -= OnCallEnd;
+                    _pendingCalls.Clear();
+                }
+                _forwardCompletedCalls = enabled;
+                UpdateCallsConsumed();
+            }
+        }
+
+        await SendClientStatusAsync();
+        return _forwardCompletedCalls;
+    }
+
+    public async Task<bool> SetCommandMonitoringAsync(bool enabled)
+    {
+        _databaseMonitor.SetCommandMonitoring(enabled);
+        await SendClientStatusAsync();
+        return _databaseMonitor.CommandMonitoringEnabled;
     }
 
     private async Task SendClientStatusAsync()
@@ -149,7 +226,7 @@ internal sealed class MonitorForwarder : IHostedService, IDisposable
                 ForwardCompletedCalls = _forwardCompletedCalls,
                 QueueMetricIntervalMs = intervalMs,
                 StorageMode = _monitorOptions.StorageMode.ToString(),
-                EnableCommandMonitoring = _monitorOptions.EnableCommandMonitoring,
+                EnableCommandMonitoring = _databaseMonitor.CommandMonitoringEnabled,
             });
         }
         catch (Exception ex)
@@ -191,6 +268,23 @@ internal sealed class MonitorForwarder : IHostedService, IDisposable
         _ = ForwardCollectionInfoAsync(message);
     }
 
+    private void OnCollectionDropped(object sender, CollectionDroppedEventArgs e)
+    {
+        // Use the resolved identity carried on the event; fall back to the DatabaseContext. Without
+        // a collection name there's nothing the server can match, so skip.
+        var collectionName = e.CollectionName ?? e.DatabaseContext?.CollectionName;
+        if (string.IsNullOrEmpty(collectionName)) return;
+
+        var message = new MonitorCollectionDroppedMessage
+        {
+            SourceName = _mongoDbServiceFactory.SourceName,
+            ConfigurationName = e.ConfigurationName ?? e.DatabaseContext?.ConfigurationName?.Value,
+            DatabaseName = e.DatabaseName,
+            CollectionName = collectionName,
+        };
+        _ = ForwardCollectionDroppedAsync(message);
+    }
+
     private async Task ForwardAsync(MonitorCallMessage message)
     {
         try
@@ -217,12 +311,57 @@ internal sealed class MonitorForwarder : IHostedService, IDisposable
         }
     }
 
-    private async void OnQueueMetricTick(object state)
+    private async Task ForwardCollectionDroppedAsync(MonitorCollectionDroppedMessage message)
     {
         try
         {
             if (!_clientCommunication.IsConnected) return;
-            if (!_clientCommunication.HasSubscribers<LiveMonitoringMarker>()) return;
+            await _clientCommunication.PostAsync(message);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "Failed to forward collection drop for {Collection}.", message.CollectionName);
+        }
+    }
+
+    private (bool Connected, bool HasSubscribers, bool HasPools)? _lastLiveState;
+
+    // Logs only when the live-monitoring gating changes, so the console shows when a subscription
+    // starts/ends and why queue metrics are (not) being sent — without spamming every tick.
+    private void LogLiveStateChange(bool connected, bool hasSubscribers, bool hasPools)
+    {
+        var state = (connected, hasSubscribers, hasPools);
+        if (_lastLiveState == state) return;
+        _lastLiveState = state;
+
+        if (!connected)
+            _logger?.LogInformation("Live monitoring: not connected to the monitor server — not sending queue metrics.");
+        else if (!hasSubscribers)
+            _logger?.LogInformation("Live monitoring: no server subscriber (Queue view closed) — not sending queue metrics.");
+        else if (!hasPools)
+            _logger?.LogInformation("Live monitoring: subscription active, but no connection pool yet (access MongoDB first) — nothing to send.");
+        else
+            _logger?.LogInformation("Live monitoring: subscription active — sending queue metrics.");
+    }
+
+    private async void OnQueueMetricTick(object state)
+    {
+        try
+        {
+            // Keep the "calls consumed" signal current as the live-viewer state changes (≤ one interval lag).
+            UpdateCallsConsumed();
+
+            var connected = _clientCommunication.IsConnected;
+            // Prefer the explicit server-pushed flag (SetLiveMonitoringActiveMessage). Fall back to the
+            // framework's HasSubscribers as a secondary signal — the explicit flag is what makes this
+            // reliable across deployments where the built-in subscription propagation doesn't reach agents.
+            var hasSubscribers = connected
+                && (_liveMonitoringState.Active || _clientCommunication.HasSubscribers<LiveMonitoringMarker>());
+            if (!connected || !hasSubscribers)
+            {
+                LogLiveStateChange(connected, hasSubscribers, false);
+                return;
+            }
 
             // Merge the limiter's per-pool queue view with the actual connection counts, by server-key.
             var byServer = new Dictionary<string, PoolMetricDto>();
@@ -245,15 +384,18 @@ internal sealed class MonitorForwarder : IHostedService, IDisposable
                 byServer[c.ServerKey] = baseDto with { OpenConnections = c.OpenConnections, MaxPoolSize = c.MaxPoolSize };
             }
             var pools = byServer.Values.ToList();
+            LogLiveStateChange(connected, hasSubscribers, pools.Count > 0);
 
-            // Aggregate scalars (back-compat for older servers + the activity guard below).
+            // A live view is watching (gated above). Report whenever the agent has any pool to show —
+            // even fully idle (all zeros) — so an idle agent still surfaces a line alongside the active
+            // ones in the live Queue view. Only skip when there are no pools at all (the agent hasn't
+            // touched MongoDB yet), since an empty report would produce no line anyway.
+            if (pools.Count == 0) return;
+
+            // Aggregate scalars (back-compat for older servers).
             var queueCount = pools.Sum(p => p.QueueCount);
             var executingCount = pools.Sum(p => p.ExecutingCount);
-            var lastWaitTimeMs = pools.Count == 0 ? 0d : pools.Max(p => p.WaitTimeMs ?? 0);
-            var openConnections = pools.Sum(p => p.OpenConnections);
-
-            // Send when there's queue activity OR open connections to report (so idle-but-open pools surface).
-            if (queueCount == 0 && executingCount == 0 && lastWaitTimeMs == 0 && openConnections == 0) return;
+            var lastWaitTimeMs = pools.Max(p => p.WaitTimeMs ?? 0);
 
             await _clientCommunication.PostAsync(new MonitorQueueMetricMessage
             {
@@ -284,6 +426,7 @@ internal sealed class MonitorForwarder : IHostedService, IDisposable
             Discovery = info.Discovery.ToString(),
             Registration = info.Registration.ToString(),
             EntityTypes = info.EntityTypes,
+            CollectionTypeName = info.CollectionType?.Name,
             Stats = info.Stats,
             Index = info.Index,
             Clean = info.Clean,

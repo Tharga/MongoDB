@@ -30,6 +30,7 @@ public sealed class MonitorCollectionInfoHandler : PostMessageHandlerBase<Monito
             Discovery = message.Discovery,
             Registration = message.Registration,
             EntityTypes = message.EntityTypes,
+            CollectionTypeName = message.CollectionTypeName,
             Stats = message.Stats,
             Index = message.Index,
             Clean = message.Clean,

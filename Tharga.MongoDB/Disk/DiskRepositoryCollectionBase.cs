@@ -1282,7 +1282,10 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
     public override async Task DropCollectionAsync()
     {
         await _mongoDbService.DropCollectionAsync(ProtectedCollectionName);
-        ((MongoDbServiceFactory)_mongoDbServiceFactory).OnCollectionDropped(this, new CollectionDroppedEventArgs(_databaseContext));
+        // Carry the resolved identity (same values used when the collection was reported) so the
+        // monitor can match it in the cache and forward the drop to a central server precisely.
+        ((MongoDbServiceFactory)_mongoDbServiceFactory).OnCollectionDropped(this,
+            new CollectionDroppedEventArgs(_databaseContext, ConfigurationName, DatabaseName, ProtectedCollectionName));
     }
 
     public override async IAsyncEnumerable<TEntity> GetDirtyAsync()

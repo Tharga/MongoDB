@@ -68,4 +68,26 @@ internal class MongoDbClientProvider : IMongoDbClientProvider
         var servers = string.Join(",", url.Servers.Select(s => s.ToString()).OrderBy(x => x));
         return $"{servers}|pool={url.MaxConnectionPoolSize}";
     }
+
+    private const string PoolSizeSeparator = "|pool=";
+
+    /// <summary>
+    /// The cluster identity (the server host(s)) for a server-key — i.e. the key with the <c>|pool=</c> size
+    /// suffix removed. Two pools that differ only in max pool size collapse to the same cluster.
+    /// </summary>
+    internal static string ClusterOf(string serverKey)
+    {
+        if (string.IsNullOrEmpty(serverKey)) return serverKey;
+        var i = serverKey.IndexOf(PoolSizeSeparator, StringComparison.Ordinal);
+        return i >= 0 ? serverKey[..i] : serverKey;
+    }
+
+    /// <summary>
+    /// Best-effort classification of a cluster (host string) as an Atlas deployment from its host name.
+    /// Atlas hosts live on <c>mongodb.net</c> (and the gov variant); anything else is treated as self-hosted.
+    /// </summary>
+    internal static bool IsAtlasCluster(string cluster)
+        => !string.IsNullOrEmpty(cluster)
+           && (cluster.Contains(".mongodb.net", StringComparison.OrdinalIgnoreCase)
+               || cluster.Contains(".mongodbgov.net", StringComparison.OrdinalIgnoreCase));
 }

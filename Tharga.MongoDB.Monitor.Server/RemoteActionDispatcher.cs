@@ -136,4 +136,32 @@ internal sealed class RemoteActionDispatcher : IRemoteActionDispatcher
     {
         await _serverCommunication.PostToAllAsync(new ClearCallHistoryRequest());
     }
+
+    public async Task<bool> SetCallForwardingAsync(string connectionId, bool enabled, CancellationToken cancellationToken = default)
+    {
+        var response = await _serverCommunication.SendMessageAsync<SetCallForwardingRequest, SetCallForwardingResponse>(
+            connectionId,
+            new SetCallForwardingRequest { Enabled = enabled });
+
+        if (!response.IsSuccess)
+            throw new InvalidOperationException($"Remote set call forwarding failed: {response.Message}");
+        if (!response.Value.Success)
+            throw new InvalidOperationException($"Remote set call forwarding failed: {response.Value.Error}");
+
+        return response.Value.ForwardCompletedCalls;
+    }
+
+    public async Task<bool> SetCommandMonitoringAsync(string connectionId, bool enabled, CancellationToken cancellationToken = default)
+    {
+        var response = await _serverCommunication.SendMessageAsync<SetCommandMonitoringRequest, SetCommandMonitoringResponse>(
+            connectionId,
+            new SetCommandMonitoringRequest { Enabled = enabled });
+
+        if (!response.IsSuccess)
+            throw new InvalidOperationException($"Remote set command monitoring failed: {response.Message}");
+        if (!response.Value.Success)
+            throw new InvalidOperationException($"Remote set command monitoring failed: {response.Value.Error}");
+
+        return response.Value.EnableCommandMonitoring;
+    }
 }

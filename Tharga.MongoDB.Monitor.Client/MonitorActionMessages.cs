@@ -131,3 +131,35 @@ public record ResetCacheRequest;
 /// Request to clear call history on a remote agent (fire-and-forget broadcast).
 /// </summary>
 public record ClearCallHistoryRequest;
+
+/// <summary>
+/// Request to turn completed-call forwarding on or off on a remote agent.
+/// </summary>
+public record SetCallForwardingRequest
+{
+    public bool Enabled { get; init; }
+}
+
+/// <summary>
+/// Response from a set-call-forwarding action, carrying the agent's resulting state.
+/// </summary>
+public record SetCallForwardingResponse
+{
+    public bool Success { get; init; }
+    public bool ForwardCompletedCalls { get; init; }
+    public string Error { get; init; }
+}
+
+/// <summary>Request to turn command monitoring on or off on an agent.</summary>
+public record SetCommandMonitoringRequest
+{
+    public bool Enabled { get; init; }
+}
+
+/// <summary>Response from a set-command-monitoring action, carrying the agent's resulting state.</summary>
+public record SetCommandMonitoringResponse
+{
+    public bool Success { get; init; }
+    public bool EnableCommandMonitoring { get; init; }
+    public string Error { get; init; }
+}

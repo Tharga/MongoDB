@@ -46,6 +46,15 @@ public interface IDatabaseMonitor
     Task<CleanInfo> CleanAsync(CollectionInfo collectionInfo, bool cleanGuids);
 
     /// <summary>
+    /// Whether an action (touch/clean/index) on this collection can currently be serviced — either
+    /// directly by this process (it has the collection in code and the configuration) or by a
+    /// connected agent that reports it. Returns <c>false</c> for <see cref="Registration.NotInCode"/>
+    /// collections and for remote collections whose reporting agents have all disconnected. Used by
+    /// UIs to gate action buttons so they aren't offered when every action would throw.
+    /// </summary>
+    bool CanExecuteActions(CollectionInfo collectionInfo);
+
+    /// <summary>
     /// Fetch a single raw document by id. <paramref name="idRaw"/> is auto-detected as Guid → ObjectId → string.
     /// Returns <c>null</c> when no document matches. Returned <see cref="DocumentDto.Json"/> is MongoDB Extended JSON.
     /// </summary>
@@ -71,7 +80,7 @@ public interface IDatabaseMonitor
     /// Ingest an externally produced call (e.g. from a remote agent) into the monitor pipeline.
     /// The call will appear in GetCalls, summaries, and Blazor components.
     /// </summary>
-    void IngestCall(CallDto call);
+    void IngestCall(CallDto call, string connectionId = null);
 
     void ResetCalls();
     Task ResetAsync();
@@ -135,6 +144,18 @@ public interface IDatabaseMonitor
     MonitorClientDetail GetMonitorClientDetail(string sourceName, int recentCallLimit = 20);
 
     /// <summary>
+    /// Recent SignalR messages exchanged with a given agent (newest first), for the per-agent
+    /// Communication diagnostic view. Bounded, in-memory; empty when monitoring isn't enabled.
+    /// </summary>
+    IReadOnlyList<CommunicationEvent> GetClientCommunication(string sourceName);
+
+    /// <summary>
+    /// Record a SignalR message in the per-agent Communication log. For server-side components
+    /// (handlers, dispatcher, subscription service) to surface traffic they send/receive.
+    /// </summary>
+    void RecordClientCommunication(string sourceName, CommunicationDirection direction, string messageType, string summary);
+
+    /// <summary>
     /// Register a connected monitoring agent.
     /// </summary>
     void IngestClientConnected(MonitorClientDto client);
@@ -142,7 +163,27 @@ public interface IDatabaseMonitor
     /// <summary>
     /// Record an agent's self-reported configuration (call forwarding, queue interval, …), correlated by source name.
     /// </summary>
-    void IngestClientStatus(string sourceName, MonitorClientStatus status);
+    void IngestClientStatus(string sourceName, MonitorClientStatus status, string connectionId = null);
+
+    /// <summary>
+    /// Turn completed-call forwarding on or off on a connected agent (by source name). The agent
+    /// re-reports its status afterward; the returned value is its resulting state. Throws when the
+    /// agent isn't connected or remote dispatch isn't available.
+    /// </summary>
+    Task<bool> SetClientCallForwardingAsync(string sourceName, bool enabled, CancellationToken cancellationToken = default);
+
+    /// <summary>Whether driver command monitoring is currently capturing in this process.</summary>
+    bool CommandMonitoringEnabled { get; }
+
+    /// <summary>Turn driver command monitoring capture on or off in this process (the listener is always subscribed).</summary>
+    void SetCommandMonitoring(bool enabled);
+
+    /// <summary>
+    /// Turn command monitoring on or off on a connected agent (by source name). The agent re-reports its
+    /// status afterward; the returned value is its resulting state. Throws when the agent isn't connected or
+    /// remote dispatch isn't available.
+    /// </summary>
+    Task<bool> SetClientCommandMonitoringAsync(string sourceName, bool enabled, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Mark a monitoring agent as disconnected.
@@ -153,6 +194,14 @@ public interface IDatabaseMonitor
     /// Ingest collection metadata from a remote agent.
     /// </summary>
     void IngestCollectionInfo(RemoteCollectionInfoDto collectionInfo, string connectionId = null);
+
+    /// <summary>
+    /// Ingest a collection-dropped notification from a remote agent. Removes that agent as a source
+    /// for the collection; when no source remains the collection is removed and
+    /// <see cref="CollectionDroppedEvent"/> is raised. A collection still reported by another agent
+    /// (or reachable locally) survives.
+    /// </summary>
+    void IngestCollectionDropped(string sourceName, string configurationName, string databaseName, string collectionName, string connectionId = null);
 
     /// <summary>
     /// Get the source names that have reported a given collection (by fingerprint key).
@@ -175,12 +224,12 @@ public interface IDatabaseMonitor
     /// Ingest a queue metric snapshot from a remote agent (legacy, aggregate-per-source form).
     /// Stored as a single synthetic pool so pre-per-pool agents still surface a line.
     /// </summary>
-    void IngestQueueMetric(string sourceName, int queueCount, int executingCount, double? waitTimeMs);
+    void IngestQueueMetric(string sourceName, int queueCount, int executingCount, double? waitTimeMs, string connectionId = null);
 
     /// <summary>
     /// Ingest a per-pool queue metric snapshot from a remote agent.
     /// </summary>
-    void IngestQueueMetric(string sourceName, IReadOnlyList<PoolMetricDto> pools);
+    void IngestQueueMetric(string sourceName, IReadOnlyList<PoolMetricDto> pools, string connectionId = null);
 
     /// <summary>
     /// Get per-connection-pool queue state for all known sources (local + remote). Keyed by a unique
