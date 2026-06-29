@@ -755,6 +755,14 @@ services.AddMongoDB(o =>
         SlowCallsToKeep = 200,
         ForwardCompletedCalls = false,        // opt-in: forward every completed call to the central monitor
         QueueMetricInterval = TimeSpan.FromSeconds(1),
+        // How much per-call data to record. OnDemand (default) keeps the lightweight call always but builds the
+        // step timeline only while consumed (forwarding on or a live viewer). WhenConsumed records nothing while
+        // idle — best for a headless agent. Full always records everything.
+        CallRecordingLevel = CallRecordingLevel.OnDemand,
+        // Capture driver command durations (the "Driver: … | Other: …" step breakdown). This is the startup
+        // default; the listener is always subscribed, so it can be toggled at runtime — locally via
+        // IDatabaseMonitor.SetCommandMonitoring, or per-agent from the Clients dialog (SetClientCommandMonitoringAsync).
+        EnableCommandMonitoring = false,
         // Per-cluster connection limit (drives the "open / limit" bar). Resolve per cluster so mixed
         // deployments — different Atlas tiers, or self-hosted — each show the right ceiling, or none:
         ClusterConnectionLimitResolver = (sp, ctx) => ctx.IsAtlas ? 3000 : (int?)null
