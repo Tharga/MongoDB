@@ -676,9 +676,13 @@ internal class DatabaseMonitor : IDatabaseMonitor
         if (resultProperty?.GetValue(task) is not CleanInfo result)
             throw new InvalidOperationException("Invoked task result was not CleanInfo.");
 
+        // The clean computed result.SchemaFingerprint from the collection's live entity type (typeof(TEntity)) —
+        // that IS the current schema fingerprint. Anchor CurrentSchemaFingerprint to it so "Fingerprint Match"
+        // reads Current right after a clean, instead of comparing against a stale/mis-resolved value (the
+        // dynamic registration's interface-derived EntityType, or a cache entry that never carried it).
         var updated = _cache.AddOrUpdate(collectionInfo.Key,
-            addFactory: _ => collectionInfo with { Clean = result },
-            updateFactory: (_, existing) => existing with { Clean = result });
+            addFactory: _ => collectionInfo with { Clean = result, CurrentSchemaFingerprint = result.SchemaFingerprint },
+            updateFactory: (_, existing) => existing with { Clean = result, CurrentSchemaFingerprint = result.SchemaFingerprint });
 
         RaiseLocalCollectionInfoChanged(updated);
 
