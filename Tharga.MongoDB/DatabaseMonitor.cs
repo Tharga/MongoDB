@@ -364,7 +364,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
 
         foreach (var context in contexts)
         {
-            Console.WriteLine($"Context {++index} of {total} {context.ConfigurationName}.{context.DatabasePart}.{context.CollectionName} [{sw.Elapsed.TotalSeconds:N0}s]");
+            _logger?.LogDebug("Scanning context {Index} of {Total}: {Configuration}.{DatabasePart}.{Collection} [{Elapsed:N0}s]", ++index, total, context.ConfigurationName, context.DatabasePart, context.CollectionName, sw.Elapsed.TotalSeconds);
             var mongoDbService = _mongoDbServiceFactory.GetMongoDbService(() => context);
 
             if (fullDatabaseScan)
@@ -1982,7 +1982,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
 
             if (!visited.Add(key)) continue;
 
-            Console.WriteLine($"- Got {meta.CollectionName} [{sw.Elapsed.TotalSeconds:N0}s]");
+            _logger?.LogDebug("Loaded collection {Collection} [{Elapsed:N0}s]", meta.CollectionName, sw.Elapsed.TotalSeconds);
 
             cleanInfos.TryGetValue(meta.CollectionName, out var cleanInfo);
 
@@ -2174,7 +2174,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
                     }
                     else
                     {
-                        Debugger.Break();
+                        _logger?.LogDebug("Skipping dynamic registration for {Collection}: entity type could not be resolved.", registeredCollection.Key.Name);
                     }
                 }
             }

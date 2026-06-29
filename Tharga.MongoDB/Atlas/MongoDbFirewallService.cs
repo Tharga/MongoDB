@@ -53,8 +53,6 @@ internal class MongoDbFirewallService : IMongoDbFirewallService
         {
             _logger?.LogError(e, "Unable to AsureAccess to Atlas MongoDB for ip '{externalIp}' with name {name}. {details}", ipAddress, name, e.Message);
             //ActionEvent?.Invoke(this, new ActionEventArgs(new ActionEventArgs.ActionData { Level = LogLevel.Error, Message = $"Unable to AsureAccess to Atlas MongoDB for ip '{ipAddress}'. {e.Message}" }, null));
-            Debugger.Break();
-            Console.WriteLine(e);
             throw;
         }
     }

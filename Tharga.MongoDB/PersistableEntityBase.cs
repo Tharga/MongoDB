@@ -29,7 +29,6 @@ public abstract record PersistableEntityBase : ISupportInitialize
         if (CatchAll.Any())
         {
             var message = $"There are {CatchAll.Count} unhandled fields for entity '{GetType().Name}'. One example is '{CatchAll.First().Key}'. If a field is removed or changed the action fo that field needs to be explicitly handled.";
-            Debugger.Break();
             throw new InvalidOperationException(message);
         }
     }
