@@ -65,9 +65,7 @@ else
             <Columns>
                 <RadzenDataGridColumn Title="Source" Visible="@_showSource" Sortable="false" Filterable="false" Width="200px" CssClass="css-source">
                     <Template>
-                        <span title="@SourceTooltip(context)">
-                            @string.Join(", ", context.Sources)@(ReachOnlyCount(context) > 0 ? $" (+{ReachOnlyCount(context)})" : "")
-                        </span>
+                        <span title="@SourceTooltip(context)">@SourceCellText(context)</span>
                     </Template>
                 </RadzenDataGridColumn>
                 <RadzenDataGridColumn Title="Configuration" Property="@nameof(CollectionModel.ConfigurationNameText)" Visible="@_showConfiguration" />
@@ -440,12 +438,17 @@ else
         await ReloadDataAsync();
     }
 
-    // Sources with access to the database that have NOT actually accessed this collection (the "+N" hint).
-    private static int ReachOnlyCount(CollectionModel m)
+    // Cell text: the sources that have accessed this collection, plus — named, not just counted — any other
+    // sources that can reach the same database but haven't accessed this collection (e.g. a reconnected client).
+    private static string SourceCellText(CollectionModel m)
     {
-        if (m.DatabaseSources is not { Length: > 0 }) return 0;
         var accessed = m.Sources ?? [];
-        return m.DatabaseSources.Count(s => !accessed.Contains(s));
+        var all = m.DatabaseSources is { Length: > 0 } ? m.DatabaseSources : accessed;
+        var others = all.Where(s => !accessed.Contains(s)).ToArray();
+        var accessedText = string.Join(", ", accessed);
+        if (others.Length == 0) return accessedText;
+        var othersText = string.Join(", ", others);
+        return accessed.Length == 0 ? othersText : $"{accessedText} (+{othersText})";
     }
 
     // Tooltip listing every source with access to this collection's physical database, marking which have
