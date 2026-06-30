@@ -848,6 +848,8 @@ The hub is mapped at `/mongodb-monitor` by default. Both client and server accep
 
 Remote calls are ingested into the local `IDatabaseMonitor` and appear automatically in Blazor components, REST API endpoints, and summaries alongside local data. The Source column and filter appear when calls from multiple sources are present.
 
+The Clients page shows, per agent, both the host application **Version** (from the Tharga.Communication handshake) and the **Library** version of `Tharga.MongoDB.Monitor.Client` it runs; the dashboard's own `Tharga.MongoDB.Monitor.Server` version is shown above the grid.
+
 ### Securing the monitor hub
 Both client and server support API key authentication via [Tharga.Communication](https://www.nuget.org/packages/Tharga.Communication). When keys are configured, unauthorized agents are rejected. When no keys are configured, all connections are accepted (backwards compatible).
 
