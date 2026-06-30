@@ -77,6 +77,9 @@ public static class MonitorServerRegistration
         // Enable subscription-based live monitoring
         builder.Services.AddSingleton<ILiveMonitoringSubscription, LiveMonitoringSubscriptionService>();
 
+        // Expose this server's library version for the Blazor UI to display.
+        builder.Services.AddSingleton<IMonitorServerInfo, MonitorServerInfo>();
+
         return builder;
     }
 

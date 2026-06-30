@@ -227,6 +227,7 @@ internal sealed class MonitorForwarder : IHostedService, IDisposable
                 QueueMetricIntervalMs = intervalMs,
                 StorageMode = _monitorOptions.StorageMode.ToString(),
                 EnableCommandMonitoring = _databaseMonitor.CommandMonitoringEnabled,
+                LibraryVersion = typeof(MonitorClientRegistration).Assembly.GetLibraryVersion(),
             });
         }
         catch (Exception ex)
