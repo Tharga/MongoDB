@@ -15,7 +15,7 @@ Tracking file for the feature. See `plan/feature.md` for scope/acceptance.
 - [x] 6. Disconnect keeps persisted data (drops only reachability); `IngestCollectionDropped` removes persisted record (`_cache.TryRemove` + `DeleteAsync`).
 - [x] 7. Removed `_remoteCollections` field; `ResetAsync` relies on `_cache.ResetAsync()`; all references migrated.
 - [x] 8. Tests: extended bson round-trip (new fields + legacy doc), rewired `RemoteCollectionReachabilityTests` + `RemoteActionDelegationTests` to a real `MemoryCollectionCache`, new disconnect/keep-data + ingest semantics tests. Full suite: 629 passed, same 6 environmental failures.
-- [x] 9. Minor version bumped 2.11 → 2.12 (`MAJOR_MINOR` in build.yml). README + monitoring.md updated (separate `docs:` commit). `ReportedAt` is exposed on `CollectionInfo`; surfacing it as a Blazor grid column is left as a UX decision for the user.
+- [x] 9. Minor version bumped 2.11 → 2.12 (`MAJOR_MINOR` in build.yml). README + monitoring.md updated (separate `docs:` commit). `ReportedAt` surfaced in the Blazor `CollectionView` as a **tooltip on the Collection column** (per user: tooltip, not a column) showing "Reported {age} ({absolute})".
 
 ## Last session
 Steps 0–9 complete and committed (feat + chore version bump + docs). Core feature works: agent reports persist into the `_monitor`-backed cache with a `ReportedAt` age, survive restart, stay visible (actions gated off) after disconnect, removed on a genuine drop. Build clean; full suite 629 passed, 6 environmental replica-set failures (baseline, not regressions).

@@ -70,7 +70,11 @@ else
                 </RadzenDataGridColumn>
                 <RadzenDataGridColumn Title="Configuration" Property="@nameof(CollectionModel.ConfigurationNameText)" Visible="@_showConfiguration" />
                 <RadzenDataGridColumn Title="Database" Property="@nameof(CollectionModel.DatabaseName)" Visible="@_showDatabase" />
-                <RadzenDataGridColumn Title="Collection" Property="@nameof(CollectionModel.CollectionName)" />
+                <RadzenDataGridColumn Title="Collection" Property="@nameof(CollectionModel.CollectionName)">
+                    <Template>
+                        <span title="@ReportedTooltip(context)">@context.CollectionName</span>
+                    </Template>
+                </RadzenDataGridColumn>
                 <RadzenDataGridColumn Title="Discovery" Property="@nameof(CollectionModel.Discovery)" Filterable="false"/>
                 <RadzenDataGridColumn Title="Registration" Property="@nameof(CollectionModel.Registration)" Filterable="false" Width="120px" />
                 <RadzenDataGridColumn Title="Documents" TextAlign="TextAlign.Right" CssClass="css-count" Sortable="false" Filterable="false" Width="120px">
@@ -232,6 +236,7 @@ else
         m.Indices = indexModels;
         m.IndexEqualFields = newIndexEqual;
         m.Clean = e.CollectionInfo.Clean;
+        m.ReportedAt = e.CollectionInfo.ReportedAt;
         m.Sources = sources;
         // A source accessing this collection necessarily has access to its database — keep the "could reach"
         // set a superset of the accessors (full cross-collection refresh happens on the next reload).
@@ -357,6 +362,7 @@ else
             m.Indices = indexModels;
             m.IndexEqualFields = info.Index == null || info.Index.Current == null ? null : indexModels.All(x => x.EqualFields);
             m.Clean = info.Clean;
+            m.ReportedAt = info.ReportedAt;
         }
         finally
         {
@@ -463,6 +469,13 @@ else
         return $"Access to {db}:\n" + string.Join("\n", lines);
     }
 
+    // Tooltip showing the age of the data — when an agent last reported this collection (or the server
+    // last refreshed it locally). Lets stale remote rows be spotted by hovering the collection name.
+    private static string ReportedTooltip(CollectionModel m)
+        => m.ReportedAt.HasValue
+            ? $"Reported {m.ReportedAt.Value.ToLocalDurationString()} ({m.ReportedAt.Value.ToLocalDateTimeString()})"
+            : null;
+
     private async Task ReloadDataAsync()
     {
         var callCountsBySuffix = CallLibrary.GetCallCountsBySuffix();
@@ -509,6 +522,7 @@ else
                         ? null
                         : indexModels.All(y => y.EqualFields),
                     Clean = x.Clean,
+                    ReportedAt = x.ReportedAt,
                     CallCount = count,
                     Sources = sources,
                     DatabaseSources = databaseSources,

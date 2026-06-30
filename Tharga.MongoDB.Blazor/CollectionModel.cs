@@ -14,6 +14,9 @@ public record CollectionModel : CollectionFingerprint
     public int CallCount { get; set; }
     public string[] Sources { get; set; } = [];
 
+    /// <summary>Age of the data: when this collection's metadata was last reported by an agent or refreshed locally. Null for older records that predate this tracking.</summary>
+    public DateTime? ReportedAt { get; set; }
+
     /// <summary>
     /// String projection of <see cref="CollectionFingerprint.ConfigurationName"/> for the grid. Radzen builds
     /// filter/sort expressions against the bound property's type; binding the column to the <c>ConfigurationName</c>
