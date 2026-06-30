@@ -48,4 +48,11 @@ public record MonitorClientStatus
 
     /// <summary>Whether the agent captures MongoDB driver command durations.</summary>
     public bool EnableCommandMonitoring { get; init; }
+
+    /// <summary>
+    /// The agent's <c>Tharga.MongoDB.Monitor.Client</c> library version. <c>null</c> for agents on a
+    /// version that predates this reporting. Distinct from <see cref="MonitorClientDto.Version"/>, which
+    /// is the agent host application's version.
+    /// </summary>
+    public string LibraryVersion { get; init; }
 }

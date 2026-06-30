@@ -25,6 +25,7 @@ public sealed class MonitorClientStatusHandler : PostMessageHandlerBase<MonitorC
             QueueMetricIntervalMs = message.QueueMetricIntervalMs,
             StorageMode = message.StorageMode,
             EnableCommandMonitoring = message.EnableCommandMonitoring,
+            LibraryVersion = message.LibraryVersion,
         }, ConnectionId);
         return Task.CompletedTask;
     }

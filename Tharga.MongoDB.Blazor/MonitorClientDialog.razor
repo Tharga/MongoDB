@@ -46,6 +46,10 @@ else
                 <RadzenText TextStyle="TextStyle.Caption" Text="Version" />
                 <RadzenText Text="@_detail.Client.Version" />
             </RadzenColumn>
+            <RadzenColumn>
+                <RadzenText TextStyle="TextStyle.Caption" Text="Library" />
+                <RadzenText Text="@(_detail.Client.Status?.LibraryVersion ?? "—")" />
+            </RadzenColumn>
         </RadzenRow>
         <RadzenRow>
             <RadzenColumn Size="4">

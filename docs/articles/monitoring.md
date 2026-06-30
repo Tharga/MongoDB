@@ -127,6 +127,8 @@ When the server dashboard displays collections from remote agents, actions like 
 
 Blazor components subscribe to the live data on mount and unsubscribe on dispose, so queue/connection snapshots stop when no one is looking. The server signals each agent to start/stop forwarding via an explicit message (`SetLiveMonitoringActiveMessage`); the agent gates its queue-metric timer on that signal. Each agent reports its own forwarding configuration (call forwarding on/off, queue interval, storage mode) on connect; the **Clients** page shows it per agent (a *Call forwarding* badge, with the full set in the client detail dialog).
 
+The Clients page shows two distinct versions per agent: **Version** is the agent host application's version (from the Tharga.Communication handshake), and **Library** is the `Tharga.MongoDB.Monitor.Client` package version the agent runs (reported on connect). The dashboard's own `Tharga.MongoDB.Monitor.Server` version is shown above the Clients grid (when the server package is installed).
+
 You can also drive and observe this live flow **headlessly** — without opening the Queue view in a browser — via the [MCP monitoring tools](mcp-integration.md#live-monitoring-diagnostics) (`hold_live_subscription`, `get_per_pool_queue_state`, `get_monitor_clients`, `get_client_communication`). Useful for verifying an agent is forwarding queue metrics from a script or an AI agent.
 
 ## Reset

@@ -1,9 +1,11 @@
+@using Microsoft.Extensions.DependencyInjection
 @using Microsoft.Extensions.Options
 @using Tharga.MongoDB.Configuration
 @implements IDisposable
 @inject IDatabaseMonitor DatabaseMonitor;
 @inject IOptions<DatabaseOptions> DatabaseOptions
 @inject DialogService DialogService
+@inject IServiceProvider ServiceProvider
 
 @if (!DatabaseOptions.Value.Monitor.Enabled)
 {
@@ -15,10 +17,12 @@ else if (_model == null)
 }
 else if (!_model.Any())
 {
+    @ServerVersionCaption
     <RadzenText TextStyle="TextStyle.Body1" Style="color: gray; padding: 16px;">No monitoring agents connected.</RadzenText>
 }
 else
 {
+    @ServerVersionCaption
     <RadzenDataGrid Data="_model" TItem="MonitorClientDto"
                     AllowSorting="true"
                     AllowPaging="true" PageSize="8" PageSizeOptions="[8, 16, 32, 64]"
@@ -50,6 +54,11 @@ else
             <RadzenDataGridColumn Title="Machine" Property="@nameof(MonitorClientDto.Machine)" />
             <RadzenDataGridColumn Title="Application" Property="@nameof(MonitorClientDto.Type)" />
             <RadzenDataGridColumn Title="Version" Property="@nameof(MonitorClientDto.Version)" Width="120px" />
+            <RadzenDataGridColumn Title="Library" Sortable="false" Width="120px">
+                <Template>
+                    <span title="Tharga.MongoDB.Monitor.Client version">@(context.Status?.LibraryVersion ?? "—")</span>
+                </Template>
+            </RadzenDataGridColumn>
             <RadzenDataGridColumn Title="Call forwarding" Sortable="false" Width="130px">
                 <Template>
                     @if (context.Status == null)
@@ -101,9 +110,19 @@ else
     private bool _anyKeyed;
     private bool _disposed;
     private Timer _timer;
+    private string _serverVersion;
+
+    // Optional — only registered when Tharga.MongoDB.Monitor.Server is installed on this host.
+    private RenderFragment ServerVersionCaption => @<text>
+        @if (!string.IsNullOrEmpty(_serverVersion))
+        {
+            <RadzenText TextStyle="TextStyle.Caption" Style="color: gray;">Monitor server v@_serverVersion</RadzenText>
+        }
+    </text>;
 
     protected override void OnInitialized()
     {
+        _serverVersion = ServiceProvider.GetService<IMonitorServerInfo>()?.LibraryVersion;
         DatabaseMonitor.MonitorClientsChanged += OnClientsChanged;
         _model = DatabaseMonitor.GetMonitorClients().ToArray();
         _anyKeyed = _model.Any(x => x.AuthKeyName != null);

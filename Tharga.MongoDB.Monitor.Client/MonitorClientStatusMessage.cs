@@ -11,4 +11,7 @@ public record MonitorClientStatusMessage
     public required int QueueMetricIntervalMs { get; init; }
     public string StorageMode { get; init; }
     public bool EnableCommandMonitoring { get; init; }
+
+    /// <summary>The agent's <c>Tharga.MongoDB.Monitor.Client</c> library version, for display on the Clients page.</summary>
+    public string LibraryVersion { get; init; }
 }
