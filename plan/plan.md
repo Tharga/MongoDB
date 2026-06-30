@@ -15,7 +15,9 @@ Tracking file for the feature. See `plan/feature.md` for scope/acceptance.
 - [x] 6. Disconnect keeps persisted data (drops only reachability); `IngestCollectionDropped` removes persisted record (`_cache.TryRemove` + `DeleteAsync`).
 - [x] 7. Removed `_remoteCollections` field; `ResetAsync` relies on `_cache.ResetAsync()`; all references migrated.
 - [x] 8. Tests: extended bson round-trip (new fields + legacy doc), rewired `RemoteCollectionReachabilityTests` + `RemoteActionDelegationTests` to a real `MemoryCollectionCache`, new disconnect/keep-data + ingest semantics tests. Full suite: 629 passed, same 6 environmental failures.
-- [~] 9. Minor version bump; README/docs review (separate `docs:` commit at close-out). Consider surfacing `ReportedAt` in the Blazor collections view.
+- [x] 9. Minor version bumped 2.11 → 2.12 (`MAJOR_MINOR` in build.yml). README + monitoring.md updated (separate `docs:` commit). `ReportedAt` is exposed on `CollectionInfo`; surfacing it as a Blazor grid column is left as a UX decision for the user.
 
 ## Last session
-Steps 0–8 complete and committed. Core feature works: agent reports persist into the `_monitor`-backed cache with a `ReportedAt` age, survive restart, stay visible (actions gated off) after disconnect, and are removed on a genuine drop. Next: version bump + docs review, and decide on UI surfacing of `ReportedAt`.
+Steps 0–9 complete and committed (feat + chore version bump + docs). Core feature works: agent reports persist into the `_monitor`-backed cache with a `ReportedAt` age, survive restart, stay visible (actions gated off) after disconnect, removed on a genuine drop. Build clean; full suite 629 passed, 6 environmental replica-set failures (baseline, not regressions).
+
+**Open before close-out:** (1) push branch for user testing; (2) decide whether to surface `ReportedAt` in the Blazor `CollectionView` grid; (3) on user confirmation: archive feature.md to Plan dir `done/`, `git rm -r plan`, final `feat: … complete` commit, open PR to master.
