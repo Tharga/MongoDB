@@ -22,4 +22,11 @@ public record CollectionInfo : CollectionFingerprint
     public IndexInfo Index { get; set; }
     public CleanInfo Clean { get; set; }
     public string CurrentSchemaFingerprint { get; set; }
+
+    /// <summary>
+    /// Age of the data: when this snapshot was last reported by a remote agent or refreshed
+    /// locally. Persisted in the <c>_monitor</c> cache so it survives restarts and lets the UI
+    /// show how stale the information is. Null for entries that predate this tracking.
+    /// </summary>
+    public DateTime? ReportedAt { get; set; }
 }

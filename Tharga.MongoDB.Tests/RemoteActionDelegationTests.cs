@@ -18,7 +18,6 @@ public class RemoteActionDelegationTests
 {
     private readonly DatabaseMonitor _monitor;
     private readonly Mock<IRemoteActionDispatcher> _dispatcherMock;
-    private readonly Mock<ICollectionCache> _cacheMock;
     private readonly Mock<IMongoDbServiceFactory> _factoryMock;
 
     public RemoteActionDelegationTests()
@@ -39,10 +38,9 @@ public class RemoteActionDelegationTests
         var repositoryConfigMock = new Mock<IRepositoryConfiguration>();
         var collectionProviderMock = new Mock<ICollectionProvider>();
         var callLibrary = new CallLibrary(Options.Create(new DatabaseOptions { Monitor = new MonitorOptions() }));
-        _cacheMock = new Mock<ICollectionCache>();
-        _cacheMock.Setup(c => c.LoadAsync()).Returns(Task.CompletedTask);
-        _cacheMock.Setup(c => c.GetKeys()).Returns(Array.Empty<string>());
-        _cacheMock.Setup(c => c.GetAll()).Returns(Array.Empty<CollectionInfo>());
+
+        // Real in-memory cache so agent reports persist and reads flow back through it.
+        var cache = new MemoryCollectionCache();
 
         var queueMonitorMock = new Mock<IQueueMonitor>();
 
@@ -58,7 +56,7 @@ public class RemoteActionDelegationTests
             repositoryConfigMock.Object,
             collectionProviderMock.Object,
             callLibrary,
-            _cacheMock.Object,
+            cache,
             queueMonitorMock.Object,
             new ConnectionPoolMonitor(),
             options,

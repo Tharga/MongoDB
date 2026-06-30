@@ -34,7 +34,6 @@ internal class DatabaseMonitor : IDatabaseMonitor
     private readonly SemaphoreSlim _lookupLock = new(1, 1);
     private bool _started;
     private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, MonitorClientDto> _monitorClients = new();
-    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, CollectionInfo> _remoteCollections = new();
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, System.Collections.Concurrent.ConcurrentDictionary<string, bool>> _collectionSources = new();
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> _sourceToConnectionId = new();
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, RemoteQueueState> _remoteQueueStates = new();
@@ -289,20 +288,12 @@ internal class DatabaseMonitor : IDatabaseMonitor
     {
         if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
 
-        // Check remote collections first — they have no local CollectionType
-        if (_remoteCollections.TryGetValue(fingerprint.Key, out var remote))
-        {
-            _logger?.LogDebug("GetInstanceAsync: Found remote collection {Key}, Stats={HasStats}, Index={HasIndex}",
-                fingerprint.Key, remote.Stats != null, remote.Index != null);
-            return remote;
-        }
-
         if (_cache.TryGet(fingerprint.Key, out var cached))
         {
-            // Only probe the live database when this server actually has the configuration. An agent-reported
-            // collection on a config we don't have (e.g. lingering in the cache after the agent disconnected)
-            // would otherwise throw "Cannot find ConnectionStrings/<name>"; return the cached info instead.
-            if (!IsConfigurationLocal(fingerprint.ConfigurationName?.Value))
+            // Agent-reported entries live on the agent's database, not ours, so never probe or evict
+            // them against the local server. Same for entries on a configuration this process doesn't
+            // host (probing would throw "Cannot find ConnectionStrings/<name>").
+            if (IsRemoteOrigin(cached) || !IsConfigurationLocal(fingerprint.ConfigurationName?.Value))
                 return cached;
 
             var mongoDbService = GetMongoDbService(fingerprint);
@@ -313,12 +304,15 @@ internal class DatabaseMonitor : IDatabaseMonitor
             return null;
         }
 
-        // Not cached and not reachable locally — nothing to load (a remote-only collection lives in _remoteCollections, handled above).
+        // Not cached and not reachable locally — nothing to load.
         if (!IsConfigurationLocal(fingerprint.ConfigurationName?.Value))
             return null;
 
         return await LoadAndCacheAsync(fingerprint);
     }
+
+    /// <summary>True when the entry was reported by a remote agent (its data lives on the agent's database, not this server's).</summary>
+    private static bool IsRemoteOrigin(CollectionInfo info) => info != null && info.Discovery.HasFlag(Discovery.Remote);
 
     /// <summary>True when this process has the given configuration registered (so it can open a connection to it).</summary>
     private bool IsConfigurationLocal(string configName)
@@ -391,17 +385,21 @@ internal class DatabaseMonitor : IDatabaseMonitor
             }
         }
 
-        // Remove stale cache entries for collections no longer in DB
+        // Remove stale cache entries for locally-scanned collections no longer in the DB. Remote-reported
+        // entries are intentionally skipped — they live on an agent's database, not ours, so the local
+        // scan can never confirm them and evicting here would discard the persisted report.
         foreach (var key in _cache.GetKeys().Where(k => !currentDbKeys.Contains(k)).ToList())
-            _cache.TryRemove(key, out _);
-
-        // Append remote collections not already present locally
-        foreach (var remote in _remoteCollections.Values)
         {
-            if (!currentDbKeys.Contains(remote.Key))
-            {
-                yield return remote;
-            }
+            if (_cache.TryGet(key, out var entry) && IsRemoteOrigin(entry)) continue;
+            _cache.TryRemove(key, out _);
+        }
+
+        // Append persisted entries not surfaced by the local scan — chiefly remote-reported collections,
+        // including those on configurations this server doesn't host.
+        foreach (var cachedInfo in _cache.GetAll())
+        {
+            if (!currentDbKeys.Contains(cachedInfo.Key))
+                yield return cachedInfo;
         }
     }
 
@@ -410,8 +408,11 @@ internal class DatabaseMonitor : IDatabaseMonitor
         if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
         if (fingerprint == null) throw new ArgumentNullException(nameof(fingerprint));
 
-        // Remote-only collections don't have local DB access — stats come from the agent
-        if (_remoteCollections.ContainsKey(fingerprint.Key) && !_cache.TryGet(fingerprint.Key, out _))
+        // Without the configuration registered here we can't open a connection to refresh; the stats
+        // stay as last reported by the agent. When the config *is* local the refresh runs even for a
+        // remote-reported collection the server also hosts — GetCollectionsWithMetaAsync simply returns
+        // null (handled below) when it isn't present locally, leaving the reported data untouched.
+        if (!IsConfigurationLocal(fingerprint.ConfigurationName?.Value))
             return;
 
         var mongoDbService = GetMongoDbService(fingerprint);
@@ -438,6 +439,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
                     Stats = new CollectionStats { DocumentCount = meta.DocumentCount, Size = meta.Size, UpdatedAt = now },
                     Index = BuildIndexInfo(entry, meta.Indexes, now),
                     Clean = cachedEntry?.Clean,
+                    ReportedAt = now,
                 };
             },
             updateFactory: (_, existing) => existing with
@@ -447,6 +449,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
                 CurrentSchemaFingerprint = SchemaFingerprint.IsCurrentVersion(existing.CurrentSchemaFingerprint)
                     ? existing.CurrentSchemaFingerprint
                     : ComputeSchemaFingerprint(existing.CollectionType),
+                ReportedAt = now,
             });
 
         RaiseLocalCollectionInfoChanged(updated);
@@ -1081,9 +1084,10 @@ internal class DatabaseMonitor : IDatabaseMonitor
         LogComm(entry.SourceName, CommunicationDirection.Inbound, "Disconnected", entry.Machine);
 
         // Drop the disconnected client's source so it no longer counts toward collection
-        // reachability or connection/queue metrics. A collection still reported by another client
-        // — or reachable by this server directly (its local source remains tagged) — survives;
-        // one left with no sources at all is a ghost from the gone agent and is removed.
+        // reachability or connection/queue metrics. The collection's persisted record is kept — it
+        // survives in the _monitor cache with its last-reported age, and reachability gating disables
+        // actions until an agent reports it again. (A genuine collection drop, not a disconnect, is
+        // what removes the record; see IngestCollectionDropped.)
         var sourceName = entry.SourceName;
         if (!string.IsNullOrEmpty(sourceName))
         {
@@ -1096,10 +1100,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
             foreach (var kvp in _collectionSources)
             {
                 if (kvp.Value.TryRemove(sourceName, out _) && kvp.Value.IsEmpty)
-                {
                     _collectionSources.TryRemove(kvp.Key, out _);
-                    _remoteCollections.TryRemove(kvp.Key, out _);
-                }
             }
         }
 
@@ -1117,7 +1118,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
             CollectionName = dto.CollectionName,
             Server = dto.Server,
             DatabasePart = dto.DatabasePart,
-            Discovery = discovery,
+            Discovery = discovery | Discovery.Remote,
             Registration = registration,
             EntityTypes = dto.EntityTypes ?? [],
             CollectionType = null,
@@ -1125,12 +1126,14 @@ internal class DatabaseMonitor : IDatabaseMonitor
             Stats = dto.Stats,
             Index = dto.Index,
             Clean = dto.Clean,
+            ReportedAt = DateTime.UtcNow,
         };
 
         var effectiveSource = ResolveEffectiveSource(connectionId, dto.SourceName);
 
         var key = info.Key;
-        _remoteCollections[key] = info;
+        _cache.Set(key, info);
+        _ = Task.Run(() => _cache.SaveAsync(info));
         LogComm(effectiveSource, CommunicationDirection.Inbound, "CollectionInfo",
             $"{dto.DatabaseName}.{dto.CollectionName} [{dto.Registration}]");
 
@@ -1167,7 +1170,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
         // whose context didn't set one) while the original report resolved it to a default, and a
         // strict config match would then miss. When a config is supplied, it's used as a soft filter.
         var configName = string.IsNullOrEmpty(configurationName) ? null : configurationName;
-        var matches = _remoteCollections.Values
+        var matches = _cache.GetAll()
             .Where(c => c.DatabaseName == databaseName
                         && c.CollectionName == collectionName
                         && (configName == null || (c.ConfigurationName?.Value ?? _options.DefaultConfigurationName) == configName))
@@ -1186,9 +1189,13 @@ internal class DatabaseMonitor : IDatabaseMonitor
                 _collectionSources.TryRemove(key, out _);
             }
 
-            if (_remoteCollections.TryRemove(key, out var removed))
+            // A genuine drop means the collection is gone at the source — remove the persisted record too.
+            if (_cache.TryRemove(key, out var removed))
+            {
+                _ = Task.Run(() => _cache.DeleteAsync(removed.DatabaseName, removed.CollectionName));
                 CollectionDroppedEvent?.Invoke(this, new CollectionDroppedEventArgs(removed.ToDatabaseContext(),
                     removed.ConfigurationName?.Value, removed.DatabaseName, removed.CollectionName));
+            }
         }
     }
 
@@ -1915,13 +1922,12 @@ internal class DatabaseMonitor : IDatabaseMonitor
     public async Task ResetAsync()
     {
         if (!_started) throw new InvalidOperationException($"{nameof(DatabaseMonitor)} has not been started. Call {nameof(MongoDbRegistrationExtensions.UseMongoDB)} on application start.");
+        // Clears both persisted records and remotely-reported entries (they now share the cache).
+        // Connected agents are asked to re-send below, which repopulates these with fresh data.
         await _cache.ResetAsync();
 
-        // Drop remotely-reported state too, otherwise a reset only clears locally-scanned collections
-        // and stale remote entries linger until each agent happens to re-report. Connected agents are
-        // asked to re-send below, which repopulates these with fresh data. Source/connection maps for
-        // live agents are kept so their re-reports can still be correlated and delegated.
-        _remoteCollections.Clear();
+        // Source/connection maps for live agents are kept so their re-reports can still be correlated
+        // and delegated.
         _collectionSources.Clear();
 
         // Broadcast to remote agents (clears their cache and triggers a fresh collection-info re-send).

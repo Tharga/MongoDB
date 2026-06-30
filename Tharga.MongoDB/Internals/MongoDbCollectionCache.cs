@@ -189,6 +189,28 @@ internal class MongoDbCollectionCache : ICollectionCache
         }).ToArray();
     }
 
+    internal static BsonValue CleanToBson(CleanInfo clean)
+    {
+        if (clean == null) return BsonNull.Value;
+        return new BsonDocument
+        {
+            { "SchemaFingerprint", ToBson(clean.SchemaFingerprint) },
+            { "CleanedAt", clean.CleanedAt },
+            { "DocumentsCleaned", clean.DocumentsCleaned },
+        };
+    }
+
+    internal static CleanInfo BsonToClean(BsonValue val)
+    {
+        if (val == null || val.IsBsonNull || val is not BsonDocument d) return null;
+        return new CleanInfo
+        {
+            SchemaFingerprint = BsonStr(d.GetValue("SchemaFingerprint", BsonNull.Value)),
+            CleanedAt = d.GetValue("CleanedAt", BsonNull.Value) is { IsBsonNull: false } c ? c.ToUniversalTime() : default,
+            DocumentsCleaned = d.GetValue("DocumentsCleaned", 0).ToInt32(),
+        };
+    }
+
     internal static BsonDocument CollectionInfoToBson(string id, CollectionInfo info)
     {
         return new BsonDocument
@@ -203,11 +225,16 @@ internal class MongoDbCollectionCache : ICollectionCache
             { "Registration", (int)info.Registration },
             { "Types", new BsonArray(info.EntityTypes ?? []) },
             { "CollectionTypeName", ToBson(info.CollectionType?.AssemblyQualifiedName) },
+            { "CollectionTypeDisplayName", ToBson(info.CollectionType?.Name ?? info.CollectionTypeName) },
             { "DocumentCount", info.Stats?.DocumentCount ?? 0L },
             { "Size", info.Stats?.Size ?? 0L },
             { "CurrentIndexes", IndexesToBson(info.Index?.Current) },
+            { "DefinedIndexes", IndexesToBson(info.Index?.Defined) },
             { "StatsUpdatedAt", info.Stats?.UpdatedAt.HasValue == true ? (BsonValue)info.Stats.UpdatedAt.Value : BsonNull.Value },
             { "IndexUpdatedAt", info.Index?.UpdatedAt.HasValue == true ? (BsonValue)info.Index.UpdatedAt.Value : BsonNull.Value },
+            { "Clean", CleanToBson(info.Clean) },
+            { "CurrentSchemaFingerprint", ToBson(info.CurrentSchemaFingerprint) },
+            { "ReportedAt", info.ReportedAt.HasValue ? (BsonValue)info.ReportedAt.Value : BsonNull.Value },
         };
     }
 
@@ -226,6 +253,7 @@ internal class MongoDbCollectionCache : ICollectionCache
             var registration = (Registration)doc.GetValue("Registration", 0).ToInt32();
             var collectionTypeName = BsonStr(doc.GetValue("CollectionTypeName", BsonNull.Value));
             var collectionType = collectionTypeName != null ? Type.GetType(collectionTypeName) : null;
+            var collectionTypeDisplayName = BsonStr(doc.GetValue("CollectionTypeDisplayName", BsonNull.Value)) ?? collectionType?.Name;
 
             var statsUpdatedAt = doc.TryGetValue("StatsUpdatedAt", out var suVal) && !suVal.IsBsonNull
                 ? (DateTime?)suVal.ToUniversalTime()
@@ -233,10 +261,16 @@ internal class MongoDbCollectionCache : ICollectionCache
             var indexUpdatedAt = doc.TryGetValue("IndexUpdatedAt", out var iuVal) && !iuVal.IsBsonNull
                 ? (DateTime?)iuVal.ToUniversalTime()
                 : null;
+            var reportedAt = doc.TryGetValue("ReportedAt", out var raVal) && !raVal.IsBsonNull
+                ? (DateTime?)raVal.ToUniversalTime()
+                : null;
 
             var documentCount = doc.GetValue("DocumentCount", 0L).ToInt64();
             var size = doc.GetValue("Size", 0L).ToInt64();
             var currentIndexes = BsonToIndexes(doc.GetValue("CurrentIndexes", BsonNull.Value));
+            var definedIndexes = BsonToIndexes(doc.GetValue("DefinedIndexes", BsonNull.Value));
+            var clean = BsonToClean(doc.GetValue("Clean", BsonNull.Value));
+            var currentSchemaFingerprint = BsonStr(doc.GetValue("CurrentSchemaFingerprint", BsonNull.Value));
 
             return new CollectionInfo
             {
@@ -251,12 +285,16 @@ internal class MongoDbCollectionCache : ICollectionCache
                     ? ta.Select(x => x.IsString ? x.AsString : null).ToArray()
                     : [],
                 CollectionType = collectionType,
+                CollectionTypeName = collectionTypeDisplayName,
                 Stats = documentCount > 0 || size > 0 || statsUpdatedAt.HasValue
                     ? new CollectionStats { DocumentCount = documentCount, Size = size, UpdatedAt = statsUpdatedAt }
                     : null,
-                Index = currentIndexes != null
-                    ? new IndexInfo { Current = currentIndexes, Defined = [], UpdatedAt = indexUpdatedAt }
+                Index = currentIndexes != null || definedIndexes != null
+                    ? new IndexInfo { Current = currentIndexes, Defined = definedIndexes ?? [], UpdatedAt = indexUpdatedAt }
                     : null,
+                Clean = clean,
+                CurrentSchemaFingerprint = currentSchemaFingerprint,
+                ReportedAt = reportedAt,
             };
         }
         catch

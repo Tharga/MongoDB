@@ -43,11 +43,9 @@ public class RemoteCollectionReachabilityTests
         var collectionProviderMock = new Mock<ICollectionProvider>();
         var callLibrary = new CallLibrary(Options.Create(new DatabaseOptions { Monitor = new MonitorOptions() }));
 
-        var cacheMock = new Mock<ICollectionCache>();
-        cacheMock.Setup(c => c.LoadAsync()).Returns(Task.CompletedTask);
-        cacheMock.Setup(c => c.ResetAsync()).Returns(Task.CompletedTask);
-        cacheMock.Setup(c => c.GetKeys()).Returns(Array.Empty<string>());
-        cacheMock.Setup(c => c.GetAll()).Returns(Array.Empty<CollectionInfo>());
+        // A real in-memory cache so agent reports persist and reads flow back through it, matching the
+        // production path where remote-reported collections live in the _monitor-backed cache.
+        var cache = new MemoryCollectionCache();
 
         var queueMonitorMock = new Mock<IQueueMonitor>();
         var options = Options.Create(new DatabaseOptions { Monitor = new MonitorOptions() });
@@ -59,7 +57,7 @@ public class RemoteCollectionReachabilityTests
             repositoryConfigMock.Object,
             collectionProviderMock.Object,
             callLibrary,
-            cacheMock.Object,
+            cache,
             queueMonitorMock.Object,
             new ConnectionPoolMonitor(),
             options,
@@ -155,7 +153,7 @@ public class RemoteCollectionReachabilityTests
     }
 
     [Fact]
-    public void IngestClientDisconnected_RemovesGhostCollection_WhenLastSourceGone()
+    public async Task IngestClientDisconnected_DropsReachability_ButKeepsPersistedData_WhenLastSourceGone()
     {
         var collection = RemoteCollection();
         IngestWithAgent(collection, "Agent-1/Svc", "conn-1");
@@ -164,7 +162,14 @@ public class RemoteCollectionReachabilityTests
         _monitor.IngestClientDisconnected("conn-1");
 
         _monitor.GetCollectionSources(collection.Key).Should().BeEmpty(
-            "a collection with no remaining sources is a ghost from the gone agent");
+            "the gone agent no longer counts as a live source");
+        _monitor.CanExecuteActions(collection).Should().BeFalse(
+            "no live source can service an action");
+
+        // The data itself survives in the cache with its reported age — it is no longer a ghost-removal.
+        var persisted = await _monitor.GetInstanceAsync(collection);
+        persisted.Should().NotBeNull("the report is persisted for later use, not evicted on disconnect");
+        persisted.ReportedAt.Should().NotBeNull();
     }
 
     [Fact]
@@ -208,7 +213,7 @@ public class RemoteCollectionReachabilityTests
     }
 
     [Fact]
-    public void IngestCollectionDropped_RemovesCollection_AndRaisesDroppedEvent()
+    public async Task IngestCollectionDropped_RemovesPersistedRecord_AndRaisesDroppedEvent()
     {
         var collection = RemoteCollection();
         IngestWithAgent(collection, "Agent-1/Svc", "conn-1");
@@ -219,6 +224,8 @@ public class RemoteCollectionReachabilityTests
         _monitor.IngestCollectionDropped("Agent-1/Svc", collection.ConfigurationName.Value, collection.DatabaseName, collection.CollectionName);
 
         _monitor.GetCollectionSources(collection.Key).Should().BeEmpty();
+        // Unlike a disconnect, a genuine drop removes the persisted record entirely.
+        (await _monitor.GetInstanceAsync(collection)).Should().BeNull();
         dropped.Should().NotBeNull();
         dropped.CollectionName.Should().Be(collection.CollectionName);
         dropped.DatabaseName.Should().Be(collection.DatabaseName);
@@ -277,6 +284,19 @@ public class RemoteCollectionReachabilityTests
         result.Should().NotBeNull();
         result.CollectionType.Should().BeNull("a remote collection's Type can't be reconstructed");
         result.CollectionTypeName.Should().Be("DynRepositoryCollection");
+    }
+
+    [Fact]
+    public async Task IngestCollectionInfo_StampsReportedAt_AndFlagsRemoteOrigin()
+    {
+        var collection = RemoteCollection();
+        IngestWithAgent(collection, "Agent-1/Svc", "conn-1");
+
+        var result = await _monitor.GetInstanceAsync(collection);
+
+        result.Should().NotBeNull();
+        result.ReportedAt.Should().NotBeNull("ingest records the age of the data");
+        result.Discovery.HasFlag(Discovery.Remote).Should().BeTrue("an agent report is remote-origin");
     }
 
     [Fact]

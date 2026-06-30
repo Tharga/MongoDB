@@ -375,4 +375,101 @@ public class MongoDbCollectionCacheBsonTests
         result.Index.Should().BeNull();
         result.CollectionType.Should().BeNull();
     }
+
+    [Fact]
+    public void BsonToCollectionInfo_RoundTrips_ReportedAt_Clean_And_SchemaFingerprint()
+    {
+        var reportedAt = new DateTime(2026, 6, 30, 12, 0, 0, DateTimeKind.Utc);
+        var cleanedAt = new DateTime(2026, 6, 29, 8, 30, 0, DateTimeKind.Utc);
+        var info = CreateFullInfo() with
+        {
+            CurrentSchemaFingerprint = "current-fp",
+            Clean = new CleanInfo { SchemaFingerprint = "fp-1", CleanedAt = cleanedAt, DocumentsCleaned = 7 },
+            ReportedAt = reportedAt,
+        };
+        var id = MongoDbCollectionCache.MonitorKey(info.DatabaseName, info.CollectionName);
+        var doc = MongoDbCollectionCache.CollectionInfoToBson(id, info);
+
+        var result = MongoDbCollectionCache.BsonToCollectionInfo(doc, "testConfig");
+
+        result.ReportedAt.Should().Be(reportedAt);
+        result.CurrentSchemaFingerprint.Should().Be("current-fp");
+        result.Clean.Should().NotBeNull();
+        result.Clean.SchemaFingerprint.Should().Be("fp-1");
+        result.Clean.CleanedAt.Should().Be(cleanedAt);
+        result.Clean.DocumentsCleaned.Should().Be(7);
+    }
+
+    [Fact]
+    public void BsonToCollectionInfo_RoundTrips_DefinedIndexes()
+    {
+        var info = CreateFullInfo() with
+        {
+            Index = new IndexInfo
+            {
+                Current = new[] { new IndexMeta { Name = "_id_", Fields = new[] { "_id" }, IsUnique = true } },
+                Defined = new[] { new IndexMeta { Name = "Name_1", Fields = new[] { "Name" }, IsUnique = false } },
+                UpdatedAt = null,
+            },
+        };
+        var id = MongoDbCollectionCache.MonitorKey(info.DatabaseName, info.CollectionName);
+        var doc = MongoDbCollectionCache.CollectionInfoToBson(id, info);
+
+        var result = MongoDbCollectionCache.BsonToCollectionInfo(doc, "testConfig");
+
+        result.Index.Defined.Should().ContainSingle().Which.Name.Should().Be("Name_1");
+        result.Index.Current.Should().ContainSingle().Which.Name.Should().Be("_id_");
+    }
+
+    [Fact]
+    public void BsonToCollectionInfo_PreservesDisplayTypeName_ForRemoteCollection_WithoutType()
+    {
+        // Remote collections have no reconstructable Type; the display name must still survive.
+        var info = new CollectionInfo
+        {
+            ConfigurationName = "testConfig",
+            DatabaseName = "testDb",
+            CollectionName = "remoteCol",
+            Server = "remote:27017",
+            Discovery = Discovery.Database | Discovery.Remote,
+            Registration = Registration.Dynamic,
+            EntityTypes = new[] { "DynEntity" },
+            CollectionType = null,
+            CollectionTypeName = "DynRepositoryCollection",
+            ReportedAt = new DateTime(2026, 6, 30, 0, 0, 0, DateTimeKind.Utc),
+        };
+        var id = MongoDbCollectionCache.MonitorKey(info.DatabaseName, info.CollectionName);
+        var doc = MongoDbCollectionCache.CollectionInfoToBson(id, info);
+
+        var result = MongoDbCollectionCache.BsonToCollectionInfo(doc, "testConfig");
+
+        result.CollectionType.Should().BeNull();
+        result.CollectionTypeName.Should().Be("DynRepositoryCollection");
+        result.Discovery.HasFlag(Discovery.Remote).Should().BeTrue();
+    }
+
+    [Fact]
+    public void BsonToCollectionInfo_LegacyDocument_WithoutNewFields_LoadsWithNulls()
+    {
+        var doc = new BsonDocument
+        {
+            { "_id", "db/legacy" },
+            { "CollectionName", "legacy" },
+            { "DatabaseName", "db" },
+            { "Server", "old:27017" },
+            { "Registration", (int)Registration.Static },
+            { "Types", new BsonArray(new[] { "E" }) },
+            { "Source", (int)Discovery.Database },
+            { "DocumentCount", 5L },
+            { "Size", 256L },
+        };
+
+        var result = MongoDbCollectionCache.BsonToCollectionInfo(doc, "cfg");
+
+        result.Should().NotBeNull();
+        result.ReportedAt.Should().BeNull();
+        result.Clean.Should().BeNull();
+        result.CurrentSchemaFingerprint.Should().BeNull();
+        result.Stats.DocumentCount.Should().Be(5);
+    }
 }
