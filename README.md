@@ -848,6 +848,8 @@ The hub is mapped at `/mongodb-monitor` by default. Both client and server accep
 
 Remote calls are ingested into the local `IDatabaseMonitor` and appear automatically in Blazor components, REST API endpoints, and summaries alongside local data. The Source column and filter appear when calls from multiple sources are present.
 
+Collections reported by agents are **persisted** into the server's `_monitor` cache (the same store it uses for its own collections), so they survive a server restart and a collection visible to both an agent and the server shares one record. Each record carries a `ReportedAt` timestamp (the age of the data). When an agent disconnects its collections remain visible from the cache with that age — only live reachability is lost, so actions disable until an agent reports them again; a genuine *drop* is what removes the record. Volatile telemetry (calls, latency, queue/connection snapshots) is not persisted.
+
 ### Securing the monitor hub
 Both client and server support API key authentication via [Tharga.Communication](https://www.nuget.org/packages/Tharga.Communication). When keys are configured, unauthorized agents are rejected. When no keys are configured, all connections are accepted (backwards compatible).
 

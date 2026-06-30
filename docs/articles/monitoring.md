@@ -107,7 +107,11 @@ var app = builder.Build();
 app.UseMongoDbMonitorServer();
 ```
 
-Agents push monitoring data fire-and-forget over [Tharga.Communication](https://www.nuget.org/packages/Tharga.Communication) (SignalR-backed). The server ingests it into its local `IDatabaseMonitor` so the [Blazor admin UI](https://www.nuget.org/packages/Tharga.MongoDB.Blazor) renders local + remote data side by side. When the server is unavailable or not configured, the agent has zero overhead. By default agents forward collection metadata and (while watched) per-pool queue/connection snapshots; forwarding of every completed call is opt-in via `Monitor.ForwardCompletedCalls` — see [What agents forward](#what-agents-forward-and-when).
+Agents push monitoring data fire-and-forget over [Tharga.Communication](https://www.nuget.org/packages/Tharga.Communication) (SignalR-backed). The server **persists** each reported collection into the same `_monitor` cache it uses for its own collections, so the [Blazor admin UI](https://www.nuget.org/packages/Tharga.MongoDB.Blazor) renders local + remote data side by side, the data survives a server restart, and a collection visible to both an agent and the server has a single shared record. When the server is unavailable or not configured, the agent has zero overhead. By default agents forward collection metadata and (while watched) per-pool queue/connection snapshots; forwarding of every completed call is opt-in via `Monitor.ForwardCompletedCalls` — see [What agents forward](#what-agents-forward-and-when).
+
+Each persisted record carries a `ReportedAt` timestamp — the age of the data, i.e. when the agent last reported it (or the server last refreshed it locally) — so the UI can show how stale a remote collection's numbers are. Only collection *metadata* is persisted; volatile telemetry (calls, latency, queue/connection snapshots) is never written to the cache.
+
+When a reporting agent disconnects, its collections **stay visible** from the persisted cache with their last-reported age; only live reachability is lost, so action buttons (*touch*, *clean*, *index*) disable until an agent reports the collection again. A collection is removed from the view only when an agent reports it as genuinely *dropped* (which also deletes the persisted record).
 
 ## API key rotation
 
