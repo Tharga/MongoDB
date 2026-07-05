@@ -5,7 +5,7 @@ namespace Tharga.MongoDB.Lockable;
 
 public record Lock
 {
-    internal Lock()
+    public Lock()
     {
     }
 

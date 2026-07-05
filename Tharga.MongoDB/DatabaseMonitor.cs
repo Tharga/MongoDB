@@ -2159,6 +2159,16 @@ internal class DatabaseMonitor : IDatabaseMonitor
                 {
                     var collection = _collectionProvider.GetCollection(colType, databaseContext) as RepositoryCollectionBase;
 
+                    if (collection == null)
+                    {
+                        // A consumer can decorate ICollectionProvider so GetCollection returns a
+                        // DispatchProxy over the collection interface (not a RepositoryCollectionBase).
+                        // Skip index-metadata for it rather than NRE — mirrors the static path's guard
+                        // and lets GetLookups complete and cache (issue #133).
+                        _logger?.LogDebug("Skipping dynamic registration for {Collection}: resolved collection is not a {Base} (likely a decorated/proxied {Provider}).", registeredCollection.Key.Name, nameof(RepositoryCollectionBase), nameof(ICollectionProvider));
+                        continue;
+                    }
+
                     if (genericParam?.Name != null)
                     {
                         yield return new DynColInfo
