@@ -11,6 +11,11 @@ internal static class IndexMetaConverter
 {
     public static IEnumerable<IndexMeta> BuildIndexMetas(this RepositoryCollectionBase instance)
     {
+        // A decorated/proxied ICollectionProvider can resolve a collection that isn't a
+        // RepositoryCollectionBase, leaving the caller's cast null. Degrade to empty rather than
+        // dereferencing null (issue #133).
+        if (instance == null) return [];
+
         var indices = ResolveProperty(instance, "Indices");
         var coreIndices = ResolveProperty(instance, "CoreIndices");
 
