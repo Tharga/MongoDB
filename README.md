@@ -274,6 +274,24 @@ await scope.ExecuteAsync(
 
 `LockableErrorKind` covers `HandlerError` / `LockExpired` / `LockAlreadyReleased` / `CommitError`. The legacy `Action<Exception>` overload is still supported (handles only `HandlerError`; commit errors propagate as before) for callers that haven't migrated.
 
+##### Inspecting and seeding lock state
+
+`entity.GetLockInfo()` returns the current `Lock` (actor, expiry, and any `ExceptionInfo` from a previous failed attempt), or `null` when unlocked. The lock lifecycle is owned by the collection, but the `Lock` type is publicly constructible and can be attached to an entity in memory with `entity.WithLock(...)` — handy for unit-testing lock-reading / error-routing code without a live database:
+
+```csharp
+var locked = entity.WithLock(new Lock
+{
+    LockKey = Guid.NewGuid(),
+    LockTime = DateTime.UtcNow,
+    ExpireTime = DateTime.UtcNow.AddMinutes(5),
+    ExceptionInfo = new ExceptionInfo { Message = "boom" }
+});
+
+locked.GetLockInfo().ExceptionInfo.Message.Should().Be("boom");
+```
+
+To drive `SetErrorStateAsync` in a test, build a scope over an in-memory entity with `EntityScopeBuilder.Build(entity, releaseAction)` and assert on what the release action receives — no mongod required.
+
 ##### Auto-declared lock indexes
 
 Every `LockableRepositoryCollectionBase<TEntity, TKey>` automatically declares two indexes via `CoreIndices` so the lock-check pattern (`{Lock: null}` or `{Lock.ExceptionInfo: null, Lock.ExpireTime: < now}`) doesn't full-scan:

@@ -71,6 +71,34 @@ Transactional commit requires a replica set or sharded MongoDB cluster (see [Tra
 
 `LockManyAsync` also accepts a `FilterDefinition<TEntity>` or an `Expression<Func<TEntity, bool>>` — both resolve to an id list at acquire time.
 
+## Inspecting and seeding lock state
+
+Read the current lock on an entity with `GetLockInfo()` — it returns the `Lock` (actor, expiry, and any `ExceptionInfo` from a previous failed attempt), or `null` when the document is unlocked:
+
+```csharp
+var info = entity.GetLockInfo();
+if (info?.ExceptionInfo != null)
+{
+    // the previous attempt failed — inspect info.ExceptionInfo.Message
+}
+```
+
+The lifecycle of that lock is owned by the collection — `PickFor*` / `LockAsync` acquire it and `CommitAsync` / `SetErrorStateAsync` update it. But the `Lock` type is publicly constructible and can be attached to an entity in memory with `WithLock`, which is useful for **unit-testing** code that reads `GetLockInfo()` / routes errors, without a live database:
+
+```csharp
+var locked = entity.WithLock(new Lock
+{
+    LockKey = Guid.NewGuid(),
+    LockTime = DateTime.UtcNow,
+    ExpireTime = DateTime.UtcNow.AddMinutes(5),
+    ExceptionInfo = new ExceptionInfo { Message = "boom" }
+});
+
+locked.GetLockInfo().ExceptionInfo.Message.Should().Be("boom");
+```
+
+To exercise the error-routing path (`SetErrorStateAsync`) in a unit test, build a scope over an in-memory entity with `EntityScopeBuilder.Build(entity, releaseAction)` and assert on what the release action receives — no mongod required.
+
 ## See also
 
 - [Transactions](transactions.md) — combining locks with multi-collection atomicity
