@@ -919,7 +919,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 
     public override async Task<bool> TryAddAsync(TEntity entity, IClientSessionHandle session = null)
     {
-        return await ExecuteAsync(nameof(AddAsync), async (collection, sess, ct) =>
+        return await ExecuteAsync(nameof(TryAddAsync), async (collection, sess, ct) =>
         {
             try
             {
