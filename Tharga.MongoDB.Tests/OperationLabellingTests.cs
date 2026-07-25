@@ -89,6 +89,35 @@ public class OperationLabellingTests : MongoDbTestBase
 
     [Fact]
     [Trait("Category", "Database")]
+    public async Task TryAddAsync_ReportsItsOwnName()
+    {
+        // Reported nameof(AddAsync). Both insert one document under Operation.Create, so nothing was
+        // misclassified — but they differ in a way monitoring cares about: AddAsync throws on a
+        // duplicate, TryAddAsync returns false. Conflating them hid rejected inserts inside the
+        // successful-add statistics.
+        var sut = Collection;
+        var calls = RecordCalls();
+
+        await sut.TryAddAsync(TestEntityFactory.CreateTestEntity());
+
+        calls.Should().Contain(x => x.FunctionName == nameof(DiskTestRepositoryCollection.TryAddAsync) && x.Operation == Operation.Create);
+        calls.Should().NotContain(x => x.FunctionName == nameof(DiskTestRepositoryCollection.AddAsync));
+    }
+
+    [Fact]
+    [Trait("Category", "Database")]
+    public async Task AddAsync_StillReportsAdd()
+    {
+        var sut = Collection;
+        var calls = RecordCalls();
+
+        await sut.AddAsync(TestEntityFactory.CreateTestEntity());
+
+        calls.Should().Contain(x => x.FunctionName == nameof(DiskTestRepositoryCollection.AddAsync) && x.Operation == Operation.Create);
+    }
+
+    [Fact]
+    [Trait("Category", "Database")]
     public async Task DeleteManyAsync_ReportsItsOwnName()
     {
         var sut = Collection;
