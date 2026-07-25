@@ -248,14 +248,40 @@ stated rather than discovered.
    and a policy layer should see it. The wrinkle to document is that an interceptor which permits the
    delete but rejects the drop will throw after the delete has already been applied.
 
-## Step 7 — Fast-path cost `[~] next`
+## Step 7 — Fast-path cost `[x] done`
 
-- [ ] Confirm the no-interceptor path is a field read and a branch — no allocation, no virtual
-      dispatch, no `CollectionCallInfo` construction (it must be built lazily, only once at least
-      one interceptor is registered).
-- [ ] Test pinning acceptance criterion 7.
+Done 2026-07-26. 8 new tests in `Interception/InterceptionFastPathTests.cs`; suite at 687 passed /
+5 environmental / 8 skipped.
 
-## Step 8 — Documentation
+- [x] Confirmed by measurement, not inspection: `GC.GetAllocatedBytesForCurrentThread()` around
+      1000 iterations (after 200 warm-up iterations to settle JIT/tiering) asserts **exactly zero**
+      bytes for the invocation path, the enumeration path, and the streaming entry path. Exact zero
+      rather than a threshold, because the path is straight-line code with no legitimate reason to
+      allocate — non-zero means something was added to it.
+- [x] `CollectionCallInfo` laziness pinned two ways: an enumeration-only interceptor leaves the
+      invocation path at zero and vice versa (this is what the **two** separate flags buy over a
+      single "any interceptor" flag), and with two matching interceptors both receive the *same*
+      instance, so it is built once per call rather than once per interceptor.
+- [x] **Two guard tests so the zero-assertions cannot pass vacuously.** `MeasurementHarness_
+      DetectsAllocation` proves the harness reports non-zero for a deliberate allocation, and
+      `RegisteredInterceptor_DoesAllocate_SoZeroIsMeaningful` proves the same code path allocates
+      once an interceptor matches. Without these, a broken harness would turn every zero-assertion
+      green while the path regressed.
+- [x] Three helpers widened `private` → `internal` purely to make the path directly measurable
+      (`RunInvocationInterceptorsAsync`, `RunEnumerationInterceptorsAsync`,
+      `BeginInvocationInterception`), with an XML comment on the first recording why.
+
+### Considered and rejected: caching the factory cast
+
+The fast path is a `castclass` (`(MongoDbServiceFactory)_mongoDbServiceFactory`), a field read and a
+branch. The cast could be hoisted into a readonly field at construction, but that would move the
+failure for a consumer passing a mock `IMongoDbServiceFactory` from first-operation to
+construction-time. The existing code already hard-casts inline on the same hot path
+(`Disk/DiskRepositoryCollectionBase.cs` uses `((MongoDbServiceFactory)_mongoDbServiceFactory)` for
+`CommandMonitor` and `OnCallEnd`), so this changes no cost that was not already being paid, and a
+static type-check is nanoseconds. Not worth the behaviour change.
+
+## Step 8 — Documentation `[~] next`
 
 - [ ] `README.md` — new section on the interception seam: contract, registration, the two timing
       points, the reject/throw semantics, and an explicit note that it is mechanism-only.
@@ -265,6 +291,16 @@ stated rather than discovered.
 - [ ] Document the relationship to `ActionEvent` so the two hooks are not confused: `ActionEvent` is
       static + observational (telemetry), `ICollectionInterceptor` is DI-scoped + veto-capable
       (policy).
+- [ ] Document the **coverage boundary** from Step 6: public data operations are intercepted; the
+      `internal` index/clean/admin plumbing is not.
+- [ ] Document **rejection timing** from Step 4: a synchronous interceptor rejects at the call site
+      even for streaming operations; one that genuinely yields surfaces on first enumeration. Either
+      way nothing reaches the driver.
+- [ ] Document the `DropEmptyAsync` wrinkle from Step 6: under `CreateStrategy.DropEmpty`, an
+      interceptor that permits a delete but rejects the resulting `DropCollectionAsync` throws after
+      the delete has already been applied.
+- [ ] Note that an interceptor must not call back into a repository collection (already stated in the
+      `ICollectionInterceptor` XML docs — make sure the prose agrees).
 - [ ] Land as a separate `docs:` commit.
 
 ## Step 9 — Close-out (only on user confirmation)
@@ -332,8 +368,14 @@ handling. 7 tests. Suite at 679 passed / 5 environmental / 8 skipped. Two findin
 step: a pre-existing `DeleteOneAsync` mislabel (deferred, follow-up filed) and a nested
 `DropCollectionAsync` interception under `CreateStrategy.DropEmpty` (left as-is, to document).
 
-**Next: Step 7 — fast-path cost.** Confirm the no-interceptor path is a field read and a branch:
-no allocation, no virtual dispatch, and no `CollectionCallInfo` construction. The design already aims
-at this (no lambdas anywhere on the path, `ValueTask?` is a struct, `CollectionCallInfo` is built
-lazily only once an interceptor matches the point) — Step 7 is about proving it rather than assuming
-it.
+Step 7 done — fast path proven by measurement at exactly zero allocated bytes, with two guard tests
+so the zero-assertions cannot pass vacuously. 8 tests. Suite at 687 passed / 5 environmental /
+8 skipped.
+
+**All implementation steps are complete.** Acceptance criteria 1–9 are met and pinned by 62
+interception tests across four files.
+
+**Next: Step 8 — documentation.** README section plus a new `docs/articles/collection-interceptors.md`,
+then a `docs:` commit. The step list above now includes the four things the implementation turned up
+that a consumer cannot infer from the API: the coverage boundary, rejection timing, the
+`ActionEvent` distinction, and the `DropEmptyAsync` wrinkle.

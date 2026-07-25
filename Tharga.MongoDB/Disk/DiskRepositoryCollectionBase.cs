@@ -62,8 +62,14 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
     /// <summary>
     /// Runs the invocation-point interceptor chain. Returns a completed <see cref="ValueTask"/> and
     /// allocates nothing when no interceptor asked for that point.
+    /// <para>
+    /// Internal rather than private so the allocation characteristics of the no-interceptor path can
+    /// be measured directly by tests — an accidental closure or an eagerly built
+    /// <see cref="CollectionCallInfo"/> would otherwise be invisible until it showed up as
+    /// gen-0 pressure in production.
+    /// </para>
     /// </summary>
-    private ValueTask RunInvocationInterceptorsAsync(string functionName, Operation operation, CancellationToken cancellationToken)
+    internal ValueTask RunInvocationInterceptorsAsync(string functionName, Operation operation, CancellationToken cancellationToken)
     {
         var factory = ServiceFactory;
         if (!factory.HasInvocationInterceptors) return default;
@@ -75,7 +81,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
     /// allocates nothing when no registered interceptor asked for that point — which is the norm,
     /// since the point exists for latency-shaping rather than policy.
     /// </summary>
-    private ValueTask RunEnumerationInterceptorsAsync(string functionName, CancellationToken cancellationToken)
+    internal ValueTask RunEnumerationInterceptorsAsync(string functionName, CancellationToken cancellationToken)
     {
         var factory = ServiceFactory;
         if (!factory.HasEnumerationInterceptors) return default;
@@ -92,7 +98,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
     /// chain still running, which the returned stream must await before yielding anything.
     /// </para>
     /// </summary>
-    private ValueTask? BeginInvocationInterception(string functionName, Operation operation, CancellationToken cancellationToken)
+    internal ValueTask? BeginInvocationInterception(string functionName, Operation operation, CancellationToken cancellationToken)
     {
         var factory = ServiceFactory;
         if (!factory.HasInvocationInterceptors) return null;
