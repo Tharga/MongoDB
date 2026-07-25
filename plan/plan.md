@@ -180,18 +180,30 @@ the stream. An interceptor that genuinely yields cannot complete synchronously, 
 surfaces on first enumeration instead. Either way the operation never reaches the driver. Both paths
 are pinned by tests.
 
-## Step 5 — Enumeration timing point `[~] next`
+## Step 5 — Enumeration timing point `[x] done`
 
-- [ ] Fire `InterceptionPoint.Enumeration` inside the iterator, at the point the driver work
-      happens — around `OpenCursorWithinLimiterAsync` (`:1187`).
-- [ ] Decide and document whether it also fires per `MoveNextWithinLimiterAsync` batch (`:1255`) or
-      only on cursor open. Default: **cursor open only** — per-batch is a hot inner loop and nothing
-      in the request needs it. Record the decision in `feature.md` when settled.
-- [ ] Skip the enumeration pass entirely when no registered interceptor declared that point.
-- [ ] Tests: enumeration-point interceptor fires only on enumeration; an interceptor declaring both
-      points sees both, with `CollectionCallInfo.Point` distinguishing them.
+Done 2026-07-26. 5 new tests; suite at 672 passed / 5 environmental / 8 skipped.
 
-## Step 6 — Lockable coverage verification
+- [x] Fire `InterceptionPoint.Enumeration` inside the iterator. Placed at the **top of
+      `StreamCursorAsync`**, which turned out to be the single right spot: it is the only place a
+      deferred read reaches the driver, its body does not run until the consumer calls
+      `MoveNextAsync`, and all three streaming families (`GetAsync`, `GetProjectionAsync`,
+      `ExecuteManyAsync`) funnel through it. One call site, complete coverage.
+- [x] **Settled: cursor open only, not per batch.** `MoveNextWithinLimiterAsync` is a hot inner loop
+      and nothing in the request needs per-batch granularity. Pinned by
+      `EnumerationPoint_FiresOncePerStream_NotPerBatch` — the test collection has `FetchSize` 5 and
+      the test streams 12 rows, so the read genuinely spans multiple driver batches while the
+      interceptor still sees exactly one call.
+- [x] Runs **before** `FireCallStartEvent`, same as the invocation point, so a rejection at either
+      point stays invisible to the monitor.
+- [x] Skip the enumeration pass entirely when no registered interceptor declared that point — reuses
+      the `HasEnumerationInterceptors` flag precomputed in Step 3.
+- [x] Tests: fires only on enumeration; an interceptor declaring both points sees both in order with
+      `CollectionCallInfo.Point` distinguishing them; does not fire for non-deferred operations
+      (`CountAsync`); rejection at the enumeration point prevents the query and reports
+      `Point = Enumeration`.
+
+## Step 6 — Lockable coverage verification `[~] next`
 
 - [ ] No production code expected here — `LockableRepositoryCollectionBase` delegates through
       `Disk`. This step is **verification**, and exists because "partial coverage reads as protection
@@ -277,8 +289,13 @@ Step 4 done — the seam is live. Chain fires before `FireCallStartEvent` (rejec
 monitor), the iterator-deferral rework landed across all public streaming entry points, and
 `DropCollectionAsync`'s hole is closed. 14 tests. Suite at 667 passed / 5 environmental / 8 skipped.
 
-**Next: Step 5 — enumeration timing point.** Fire `InterceptionPoint.Enumeration` inside
-`StreamCursorAsync` around `OpenCursorWithinLimiterAsync`, gated on the already-precomputed
-`HasEnumerationInterceptors` flag so nothing is paid when unused. One decision to settle and record:
-cursor-open only, or per `MoveNextWithinLimiterAsync` batch as well — leaning cursor-open only, since
-per-batch is a hot inner loop and nothing in the request needs it.
+Step 5 done — enumeration point fires at the top of `StreamCursorAsync`, once per stream at cursor
+open (settled; pinned by a multi-batch test). Both timing points are now live. 5 tests. Suite at
+672 passed / 5 environmental / 8 skipped.
+
+**Next: Step 6 — lockable coverage verification.** Expected to be verification only, no production
+code: audit every `Disk.*` call site in `LockableRepositoryCollectionBase` plus `DocumentLease` /
+`EntityScope` / `LockScope`, confirm each lands on an intercepted path, and add a test that a
+lockable pick/commit cycle fires interceptors for the underlying disk operations. This step exists
+because "partial coverage reads as protection while leaving holes" is the explicit risk in the
+request — so the audit needs to be exhaustive rather than a spot check.

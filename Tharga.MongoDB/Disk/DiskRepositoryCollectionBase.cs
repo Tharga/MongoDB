@@ -71,6 +71,18 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
     }
 
     /// <summary>
+    /// Runs the enumeration-point interceptor chain. Returns a completed <see cref="ValueTask"/> and
+    /// allocates nothing when no registered interceptor asked for that point — which is the norm,
+    /// since the point exists for latency-shaping rather than policy.
+    /// </summary>
+    private ValueTask RunEnumerationInterceptorsAsync(string functionName, CancellationToken cancellationToken)
+    {
+        var factory = ServiceFactory;
+        if (!factory.HasEnumerationInterceptors) return default;
+        return RunInterceptorsAsync(factory, InterceptionPoint.Enumeration, functionName, Operation.Read, cancellationToken);
+    }
+
+    /// <summary>
     /// Starts the invocation-point chain for an operation returning <c>IAsyncEnumerable</c>, whose
     /// body would otherwise not run until the caller enumerates.
     /// <para>
@@ -1200,6 +1212,14 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         FilterDefinition<TEntity> filterForObservability,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
+        // The enumeration point. This method is the single place a deferred read actually reaches
+        // the driver, and its body does not run until the consumer calls MoveNextAsync — which is
+        // exactly the timing an interceptor asking for this point wants. Fires once per stream, at
+        // cursor open, not per fetched batch: MoveNextWithinLimiterAsync is a hot inner loop and
+        // nothing needs per-batch granularity. Before FireCallStartEvent for the same reason as the
+        // invocation point — a rejected call never touched the database.
+        await RunEnumerationInterceptorsAsync(functionName, cancellationToken).ConfigureAwait(false);
+
         var callKey = Guid.NewGuid();
         var startAt = Stopwatch.GetTimestamp();
         var steps = new List<StepResponse>();

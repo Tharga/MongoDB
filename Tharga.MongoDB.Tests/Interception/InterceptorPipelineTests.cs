@@ -215,6 +215,93 @@ public class InterceptorPipelineTests : MongoDbTestBase
 
     [Fact]
     [Trait("Category", "Database")]
+    public async Task EnumerationInterceptor_FiresOnlyWhenEnumerated()
+    {
+        var interceptor = new RecordingInterceptor { DeclaredPoints = InterceptionPoint.Enumeration };
+        UseInterceptors(interceptor);
+        var sut = Collection;
+        await sut.AddAsync(TestEntityFactory.CreateTestEntity());
+        interceptor.Calls.Clear();
+
+        var stream = sut.GetAsync(x => true);
+        interceptor.Calls.Should().BeEmpty("nothing has been enumerated yet");
+
+        await stream.ToArrayAsync();
+
+        var call = interceptor.Calls.Should().ContainSingle().Subject;
+        call.Point.Should().Be(InterceptionPoint.Enumeration);
+        call.Operation.Should().Be("GetAsync");
+    }
+
+    [Fact]
+    [Trait("Category", "Database")]
+    public async Task InterceptorDeclaringBothPoints_SeesBoth_Distinguishable()
+    {
+        var interceptor = new RecordingInterceptor
+        {
+            DeclaredPoints = InterceptionPoint.Invocation | InterceptionPoint.Enumeration
+        };
+        UseInterceptors(interceptor);
+        var sut = Collection;
+        await sut.AddAsync(TestEntityFactory.CreateTestEntity());
+        interceptor.Calls.Clear();
+
+        await sut.GetAsync(x => true).ToArrayAsync();
+
+        interceptor.Calls.Select(x => x.Point).Should()
+            .Equal(InterceptionPoint.Invocation, InterceptionPoint.Enumeration);
+    }
+
+    [Fact]
+    [Trait("Category", "Database")]
+    public async Task EnumerationPoint_FiresOncePerStream_NotPerBatch()
+    {
+        // Settled behaviour: cursor-open granularity. FetchSize is 5 on the test collection, so 12
+        // rows span multiple driver batches — the interceptor must still see exactly one call.
+        var sut = Collection;
+        for (var i = 0; i < 12; i++)
+        {
+            await sut.AddAsync(TestEntityFactory.CreateTestEntity());
+        }
+
+        var interceptor = new RecordingInterceptor { DeclaredPoints = InterceptionPoint.Enumeration };
+        UseInterceptors(interceptor);
+
+        var items = await sut.GetAsync(x => true).ToArrayAsync();
+
+        items.Should().HaveCount(12);
+        interceptor.Calls.Should().ContainSingle();
+    }
+
+    [Fact]
+    [Trait("Category", "Database")]
+    public async Task EnumerationPoint_DoesNotFireForNonDeferredOperations()
+    {
+        var interceptor = new RecordingInterceptor { DeclaredPoints = InterceptionPoint.Enumeration };
+        UseInterceptors(interceptor);
+
+        await Collection.CountAsync(x => true);
+
+        interceptor.Calls.Should().BeEmpty("CountAsync is not a deferred operation");
+    }
+
+    [Fact]
+    [Trait("Category", "Database")]
+    public async Task EnumerationPointRejection_PreventsTheQuery()
+    {
+        var sut = Collection;
+        await sut.AddAsync(TestEntityFactory.CreateTestEntity());
+        UseInterceptors(new EnumerationRejectingInterceptor());
+
+        var stream = sut.GetAsync(x => true);
+        var act = async () => await stream.ToArrayAsync();
+
+        var exception = await act.Should().ThrowAsync<CollectionAccessDeniedException>();
+        exception.Which.Call.Point.Should().Be(InterceptionPoint.Enumeration);
+    }
+
+    [Fact]
+    [Trait("Category", "Database")]
     public async Task NoInterceptors_OperationsBehaveNormally()
     {
         UseInterceptors();
@@ -255,6 +342,16 @@ public class InterceptorPipelineTests : MongoDbTestBase
         {
             await Task.Yield();
             return InterceptDecision.Reject("async denial");
+        }
+    }
+
+    private class EnumerationRejectingInterceptor : ICollectionInterceptor
+    {
+        public InterceptionPoint Points => InterceptionPoint.Enumeration;
+
+        public ValueTask<InterceptDecision> BeforeCallAsync(CollectionCallInfo call, CancellationToken cancellationToken = default)
+        {
+            return ValueTask.FromResult(InterceptDecision.Reject("denied at enumeration"));
         }
     }
 

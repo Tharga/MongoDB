@@ -45,7 +45,8 @@ has a meaningful domain exception is not forced to launder it through a string r
   time, long after the call site.
 - **`InterceptionPoint.Enumeration`** — fires inside the iterator, at the point the driver work
   actually happens. Needed by anything that wants to affect the observed latency or ordering of a
-  deferred result.
+  deferred result. **Granularity settled 2026-07-26: once per stream at cursor open, not per fetched
+  batch** — the per-batch loop is hot and nothing in the request needs it.
 
 An interceptor may declare both. The pipeline never hard-codes one point.
 
