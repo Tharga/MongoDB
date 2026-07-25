@@ -112,11 +112,17 @@ an idempotent `Start()` on `RevalidationQueue`, used by the test to populate bot
 loop runs. The public constructor is unchanged and still starts eagerly. The assertion is now the
 stronger, exact `high-1, high-2, low-1, low-2`. Stable across two consecutive full-suite runs.
 
-## Step 4 — Fire at the invocation chokepoints `[~] next`
+## Step 4 — Fire at the invocation chokepoints `[x] done`
 
-- [ ] `DiskRepositoryCollectionBase.ExecuteAsync` (`:59`) — run the chain *before*
-      `FireCallStartEvent`, so a rejected call never enters the monitor as a started call.
-- [ ] **Iterator-deferral rework — the subtlest part of the feature.** Any `async IAsyncEnumerable`
+Done 2026-07-25. 14 new tests in `Interception/InterceptorPipelineTests.cs`; suite at
+667 passed / 5 environmental / 8 skipped. No regressions despite restructuring five heavily-exercised
+streaming methods.
+
+- [x] `DiskRepositoryCollectionBase.ExecuteAsync` — run the chain *before*
+      `FireCallStartEvent`, so a rejected call never enters the monitor as a started call. Placed
+      before the `try`, so the `finally` that raises `OnCallEnd` does not run either. Pinned by
+      `RejectedCall_IsInvisibleToTheMonitor`.
+- [x] **Iterator-deferral rework — the subtlest part of the feature.** Any `async IAsyncEnumerable`
       method defers its whole body until the first `MoveNextAsync`. Firing the chain from inside such
       a method would fire at *enumeration*, which is exactly the failure Platform's design point #1
       warns about. Every public streaming entry point that is an iterator must become a thin
@@ -135,15 +141,46 @@ stronger, exact `high-1, high-2, low-1, low-2`. Stable across two consecutive fu
 
       **This is the one place decision #3 ("zero new call sites in lockable") does not fully hold** —
       `GetUnlockedAsync(predicate)` needs the wrapper too. One method, not fifty.
-- [ ] Acceptance criterion 5 pins this: call each streaming entry point **without** enumerating and
-      assert the interceptor fired.
-- [ ] `DropCollectionAsync` (`:1282`) — currently bypasses both chokepoints; run the chain here too.
-- [ ] Tests: interception fires for a representative op of each family (`CountAsync` via
-      `ExecuteAsync`, `GetAsync` via `StreamCursorAsync`, `DropCollectionAsync`); rejection prevents
-      execution; interceptor throw propagates unchanged; order and short-circuit.
-- [ ] Test: calling `GetAsync(...)` **without** enumerating still fires an `Invocation` interceptor.
 
-## Step 5 — Enumeration timing point
+      **As built.** Rather than 6 near-identical wrappers, interception happens at *public entry
+      points only*, never in the shared internals — otherwise `GetAsync` would intercept once at
+      invocation and again at enumeration when its iterator reached `StreamCursorAsync`. Concretely:
+      - `GetAsync(filter)`, `GetProjectionAsync(filter)`, `GetDirtyAsync()`, `ExecuteManyAsync()`
+        each became a non-iterator wrapper over a new private `…IteratorAsync` method.
+      - `GetAsync(predicate)` and `GetProjectionAsync(predicate)` just delegate to their filter
+        overloads (now non-iterators), so they intercept exactly once with no wrapper of their own.
+      - `GetDirtyIteratorAsync` calls `GetIteratorAsync` directly rather than public `GetAsync`, so
+        the scan reports once as `GetDirtyAsync` instead of a nested `GetAsync`.
+      - `StreamCursorAsync` does **not** intercept at invocation. It stays the shared internal and
+        will carry only the Enumeration point in Step 5.
+      - Lockable `GetUnlockedAsync(predicate)` turned out to be a pure pass-through, so it became a
+        direct `return Disk.GetAsync(...)` — no wrapper, no iterator, deferral gone.
+- [x] Helper shape: `BeginInvocationInterception` returns `ValueTask?` — null when nothing is
+      registered *or* the chain finished synchronously (having already thrown on rejection at the
+      call site); non-null only when an interceptor genuinely yielded, in which case
+      `PrefixAwaitAsync` awaits it before the stream produces anything. `ValueTask?` is a struct, and
+      the design avoids lambdas entirely so the fast path allocates no closure.
+- [x] `PrefixAwaitAsync` carries `[EnumeratorCancellation]` and forwards the token via
+      `.WithCancellation(...)`, so `foreach (… .WithCancellation(ct))` behaves identically whether or
+      not interceptors are registered. Without this the token was silently dropped on the
+      interceptor path.
+- [x] Acceptance criterion 5 pinned by three tests that call `GetAsync` / `GetProjectionAsync` /
+      `GetDirtyAsync` and assert interception **without enumerating**.
+- [x] `DropCollectionAsync` — bypassed both chokepoints; chain wired in explicitly.
+- [x] Tests: representative op per family, rejection prevents execution, interceptor throw
+      propagates unchanged, order and short-circuit, enumeration-only interceptor stays silent at
+      invocation, async interceptor still gates the operation, and no-interceptor behaviour is
+      unchanged.
+
+### Rejection timing, as built
+
+A **synchronous** interceptor (the expected shape, and what an `AsyncLocal` policy check is) rejects
+at the *call site* even for streaming operations — `Collection.GetAsync(…)` throws before returning
+the stream. An interceptor that genuinely yields cannot complete synchronously, so its rejection
+surfaces on first enumeration instead. Either way the operation never reaches the driver. Both paths
+are pinned by tests.
+
+## Step 5 — Enumeration timing point `[~] next`
 
 - [ ] Fire `InterceptionPoint.Enumeration` inside the iterator, at the point the driver work
       happens — around `OpenCursorWithinLimiterAsync` (`:1187`).
@@ -236,8 +273,12 @@ flags. Container isolation is pinned by test. Also fixed a latent race in the un
 
 Suite: 653 passed / 5 environmental / 8 skipped, stable across two consecutive runs.
 
-**Next: Step 4 — fire at the invocation chokepoints.** This is the first step that changes runtime
-behaviour. Two things to get right: run the chain *before* `FireCallStartEvent` so a rejected call
-stays invisible to the monitor (design decision 4), and do the iterator-deferral rework across the
-six streaming methods listed in the step — that is what makes invocation-time firing actually
-invocation-time.
+Step 4 done — the seam is live. Chain fires before `FireCallStartEvent` (rejections invisible to the
+monitor), the iterator-deferral rework landed across all public streaming entry points, and
+`DropCollectionAsync`'s hole is closed. 14 tests. Suite at 667 passed / 5 environmental / 8 skipped.
+
+**Next: Step 5 — enumeration timing point.** Fire `InterceptionPoint.Enumeration` inside
+`StreamCursorAsync` around `OpenCursorWithinLimiterAsync`, gated on the already-precomputed
+`HasEnumerationInterceptors` flag so nothing is paid when unused. One decision to settle and record:
+cursor-open only, or per `MoveNextWithinLimiterAsync` batch as well — leaning cursor-open only, since
+per-batch is a hot inner loop and nothing in the request needs it.
