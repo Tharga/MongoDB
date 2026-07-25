@@ -203,21 +203,52 @@ Done 2026-07-26. 5 new tests; suite at 672 passed / 5 environmental / 8 skipped.
       (`CountAsync`); rejection at the enumeration point prevents the query and reports
       `Point = Enumeration`.
 
-## Step 6 — Lockable coverage verification `[~] next`
+## Step 6 — Lockable coverage verification `[x] done`
 
-- [ ] No production code expected here — `LockableRepositoryCollectionBase` delegates through
-      `Disk`. This step is **verification**, and exists because "partial coverage reads as protection
-      while leaving holes" is the explicit risk in the request.
-- [ ] Audit every `Disk.*` call site in `Lockable/LockableRepositoryCollectionBase.cs` and confirm
-      each lands on an intercepted path. Known sites to confirm: `AcquireLockAsync` (`:818`),
-      `ExtendLockCoreAsync` (`:626`), `ReleaseOneAsync` (`:703`), `ReleaseManyAsync` (`:711`),
-      `ReleaseAsync` (`:961`), `PrepareCommitForUpdateAsync` (`:1004`),
-      `PerformCommitForDeleteAsync` (`:1013`, `:1016`).
-- [ ] Also audit `Lockable/DocumentLease.cs`, `EntityScope.cs`, `LockScope.cs` — the earlier grep
-      found no direct driver access in them; confirm that holds.
-- [ ] Tests: a lockable pick/commit cycle fires interceptors for the underlying disk operations.
+Done 2026-07-26. No production code changed — the delegation claim held. 7 new tests in
+`Interception/LockableInterceptionCoverageTests.cs`; suite at 679 passed / 5 environmental /
+8 skipped.
 
-## Step 7 — Fast-path cost
+- [x] Audited every `Disk.*` call site in `Lockable/LockableRepositoryCollectionBase.cs`. All lock
+      writes land on the intercepted `ExecuteAsync` chokepoint: `AcquireLockAsync`,
+      `ExtendLockCoreAsync`, `ReleaseOneAsync`, `ReleaseManyAsync`, `ReleaseAsync`,
+      `PrepareCommitForUpdateAsync`, `PerformCommitForDeleteAsync`. All reads land on intercepted
+      public entry points.
+- [x] Audited `DocumentLease.cs`, `EntityScope.cs`, `LockScope.cs`. **They hold delegates**
+      (`ReleaseAction`, `_releaseAction`, `_extendAction`) handed to them by the collection and never
+      touch a driver or collection object themselves, so every write routes back through intercepted
+      `Disk.*` calls. This is why commit/release/abandon need no special handling.
+- [x] Confirmed the public `ExecuteAsync(Func<IMongoCollection<TEntity>, …>)` escape hatch routes
+      through the protected chokepoint, so even raw driver access by a consumer is intercepted.
+- [x] Tests: lock acquire + commit, release, extend, pick-for-delete + commit, rejection blocking a
+      pick, `GetUnlockedAsync` firing at invocation without enumerating, and a test pinning the
+      disk-level naming decision.
+
+### Coverage boundary, stated explicitly
+
+Intercepted: every **public data operation**, on both collection families, via both acquisition
+routes. Not intercepted: the `internal` index/clean/admin plumbing — `FetchCollectionAsync`,
+`AssureIndex`, `DropIndex`, `CleanAsync`, `CleanCollectionAsync`, `GetCleanInfoAsync`. These do reach
+the driver, but they are `internal` (a consumer cannot call them) and are driven by the monitor's own
+admin surface, which has its own authorization. Worth documenting in Step 8 so the boundary is
+stated rather than discovered.
+
+### Two findings from the audit
+
+1. **Pre-existing bug: `DeleteOneAsync(FilterDefinition, …)` labels itself `nameof(UpdateOneAsync)`**
+   (`Disk/DiskRepositoryCollectionBase.cs:1117`). Deletes have always been reported to the monitor
+   as "UpdateOneAsync" — this predates the feature. It passes `Operation.Delete` correctly, so
+   `CollectionCallInfo.OperationType` is right and an interceptor keying on it behaves correctly;
+   only the display string is wrong. **Not fixed here** — correcting it changes what the monitor
+   shows for every delete, which is a separate, visible change. Recorded as a follow-up. The test
+   asserts on `OperationType` and carries a comment explaining why.
+2. **`DropEmptyAsync` calls the public `DropCollectionAsync()`**, so with
+   `CreateStrategy.DropEmpty` an emptied collection raises a *nested* `DropCollectionAsync`
+   interception inside the delete that emptied it. Left as-is: a collection really is being dropped
+   and a policy layer should see it. The wrinkle to document is that an interceptor which permits the
+   delete but rejects the drop will throw after the delete has already been applied.
+
+## Step 7 — Fast-path cost `[~] next`
 
 - [ ] Confirm the no-interceptor path is a field read and a branch — no allocation, no virtual
       dispatch, no `CollectionCallInfo` construction (it must be built lazily, only once at least
@@ -243,7 +274,9 @@ Done 2026-07-26. 5 new tests; suite at 672 passed / 5 environmental / 8 skipped.
 - [ ] Mark the `Requests.md` entry Done with date + summary; add the `## Follow-up` line for
       Tharga.Platform naming the version.
 - [ ] Record follow-ups in `planned/README.md`: (a) reference latency-simulator interceptor,
-      (b) semantic lockable operation names, (c) post-call / on-exception hook if a consumer asks.
+      (b) semantic lockable operation names, (c) post-call / on-exception hook if a consumer asks,
+      (d) **fix the `DeleteOneAsync` → `nameof(UpdateOneAsync)` mislabel** found in Step 6 — a
+      one-word change that also corrects delete reporting in the monitor, so it wants its own PR.
 - [ ] Archive `plan/feature.md` → `$DOC_ROOT/Tharga/plans/Toolkit/MongoDB/done/collection-interceptor.md`.
 - [ ] `git rm -r plan`, final commit `feat: collection-interceptor complete`, push, open PR.
 
@@ -293,9 +326,14 @@ Step 5 done — enumeration point fires at the top of `StreamCursorAsync`, once 
 open (settled; pinned by a multi-batch test). Both timing points are now live. 5 tests. Suite at
 672 passed / 5 environmental / 8 skipped.
 
-**Next: Step 6 — lockable coverage verification.** Expected to be verification only, no production
-code: audit every `Disk.*` call site in `LockableRepositoryCollectionBase` plus `DocumentLease` /
-`EntityScope` / `LockScope`, confirm each lands on an intercepted path, and add a test that a
-lockable pick/commit cycle fires interceptors for the underlying disk operations. This step exists
-because "partial coverage reads as protection while leaving holes" is the explicit risk in the
-request — so the audit needs to be exhaustive rather than a spot check.
+Step 6 done — the delegation claim held, so no production code changed. Audit found the lease/scope
+classes hold delegates rather than driver handles, which is why commit/release need no special
+handling. 7 tests. Suite at 679 passed / 5 environmental / 8 skipped. Two findings recorded in the
+step: a pre-existing `DeleteOneAsync` mislabel (deferred, follow-up filed) and a nested
+`DropCollectionAsync` interception under `CreateStrategy.DropEmpty` (left as-is, to document).
+
+**Next: Step 7 — fast-path cost.** Confirm the no-interceptor path is a field read and a branch:
+no allocation, no virtual dispatch, and no `CollectionCallInfo` construction. The design already aims
+at this (no lambdas anywhere on the path, `ValueTask?` is a struct, `CollectionCallInfo` is built
+lazily only once an interceptor matches the point) — Step 7 is about proving it rather than assuming
+it.
