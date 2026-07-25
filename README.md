@@ -732,6 +732,55 @@ This only affects monitor visibility — it does **not** register the type in DI
 
 This is intended for library authors whose collection implementation types are `internal`. Consumers of the library don't need to do anything.
 
+## Collection interceptors
+
+A pre-call hook that runs before a repository operation reaches the MongoDB driver, and can reject it. Register one and no database call can happen without your own policy layer having run first.
+
+```csharp
+public sealed class TeamAccessInterceptor : ICollectionInterceptor
+{
+    public ValueTask<InterceptDecision> BeforeCallAsync(CollectionCallInfo call, CancellationToken cancellationToken = default)
+    {
+        if (TeamAccess.Current is null)
+            return ValueTask.FromResult(InterceptDecision.Reject($"No team scope for {call.CollectionName}."));
+
+        return ValueTask.FromResult(InterceptDecision.Proceed);
+    }
+}
+```
+
+```csharp
+builder.AddMongoDB(o => o.AddCollectionInterceptor<TeamAccessInterceptor>());
+```
+
+Interceptors are resolved from DI and run in registration order; the first rejection short-circuits the rest and throws `CollectionAccessDeniedException`, carrying the reason and the `CollectionCallInfo`. Throwing your own exception also blocks the call and propagates unchanged.
+
+The package stays mechanism-only — it knows nothing about teams, tenancy or authorization, and simply runs what is registered.
+
+### Coverage
+
+Every public data operation is intercepted, on both disk and lockable collections, however the collection was obtained — via `ICollectionProvider`, via DI, or constructed directly with an `IMongoDbServiceFactory`. That last route is why decorating `ICollectionProvider` is not equivalent: a collection that takes the factory in its constructor never goes through the provider. For lockable collections the lock lifecycle (acquire, extend, commit, release) is covered too, since each is a write routed through the same disk operations.
+
+Not intercepted: the internal index and maintenance plumbing (index assurance and drop, collection clean, monitor metadata reads). These are internal to the package and driven by the monitor's admin surface.
+
+### Timing points
+
+An interceptor declares which point(s) it wants via `Points`, defaulting to `InterceptionPoint.Invocation` — the point at which the caller made the request, while its ambient context is still in scope. This is what a policy gate wants, and it is the only meaningful point for operations returning `IAsyncEnumerable`, whose database work would otherwise happen at enumeration time.
+
+`InterceptionPoint.Enumeration` fires inside the iterator at cursor open, for concerns that must affect the observed timing of a deferred result. An interceptor may declare both and tell the calls apart by `CollectionCallInfo.Point`.
+
+### Notes
+
+- Key on `CollectionCallInfo.OperationType` rather than the `Operation` string to distinguish reads from writes — a lockable `PickForUpdateAsync` reports as the `UpdateOneAsync` that actually runs.
+- A synchronous interceptor rejects at the call site, even for streaming operations. One that genuinely yields surfaces its rejection on first enumeration. Either way nothing reaches the driver.
+- With no interceptors registered the path is a field read and a branch — no allocation, and no `CollectionCallInfo` construction.
+- Interceptors are effectively singletons; keep per-operation state in an `AsyncLocal`, not in the interceptor. Do not call back into a repository collection from one.
+- Rejected calls are invisible to the monitor — they never touched the database. Audit them in your interceptor.
+
+This is the veto-capable counterpart to the static, observational `RepositoryCollectionBase.ActionEvent`, which is unchanged. Use `ActionEvent` to watch; use an interceptor to decide.
+
+See the [collection interceptors docs](https://github.com/Tharga/MongoDB/blob/master/docs/articles/collection-interceptors.md) for the full contract, timing-point semantics and caveats.
+
 ## Monitor
 The built-in monitor tracks collection metadata such as document counts, sizes, indexes and clean status.
 By default the monitor persists its state to a `_monitor` collection in MongoDB so that data survives application restarts and is shared across instances.

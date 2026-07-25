@@ -281,27 +281,32 @@ construction-time. The existing code already hard-casts inline on the same hot p
 `CommandMonitor` and `OnCallEnd`), so this changes no cost that was not already being paid, and a
 static type-check is nanoseconds. Not worth the behaviour change.
 
-## Step 8 — Documentation `[~] next`
+## Step 8 — Documentation `[x] done`
 
-- [ ] `README.md` — new section on the interception seam: contract, registration, the two timing
-      points, the reject/throw semantics, and an explicit note that it is mechanism-only.
-- [ ] `docs/articles/` — new `collection-interceptors.md` following the existing one-file-per-area
-      pattern (`lockable-collections.md`, `transactions.md`, `monitoring.md`); add to
-      `docs/articles/toc.yml`.
-- [ ] Document the relationship to `ActionEvent` so the two hooks are not confused: `ActionEvent` is
-      static + observational (telemetry), `ICollectionInterceptor` is DI-scoped + veto-capable
-      (policy).
-- [ ] Document the **coverage boundary** from Step 6: public data operations are intercepted; the
-      `internal` index/clean/admin plumbing is not.
-- [ ] Document **rejection timing** from Step 4: a synchronous interceptor rejects at the call site
-      even for streaming operations; one that genuinely yields surfaces on first enumeration. Either
-      way nothing reaches the driver.
-- [ ] Document the `DropEmptyAsync` wrinkle from Step 6: under `CreateStrategy.DropEmpty`, an
-      interceptor that permits a delete but rejects the resulting `DropCollectionAsync` throws after
-      the delete has already been applied.
-- [ ] Note that an interceptor must not call back into a repository collection (already stated in the
-      `ICollectionInterceptor` XML docs — make sure the prose agrees).
-- [ ] Land as a separate `docs:` commit.
+Done 2026-07-26. Both doc surfaces updated per the shared-instructions rule that they are not
+alternatives. `docfx build --warningsAsErrors` clean: 10 conceptual files (was 9), 0 warnings.
+
+- [x] `README.md` — new `## Collection interceptors` section, placed before `## Monitor`: contract,
+      registration, coverage, timing points, notes, and the `ActionEvent` distinction.
+- [x] `docs/articles/collection-interceptors.md` — new article following the existing
+      one-file-per-area pattern; added to `docs/articles/toc.yml` after keyset pagination.
+- [x] Documented the relationship to `ActionEvent` in both surfaces — "use `ActionEvent` to watch,
+      use an interceptor to decide".
+- [x] Documented the **coverage boundary** from Step 6, including *why* provider decoration is not
+      equivalent (a collection taking the factory in its constructor never goes through the
+      provider) — that is the point Platform's request turned on.
+- [x] Documented **rejection timing** from Step 4 in both surfaces.
+- [x] Documented the `DropEmptyAsync` wrinkle from Step 6 under Caveats.
+- [x] Documented that interceptors are effectively singletons and that per-operation state belongs
+      in an `AsyncLocal` — with the Blazor Server circuit-lifetime reason, which is the
+      non-obvious part.
+- [x] Documented "do not call back into a repository collection", matching the XML docs.
+- [x] Steered consumers to key on `OperationType` rather than the `Operation` string. This is the
+      documentation half of the Step 6 finding: the mislabelled `DeleteOneAsync` stays wrong until
+      the follow-up lands, and `OperationType` is correct either way.
+- [x] Cross-link uses the GitHub blob form, matching the two existing docs links in `README.md`
+      rather than the published-site URL.
+- [x] Landed as a separate `docs:` commit.
 
 ## Step 9 — Close-out (only on user confirmation)
 
@@ -369,13 +374,17 @@ step: a pre-existing `DeleteOneAsync` mislabel (deferred, follow-up filed) and a
 `DropCollectionAsync` interception under `CreateStrategy.DropEmpty` (left as-is, to document).
 
 Step 7 done — fast path proven by measurement at exactly zero allocated bytes, with two guard tests
-so the zero-assertions cannot pass vacuously. 8 tests. Suite at 687 passed / 5 environmental /
-8 skipped.
+so the zero-assertions cannot pass vacuously.
 
-**All implementation steps are complete.** Acceptance criteria 1–9 are met and pinned by 62
-interception tests across four files.
+Step 8 done — README section + `docs/articles/collection-interceptors.md` + toc entry; docfx clean.
 
-**Next: Step 8 — documentation.** README section plus a new `docs/articles/collection-interceptors.md`,
-then a `docs:` commit. The step list above now includes the four things the implementation turned up
-that a consumer cannot infer from the API: the coverage boundary, rejection timing, the
-`ActionEvent` distinction, and the `DropEmptyAsync` wrinkle.
+**All ten acceptance criteria in `feature.md` are now met.** Suite at 687 passed / 5 environmental /
+8 skipped, with 62 interception tests across four files.
+
+**Next: Step 9 — close-out, and only on the user's confirmation that the feature is done.** Before
+that: push the branch so the feature can be tested from origin, and do NOT open the PR yet (the
+close-out commit must be the last one on the branch, per the feature workflow). Step 9 itself
+re-runs `dotnet outdated`, marks the `Requests.md` entry Done with a `## Follow-up` line for
+Tharga.Platform naming 2.14.0, files the four follow-ups in `planned/README.md` (including the
+`DeleteOneAsync` mislabel), archives `feature.md` to `done/collection-interceptor.md`, removes
+`plan/`, and opens the PR.
