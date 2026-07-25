@@ -27,21 +27,41 @@ Commits: `e248583` (packages), `e965e8f` (version line).
       single workflow-level `env` entry inherited by all three jobs — not three separate literals —
       so one edit covers build, release and docs. PR builds now stamp `2.14.0-pre.N`.
 
-## Step 2 — Public contract `[~] next`
+## Step 2 — Public contract `[x] done`
 
-- [ ] `ICollectionInterceptor` — `ValueTask<InterceptDecision> BeforeCallAsync(CollectionCallInfo call)`.
-- [ ] `CollectionCallInfo` — record carrying `CollectionName`, `Operation` (the `functionName`
+Done 2026-07-25. All types under `Tharga.MongoDB/Interception/`, namespace
+`Tharga.MongoDB.Interception` — matching the repo's area-folder convention (`Paging`, `Lockable`,
+`Disk`). Builds clean on all three TFMs (net8.0/9.0/10.0), 0 warnings. 8 new tests, full suite
+643 passed / 5 environmental failures / 8 skipped.
+
+- [x] `ICollectionInterceptor` — `ValueTask<InterceptDecision> BeforeCallAsync(CollectionCallInfo call, CancellationToken cancellationToken = default)`.
+- [x] `CollectionCallInfo` — record carrying `CollectionName`, `Operation` (the `functionName`
       already passed to the chokepoints), `OperationType` (the existing `Operation` enum:
       Read/Create/Update/Delete), `EntityType`, `ConfigurationName`, `DatabaseName`,
       `DatabaseContext`, and `Point` (which timing point this invocation represents).
-- [ ] `InterceptDecision` — `Proceed` / `Reject(string reason)`, `init`-only, readonly struct or
-      record per the repo's functional-pattern guideline.
-- [ ] `InterceptionPoint` — `[Flags]` enum `Invocation` / `Enumeration`.
-- [ ] `CollectionAccessDeniedException` — carries `Reason` and `CollectionCallInfo`.
-- [ ] XML docs on all public members (required by shared-instructions coding guidelines).
-- [ ] Tests: contract-shape tests only at this step (construction, `Reject` carries reason).
+- [x] `InterceptDecision` — `readonly record struct`, `Proceed` / `Reject(string reason)`. Struct
+      chosen so the common Proceed path allocates nothing on the hot path; `default` is `Proceed`,
+      pinned by a test so a never-set decision can never silently block a call.
+- [x] `InterceptionPoint` — `[Flags]` enum `Invocation` / `Enumeration`. No `None` member: a
+      zero value would let an interceptor register and silently never fire.
+- [x] `CollectionAccessDeniedException` — carries `Reason` and `CollectionCallInfo`.
+- [x] XML docs on all public members.
+- [x] Tests: `Interception/InterceptionContractTests.cs`, 8 shape tests.
 
-## Step 3 — Registration and resolution
+### Two deviations from the step as originally written
+
+1. **`BeforeCallAsync` gained a `CancellationToken`** (defaulted, so implementers may ignore it).
+   Not in Platform's sketch. Added now because adding it later would be a breaking change to a
+   public interface, and an interceptor doing async policy work (cache or remote lookup) needs it.
+   Trivial to revert while unreleased.
+2. **Timing points are declared on the interceptor, not at registration.** `ICollectionInterceptor`
+   has `InterceptionPoint Points => InterceptionPoint.Invocation` as a *default interface member*,
+   so a policy gate implements only `BeforeCallAsync` and never thinks about timing. This satisfies
+   Platform's design point #1 ("let an interceptor declare which point it wants") more directly than
+   registration-site declaration, and keeps `AddCollectionInterceptor<T>()` a one-argument call.
+   Verified default interface members compile on net8.0.
+
+## Step 3 — Registration and resolution `[~] next`
 
 - [ ] `DatabaseOptions.AddCollectionInterceptor<T>()` where `T : ICollectionInterceptor`, plus an
       instance overload; preserves registration order.
@@ -173,8 +193,15 @@ Four design decisions settled with the user and recorded in `feature.md`: veto s
 throw also honored), timing points (invocation default + enumeration opt-in), granularity
 (disk-level operation names), and rejected calls invisible to the monitor.
 
-Step 1 done — packages current, version line at 2.14, tests at baseline, two commits on the branch.
+Step 1 done — packages current, version line at 2.14, tests at baseline.
 
-**Next: Step 2 — public contract** (`ICollectionInterceptor`, `CollectionCallInfo`,
-`InterceptDecision`, `InterceptionPoint`, `CollectionAccessDeniedException`). No production
-behaviour changes in that step; it is types + XML docs + shape tests.
+Step 2 done — public contract under `Tharga.MongoDB/Interception/`, 8 shape tests, suite at
+643 passed / 5 environmental / 8 skipped. Two deviations recorded in the step above (added
+`CancellationToken`; timing points declared via a default interface member rather than at
+registration) — both still cheap to reverse since nothing is released.
+
+**Next: Step 3 — registration and resolution.** `DatabaseOptions.AddCollectionInterceptor<T>()`,
+DI registration in `AddMongoDB`, resolving the ordered chain onto the concrete
+`MongoDbServiceFactory` (**not** onto the public `IMongoDbServiceFactory` interface), and the
+`HasInterceptors` fast-path flag. Includes the two-containers-in-one-process isolation test — the
+thing static `ActionEvent` gets wrong and the reason this feature exists.
