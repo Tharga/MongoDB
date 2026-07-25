@@ -1120,7 +1120,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
     {
         if (filter == null) throw new ArgumentNullException(nameof(filter));
 
-        return await ExecuteAsync(nameof(UpdateOneAsync), async (collection, sess, ct) =>
+        return await ExecuteAsync(nameof(DeleteOneAsync), async (collection, sess, ct) =>
         {
             var sort = options?.Sort;
             var findFluent = collection.FindMaybe(sess, filter).Sort(sort).Limit(2);

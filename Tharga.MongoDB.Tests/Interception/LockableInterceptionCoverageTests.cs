@@ -98,12 +98,10 @@ public class LockableInterceptionCoverageTests : LockableTestBase
         var scope = await sut.PickForDeleteAsync(entity.Id);
         await scope.CommitAsync();
 
-        // Asserted on OperationType, not on the name. DeleteOneAsync(FilterDefinition, ...) labels
-        // itself nameof(UpdateOneAsync) — a pre-existing copy-paste bug in the package that predates
-        // this feature and also mislabels the monitor. It passes Operation.Delete correctly, so the
-        // classification an interceptor should key on is right; only the display string is wrong.
-        // Recorded as a follow-up rather than fixed here, because correcting it changes what the
-        // monitor shows for every delete.
+        // Asserted on OperationType rather than the operation name, which is what the docs tell
+        // consumers to key on: the name is a diagnostic label, and a lockable call reports whichever
+        // disk operation actually runs. Operation-name correctness is covered separately by
+        // OperationLabellingTests.
         interceptor.Calls.Should().Contain(x => x.OperationType == Operation.Delete,
             "the delete commit removes the document");
     }
