@@ -13,6 +13,7 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Tharga.MongoDB.Configuration;
+using Tharga.MongoDB.Interception;
 using Tharga.MongoDB.Internals;
 using Constants = Tharga.MongoDB.Internals.Constants;
 
@@ -56,8 +57,109 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 
     public override int? FetchSize => base.FetchSize ?? _autoFetchSize;
 
+    private MongoDbServiceFactory ServiceFactory => (MongoDbServiceFactory)_mongoDbServiceFactory;
+
+    /// <summary>
+    /// Runs the invocation-point interceptor chain. Returns a completed <see cref="ValueTask"/> and
+    /// allocates nothing when no interceptor asked for that point.
+    /// <para>
+    /// Internal rather than private so the allocation characteristics of the no-interceptor path can
+    /// be measured directly by tests — an accidental closure or an eagerly built
+    /// <see cref="CollectionCallInfo"/> would otherwise be invisible until it showed up as
+    /// gen-0 pressure in production.
+    /// </para>
+    /// </summary>
+    internal ValueTask RunInvocationInterceptorsAsync(string functionName, Operation operation, CancellationToken cancellationToken)
+    {
+        var factory = ServiceFactory;
+        if (!factory.HasInvocationInterceptors) return default;
+        return RunInterceptorsAsync(factory, InterceptionPoint.Invocation, functionName, operation, cancellationToken);
+    }
+
+    /// <summary>
+    /// Runs the enumeration-point interceptor chain. Returns a completed <see cref="ValueTask"/> and
+    /// allocates nothing when no registered interceptor asked for that point — which is the norm,
+    /// since the point exists for latency-shaping rather than policy.
+    /// </summary>
+    internal ValueTask RunEnumerationInterceptorsAsync(string functionName, CancellationToken cancellationToken)
+    {
+        var factory = ServiceFactory;
+        if (!factory.HasEnumerationInterceptors) return default;
+        return RunInterceptorsAsync(factory, InterceptionPoint.Enumeration, functionName, Operation.Read, cancellationToken);
+    }
+
+    /// <summary>
+    /// Starts the invocation-point chain for an operation returning <c>IAsyncEnumerable</c>, whose
+    /// body would otherwise not run until the caller enumerates.
+    /// <para>
+    /// Returns null when there is nothing left to await — either no interceptor wanted this point,
+    /// or the whole chain completed synchronously (in which case a rejection has already been
+    /// thrown, at the call site, which is where the caller can act on it). A non-null result is a
+    /// chain still running, which the returned stream must await before yielding anything.
+    /// </para>
+    /// </summary>
+    internal ValueTask? BeginInvocationInterception(string functionName, Operation operation, CancellationToken cancellationToken)
+    {
+        var factory = ServiceFactory;
+        if (!factory.HasInvocationInterceptors) return null;
+
+        var pending = RunInterceptorsAsync(factory, InterceptionPoint.Invocation, functionName, operation, cancellationToken);
+        if (!pending.IsCompleted) return pending;
+
+        pending.GetAwaiter().GetResult();
+        return null;
+    }
+
+    /// <summary>
+    /// Carries the enumeration-time token through to the inner stream so <c>.WithCancellation(...)</c>
+    /// behaves the same whether or not interceptors are registered — without this the token would be
+    /// silently dropped on the interceptor path.
+    /// </summary>
+    private static async IAsyncEnumerable<T> PrefixAwaitAsync<T>(ValueTask pending, IAsyncEnumerable<T> stream, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        await pending.ConfigureAwait(false);
+
+        await foreach (var item in stream.WithCancellation(cancellationToken).ConfigureAwait(false))
+        {
+            yield return item;
+        }
+    }
+
+    private async ValueTask RunInterceptorsAsync(MongoDbServiceFactory factory, InterceptionPoint point, string functionName, Operation operation, CancellationToken cancellationToken)
+    {
+        CollectionCallInfo call = null;
+
+        foreach (var interceptor in factory.Interceptors)
+        {
+            if (!interceptor.Points.HasFlag(point)) continue;
+
+            call ??= BuildCallInfo(functionName, operation, point);
+            var decision = await interceptor.BeforeCallAsync(call, cancellationToken).ConfigureAwait(false);
+            if (decision.IsRejected) throw new CollectionAccessDeniedException(decision.Reason, call);
+        }
+    }
+
+    private CollectionCallInfo BuildCallInfo(string functionName, Operation operation, InterceptionPoint point)
+    {
+        return new CollectionCallInfo
+        {
+            CollectionName = CollectionName,
+            Operation = functionName,
+            OperationType = operation,
+            EntityType = typeof(TEntity),
+            Point = point,
+            ConfigurationName = ConfigurationName ?? Constants.DefaultConfigurationName,
+            DatabaseName = DatabaseName,
+            DatabaseContext = _databaseContext
+        };
+    }
+
     protected async Task<T> ExecuteAsync<T>(string functionName, Func<IMongoCollection<TEntity>, IClientSessionHandle, CancellationToken, Task<(T Data, int Count)>> action, Operation operation, CancellationToken cancellationToken = default, FilterDefinition<TEntity> filter = null, IClientSessionHandle session = null)
     {
+        // Before FireCallStartEvent on purpose: a rejected call never reached the database, so it
+        // must not appear in the monitor as a database call that happened.
+        await RunInvocationInterceptorsAsync(functionName, operation, cancellationToken).ConfigureAwait(false);
+
         var callKey = Guid.NewGuid();
         var startAt = Stopwatch.GetTimestamp();
         var steps = new List<StepResponse>();
@@ -270,19 +372,28 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
     }
 
     //Read
-    public override async IAsyncEnumerable<TEntity> GetAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    // NOTE: The streaming entry points below are deliberately NOT iterators. An `async
+    // IAsyncEnumerable` method defers its entire body until the first MoveNextAsync, which would
+    // push invocation-point interception to enumeration time — long after the caller made the
+    // request, and after its ambient context may have gone. Each public entry point therefore runs
+    // the chain eagerly and returns a separate iterator method that holds the actual work.
+    public override IAsyncEnumerable<TEntity> GetAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default)
     {
         var filter = predicate != null
             ? Builders<TEntity>.Filter.Where(predicate)
             : Builders<TEntity>.Filter.Empty;
 
-        await foreach (var item in GetAsync(filter, options, cancellationToken))
-        {
-            yield return item;
-        }
+        return GetAsync(filter, options, cancellationToken);
     }
 
-    public override async IAsyncEnumerable<TEntity> GetAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    public override IAsyncEnumerable<TEntity> GetAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default)
+    {
+        var pending = BeginInvocationInterception(nameof(GetAsync), Operation.Read, cancellationToken);
+        var stream = GetIteratorAsync(filter, options, cancellationToken);
+        return pending == null ? stream : PrefixAwaitAsync(pending.Value, stream);
+    }
+
+    private async IAsyncEnumerable<TEntity> GetIteratorAsync(FilterDefinition<TEntity> filter, Options<TEntity> options, [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         options ??= new Options<TEntity>();
 
@@ -318,7 +429,14 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         return GetProjectionAsync<T>(filter, options, cancellationToken);
     }
 
-    public override async IAsyncEnumerable<T> GetProjectionAsync<T>(FilterDefinition<TEntity> filter, Options<TEntity> options = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    public override IAsyncEnumerable<T> GetProjectionAsync<T>(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default)
+    {
+        var pending = BeginInvocationInterception(nameof(GetProjectionAsync), Operation.Read, cancellationToken);
+        var stream = GetProjectionIteratorAsync<T>(filter, options, cancellationToken);
+        return pending == null ? stream : PrefixAwaitAsync(pending.Value, stream);
+    }
+
+    private async IAsyncEnumerable<T> GetProjectionIteratorAsync<T>(FilterDefinition<TEntity> filter, Options<TEntity> options, [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         options ??= new Options<TEntity>();
 
@@ -1088,7 +1206,9 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 
     public override IAsyncEnumerable<T> ExecuteManyAsync<T>(Func<IMongoCollection<TEntity>, CancellationToken, Task<IAsyncCursor<T>>> queryFactory, CancellationToken cancellationToken = default)
     {
-        return StreamCursorAsync<T>(nameof(ExecuteManyAsync), queryFactory, null, null, cancellationToken);
+        var pending = BeginInvocationInterception(nameof(ExecuteManyAsync), Operation.Read, cancellationToken);
+        var stream = StreamCursorAsync<T>(nameof(ExecuteManyAsync), queryFactory, null, null, cancellationToken);
+        return pending == null ? stream : PrefixAwaitAsync(pending.Value, stream);
     }
 
     private async IAsyncEnumerable<T> StreamCursorAsync<T>(
@@ -1098,6 +1218,14 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         FilterDefinition<TEntity> filterForObservability,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
+        // The enumeration point. This method is the single place a deferred read actually reaches
+        // the driver, and its body does not run until the consumer calls MoveNextAsync — which is
+        // exactly the timing an interceptor asking for this point wants. Fires once per stream, at
+        // cursor open, not per fetched batch: MoveNextWithinLimiterAsync is a hot inner loop and
+        // nothing needs per-batch granularity. Before FireCallStartEvent for the same reason as the
+        // invocation point — a rejected call never touched the database.
+        await RunEnumerationInterceptorsAsync(functionName, cancellationToken).ConfigureAwait(false);
+
         var callKey = Guid.NewGuid();
         var startAt = Stopwatch.GetTimestamp();
         var steps = new List<StepResponse>();
@@ -1281,6 +1409,11 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 
     public override async Task DropCollectionAsync()
     {
+        // Does not route through ExecuteAsync — it talks to the service directly — so it needs the
+        // chain wired up explicitly. Missing it would leave the most destructive operation on the
+        // collection as the one hole in the seam.
+        await RunInvocationInterceptorsAsync(nameof(DropCollectionAsync), Operation.Delete, CancellationToken.None).ConfigureAwait(false);
+
         await _mongoDbService.DropCollectionAsync(ProtectedCollectionName);
         // Carry the resolved identity (same values used when the collection was reported) so the
         // monitor can match it in the cache and forward the drop to a central server precisely.
@@ -1288,9 +1421,18 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             new CollectionDroppedEventArgs(_databaseContext, ConfigurationName, DatabaseName, ProtectedCollectionName));
     }
 
-    public override async IAsyncEnumerable<TEntity> GetDirtyAsync()
+    public override IAsyncEnumerable<TEntity> GetDirtyAsync()
     {
-        await foreach (var item in GetAsync())
+        var pending = BeginInvocationInterception(nameof(GetDirtyAsync), Operation.Read, CancellationToken.None);
+        var stream = GetDirtyIteratorAsync();
+        return pending == null ? stream : PrefixAwaitAsync(pending.Value, stream);
+    }
+
+    private async IAsyncEnumerable<TEntity> GetDirtyIteratorAsync()
+    {
+        // Goes to the iterator rather than the public GetAsync so the scan intercepts exactly once,
+        // as GetDirtyAsync, instead of reporting a second nested GetAsync at enumeration time.
+        await foreach (var item in GetIteratorAsync(Builders<TEntity>.Filter.Empty, null, CancellationToken.None))
         {
             if (item.NeedsCleaning()) yield return item;
         }

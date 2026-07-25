@@ -24,13 +24,33 @@ public sealed class RevalidationQueue : IDisposable
     private readonly object _enqLock = new();
     private readonly CancellationTokenSource _cts = new();
     private readonly SemaphoreSlim _signal = new(0, int.MaxValue);
-    private readonly Task _loop;
+    private Task _loop;
     private int _disposed;
+    private int _started;
 
     public RevalidationQueue(Func<string, CancellationToken, Task> refresh, int maxConcurrent = 16)
+        : this(refresh, maxConcurrent, startImmediately: true)
+    {
+    }
+
+    /// <summary>
+    /// Deferred-start overload. With <paramref name="startImmediately"/> false the drain loop does
+    /// not run until <see cref="Start"/> is called, so a caller can fully populate both priority
+    /// queues first. Exists so ordering can be asserted deterministically — with an eager start the
+    /// loop may drain the first-enqueued items before later, higher-priority ones arrive, which is
+    /// correct behaviour but makes "high before low" untestable.
+    /// </summary>
+    internal RevalidationQueue(Func<string, CancellationToken, Task> refresh, int maxConcurrent, bool startImmediately)
     {
         _refresh = refresh ?? throw new ArgumentNullException(nameof(refresh));
         _gate = new SemaphoreSlim(maxConcurrent, maxConcurrent);
+        if (startImmediately) Start();
+    }
+
+    /// <summary>Starts the drain loop. Idempotent.</summary>
+    internal void Start()
+    {
+        if (Interlocked.Exchange(ref _started, 1) != 0) return;
         _loop = Task.Run(() => RunAsync(_cts.Token));
     }
 

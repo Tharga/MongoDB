@@ -15,19 +15,25 @@ public class RevalidationQueueTests
         var order = new ConcurrentQueue<string>();
         var done = new SemaphoreSlim(0);
 
-        // Concurrency cap of 1 so the order is deterministic.
+        // Concurrency cap of 1 so refreshes are serialised, and a deferred start so the loop cannot
+        // drain anything until all four keys are pending. With an eager start this test raced: every
+        // Enqueue signals the loop, so under thread-pool load both lows could be dequeued before the
+        // highs were enqueued. That is correct queue behaviour — priority only decides between items
+        // pending at the same time — but it made the ordering assertion non-deterministic.
         using var sut = new RevalidationQueue((key, _) =>
         {
             order.Enqueue(key);
             done.Release();
             return Task.CompletedTask;
-        }, maxConcurrent: 1);
+        }, maxConcurrent: 1, startImmediately: false);
 
         // Pre-load the queue with both priorities BEFORE the loop has drained anything.
         sut.EnqueueLow("low-1");
         sut.EnqueueLow("low-2");
         sut.EnqueueHigh("high-1");
         sut.EnqueueHigh("high-2");
+
+        sut.Start();
 
         for (var i = 0; i < 4; i++)
         {
@@ -36,13 +42,8 @@ public class RevalidationQueueTests
 
         var observed = order.ToArray();
         observed.Should().HaveCount(4);
-        // The two high-priority keys must precede the two low-priority keys
-        // among items the loop sees after the initial wakeup. The very first
-        // pumped item may be "low-1" if it was queued before the high keys
-        // signalled the loop — but no high item should appear AFTER a low.
-        var firstHigh = Array.IndexOf(observed, "high-1");
-        var firstLow = Array.IndexOf(observed, "low-2"); // low-2 is the LAST low we enqueued
-        firstHigh.Should().BeLessThan(firstLow, "high keys must drain before low ones queued at the same time");
+        // Both high-priority keys must drain before either low-priority one.
+        observed.Should().Equal("high-1", "high-2", "low-1", "low-2");
     }
 
     [Fact]

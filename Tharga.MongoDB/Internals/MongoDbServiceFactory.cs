@@ -1,11 +1,13 @@
 ﻿using System;
 using System.Collections.Concurrent;
+using System.Linq;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Tharga.MongoDB.Atlas;
 using Tharga.MongoDB.Configuration;
+using Tharga.MongoDB.Interception;
 
 namespace Tharga.MongoDB.Internals;
 
@@ -20,6 +22,7 @@ internal class MongoDbServiceFactory : IMongoDbServiceFactory
     private readonly ILogger _logger;
     private readonly ConcurrentDictionary<string, MongoDbService> _databaseDbServices = new();
     private readonly SemaphoreSlim _lock = new(1, 1);
+    private ICollectionInterceptor[] _interceptors = [];
 
     private static readonly string DefaultSourceName = $"{Environment.MachineName}/{Assembly.GetEntryAssembly()?.GetName().Name ?? "Unknown"}";
 
@@ -38,6 +41,29 @@ internal class MongoDbServiceFactory : IMongoDbServiceFactory
     public string SourceName { get; internal set; }
     public bool AllowDelayedCommit { get; internal set; } = true;
     internal ICommandMonitorService CommandMonitor { get; set; }
+
+    /// <summary>
+    /// The ordered interceptor chain for this container. Deliberately held on the concrete factory
+    /// rather than on <see cref="IMongoDbServiceFactory"/> — the interface is public, so adding a
+    /// member would break consumers implementing it. Same pattern as
+    /// <see cref="CommandMonitor"/> and <see cref="RecordingState"/>.
+    /// </summary>
+    internal ICollectionInterceptor[] Interceptors
+    {
+        get => _interceptors;
+        set
+        {
+            _interceptors = value ?? [];
+            HasInvocationInterceptors = _interceptors.Any(x => x.Points.HasFlag(InterceptionPoint.Invocation));
+            HasEnumerationInterceptors = _interceptors.Any(x => x.Points.HasFlag(InterceptionPoint.Enumeration));
+        }
+    }
+
+    /// <summary>Precomputed so the call hot path costs a field read when nothing is registered.</summary>
+    internal bool HasInvocationInterceptors { get; private set; }
+
+    /// <summary>Precomputed so a deferred operation skips the enumeration pass entirely when unused.</summary>
+    internal bool HasEnumerationInterceptors { get; private set; }
 
     /// <summary>Runtime gate for how much per-call data is recorded. Null = record everything (back-compat).</summary>
     internal MonitorRecordingState RecordingState { get; set; }

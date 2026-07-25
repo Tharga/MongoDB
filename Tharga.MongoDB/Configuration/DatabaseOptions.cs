@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Reflection;
 using System.Threading.Tasks;
+using Tharga.MongoDB.Interception;
 using Tharga.MongoDB.Internals;
 
 namespace Tharga.MongoDB.Configuration;
@@ -12,6 +13,7 @@ namespace Tharga.MongoDB.Configuration;
 public record DatabaseOptions
 {
     internal List<Assembly> _extraAssemblies = new ();
+    internal List<CollectionInterceptorRegistration> _collectionInterceptors = new ();
 
     /// <summary>
     /// The name of the connection string that will be used to read from appsettings.json or from ConnectionStringLoader.
@@ -84,6 +86,35 @@ public record DatabaseOptions
     /// Event triggered on database actions performed on disk.
     /// </summary>
     public Action<ActionEventArgs> ActionEvent { get; set; }
+
+    /// <summary>
+    /// Register a pre-call interceptor, resolved from DI. Interceptors run in registration order
+    /// before every operation that reaches the driver, and any one of them can reject the call.
+    /// <para>
+    /// The type is registered as a singleton unless the consumer has already registered it, so an
+    /// interceptor with its own dependencies can be wired up normally beforehand.
+    /// </para>
+    /// <code>
+    /// o.AddCollectionInterceptor&lt;TeamAccessInterceptor&gt;();
+    /// </code>
+    /// </summary>
+    /// <typeparam name="T">The interceptor type.</typeparam>
+    public void AddCollectionInterceptor<T>()
+        where T : ICollectionInterceptor
+    {
+        _collectionInterceptors.Add(new CollectionInterceptorRegistration { Type = typeof(T) });
+    }
+
+    /// <summary>
+    /// Register an already-constructed pre-call interceptor. Use the generic overload instead when
+    /// the interceptor has dependencies to resolve.
+    /// </summary>
+    /// <param name="interceptor">The interceptor instance.</param>
+    public void AddCollectionInterceptor(ICollectionInterceptor interceptor)
+    {
+        if (interceptor == null) throw new ArgumentNullException(nameof(interceptor));
+        _collectionInterceptors.Add(new CollectionInterceptorRegistration { Instance = interceptor });
+    }
 
     /// <summary>
     /// When provided this will override values in appsettings.json.
