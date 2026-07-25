@@ -61,16 +61,19 @@ Done 2026-07-25. All types under `Tharga.MongoDB/Interception/`, namespace
    registration-site declaration, and keeps `AddCollectionInterceptor<T>()` a one-argument call.
    Verified default interface members compile on net8.0.
 
-## Step 3 — Registration and resolution `[~] next`
+## Step 3 — Registration and resolution `[x] done`
 
-- [ ] `DatabaseOptions.AddCollectionInterceptor<T>()` where `T : ICollectionInterceptor`, plus an
+Done 2026-07-25. 10 new tests in `Interception/InterceptorRegistrationTests.cs`; suite at
+653 passed / 5 environmental / 8 skipped, stable across two consecutive full runs.
+
+- [x] `DatabaseOptions.AddCollectionInterceptor<T>()` where `T : ICollectionInterceptor`, plus an
       instance overload; preserves registration order.
-- [ ] Register the interceptor types in DI in `AddMongoDB` alongside the existing service
-      registrations (`MongoDbRegistrationExtensions.cs`).
-- [ ] Resolve the ordered interceptor chain into `MongoDbServiceFactory` at construction
-      (`MongoDbRegistrationExtensions.cs:110-126` is where the factory is built and configured —
-      same pattern as `CommandMonitor` / `RecordingState`).
-- [ ] Expose the chain as an **internal member on the concrete `MongoDbServiceFactory` class**, not
+- [x] Register the interceptor types in DI in `AddMongoDB` via `TryAddSingleton`, so a consumer that
+      pre-registered an interceptor with its own dependencies keeps their registration (pinned by
+      `ConsumerRegisteredType_IsNotOverwritten`).
+- [x] Resolve the ordered interceptor chain into `MongoDbServiceFactory` at construction — same
+      pattern as `CommandMonitor` / `RecordingState`.
+- [x] Expose the chain as an **internal member on the concrete `MongoDbServiceFactory` class**, not
       on `IMongoDbServiceFactory`. The interface is public, so adding a member to it would break any
       consumer implementing it (test doubles). Follow the established pattern: `CommandMonitor`
       (`Internals/MongoDbServiceFactory.cs:40`) and `RecordingState` (`:43`) are internal members on
@@ -78,12 +81,38 @@ Done 2026-07-25. All types under `Tharga.MongoDB/Interception/`, namespace
       (`Disk/DiskRepositoryCollectionBase.cs:78`). **`IMongoDbServiceFactory` is not touched.**
       The factory is the single dependency both acquisition routes share, which is what makes this
       the coverage-critical decision.
-- [ ] Precompute an `bool HasInterceptors` flag on the factory so the chokepoints can branch on a
-      field read (acceptance criterion 7).
-- [ ] Tests: two DI containers in one process register different interceptors and do not see each
+- [x] Precompute fast-path flags on the factory so the chokepoints branch on a field read
+      (acceptance criterion 7). Split into **two** flags rather than one — `HasInvocationInterceptors`
+      and `HasEnumerationInterceptors` — so Step 5 can skip the enumeration pass entirely when no
+      registered interceptor asked for that point.
+- [x] Tests: two DI containers in one process register different interceptors and do not see each
       other's (acceptance criterion 8) — this is the concrete thing static `ActionEvent` gets wrong.
+      Worth noting the precedent sits three lines away in the same method:
+      `MongoDbRegistrationExtensions.cs:72` does `RepositoryCollectionBase.ActionEvent += …`, which
+      accumulates a handler on every `AddMongoDB` call in the process and writes a static
+      `_actionEvent` field that the last call wins. The new chain must never behave that way.
 
-## Step 4 — Fire at the invocation chokepoints
+### Unplanned: fixed a latent race in an unrelated test
+
+`RevalidationQueueTests.HighPriorityKeys_DrainBeforeLow` failed once the 10 new registration tests
+were added — each builds a full DI container, and that thread-pool load exposed a pre-existing race.
+Verified it was a trigger and not a cause: the suite is green with the new tests filtered out, and
+the test passes in isolation. The previous feature's notes already list it as "one rotating
+timing-flaky test".
+
+Root cause was in the test, not in `RevalidationQueue`: the drain loop started in the constructor
+(`RevalidationQueue.cs:34`) and every `Enqueue` signals it, so under load both low keys could be
+dequeued before the high keys were enqueued. That is correct queue behaviour — priority only decides
+between items pending *at the same time* — but it made the assertion non-deterministic. Blocking the
+refresh callback does not fix it either: with `maxConcurrent: 1` the loop dequeues one more item
+before parking on the gate.
+
+Fix (user-approved, touches one unrelated production file): an internal deferred-start overload plus
+an idempotent `Start()` on `RevalidationQueue`, used by the test to populate both queues before the
+loop runs. The public constructor is unchanged and still starts eagerly. The assertion is now the
+stronger, exact `high-1, high-2, low-1, low-2`. Stable across two consecutive full-suite runs.
+
+## Step 4 — Fire at the invocation chokepoints `[~] next`
 
 - [ ] `DiskRepositoryCollectionBase.ExecuteAsync` (`:59`) — run the chain *before*
       `FireCallStartEvent`, so a rejected call never enters the monitor as a started call.
@@ -200,8 +229,15 @@ Step 2 done — public contract under `Tharga.MongoDB/Interception/`, 8 shape te
 `CancellationToken`; timing points declared via a default interface member rather than at
 registration) — both still cheap to reverse since nothing is released.
 
-**Next: Step 3 — registration and resolution.** `DatabaseOptions.AddCollectionInterceptor<T>()`,
-DI registration in `AddMongoDB`, resolving the ordered chain onto the concrete
-`MongoDbServiceFactory` (**not** onto the public `IMongoDbServiceFactory` interface), and the
-`HasInterceptors` fast-path flag. Includes the two-containers-in-one-process isolation test — the
-thing static `ActionEvent` gets wrong and the reason this feature exists.
+Step 3 done — `AddCollectionInterceptor<T>()` + instance overload, `TryAddSingleton` DI wiring, the
+ordered chain resolved onto the concrete `MongoDbServiceFactory`, and two precomputed fast-path
+flags. Container isolation is pinned by test. Also fixed a latent race in the unrelated
+`RevalidationQueueTests.HighPriorityKeys_DrainBeforeLow` that the new tests exposed (see Step 3).
+
+Suite: 653 passed / 5 environmental / 8 skipped, stable across two consecutive runs.
+
+**Next: Step 4 — fire at the invocation chokepoints.** This is the first step that changes runtime
+behaviour. Two things to get right: run the chain *before* `FireCallStartEvent` so a rejected call
+stays invisible to the monitor (design decision 4), and do the iterator-deferral rework across the
+six streaming methods listed in the step — that is what makes invocation-time firing actually
+invocation-time.

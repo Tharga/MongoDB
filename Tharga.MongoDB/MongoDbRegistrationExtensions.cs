@@ -1,5 +1,6 @@
 ﻿using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -12,6 +13,7 @@ using System.Reflection;
 using System.Threading.Tasks;
 using Tharga.MongoDB.Atlas;
 using Tharga.MongoDB.Configuration;
+using Tharga.MongoDB.Interception;
 using Tharga.MongoDB.Internals;
 using Tharga.Runtime;
 
@@ -20,6 +22,13 @@ namespace Tharga.MongoDB;
 public static class MongoDbRegistrationExtensions
 {
     private static Action<ActionEventArgs> _actionEvent;
+
+    private static ICollectionInterceptor[] BuildInterceptorChain(IServiceProvider serviceProvider, DatabaseOptions options)
+    {
+        return options._collectionInterceptors
+            .Select(x => x.Instance ?? (ICollectionInterceptor)serviceProvider.GetRequiredService(x.Type))
+            .ToArray();
+    }
 
     public static IServiceCollection AddMongoDB(this IHostApplicationBuilder builder, Action<DatabaseOptions> options = null)
     {
@@ -107,6 +116,12 @@ public static class MongoDbRegistrationExtensions
         services.AddSingleton<IInitiationLibrary, InitiationLibrary>();
         services.AddSingleton<CollectionInfoCache>();
         services.AddSingleton<ICollectionProviderCache, CollectionProviderCache>();
+
+        foreach (var interceptorType in o._collectionInterceptors.Where(x => x.Type != null).Select(x => x.Type).Distinct())
+        {
+            services.TryAddSingleton(interceptorType);
+        }
+
         services.AddSingleton<IMongoDbServiceFactory>(serviceProvider =>
         {
             var mongoDbClientProvider = serviceProvider.GetService<IMongoDbClientProvider>();
@@ -122,6 +137,7 @@ public static class MongoDbRegistrationExtensions
             factory.AllowDelayedCommit = o.AllowDelayedCommit;
             factory.CommandMonitor = serviceProvider.GetService<ICommandMonitorService>();
             factory.RecordingState = serviceProvider.GetService<MonitorRecordingState>();
+            factory.Interceptors = BuildInterceptorChain(serviceProvider, o);
             return factory;
         });
         services.AddTransient<IRepositoryConfigurationLoader>(serviceProvider =>
