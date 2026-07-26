@@ -81,14 +81,12 @@ internal class MongoDbServiceFactory : IMongoDbServiceFactory
         var mongoUrl = configuration.GetDatabaseUrl();
         var cacheKey = mongoUrl.Url;
 
-        var useCache = true;
-
-        if (useCache && _databaseDbServices.TryGetValue(cacheKey, out var dbService)) return dbService;
+        if (_databaseDbServices.TryGetValue(cacheKey, out var dbService)) return dbService;
 
         _lock.Wait();
         try
         {
-            if (useCache && _databaseDbServices.TryGetValue(cacheKey, out dbService)) return dbService;
+            if (_databaseDbServices.TryGetValue(cacheKey, out dbService)) return dbService;
 
             dbService = new MongoDbService(configuration, _mongoDbFirewallStateService, _mongoDbClientProvider, _executeLimiter, _collectionPool, _initiationLibrary, _logger);
             dbService.CollectionAccessEvent += (s, e) =>
