@@ -1,8 +1,7 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
-    <Version>1.0.0</Version>
+    <TargetFramework>net10.0</TargetFramework>
     <Authors>Daniel Bohlin</Authors>
     <Company>Thargelion AB</Company>
     <Product>Tharga MongoDB Monitor Server</Product>
@@ -12,6 +11,10 @@
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageProjectUrl>https://github.com/Tharga/MongoDB</PackageProjectUrl>
     <IncludeSymbols>true</IncludeSymbols>
+    <!-- Without this, pack emits the legacy .symbols.nupkg, whose name still ends
+         in .nupkg, so the release push loop uploads it as a regular package and
+         nuget.org rejects it as a duplicate. No symbols ever shipped. -->
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
     <IncludeSource>true</IncludeSource>
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
     <EmbedUntrackedSources>true</EmbedUntrackedSources>
@@ -21,7 +24,13 @@
   </PropertyGroup>
 
   <PropertyGroup>
-    <NoWarn>1701;1702;CS1591;CS0809</NoWarn>
+    <!--
+      NU5048: PackageIconUrl is deprecated in favour of an embedded PackageIcon.
+      Suppressed deliberately. Tharga packages reference their icon from
+      https://thargelion.net/assets/ so all package icons are maintained in one
+      place and can be updated without republishing a package.
+    -->
+    <NoWarn>1701;1702;CS1591;CS0809;NU5048</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
@@ -33,7 +42,7 @@
 
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
-    <PackageReference Include="Tharga.Communication" Version="0.2.1" />
+    <PackageReference Include="Tharga.Communication" Version="1.0.0" />
     <PackageReference Include="Microsoft.SourceLink.GitHub" Version="10.0.301">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
