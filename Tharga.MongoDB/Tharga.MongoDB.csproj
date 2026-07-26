@@ -13,6 +13,10 @@
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageProjectUrl>https://github.com/Tharga/MongoDB</PackageProjectUrl>
     <IncludeSymbols>true</IncludeSymbols>
+    <!-- Without this, pack emits the legacy .symbols.nupkg, whose name still ends
+         in .nupkg, so the release push loop uploads it as a regular package and
+         nuget.org rejects it as a duplicate. No symbols ever shipped. -->
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
     <IncludeSource>true</IncludeSource>
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
     <EmbedUntrackedSources>true</EmbedUntrackedSources>

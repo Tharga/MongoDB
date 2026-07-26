@@ -16,6 +16,10 @@
     <EmbedUntrackedSources>true</EmbedUntrackedSources>
     <IncludeSource>true</IncludeSource>
     <IncludeSymbols>true</IncludeSymbols>
+    <!-- Without this, pack emits the legacy .symbols.nupkg, whose name still ends
+         in .nupkg, so the release push loop uploads it as a regular package and
+         nuget.org rejects it as a duplicate. No symbols ever shipped. -->
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
   </PropertyGroup>
   <PropertyGroup>
     <NoWarn>1701;1702;CS1591;CS0809</NoWarn>
