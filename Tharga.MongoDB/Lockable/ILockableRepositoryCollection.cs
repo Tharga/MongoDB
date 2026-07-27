@@ -37,9 +37,34 @@ public interface ILockableRepositoryCollection<TEntity, TKey> : IRepositoryColle
     Task<EntityScope<TEntity, TKey>> PickForUpdateAsync(TKey id, TimeSpan? timeout = null, string actor = null, Func<CallbackResult<TEntity>, Task> completeAction = null, IClientSessionHandle session = null);
     Task<EntityScope<TEntity, TKey>> PickForUpdateAsync(FilterDefinition<TEntity> filter, TimeSpan? timeout = null, string actor = null, Func<CallbackResult<TEntity>, Task> completeAction = null, IClientSessionHandle session = null);
     Task<EntityScope<TEntity, TKey>> PickForUpdateAsync(Expression<Func<TEntity, bool>> predicate = null, TimeSpan? timeout = null, string actor = null, Func<CallbackResult<TEntity>, Task> completeAction = null, IClientSessionHandle session = null);
+
+    /// <summary>
+    /// Picks a document matched by <paramref name="filter"/> for update, using <paramref name="pickOptions"/>
+    /// to decide which one is locked when several match.
+    /// </summary>
+    Task<EntityScope<TEntity, TKey>> PickForUpdateAsync(FilterDefinition<TEntity> filter, PickOptions<TEntity> pickOptions, TimeSpan? timeout = null, string actor = null, Func<CallbackResult<TEntity>, Task> completeAction = null, IClientSessionHandle session = null);
+
+    /// <summary>
+    /// Picks a document matched by <paramref name="predicate"/> for update, using <paramref name="pickOptions"/>
+    /// to decide which one is locked when several match.
+    /// </summary>
+    Task<EntityScope<TEntity, TKey>> PickForUpdateAsync(Expression<Func<TEntity, bool>> predicate, PickOptions<TEntity> pickOptions, TimeSpan? timeout = null, string actor = null, Func<CallbackResult<TEntity>, Task> completeAction = null, IClientSessionHandle session = null);
+
     Task<EntityScope<TEntity, TKey>> PickForDeleteAsync(TKey id, TimeSpan? timeout = null, string actor = null, Func<CallbackResult<TEntity>, Task> completeAction = null, IClientSessionHandle session = null);
     Task<EntityScope<TEntity, TKey>> PickForDeleteAsync(FilterDefinition<TEntity> filter, TimeSpan? timeout = null, string actor = null, Func<CallbackResult<TEntity>, Task> completeAction = null, IClientSessionHandle session = null);
     Task<EntityScope<TEntity, TKey>> PickForDeleteAsync(Expression<Func<TEntity, bool>> predicate = null, TimeSpan? timeout = null, string actor = null, Func<CallbackResult<TEntity>, Task> completeAction = null, IClientSessionHandle session = null);
+
+    /// <summary>
+    /// Picks a document matched by <paramref name="filter"/> for delete, using <paramref name="pickOptions"/>
+    /// to decide which one is locked when several match.
+    /// </summary>
+    Task<EntityScope<TEntity, TKey>> PickForDeleteAsync(FilterDefinition<TEntity> filter, PickOptions<TEntity> pickOptions, TimeSpan? timeout = null, string actor = null, Func<CallbackResult<TEntity>, Task> completeAction = null, IClientSessionHandle session = null);
+
+    /// <summary>
+    /// Picks a document matched by <paramref name="predicate"/> for delete, using <paramref name="pickOptions"/>
+    /// to decide which one is locked when several match.
+    /// </summary>
+    Task<EntityScope<TEntity, TKey>> PickForDeleteAsync(Expression<Func<TEntity, bool>> predicate, PickOptions<TEntity> pickOptions, TimeSpan? timeout = null, string actor = null, Func<CallbackResult<TEntity>, Task> completeAction = null, IClientSessionHandle session = null);
 
     Task<EntityScope<TEntity, TKey>> WaitForUpdateAsync(TKey id, TimeSpan? lockTimeout = null, TimeSpan? waitTimeout = null, string actor = null, Func<CallbackResult<TEntity>, Task> completeAction = null, CancellationToken cancellationToken = default);
     Task<EntityScope<TEntity, TKey>> WaitForDeleteAsync(TKey id, TimeSpan? lockTimeout = null, TimeSpan? waitTimeout = null, string actor = null, Func<CallbackResult<TEntity>, Task> completeAction = null, CancellationToken cancellationToken = default);
@@ -56,9 +81,21 @@ public interface ILockableRepositoryCollection<TEntity, TKey> : IRepositoryColle
     Task<LockScope<TEntity, TKey>> LockAsync(FilterDefinition<TEntity> filter, TimeSpan? timeout = null, string actor = null, Func<CallbackResult<TEntity>, Task> completeAction = null, IClientSessionHandle session = null);
 
     /// <summary>
+    /// Locks a single document matched by <paramref name="filter"/> without pre-committing to update-vs-delete,
+    /// using <paramref name="pickOptions"/> to decide which one is locked when several match.
+    /// </summary>
+    Task<LockScope<TEntity, TKey>> LockAsync(FilterDefinition<TEntity> filter, PickOptions<TEntity> pickOptions, TimeSpan? timeout = null, string actor = null, Func<CallbackResult<TEntity>, Task> completeAction = null, IClientSessionHandle session = null);
+
+    /// <summary>
     /// Locks a single document matched by <paramref name="predicate"/> without pre-committing to update-vs-delete.
     /// </summary>
     Task<LockScope<TEntity, TKey>> LockAsync(Expression<Func<TEntity, bool>> predicate = null, TimeSpan? timeout = null, string actor = null, Func<CallbackResult<TEntity>, Task> completeAction = null, IClientSessionHandle session = null);
+
+    /// <summary>
+    /// Locks a single document matched by <paramref name="predicate"/> without pre-committing to update-vs-delete,
+    /// using <paramref name="pickOptions"/> to decide which one is locked when several match.
+    /// </summary>
+    Task<LockScope<TEntity, TKey>> LockAsync(Expression<Func<TEntity, bool>> predicate, PickOptions<TEntity> pickOptions, TimeSpan? timeout = null, string actor = null, Func<CallbackResult<TEntity>, Task> completeAction = null, IClientSessionHandle session = null);
 
     /// <summary>
     /// Locks multiple documents identified by <paramref name="ids"/>. Acquisition is sequential and ordered by key
