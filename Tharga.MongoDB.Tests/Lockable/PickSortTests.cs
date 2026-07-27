@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
 using MongoDB.Bson;
@@ -251,6 +252,53 @@ public class PickSortTests : LockableTestBase
         var post = await sut.GetOneAsync(x => x.Count == 1);
         post.Data.Should().Be("processed");
         post.Lock.Should().BeNull();
+    }
+
+    [Fact]
+    [Trait("Category", "Database")]
+    public async Task ConcurrentSortedPicksTakeDistinctDocuments()
+    {
+        //Arrange — backs the documented claim that racing workers never collide:
+        //the loser's filter re-evaluates against the now-locked document.
+        var sut = await SeedAsync(3, 1, 2);
+        var pickOptions = new PickOptions<LockableTestEntity> { Sort = Ascending };
+
+        //Act
+        var scopes = await Task.WhenAll(
+            sut.PickForUpdateAsync(x => true, pickOptions),
+            sut.PickForUpdateAsync(x => true, pickOptions),
+            sut.PickForUpdateAsync(x => true, pickOptions));
+
+        //Assert
+        try
+        {
+            scopes.Should().OnlyContain(x => x != null);
+            scopes.Select(x => x.Entity.Count).Should().BeEquivalentTo(new[] { 1, 2, 3 });
+        }
+        finally
+        {
+            foreach (var scope in scopes)
+            {
+                if (scope != null) await scope.DisposeAsync();
+            }
+        }
+    }
+
+    [Fact]
+    [Trait("Category", "Database")]
+    public async Task SortedPickReturnsNullWhenEveryMatchIsLocked()
+    {
+        //Arrange
+        var sut = await SeedAsync(1, 2);
+        var pickOptions = new PickOptions<LockableTestEntity> { Sort = Ascending };
+        await sut.PickForUpdateAsync(x => true, pickOptions, actor: "holder");
+        await sut.PickForUpdateAsync(x => true, pickOptions, actor: "holder");
+
+        //Act
+        await using var scope = await sut.PickForUpdateAsync(x => true, pickOptions);
+
+        //Assert
+        scope.Should().BeNull("the queue is drained, not blocked");
     }
 
     public enum PickMode
