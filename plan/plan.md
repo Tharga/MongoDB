@@ -42,9 +42,15 @@ Branch: `feature/pick-sort` (from `master`)
       (standalone mongod, no replica set). The sixth baseline failure, the known-flaky
       `GetLockedExpired`, passed this run.
 
-- [ ] 7. Docs (`docs:` commit, before close-out)
-      `README.md` and `docs/articles/lockable-collections.md` — document the sorted
-      overloads with the work-queue example from the issue.
+- [x] 7. Docs (`docs:` commit, before close-out)
+      New "Choosing which document to lock" section in both `README.md` and
+      `docs/articles/lockable-collections.md`, with the work-queue example, the
+      skipped-locked / reclaimed-expired behaviour, the exclusions (`id` overloads,
+      `LockManyAsync`) and an index note. The Pick-style section in each links to it.
+      Two extra tests were added to back the documented concurrency claim rather than
+      just assert it in prose: `ConcurrentSortedPicksTakeDistinctDocuments` and
+      `SortedPickReturnsNullWhenEveryMatchIsLocked`. 20 tests total, stable over
+      repeated runs.
 
 - [ ] 8. Close-out (only when the user confirms the feature is done)
       Re-run `dotnet outdated`, archive `plan/feature.md` to the Plan directory `done/`,
@@ -73,8 +79,27 @@ target for `null`. The fix at such a call site is to name the argument
 (`timeout: null`). The whole solution, including samples and tests, compiles unchanged,
 so nothing in this repo hits it. Worth a line in the release notes.
 
+## Flaky test observed (not caused by this feature)
+
+`DeleteManyTests.DeleteWhenOneIsExpired` failed on **one** full-suite run on this branch,
+then passed on the next, passes in isolation, and did not fail on two full-suite runs on
+unmodified `master`.
+
+It is the same root cause as the already-documented `GetLockedExpired` flake: the test
+picks with `TimeSpan.Zero` (so `ExpireTime == UtcNow`) and then requires
+`ExpireTime < UtcNow` on the following call. If the clock does not tick between the two,
+the document is not yet expired and the assertion fails.
+
+This feature cannot affect it — the id-based `PickForUpdateAsync` path passes
+`null` pick options, producing an `OneOption` identical to the previous static
+`OneOption<TEntity>.FirstOrDefault`, and `DeleteManyUnlockedAsync` is untouched. What
+changed is suite composition (20 new tests ahead of it), which shifts timing enough to
+expose a latent race. Logged to the backlog next to `GetLockedExpired`.
+
 ## Last session
 
-Steps 0-6 complete. Implementation and tests are in, full suite is at the baseline.
-Next: step 7 (docs in `README.md` + `docs/articles/lockable-collections.md`), then push
-for the user to test. Step 8 close-out only on the user's confirmation.
+Steps 0-7 complete. Implementation, tests and docs are committed in three commits
+(`feat:`, `test:`, `docs:`). Full suite is at baseline: 5 environmental transaction
+failures only.
+Next: push the branch for the user to test. Step 8 close-out (re-run `dotnet outdated`,
+archive `feature.md`, `git rm -r plan`, final commit, PR) only on the user's confirmation.
