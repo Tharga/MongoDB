@@ -17,7 +17,7 @@ await using var del = await collection.PickForDeleteAsync(id);
 await del.CommitAsync();          // deletes the document
 ```
 
-Both accept `id`, `FilterDefinition<TEntity>`, or `Expression<Func<TEntity, bool>>` predicate, plus optional `timeout`, `actor`, and `completeAction` callback. Disposal without `CommitAsync` releases the lock unchanged.
+Both accept `id`, `FilterDefinition<TEntity>`, or `Expression<Func<TEntity, bool>>` predicate, plus optional `timeout`, `actor`, and `completeAction` callback. Disposal without `CommitAsync` releases the lock unchanged. When the filter or predicate matches several documents, see [Choosing which document to lock](#choosing-which-document-to-lock).
 
 ## Unified lock — decide at commit time
 
@@ -37,6 +37,29 @@ else
 ```
 
 `AbandonAsync()` releases without changes. `SetErrorStateAsync(ex)` records an exception on the lock so retries can see what failed previously. Disposal without commit calls `AbandonAsync`. Same semantics as `PickFor*` — both go through the same internal acquire-lock primitive.
+
+## Choosing which document to lock
+
+The filter and predicate overloads lock **an arbitrary matching document**. When several match and the order matters — a work queue processed by priority, oldest-first, or lowest-sequence-first — pass a `PickOptions<TEntity>` with a `Sort`:
+
+```csharp
+var byPriority = Builders<JobEntity>.Sort
+    .Ascending(x => x.Year)
+    .Ascending(x => x.Type);
+
+await using var scope = await collection.PickForUpdateAsync(
+    x => x.Ready,
+    new PickOptions<JobEntity> { Sort = byPriority },
+    timeout: TimeSpan.FromMinutes(5));
+```
+
+The sort orders the *matching* documents; it never widens the match. Selection stays a single atomic `findOneAndUpdate`, so ordering costs nothing in safety — two workers racing on the same sort-first document still produce exactly one winner. The loser does not block: its filter re-evaluates against the now-locked document, so it takes the next one in order, or gets `null` once nothing is left to lock.
+
+Already-locked documents are skipped, so repeated picks walk the queue in order. A document whose lock has **expired** is still a candidate, and if it sorts first it is reclaimed first.
+
+Available on the filter and predicate overloads of `PickForUpdateAsync`, `PickForDeleteAsync` and `LockAsync`. The `id` overloads take no `PickOptions` — a single document has nothing to order. `LockManyAsync` likewise: it acquires in key order on purpose, to avoid AB/BA deadlocks between concurrent leases.
+
+An index covering the sort keys matters here as much as for any query — without one, each pick sorts the matching set in memory.
 
 ## Multi-document lease
 
