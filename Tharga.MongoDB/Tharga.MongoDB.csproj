@@ -58,7 +58,7 @@
     <PackageReference Include="SharpCompress" Version="1.0.0" />
     <!-- Floors transitive Snappier 1.0.0 (from MongoDB.Driver) above CVE / GHSA-pggp-6c3x-2xmx (infinite-loop on malformed framed Snappy; affected <= 1.3.0). Do not drop until MongoDB.Driver itself ships Snappier >= 1.3.1. -->
     <PackageReference Include="Snappier" Version="1.3.1" />
-    <PackageReference Include="Tharga.Runtime" Version="1.0.1" />
+    <PackageReference Include="Tharga.Runtime" Version="1.0.2" />
     <PackageReference Include="System.Linq.Async" Version="7.0.1" />
   </ItemGroup>
 
