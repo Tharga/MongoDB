@@ -24,7 +24,6 @@ public class AtlasMongoDbToolProviderTests
     {
         _contextMock = new Mock<IMcpContext>();
         _contextMock.Setup(c => c.Scope).Returns(McpScope.System);
-        _contextMock.Setup(c => c.IsDeveloper).Returns(true);
     }
 
     private static MongoDbApiAccess Access => new()

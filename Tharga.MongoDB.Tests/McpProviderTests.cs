@@ -23,7 +23,6 @@ public class McpProviderTests
         _monitorMock = new Mock<IDatabaseMonitor>();
         _contextMock = new Mock<IMcpContext>();
         _contextMock.Setup(c => c.Scope).Returns(McpScope.System);
-        _contextMock.Setup(c => c.IsDeveloper).Returns(true);
     }
 
     private MongoDbToolProvider CreateToolProvider(DataAccessLevel level = DataAccessLevel.DataReadWrite, ILiveMonitoringSubscription liveSubscription = null)
