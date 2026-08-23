@@ -60,13 +60,7 @@ internal class CallLibrary : ICallLibrary
         _inFlightCalls.TryAdd(e.CallKey, info);
         _recentCalls.Enqueue(e.CallKey);
 
-        while (_recentCalls.Count > _options.Monitor.LastCallsToKeep)
-        {
-            if (_recentCalls.TryDequeue(out var oldKey))
-            {
-                _calls.TryRemove(oldKey, out _);
-            }
-        }
+        TrimRecentCalls();
 
         _callCounts.AddOrUpdate(e.Fingerprint.Key, 1, (_, count) => count + 1);
         _callCountsBySuffix.AddOrUpdate(SuffixKey(e.Fingerprint), 1, (_, count) => count + 1);
@@ -91,8 +85,16 @@ internal class CallLibrary : ICallLibrary
             if (e.Final)
             {
                 _completedAt.TryAdd(e.CallKey, DateTime.UtcNow);
-                _inFlightCalls.TryRemove(e.CallKey, out _);
             }
+        }
+
+        //NOTE: Outside the lookup above, on purpose. A call that outlives LastCallsToKeep is evicted from _calls
+        //while it is still running, so the lookup misses when it finally ends. Removing from inside the lookup
+        //orphaned the in-flight entry for the life of the process, and GetOngoingCalls kept reporting the
+        //finished call as ongoing.
+        if (e.Final)
+        {
+            _inFlightCalls.TryRemove(e.CallKey, out _);
         }
 
         // Queue slow-call tracking + notification to background consumer
@@ -169,13 +171,7 @@ internal class CallLibrary : ICallLibrary
         _calls.TryAdd(call.Key, call);
         _recentCalls.Enqueue(call.Key);
 
-        while (_recentCalls.Count > _options.Monitor.LastCallsToKeep)
-        {
-            if (_recentCalls.TryDequeue(out var oldKey))
-            {
-                _calls.TryRemove(oldKey, out _);
-            }
-        }
+        TrimRecentCalls();
 
         _callCounts.AddOrUpdate(call.Fingerprint.Key, 1, (_, count) => count + 1);
         _callCountsBySuffix.AddOrUpdate(SuffixKey(call.Fingerprint), 1, (_, count) => count + 1);
@@ -204,6 +200,30 @@ internal class CallLibrary : ICallLibrary
 
         NotifyChanged();
     }
+
+    //NOTE: The cap has to prune every per-call store, not just _calls. Nothing else bounds _completedAt: its
+    //only other pruner is the CompletedRetention sweep in GetOngoingCalls, which never runs on a headless
+    //service where no one opens the monitor. Dropping the stamp here is lossless, because GetOngoingCalls only
+    //surfaces a _completedAt key that _calls still holds - once evicted below, the stamp can never be read
+    //again. _inFlightCalls is deliberately NOT pruned here; it exists so a flood cannot evict a long-running
+    //call out of view, and it is bounded instead by its removal in EndCall.
+    private void TrimRecentCalls()
+    {
+        while (_recentCalls.Count > _options.Monitor.LastCallsToKeep)
+        {
+            if (_recentCalls.TryDequeue(out var oldKey))
+            {
+                _calls.TryRemove(oldKey, out _);
+                _completedAt.TryRemove(oldKey, out _);
+            }
+        }
+    }
+
+    //NOTE: For the cap regression tests. Neither store is observable through the public api and both have
+    //grown without a bound before.
+    internal int CompletedStampCount => _completedAt.Count;
+
+    internal int InFlightCount => _inFlightCalls.Count;
 
     public void ResetCalls()
     {
