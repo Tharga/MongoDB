@@ -4,6 +4,8 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using System;
 using System.Collections.Concurrent;
+using System.Diagnostics;
+using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Json;
@@ -58,6 +60,21 @@ public class Quilt4NetHeartbeatServiceTests
         Quilt4NetBaseUrl = "https://q4n.test/",
     };
 
+    //NOTE: The tests below drive a background loop, so waiting a fixed span and then asserting the tick
+    //happened is a race: on a loaded runner the loop may not have run yet. Poll for the outcome instead and
+    //give it a generous ceiling, so the test fails only when the tick genuinely never comes.
+    private static async Task<bool> WaitUntil(Func<bool> condition)
+    {
+        var limit = TimeSpan.FromSeconds(5);
+        var sw = Stopwatch.StartNew();
+        while (sw.Elapsed < limit)
+        {
+            if (condition()) return true;
+            await Task.Delay(10);
+        }
+        return condition();
+    }
+
     [Fact]
     public void Register_OnlyNotifyOrOpen_IgnoresClassicAndNone()
     {
@@ -95,9 +112,10 @@ public class Quilt4NetHeartbeatServiceTests
         sut.Register(NewAccess("1"), IPAddress.Parse("203.0.113.3"), FirewallMode.Notify);
 
         await sut.StartAsync(CancellationToken.None);
-        await Task.Delay(150);
+        var ticked = await WaitUntil(() => handler.RequestPaths.Any(p => p.EndsWith("/Api/AtlasFirewall/used")));
         await sut.StopAsync(CancellationToken.None);
 
+        ticked.Should().BeTrue("the loop should have reported the access as used");
         handler.RequestPaths.Should().Contain(p => p.EndsWith("/Api/AtlasFirewall/used"));
         handler.RequestPaths.Should().NotContain(p => p.EndsWith("/Api/AtlasFirewall/open"));
     }
@@ -114,9 +132,10 @@ public class Quilt4NetHeartbeatServiceTests
         sut.Register(NewAccess("2"), IPAddress.Parse("203.0.113.4"), FirewallMode.Open);
 
         await sut.StartAsync(CancellationToken.None);
-        await Task.Delay(150);
+        var ticked = await WaitUntil(() => handler.RequestPaths.Any(p => p.EndsWith("/Api/AtlasFirewall/open")));
         await sut.StopAsync(CancellationToken.None);
 
+        ticked.Should().BeTrue("the loop should have re-opened the access");
         handler.RequestPaths.Should().Contain(p => p.EndsWith("/Api/AtlasFirewall/open"));
         handler.RequestPaths.Should().NotContain(p => p.EndsWith("/Api/AtlasFirewall/used"));
     }
@@ -142,7 +161,7 @@ public class Quilt4NetHeartbeatServiceTests
         sut.Register(NewAccess("3"), IPAddress.Parse("203.0.113.5"), FirewallMode.Notify);
 
         await sut.StartAsync(CancellationToken.None);
-        await Task.Delay(200);
+        await WaitUntil(() => sut.ActiveCount == 0);
         await sut.StopAsync(CancellationToken.None);
 
         sut.ActiveCount.Should().Be(0, "auth-rejected entries should be removed from the loop");
@@ -157,9 +176,11 @@ public class Quilt4NetHeartbeatServiceTests
         sut.Register(NewAccess("4"), IPAddress.Parse("203.0.113.6"), FirewallMode.Notify);
 
         await sut.StartAsync(CancellationToken.None);
-        await Task.Delay(150);
+        //Wait for a tick to actually happen, otherwise a slow runner passes this without ever retrying.
+        var ticked = await WaitUntil(() => !handler.RequestPaths.IsEmpty);
         await sut.StopAsync(CancellationToken.None);
 
+        ticked.Should().BeTrue("the loop should have attempted the call");
         sut.ActiveCount.Should().Be(1, "transient errors should keep the entry so the next tick retries");
     }
 }
