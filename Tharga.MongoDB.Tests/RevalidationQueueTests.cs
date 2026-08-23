@@ -50,17 +50,26 @@ public class RevalidationQueueTests
     public async Task DuplicateEnqueue_IsCoalesced()
     {
         var count = 0;
+        var done = new SemaphoreSlim(0);
 
+        // Deferred start, for the same reason as the test above. Coalescing means "dedupe while pending":
+        // the drain loop drops the key from the enqueued set as soon as it dequeues it, before the refresh
+        // runs, so a key enqueued again after that point is legitimately a second refresh. With an eager
+        // start this test raced the loop -- under thread-pool load it could dequeue before all 50 enqueues
+        // had run, and observe 2. Pre-loading the queue before Start makes the coalescing deterministic.
         using var sut = new RevalidationQueue((_, _) =>
         {
             Interlocked.Increment(ref count);
+            done.Release();
             return Task.CompletedTask;
-        }, maxConcurrent: 1);
+        }, maxConcurrent: 1, startImmediately: false);
 
         for (var i = 0; i < 50; i++) sut.EnqueueLow("same-key");
 
-        // Wait until the queue settles.
-        await Task.Delay(200);
+        sut.Start();
+
+        (await done.WaitAsync(TimeSpan.FromSeconds(5))).Should().BeTrue("the coalesced key should refresh once");
+        (await done.WaitAsync(TimeSpan.FromMilliseconds(200))).Should().BeFalse("no second refresh should follow");
 
         count.Should().Be(1, "duplicate keys in the queue should coalesce into one refresh");
     }
