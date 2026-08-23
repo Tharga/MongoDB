@@ -187,7 +187,7 @@ internal class MongoDbService : IMongoDbServiceInternal
             var typesTask = mongoCollection
                 .Distinct<string>("_t", FilterDefinition<BsonDocument>.Empty)
                 .ToListAsync();
-            var statsTask = mongoDatabase.RunCommandAsync<SizeResult>($"{{collstats: '{collectionName}'}}");
+            var statsTask = mongoDatabase.RunCommandAsync<SizeResult>(BuildCollStatsCommand(collectionName));
             var indexTask = BuildIndicesModel(mongoCollection);
 
             await Task.WhenAll(typesTask, statsTask, indexTask);
@@ -287,7 +287,7 @@ internal class MongoDbService : IMongoDbServiceInternal
 
     public long GetSize(string collectionName, IMongoDatabase mongoDatabase = null)
     {
-        var size = (mongoDatabase ?? _mongoDatabase).RunCommand<SizeResult>($"{{collstats: '{collectionName}'}}").Size;
+        var size = (mongoDatabase ?? _mongoDatabase).RunCommand<SizeResult>(BuildCollStatsCommand(collectionName)).Size;
         return size;
     }
 
@@ -356,6 +356,15 @@ internal class MongoDbService : IMongoDbServiceInternal
     }
 
     public IMongoDatabase BaseMongoDatabase => _mongoDatabase;
+
+    //NOTE: The command name has to be camelCase 'collStats'. Azure Cosmos DB for MongoDB dispatches the name
+    //case-insensitively but then requires the element spelled exactly, so a lowercase 'collstats' fails there even
+    //though a real MongoDB server accepts it. Built as a document rather than an interpolated json string, since a
+    //collection name may contain a quote.
+    internal static BsonDocument BuildCollStatsCommand(string collectionName)
+    {
+        return new BsonDocument("collStats", collectionName);
+    }
 
     [BsonIgnoreExtraElements]
     // ReSharper disable once ClassNeverInstantiated.Local
