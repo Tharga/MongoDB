@@ -398,3 +398,6 @@ FodyWeavers.xsd
 *.sln.iml
 /.NCrunch_*/*
 /.claude/settings.local.json
+
+# Microsoft.Testing.Platform coverage output directory (--results-directory ./coverage)
+coverage/
