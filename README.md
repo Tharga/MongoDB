@@ -819,6 +819,8 @@ Set `StorageMode` to control where the monitor keeps its state.
     "StorageMode": "Database",
     "LastCallsToKeep": 1000,
     "SlowCallsToKeep": 200,
+    "CallRecordingLevel": "OnDemand",
+    "EnableCommandMonitoring": false,
     "ForwardCompletedCalls": false,
     "QueueMetricInterval": "00:00:01",
     "ClusterConnectionLimit": 3000
@@ -826,7 +828,7 @@ Set `StorageMode` to control where the monitor keeps its state.
 }
 ```
 
-`ForwardCompletedCalls` (default `false`) and `QueueMetricInterval` apply to agents forwarding to a central monitor; `ClusterConnectionLimit` is read by the central server to show open connections against a cluster's limit (one value for every cluster). For mixed deployments — different Atlas tiers, or self-hosted — set `ClusterConnectionLimitResolver` in code (below) to resolve the limit per cluster instead. See [Centralised monitoring](#centralised-monitoring) and the [monitoring docs](https://github.com/Tharga/MongoDB/blob/master/docs/articles/monitoring.md).
+`CallRecordingLevel` controls how much per-call data is recorded — set it to `WhenConsumed` on a headless agent to record nothing until forwarding is on or a viewer attaches. `ForwardCompletedCalls` (default `false`) and `QueueMetricInterval` apply to agents forwarding to a central monitor; `ClusterConnectionLimit` is read by the central server to show open connections against a cluster's limit (one value for every cluster). For mixed deployments — different Atlas tiers, or self-hosted — set `ClusterConnectionLimitResolver` in code (below) to resolve the limit per cluster instead. See [Centralised monitoring](#centralised-monitoring) and the [monitoring docs](https://github.com/Tharga/MongoDB/blob/master/docs/articles/monitoring.md).
 
 #### Configuration by code
 ```csharp

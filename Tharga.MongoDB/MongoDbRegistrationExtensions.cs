@@ -39,29 +39,14 @@ public static class MongoDbRegistrationExtensions
     {
         var mongoDbInstance = new MongoDbInstance();
 
-        var c = configuration.GetSection("MongoDB").Get<DatabaseOptions>();
-
-        var mo = new MonitorOptions();
-        var lo = new ExecuteLimiterOptions();
-
-        var o = new DatabaseOptions
-        {
-            DefaultConfigurationName = c?.DefaultConfigurationName ?? Constants.DefaultConfigurationName,
-            AutoRegisterRepositories = c?.AutoRegisterRepositories ?? Constants.AutoRegisterRepositoriesDefault,
-            AutoRegisterCollections = c?.AutoRegisterCollections ?? Constants.AutoRegisterCollectionsDefault,
-            GuidStorageFormat = c?.GuidStorageFormat ?? new DatabaseOptions().GuidStorageFormat,
-            AssureIndex = c?.AssureIndex ?? AssureIndexMode.ByName,
-            Monitor = new MonitorOptions
-            {
-                Enabled = c?.Monitor?.Enabled ?? mo.Enabled,
-                LastCallsToKeep = c?.Monitor?.LastCallsToKeep ?? mo.LastCallsToKeep,
-                SlowCallsToKeep = c?.Monitor?.SlowCallsToKeep ?? mo.SlowCallsToKeep,
-            },
-            Limiter = new ExecuteLimiterOptions
-            {
-                Enabled = c?.Limiter?.Enabled ?? lo.Enabled,
-            }
-        };
+        //NOTE: Bind onto the instance instead of copying named properties out of a bound copy. The copy carried
+        //a handful of properties and silently dropped every other value the section held, so a CallRecordingLevel
+        //or SendTo in appsettings.json never took effect, and the list went stale each time an option was added.
+        //DatabaseOptions, MonitorOptions and ExecuteLimiterOptions all carry their defaults as property
+        //initialisers, so anything absent from configuration keeps its default, and Bind leaves the
+        //delegate-typed properties alone. Precedence is unchanged: configuration first, then the code callback.
+        var o = new DatabaseOptions();
+        configuration.GetSection("MongoDB").Bind(o);
         options?.Invoke(o);
 
         // Default per-cluster connection-limit source: the editable config store (Blazor ClusterConfigView
