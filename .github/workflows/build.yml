@@ -104,7 +104,7 @@ jobs:
           fi
 
       - name: Test with coverage
-        run: dotnet test -c Release --no-build --verbosity normal --filter "Category!=Database" --collect:"XPlat Code Coverage" --results-directory ./coverage
+        run: dotnet test -c Release --no-build --results-directory ./coverage -- --filter-not-trait "Category=Database" --coverage --coverage-output-format cobertura
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
