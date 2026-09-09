@@ -4,6 +4,9 @@
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![GitHub repo Issues](https://img.shields.io/github/issues/Tharga/MongoDB?style=flat&logo=github&logoColor=red&label=Issues)](https://github.com/Tharga/MongoDB/issues?q=is%3Aopen)
 
+## Requirements
+Targets **.NET 10**. Reaches MongoDB Server **4.2 and later** — the package floors `MongoDB.Driver` at `3.9.0`, the last driver line that supports server 4.2, so Azure Cosmos DB for MongoDB accounts on 4.2 keep working. If all your servers are 4.4 or later you can reference a newer driver directly in your own project; the dependency is a floor, not a lock. See [Server compatibility](https://mongodb.tharga.net/articles/server-compatibility.html) for the full matrix, the Cosmos quirks, and how to check which server version you are on.
+
 ## Get started
 Install the nuget package `Tharga.MongoDB`. It is available at [nuget.org](#https://www.nuget.org/packages/Tharga.MongoDB).
 

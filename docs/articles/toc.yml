@@ -2,6 +2,8 @@
   href: index.md
 - name: Getting started
   href: getting-started.md
+- name: Server compatibility
+  href: server-compatibility.md
 - name: Lockable collections
   href: lockable-collections.md
 - name: Transactions

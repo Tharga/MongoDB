@@ -53,7 +53,8 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="MongoDB.Driver" Version="3.11.0" />
+    <!-- Held at 3.9.x: driver 3.10.0 marked MongoDB Server 4.2 end-of-life and raised minWireVersion to 9 (server 4.4), so 3.10+ cannot connect to Azure Cosmos DB for MongoDB accounts on server version 4.2. 3.9.0 is the last line that supports 4.2. Do not raise until every consuming environment is off Cosmos 4.2 - tracked in #158. A dependency-update sweep will offer 3.10/3.11 every time; that offer is the known failure, not new information. -->
+    <PackageReference Include="MongoDB.Driver" Version="3.9.0" />
     <!-- Floors transitive SharpCompress 0.30.1 (from MongoDB.Driver) above CVE-2026-44788 / GHSA-6c8g-7p36-r338 (zip-slip; affected <= 0.47.4). Do not drop until MongoDB.Driver itself ships SharpCompress >= 1.0.0. -->
     <PackageReference Include="SharpCompress" Version="1.0.0" />
     <!-- Floors transitive Snappier 1.0.0 (from MongoDB.Driver) above CVE / GHSA-pggp-6c3x-2xmx (infinite-loop on malformed framed Snappy; affected <= 1.3.0). Do not drop until MongoDB.Driver itself ships Snappier >= 1.3.1. -->
