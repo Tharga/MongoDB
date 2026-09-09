@@ -4,7 +4,9 @@ _layout: landing
 
 # Tharga.MongoDB
 
-A MongoDB repository toolkit for **.NET 8 / 9 / 10**. Built on `MongoDB.Driver`, with first-class support for dynamic database/collection naming, automatic index assurance, document-level locking, multi-document transactions, keyset pagination, and built-in call monitoring.
+A MongoDB repository toolkit for **.NET 10**, reaching MongoDB Server **4.2 and later**. Built on `MongoDB.Driver`, with first-class support for dynamic database/collection naming, automatic index assurance, document-level locking, multi-document transactions, keyset pagination, and built-in call monitoring.
+
+Running against Azure Cosmos DB, or on an older server? See [Server compatibility](articles/server-compatibility.md).
 
 ## Packages
 
