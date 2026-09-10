@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Reflection;
 using System.Threading.Tasks;
+using MongoDB.Driver.Core.Configuration;
 using Tharga.MongoDB.Interception;
 using Tharga.MongoDB.Internals;
 
@@ -14,6 +15,7 @@ public record DatabaseOptions
 {
     internal List<Assembly> _extraAssemblies = new ();
     internal List<CollectionInterceptorRegistration> _collectionInterceptors = new ();
+    internal List<Action<ClusterBuilder>> _clusterConfigurators = new ();
 
     /// <summary>
     /// The name of the connection string that will be used to read from appsettings.json or from ConnectionStringLoader.
@@ -114,6 +116,30 @@ public record DatabaseOptions
     {
         if (interceptor == null) throw new ArgumentNullException(nameof(interceptor));
         _collectionInterceptors.Add(new CollectionInterceptorRegistration { Instance = interceptor });
+    }
+
+    /// <summary>
+    /// Append a callback that configures the driver's <see cref="ClusterBuilder"/> when a
+    /// <c>MongoClient</c> is created, giving access to the full driver event stream — for example to attach
+    /// a third-party <c>IEventSubscriber</c>.
+    /// <para>
+    /// Callbacks are <b>additive</b>: the built-in command and connection-pool subscriptions are applied
+    /// first, then each registered callback in registration order, so a consumer hook cannot disable the
+    /// monitor. Call this more than once to register several.
+    /// </para>
+    /// <para>
+    /// Note that <see cref="MonitorOptions.EnableActivitySource"/> already emits dependency spans; attaching
+    /// another activity-producing subscriber here without turning that off yields duplicate spans.
+    /// </para>
+    /// <code>
+    /// o.ConfigureCluster(cb =&gt; cb.Subscribe(new MySubscriber()));
+    /// </code>
+    /// </summary>
+    /// <param name="configure">The callback applied to the cluster builder.</param>
+    public void ConfigureCluster(Action<ClusterBuilder> configure)
+    {
+        if (configure == null) throw new ArgumentNullException(nameof(configure));
+        _clusterConfigurators.Add(configure);
     }
 
     /// <summary>
