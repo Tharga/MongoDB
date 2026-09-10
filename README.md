@@ -824,6 +824,8 @@ Set `StorageMode` to control where the monitor keeps its state.
     "SlowCallsToKeep": 200,
     "CallRecordingLevel": "OnDemand",
     "EnableCommandMonitoring": false,
+    "EnableActivitySource": true,
+    "CaptureCommandText": false,
     "ForwardCompletedCalls": false,
     "QueueMetricInterval": "00:00:01",
     "ClusterConnectionLimit": 3000
@@ -853,6 +855,10 @@ services.AddMongoDB(o =>
         // default; the listener is always subscribed, so it can be toggled at runtime — locally via
         // IDatabaseMonitor.SetCommandMonitoring, or per-agent from the Clients dialog (SetClientCommandMonitoringAsync).
         EnableCommandMonitoring = false,
+        // Emit a dependency span per driver command on the "Tharga.MongoDB" activity source, so database
+        // calls appear inside a request's trace. On by default — it does no work until something listens.
+        EnableActivitySource = true,
+        CaptureCommandText = false,           // attaching the command as db.statement also attaches its data
         // Per-cluster connection limit (drives the "open / limit" bar). Resolve per cluster so mixed
         // deployments — different Atlas tiers, or self-hosted — each show the right ceiling, or none:
         ClusterConnectionLimitResolver = (sp, ctx) => ctx.IsAtlas ? 3000 : (int?)null
@@ -902,6 +908,45 @@ When enabled, steps that involve MongoDB driver calls include a breakdown of dri
 - **Action**: `Driver: find 12.34ms | Other: 3.21ms`
 
 This helps diagnose whether slow operations are caused by the database, serialization, or application-side contention.
+
+### Dependency spans (distributed tracing)
+Command monitoring says *how long queries take*. A dependency span says *which call, inside which request, spent the time* — a distinction that matters, because an aggregate duration has already discarded the correlation a trace exists to carry.
+
+Database calls are published as `Activity` spans on the **`Tharga.MongoDB`** activity source. Register it with your tracer provider and they appear as dependencies nested under the request that made them:
+
+```csharp
+builder.Services.AddOpenTelemetry()
+    .WithTracing(t => t
+        .AddAspNetCoreInstrumentation()
+        .AddSource(MongoDbDiagnostics.ActivitySourceName)   // "Tharga.MongoDB"
+        .AddAzureMonitorTraceExporter());
+```
+
+One `Client`-kind span per driver command, named `{command} {database}.{collection}`, tagged `db.system`, `db.name`, `db.operation`, `db.mongodb.collection`, `server.address` and `server.port`. A failure sets the span status to `Error` and adds `error.type`. Handshake and heartbeat commands (`hello`, `ping`, `saslStart`, …) are never reported.
+
+This is **on by default**, unlike `EnableCommandMonitoring`: the emitter does no work and allocates nothing until something subscribes to the source, so an application that never registers it pays a volatile read per command. Let your OpenTelemetry sampler decide how many spans to keep rather than switching the source off.
+
+```csharp
+services.AddMongoDB(o =>
+{
+    o.Monitor.EnableActivitySource = true;   // default
+    o.Monitor.CaptureCommandText = false;    // default — the command document carries query values, i.e. data
+});
+```
+
+### Attaching your own driver subscriber
+`ConfigureCluster` hands you the driver's `ClusterBuilder` when a `MongoClient` is created, giving access to the full driver event stream — command, connection-pool, server-selection and SDAM events.
+
+```csharp
+services.AddMongoDB(configuration, o =>
+{
+    o.ConfigureCluster(cb => cb.Subscribe(new MyEventSubscriber()));
+});
+```
+
+Callbacks are **additive**: the built-in command, connection-pool and span subscriptions run first, then each registered callback in registration order, so a consumer hook cannot switch the monitor off by accident. Call `ConfigureCluster` more than once to register several.
+
+Turn `Monitor.EnableActivitySource` off if the subscriber you attach also produces activities — otherwise every call yields two spans.
 
 ### Remote forwarding
 Install the `Tharga.MongoDB.Monitor.Client` package to forward monitoring data from a remote agent to a central server via [Tharga.Communication](https://www.nuget.org/packages/Tharga.Communication).

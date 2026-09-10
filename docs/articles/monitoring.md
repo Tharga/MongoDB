@@ -33,6 +33,8 @@ Or by code via `services.AddMongoDB(o => o.Monitor = new MonitorOptions { ... })
 | `QueueMetricInterval` | Agent | `00:00:01` (1s) | How often a queue/connection snapshot is forwarded while someone is watching live. Larger = less chatter, coarser live graph. |
 | `CallRecordingLevel` | Any | `OnDemand` | How much per-call data to record. `Full` always records calls + step timeline; `OnDemand` (default) records the lightweight call always but builds the step timeline only while consumed (forwarding on or a live viewer); `WhenConsumed` records nothing until consumed (best for headless agents). The monitor server always counts as a consumer. |
 | `EnableCommandMonitoring` | Any | `false` | Capture driver command durations (the `Driver: … \| Other: …` breakdown on call steps). The listener is always subscribed, so capture can be toggled at runtime — locally (`IDatabaseMonitor.SetCommandMonitoring`) or per-agent from the Clients dialog (`SetClientCommandMonitoringAsync`). This is the startup default. |
+| `EnableActivitySource` | Any | `true` | Emit a dependency span per driver command on the `Tharga.MongoDB` activity source. Costs nothing until something listens, so it is on by default. See [Dependency spans](#dependency-spans-distributed-tracing). |
+| `CaptureCommandText` | Any | `false` | Attach the command document to each span as `db.statement`. Off by default — the command carries query values, i.e. data. |
 | `ClusterConnectionLimit` | Server | `null` | A single connection limit applied to **every** cluster the resolver doesn't handle. Use only when all clusters share one limit; otherwise leave null and use the resolver. |
 | `ClusterConnectionLimitResolver` | Server | store-backed | `Func<IServiceProvider, ClusterConnectionLimitContext, int?>` — resolves the limit **per cluster** (e.g. each Atlas tier's max, or `null` for self-hosted). Mirrors `MaxPoolSizeOverride`; the `IServiceProvider` lets it read a value an external feature updates at runtime. Called on the render path, so it must be fast (read a cached value, no I/O). The context carries the cluster host, an `IsAtlas` flag (host on `mongodb.net`), and the config names. Falls back to `ClusterConnectionLimit`, then to no bar. **When unset, defaults to the editable config store** (below). |
 
@@ -50,6 +52,78 @@ Enable driver-level command timing to see how much of "Action" time is real Mong
 - **Action**: `Driver: find 12.34ms | Other: 3.21ms`
 
 Useful for distinguishing slow database from slow serialization or application contention.
+
+## Dependency spans (distributed tracing)
+
+Command monitoring answers *how long do queries take*. A dependency span answers a different question: *which
+call, inside which request, spent the time*. Aggregate durations have already discarded that correlation, so
+the two are not alternatives — a trace is what lets you see that one HTTP request spent 14 of its 15 seconds
+in a single query.
+
+Database calls are published as `Activity` spans on the **`Tharga.MongoDB`** activity source. Register it with
+your tracer provider:
+
+```csharp
+builder.Services.AddOpenTelemetry()
+    .WithTracing(t => t
+        .AddAspNetCoreInstrumentation()
+        .AddSource(MongoDbDiagnostics.ActivitySourceName)   // "Tharga.MongoDB"
+        .AddAzureMonitorTraceExporter());
+```
+
+The constant lives in `Tharga.MongoDB.Diagnostics.MongoDbDiagnostics`, so the name does not have to be typed
+out. In Application Insights the spans arrive in the `dependencies` table, nested under the request that made
+them.
+
+### What a span carries
+
+One `Client`-kind span per driver command, named `{command} {database}.{collection}` (or `{command}
+{database}` for a database-level command such as `dbStats`).
+
+| Tag | Example |
+|---|---|
+| `db.system` | `mongodb` |
+| `db.name` | `MyDatabase` |
+| `db.operation` | `find` |
+| `db.mongodb.collection` | `user` — absent on database-level commands |
+| `server.address` / `server.port` | `cluster0.ab12.mongodb.net` / `27017` |
+| `db.statement` | the command document — only when `CaptureCommandText` is on |
+
+A failed command sets the span status to `Error` with the driver's message, plus an `error.type` tag naming
+the exception type.
+
+Handshake and heartbeat commands (`hello`, `isMaster`, `buildInfo`, `ping`, `saslStart`, `saslContinue`,
+`authenticate`, `getLastError`, `endSessions`) are never reported. They are per-connection chatter rather than
+work anyone asked for, and they would drown the trace.
+
+### Why this one is on by default
+
+Unlike `EnableCommandMonitoring`, which buffers entries whether or not anything reads them, span emission does
+no work at all until a listener subscribes to the source — the emitter checks first, and allocates nothing
+when nobody is there (asserted by measurement in the test suite). An application that never calls
+`AddSource("Tharga.MongoDB")` therefore pays a volatile read per command.
+
+Spans are per-command and high-volume, so let your OpenTelemetry pipeline's sampler decide how many are kept
+rather than switching the source off and on.
+
+Set `Monitor.EnableActivitySource = false` when you attach your own activity-producing subscriber through
+[`ConfigureCluster`](#attaching-your-own-driver-subscriber) — otherwise every call produces two spans.
+
+## Attaching your own driver subscriber
+
+`ConfigureCluster` hands you the driver's `ClusterBuilder` when a `MongoClient` is created, which is the full
+driver event stream — command, connection-pool, server-selection, SDAM.
+
+```csharp
+services.AddMongoDB(configuration, o =>
+{
+    o.ConfigureCluster(cb => cb.Subscribe(new MyEventSubscriber()));
+});
+```
+
+Callbacks are **additive**. The built-in command, connection-pool and span subscriptions are applied first,
+then each registered callback in registration order, so a hook cannot switch the monitor off by accident. Call
+`ConfigureCluster` more than once to register several.
 
 ## Connection pool, queue and in-flight calls
 

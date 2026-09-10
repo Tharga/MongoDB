@@ -34,16 +34,17 @@ Branch: `feature/mongodb-dependency-spans`
       `db.statement` both ways, zero allocation with no listener plus two guards against a vacuous zero, and
       the registration switch from both code and configuration.
 
-- [~] **6. Docs**
-  - `docs/articles/monitoring.md`: new tracing section — the source name, the OTel registration snippet,
-    the tag set, the two options, and the duplicate-span note about `ConfigureCluster`.
-  - `README.md`: options table rows + a tracing subsection.
+- [x] **6. Docs** — both surfaces. `docs/articles/monitoring.md`: two new option rows plus *Dependency spans
+      (distributed tracing)* and *Attaching your own driver subscriber* sections. `README.md`: the two options
+      in both the appsettings and code samples, plus matching sections. Each explains why this option defaults
+      on where `EnableCommandMonitoring` defaults off, and warns about duplicate spans.
 
-- [ ] **7. Version bump** — `MAJOR_MINOR` `2.16` → `2.17` in `.github/workflows/build.yml`.
+- [x] **7. Version bump** — `MAJOR_MINOR` `2.16` → `2.17` in `.github/workflows/build.yml`.
 
-- [ ] **8. Verify** — clean build at 0 warnings; full suite green apart from the 6 known failures.
+- [x] **8. Verify** — solution builds at 0 warnings; 770 tests, 757 passed, 8 skipped, 5 failed, the 5 being
+      the environmental `TransactionsTests`.
 
-- [ ] **9. Push and hand over for testing** — do not open the PR yet.
+- [~] **9. Push and hand over for testing** — do not open the PR yet.
 
 ## Close-out (only once the user confirms the feature is done)
 
@@ -62,4 +63,6 @@ Branch: `feature/mongodb-dependency-spans`
 741 tests, 727 passed, 8 skipped, 6 failed (all pre-existing and recorded in the backlog). Steps 1–5 done
 and committed. Suite now 770 tests, 757 passed, 8 skipped, 5 failed — the 5 being the environmental
 `TransactionsTests` that need a replica set; the flaky `DeleteWhenOneIsExpired` passed this run. Solution
-builds at 0 warnings. Next: step 6, docs on both surfaces.
+builds at 0 warnings. Steps 6–8 then landed: docs on both surfaces and the 2.17 version bump, re-verified
+at 770 tests / 0 warnings. Implementation is complete; awaiting the user's test of the pushed branch before
+the close-out sequence.
