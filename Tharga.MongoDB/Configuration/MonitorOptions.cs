@@ -88,6 +88,28 @@ public record MonitorOptions
     public bool EnableCommandMonitoring { get; set; }
 
     /// <summary>
+    /// Emit a client dependency span per driver command on the <c>Tharga.MongoDB</c> activity source
+    /// (<see cref="Tharga.MongoDB.Diagnostics.MongoDbDiagnostics.ActivitySourceName"/>), so database calls
+    /// appear inside a request's distributed trace. Default is true.
+    /// <para>
+    /// Unlike <see cref="EnableCommandMonitoring"/>, which buffers entries whether or not anything reads
+    /// them, this costs nothing until a listener subscribes — no listener means no work and no allocation.
+    /// Turn it off when attaching another activity-producing subscriber through
+    /// <see cref="DatabaseOptions.ConfigureCluster"/>, which would otherwise double every span.
+    /// </para>
+    /// <para>Handshake and heartbeat commands are never reported; they are per-connection chatter rather than
+    /// consumer-initiated work.</para>
+    /// </summary>
+    public bool EnableActivitySource { get; set; } = true;
+
+    /// <summary>
+    /// Attach the command document to each dependency span as <c>db.statement</c>. Default is false, because
+    /// the command carries query values — that is, data. Only meaningful when
+    /// <see cref="EnableActivitySource"/> is on.
+    /// </summary>
+    public bool CaptureCommandText { get; set; }
+
+    /// <summary>
     /// How much per-call data to record (see <see cref="CallRecordingLevel"/>). Recording is wasted work when
     /// nothing consumes it, so the default <see cref="CallRecordingLevel.OnDemand"/> keeps the lightweight call
     /// record always but builds the step timeline only while forwarding is on or a live viewer is attached. A

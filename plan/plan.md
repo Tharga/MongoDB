@@ -8,35 +8,33 @@ Branch: `feature/mongodb-dependency-spans`
       (held at 3.9.0 for Cosmos 4.2, #158). 14 packages bumped across 10 projects, all patch/minor.
       Build clean, test suite unchanged from baseline. Commit `f325ee4` — `chore(deps): nuget update`.
 
-- [ ] **2. Additive cluster configuration**
-  - `DatabaseOptions`: internal `_clusterConfigurators` list + public `ConfigureCluster(Action<ClusterBuilder>)`.
-  - `MongoDbClientProvider`: replace the `settings.ClusterConfigurator = …` assignment with a composed
-    delegate built from an ordered step list — existing configurator, built-in monitors, consumer callbacks.
-  - Pass the options through the registration lambda in `MongoDbRegistrationExtensions`.
+> Steps 2 and 4 were done before 3 and 5. Adding the option surface up front kept every intermediate build
+> at zero warnings — `ConfigureCluster`'s XML docs reference `EnableActivitySource`, so writing the hook
+> first left a dangling `cref`. No change to what any step contains.
 
-- [ ] **3. Tests for composition**
-  - Consumer callbacks run in registration order, after the built-ins.
-  - A pre-existing configurator is preserved.
-  - Built-in monitor subscriptions survive a consumer callback (the regression guard from the issue).
-  - The composed delegate runs against a real `ClusterBuilder` without throwing.
+- [x] **2. Additive cluster configuration** — `DatabaseOptions._clusterConfigurators` + public
+      `ConfigureCluster(Action<ClusterBuilder>)`. `MongoDbClientProvider.BuildConfiguratorSteps` composes an
+      ordered `ClusterConfiguratorStep` list (Existing → BuiltIn → Consumer) and `GetClient` runs it, in place
+      of the old assignment. Registration passes `o._clusterConfigurators` through.
 
-- [ ] **4. ActivitySource emitter**
-  - Public `MongoDbDiagnostics.ActivitySourceName` const (`Tharga.MongoDB`).
-  - Internal subscriber on `CommandStarted` / `CommandSucceeded` / `CommandFailed`, correlated by
-    `RequestId`, with `HasListeners()` as the fast-path gate and the excluded-command set.
-  - OTel semantic-convention tags; `Error` status + `error.type` on failure.
-  - `MonitorOptions.EnableActivitySource` (default true) and `CaptureCommandText` (default false).
-  - Register the subscriber and wire it into the built-in configurator step.
+- [x] **3. Tests for composition** — `ClusterConfiguratorCompositionTests`, 7 tests: step order with and
+      without an existing configurator, consumer callbacks in registration order, the built-in step surviving
+      a consumer callback, no steps when there is nothing to configure, every step against a real
+      `ClusterBuilder`, and `GetClient` applying the composition to a real `MongoClient`.
 
-- [ ] **5. Tests for spans**
-  - Name, kind and tags on success; error status and `error.type` on failure.
-  - Parent correlation to an ambient `Activity`.
-  - Excluded commands emit nothing.
-  - `db.statement` absent by default, present under `CaptureCommandText`.
-  - Zero allocation with no listener, plus a guard test so the zero-assertion cannot pass vacuously.
-  - `EnableActivitySource = false` registers no subscriber.
+- [x] **4. ActivitySource emitter** — public `MongoDbDiagnostics.ActivitySourceName`; internal
+      `CommandActivityEmitter` on `CommandStarted`/`Succeeded`/`Failed`, correlated by `RequestId`, gated on
+      `HasListeners()`, with the handshake/heartbeat exclusion set and the OTel tag set.
+      `EnableActivitySource` (default true) and `CaptureCommandText` (default false) on `MonitorOptions`.
+      Subscribed inside the built-in configurator step, so it always precedes consumer callbacks.
 
-- [ ] **6. Docs**
+- [x] **5. Tests for spans** — `CommandActivityEmitterTests` (17) and `ActivitySourceRegistrationTests` (5):
+      kind/name/tags, database-level commands reporting no collection, error status and `error.type`, parent
+      correlation to an ambient activity, two in-flight commands not colliding, six excluded commands,
+      `db.statement` both ways, zero allocation with no listener plus two guards against a vacuous zero, and
+      the registration switch from both code and configuration.
+
+- [~] **6. Docs**
   - `docs/articles/monitoring.md`: new tracing section — the source name, the OTel registration snippet,
     the tag set, the two options, and the duplicate-span note about `ConfigureCluster`.
   - `README.md`: options table rows + a tracing subsection.
@@ -61,5 +59,7 @@ Branch: `feature/mongodb-dependency-spans`
 ## Last session
 
 2026-09-10 — Branch created off `master` (level with `origin/master`, tagged 2.16.0). Baseline captured:
-741 tests, 727 passed, 8 skipped, 6 failed (all pre-existing and recorded in the backlog). Step 1 done and
-committed. Awaiting plan confirmation before step 2.
+741 tests, 727 passed, 8 skipped, 6 failed (all pre-existing and recorded in the backlog). Steps 1–5 done
+and committed. Suite now 770 tests, 757 passed, 8 skipped, 5 failed — the 5 being the environmental
+`TransactionsTests` that need a replica set; the flaky `DeleteWhenOneIsExpired` passed this run. Solution
+builds at 0 warnings. Next: step 6, docs on both surfaces.

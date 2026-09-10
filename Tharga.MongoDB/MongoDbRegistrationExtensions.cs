@@ -86,8 +86,12 @@ public static class MongoDbRegistrationExtensions
             return svc;
         });
         services.AddSingleton<ICommandMonitorService>(sp => sp.GetRequiredService<CommandMonitorService>());
+        // Dependency spans are on by default; with no listener on the activity source the emitter does no
+        // work at all, so the cost of leaving it registered is a volatile read per command.
+        if (o.Monitor?.EnableActivitySource != false)
+            services.AddSingleton(new CommandActivityEmitter(o.Monitor?.CaptureCommandText == true));
         services.AddSingleton<IMongoDbClientProvider>(sp =>
-            new MongoDbClientProvider(sp.GetRequiredService<CommandMonitorService>(), sp.GetRequiredService<IConnectionPoolMonitor>()));
+            new MongoDbClientProvider(sp.GetRequiredService<CommandMonitorService>(), sp.GetRequiredService<IConnectionPoolMonitor>(), o._clusterConfigurators, sp.GetService<CommandActivityEmitter>()));
         services.AddSingleton<IMongoDbFirewallStateService, MongoDbFirewallStateService>();
         services.AddHttpClient(Atlas.Quilt4NetFirewallProxyClient.HttpClientName);
         services.AddSingleton<Atlas.Quilt4NetFirewallProxyClient>();
