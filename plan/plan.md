@@ -9,36 +9,34 @@ Branch: `feature/execute-limiter-queue-bounds`
       `chore(deps)` commit this time. Baseline captured: 770 tests, 755 passed, 8 skipped, 7 failed, all
       pre-existing.
 
-- [~] **2. Options and exceptions**
-  - `ExecuteLimiterOptions`: `MaxQueueLength` (`int?`), `QueueTimeout` (`TimeSpan?`).
-  - `ExecuteLimiterException` base + `ExecuteLimiterQueueFullException` + `ExecuteLimiterQueueTimeoutException`,
-    beside the existing `ResultLimitException`.
+- [x] **2. Options and exceptions** — `MaxQueueLength` / `QueueTimeout` on `ExecuteLimiterOptions`;
+      `ExecuteLimiterException` base with `ExecuteLimiterQueueFullException` and
+      `ExecuteLimiterQueueTimeoutException`, both carrying the `ServerKey`.
 
-- [ ] **3. The bound itself**
-  - `PerPoolState`: `_waiting` and `_rejected` counters, plus the edge-trigger flag for the warning.
-  - `ExecuteAsync`: non-blocking `Semaphore.Wait(0)` fast path; only on failure increment `_waiting`, apply
-    the cap against the returned value, and await with or without the timeout.
-  - Unwind through the existing `catch (!acquired)` path, extended to release `_waiting`.
-  - Re-arm the warning when a pool's waiting count returns to zero.
-  - Validate the options in the constructor.
+- [x] **3. The bound itself** — `_waiting` / `_rejected` / `_rejectionWarned` on `PerPoolState`; the
+      `Semaphore.Wait(0)` fast path in `ExecuteAsync`; `RejectIfQueueFull` on the returned waiting count; the
+      existing `catch (!acquired)` path extended to release `_waiting`; constructor validation.
 
-- [ ] **4. Monitor surface** — `PoolQueueState.RejectedCount`, populated from the per-pool counter.
+      **Two defects caught during implementation, both fixed and both now pinned by a test.**
+      (a) `waitingCount <= _maxQueueLength` is a *lifted* comparison — false when the limit is null — so the
+      default unbounded configuration would have rejected every waiter. Now an explicit null check.
+      (b) Re-arming the warning on the rejection unwind meant `MaxQueueLength = 0`, where a rejected caller is
+      the only waiter there ever is, warned on every single rejection — the flood the edge trigger exists to
+      prevent. The warning now re-arms only when the queue drains through work.
 
-- [ ] **5. Tests**
-  - Idle pool + `MaxQueueLength = 0` still executes (the flaw in the literal proposal).
-  - Saturated pool admits N waiters and rejects the next.
-  - Rejection leaves every counter and the in-flight set unchanged.
-  - Timeout throws and does not leak a slot.
-  - Both options null = unbounded, current behaviour.
-  - `RejectedCount` increments; the warning is edge-triggered, not per rejection.
-  - Construction validation.
+- [x] **4. Monitor surface** — `PoolQueueState.RejectedCount`, non-required so the record stays additive.
 
-- [ ] **6. Docs** — README Execute Limiter table + a backpressure section; `docs/articles/monitoring.md`
-      queue section.
+- [x] **5. Tests** — `ExecuteLimiterQueueBoundTests`, 18 tests covering all of the above.
 
-- [ ] **7. Version bump** — `MAJOR_MINOR` `2.17` → `2.18`.
+- [x] **6. Docs** — README Execute Limiter table plus a Backpressure section with the shed-load pattern;
+      `docs/articles/monitoring.md` queue section plus its own Backpressure subsection.
 
-- [ ] **8. Verify** — 0 warnings; suite green apart from the known pre-existing failures.
+- [x] **7. Version bump** — `MAJOR_MINOR` `2.17` → `2.18`.
+
+- [x] **8. Verify** — 0 warnings; 788 tests, 774 passed, 8 skipped, 6 failed — the 5 environmental
+      `TransactionsTests` plus one member of the flaky lock-expiry family. `PickTests` passes 26/26 in
+      isolation, and a repeat run of identical binaries failed a *different* member of that family, which is
+      the documented flaky signature rather than a regression.
 
 - [ ] **9. Push and hand over for testing** — do not open the PR yet.
 
@@ -56,4 +54,5 @@ Branch: `feature/execute-limiter-queue-bounds`
 ## Last session
 
 2026-09-11 — Branch created off `master` (level with `origin/master`; 2.17.0 merged but its release job is
-still parked awaiting approval, so this stacks a second unreleased minor behind it). Step 1 done.
+still parked awaiting approval, so this stacks a second unreleased minor behind it). Steps 1-8 done.
+Implementation complete; awaiting the user's test of the pushed branch before close-out.

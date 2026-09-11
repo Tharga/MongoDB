@@ -128,8 +128,9 @@ then each registered callback in registration order, so a hook cannot switch the
 ## Connection pool, queue and in-flight calls
 
 Database operations pass through a per-pool concurrency limiter (one pool per `MongoClient`, keyed by the set of
-server hosts **and** the pool's `MaxConnectionPoolSize`). The Blazor queue view surfaces this **per pool**, not as
-a single process-wide figure:
+server hosts **and** the pool's `MaxConnectionPoolSize`). The queue is unbounded unless you bound it — see
+[Backpressure](#backpressure) below, which matters more than it sounds. The Blazor queue view surfaces this
+**per pool**, not as a single process-wide figure:
 
 - **Queue / Exec counters and the Queue-Depth / Wait-Time graphs** are drawn one line per pool, labelled by the
   configuration name(s) routing through that pool. Configurations on separate clusters get their own lines;
@@ -159,6 +160,43 @@ a single process-wide figure:
   call view shows in-flight calls too; these are tracked separately from the capped recent-call ring so a flood
   no longer evicts the longest-queued calls from view. (In-flight detail is per-process: query an agent's own
   MCP for its queued calls; the central server receives only the per-pool counts from agents.)
+
+### Backpressure
+
+**By default the wait queue has no bound**, and every waiter pins its async state machine and captured data.
+A burst of work faster than the pool drains is therefore a memory event rather than a throttling one: one
+reported production incident reached ~11,900 queued operations and a ~6 GB heap, and the host killed the
+process repeatedly for about three hours until the backlog cleared.
+
+Two opt-in bounds, both `null` by default:
+
+| Option | Effect |
+|---|---|
+| `Limiter.MaxQueueLength` | The greatest number of operations **waiting** for a slot on one pool. Beyond it, `ExecuteLimiterQueueFullException` instead of a queue slot. |
+| `Limiter.QueueTimeout` | The longest one operation may wait before `ExecuteLimiterQueueTimeoutException`. |
+
+```json
+"MongoDB": {
+  "Limiter": {
+    "MaxQueueLength": 5000,
+    "QueueTimeout": "00:00:30"
+  }
+}
+```
+
+Catch the base `ExecuteLimiterException` to shed or retry regardless of which bound was hit; both carry the
+`ServerKey` of the pool involved.
+
+**Only operations that actually wait count against `MaxQueueLength`.** One that finds a free slot executes
+immediately whatever the limit is, so `0` means "never queue", not "never run". And `QueueTimeout` on its own
+is not a bound — under a sustained flood `rate × timeout` operations still accumulate — so use it alongside a
+length, not instead of one.
+
+Rejections are counted per pool as `PoolQueueState.RejectedCount` on `IQueueMonitor.GetPerPoolState()`. Queue
+depth alone never reveals shedding, which is why the count exists. The first rejection of each pressure
+episode is logged at Warning and the pool re-arms once its queue drains through work — one line per episode,
+because a flood is exactly the case where one line per rejection would reproduce the original incident inside
+the logging pipeline.
 
 ## Centralised monitoring
 
