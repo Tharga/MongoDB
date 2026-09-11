@@ -17,6 +17,8 @@ internal class ExecuteLimiter : IExecuteLimiter, IQueueMonitor
     private const int MaxMetricEntries = 500;
 
     private readonly bool _enabled;
+    private readonly int? _maxQueueLength;
+    private readonly TimeSpan? _queueTimeout;
 
     private readonly ConcurrentDictionary<string, PerPoolState> _states = new();
     private readonly ConcurrentQueue<QueueMetricEventArgs> _metrics = new();
@@ -35,6 +37,15 @@ internal class ExecuteLimiter : IExecuteLimiter, IQueueMonitor
     {
         _logger = logger;
         _enabled = options.Value.Enabled;
+        _maxQueueLength = options.Value.MaxQueueLength;
+        _queueTimeout = options.Value.QueueTimeout;
+
+        // A misconfigured bound reads as "no throttling happened", which is indistinguishable from the
+        // unbounded behaviour it was meant to replace — so it fails here instead of weeks later.
+        if (_maxQueueLength < 0)
+            throw new ArgumentOutOfRangeException(nameof(options), _maxQueueLength, $"'{nameof(ExecuteLimiterOptions.MaxQueueLength)}' cannot be negative. Use null for an unbounded queue, or 0 to never queue.");
+        if (_queueTimeout <= TimeSpan.Zero)
+            throw new ArgumentOutOfRangeException(nameof(options), _queueTimeout, $"'{nameof(ExecuteLimiterOptions.QueueTimeout)}' must be greater than zero. Use null to wait indefinitely, or '{nameof(ExecuteLimiterOptions.MaxQueueLength)}' = 0 to never queue.");
     }
 
     public async Task<(T Result, ExecuteInfo Info)> ExecuteAsync<T>(Func<CancellationToken, Task<T>> action, string serverKey, int maxConnectionPoolSize, ExecuteCallContext context, CancellationToken cancellationToken)
@@ -66,11 +77,33 @@ internal class ExecuteLimiter : IExecuteLimiter, IQueueMonitor
         RecordMetric(queuedCount, state.GetExecuting(), null);
 
         var acquired = false;
+        var waiting = false;
 
         try
         {
-            await state.Semaphore.WaitAsync(cancellationToken);
-            acquired = true;
+            // Only an operation that cannot get a slot right now is a queue member. Everything else merely
+            // transits, which is why the bound is applied here rather than to the queued counter above —
+            // capping that one would reject callers while the pool sits idle.
+            acquired = state.Semaphore.Wait(0);
+            if (!acquired)
+            {
+                waiting = true;
+                RejectIfQueueFull(state, state.IncrementWaiting(), serverKey);
+
+                if (_queueTimeout.HasValue)
+                {
+                    if (!await state.Semaphore.WaitAsync(_queueTimeout.Value, cancellationToken))
+                        throw new ExecuteLimiterQueueTimeoutException(serverKey, _queueTimeout.Value);
+                }
+                else
+                {
+                    await state.Semaphore.WaitAsync(cancellationToken);
+                }
+
+                acquired = true;
+                waiting = false;
+                if (state.DecrementWaiting() == 0) state.ReArmRejectionWarning();
+            }
 
             var startedAt = Stopwatch.GetTimestamp();
             var queueElapsed = GetElapsed(queuedAt, startedAt);
@@ -133,12 +166,36 @@ internal class ExecuteLimiter : IExecuteLimiter, IQueueMonitor
                 Interlocked.Decrement(ref _totalQueueCount);
             }
 
+            // Deliberately does not re-arm the rejection warning. The warning re-arms when the queue drains
+            // through work (above), not when a rejection unwinds — otherwise MaxQueueLength = 0, where a
+            // rejected caller is the only waiter there ever is, would warn on every single rejection.
+            if (waiting) state.DecrementWaiting();
+
             throw;
         }
         finally
         {
             UntrackInFlight(tracked);
         }
+    }
+
+    private void RejectIfQueueFull(PerPoolState state, int waitingCount, string serverKey)
+    {
+        // Explicit null check, not a lifted comparison: `waitingCount <= null` is false, which would reject
+        // every waiter on the default unbounded configuration.
+        if (_maxQueueLength is null || waitingCount <= _maxQueueLength.Value) return;
+
+        var rejectedCount = state.IncrementRejected();
+
+        // Edge-triggered on purpose. A sustained flood is the whole scenario here, so one line per rejected
+        // operation would reproduce the original incident in the logging pipeline. The pool re-arms once its
+        // queue drains, so each pressure episode reports once and the count carries the rest.
+        if (state.TryTakeRejectionWarning())
+        {
+            _logger?.LogWarning("The execute queue for {serverKey} is full at its limit of {maxQueueLength} waiting operations. Rejecting until it drains. {rejectedCount} rejected on this pool so far.", serverKey, _maxQueueLength, rejectedCount);
+        }
+
+        throw new ExecuteLimiterQueueFullException(serverKey, _maxQueueLength.Value);
     }
 
     public IReadOnlyList<QueueMetricEventArgs> GetRecentMetrics()
@@ -168,6 +225,7 @@ internal class ExecuteLimiter : IExecuteLimiter, IQueueMonitor
                 QueueCount = state.GetQueued(),
                 ExecutingCount = state.GetExecuting(),
                 LastWaitTimeMs = state.GetAndResetWait(),
+                RejectedCount = state.GetRejected(),
             });
         }
         return result;
@@ -251,6 +309,9 @@ internal class ExecuteLimiter : IExecuteLimiter, IQueueMonitor
         public SemaphoreSlim Semaphore { get; }
 
         private int _queued;
+        private int _waiting;
+        private int _rejected;
+        private int _rejectionWarned;
         private int _executing;
         private double _lastWaitTimeMs;
         private readonly ConcurrentDictionary<string, bool> _configurationNames = new();
@@ -263,6 +324,17 @@ internal class ExecuteLimiter : IExecuteLimiter, IQueueMonitor
         public int IncrementQueued() => Interlocked.Increment(ref _queued);
         public int DecrementQueued() => Interlocked.Decrement(ref _queued);
         public int GetQueued() => Volatile.Read(ref _queued);
+
+        // Distinct from _queued: this counts only operations that failed to take a slot immediately, which is
+        // what MaxQueueLength is a bound on.
+        public int IncrementWaiting() => Interlocked.Increment(ref _waiting);
+        public int DecrementWaiting() => Interlocked.Decrement(ref _waiting);
+
+        public int IncrementRejected() => Interlocked.Increment(ref _rejected);
+        public int GetRejected() => Volatile.Read(ref _rejected);
+
+        public bool TryTakeRejectionWarning() => Interlocked.Exchange(ref _rejectionWarned, 1) == 0;
+        public void ReArmRejectionWarning() => Interlocked.Exchange(ref _rejectionWarned, 0);
 
         public int IncrementExecuting() => Interlocked.Increment(ref _executing);
         public int DecrementExecuting() => Interlocked.Decrement(ref _executing);

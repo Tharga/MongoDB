@@ -1423,7 +1423,9 @@ Operations sharing the same connection pool — the same set of servers **and** 
 ```json
 "MongoDB": {
   "Limiter": {
-    "Enabled": true
+    "Enabled": true,
+    "MaxQueueLength": 5000,
+    "QueueTimeout": "00:00:30"
   }
 }
 ```
@@ -1434,7 +1436,9 @@ builder.AddMongoDB(o =>
 {
     o.Limiter = new ExecuteLimiterOptions
     {
-        Enabled = true
+        Enabled = true,
+        MaxQueueLength = 5000,
+        QueueTimeout = TimeSpan.FromSeconds(30)
     };
 });
 ```
@@ -1442,6 +1446,35 @@ builder.AddMongoDB(o =>
 | Setting | Default | Description |
 |---|---|---|
 | `Enabled` | `true` | Enable or disable the limiter. When disabled, operations run without any concurrency restriction. The concurrency limit is always derived from `MaxConnectionPoolSize`. |
+| `MaxQueueLength` | `null` | The greatest number of operations that may be **waiting** for a slot on one pool. Beyond it, an operation is rejected with `ExecuteLimiterQueueFullException` instead of queued. `null` is unbounded. |
+| `QueueTimeout` | `null` | The longest a single operation may wait for a slot before `ExecuteLimiterQueueTimeoutException`. `null` waits indefinitely. |
+
+### Backpressure
+Without a bound the wait queue grows without limit, and every waiter pins its async state machine and captured data. A burst of work faster than the pool drains therefore becomes a memory event rather than a throttling one — in one reported production incident, ~11,900 queued operations, a ~6 GB heap, and a process the host killed repeatedly for about three hours until the backlog drained.
+
+`MaxQueueLength` caps the waiters per pool so the excess fails fast and the caller can retry, NACK or shed:
+
+```csharp
+try
+{
+    await collection.GetOneAsync(x => x.Id == id);
+}
+catch (ExecuteLimiterException e)   // queue full, or waited too long
+{
+    // requeue the message, return 503, drop the optional work …
+}
+```
+
+Catch the base `ExecuteLimiterException` to shed load regardless of reason; catch `ExecuteLimiterQueueFullException` or `ExecuteLimiterQueueTimeoutException` when you want to tell them apart. Both carry the `ServerKey` of the pool involved.
+
+Two things worth knowing when picking values:
+
+- **Only operations that actually wait count against `MaxQueueLength`.** One that finds a free slot runs immediately whatever the limit is, so `0` means "never queue" — not "never run".
+- **`QueueTimeout` alone is not a bound.** Under a sustained flood, `rate × timeout` operations still accumulate. Use it alongside `MaxQueueLength`, not instead of it.
+
+Neither `Enabled = false` nor `MaxPoolSizeOverride` substitutes: the first removes backpressure entirely, and the second bounds concurrency, which under the same inbound rate makes the queue grow *faster*.
+
+Rejections are counted per pool on `IQueueMonitor.GetPerPoolState()` (`PoolQueueState.RejectedCount`), and the first rejection of each pressure episode is logged at Warning — once per episode rather than once per rejection, since a flood is the case that matters.
 
 The monitor surfaces the limiter **per pool** (one per cluster): queue/exec and depth/wait graphs per pool, what is queued vs executing right now (`GetInFlightCalls()` / the MCP `inFlightCalls` resource), and actual open connections per cluster vs a configured limit (`GetClusterConnectionSummary()` + `Monitor.ClusterConnectionLimit`). See the [monitoring docs](https://github.com/Tharga/MongoDB/blob/master/docs/articles/monitoring.md).
 
