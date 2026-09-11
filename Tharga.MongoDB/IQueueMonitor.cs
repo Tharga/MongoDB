@@ -59,4 +59,12 @@ public record PoolQueueState
     public required int QueueCount { get; init; }
     public required int ExecutingCount { get; init; }
     public required double LastWaitTimeMs { get; init; }
+
+    /// <summary>
+    /// How many operations this pool has refused since the process started, because
+    /// <see cref="ExecuteLimiterOptions.MaxQueueLength"/> was reached. Always 0 when no limit is configured.
+    /// Cumulative rather than since-last-read, because shedding is rare enough that the total is the useful
+    /// figure and queue depth alone never reveals it.
+    /// </summary>
+    public int RejectedCount { get; init; }
 }
