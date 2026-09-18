@@ -129,7 +129,8 @@ public class DocumentLease<T, TKey> : IAsyncDisposable, IDisposable
     /// When <c>true</c>, the entire commit pass runs inside a transaction so all decisions land atomically (or
     /// none do). If the lease was created with a bound session (caller is already inside an outer transaction)
     /// the bound session is reused. Any decision-time failure aborts the transaction and rethrows; on abort no
-    /// decisions land and the locks remain held on the documents.
+    /// decisions land and the locks remain held on the documents, so the caller can still reach
+    /// <see cref="SetErrorStateAsync"/>. Disposing the lease after such a failure releases them.
     /// </param>
     /// <param name="cancellationToken">Cancels between operations. Honored before each decision is applied.</param>
     public async Task<DocumentLeaseCommitSummary<TKey>> CommitAsync(bool transactional = false, CancellationToken cancellationToken = default)
