@@ -990,7 +990,28 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
         {
             var update = new UpdateDefinitionBuilder<TEntity>()
                 .Set(x => x.Lock, lockInfo);
-            result = await Disk.UpdateOneAsync(entity.Id, update, session);
+
+            if (exception != null)
+            {
+                //NOTE: Recording an exception must never overwrite a lock held by someone else, so the write is
+                //conditional on our own lock key - the same guard the commit paths use.
+                var errorFilter = Builders<TEntity>.Filter.And(
+                    Builders<TEntity>.Filter.Eq(x => x.Id, entity.Id),
+                    Builders<TEntity>.Filter.Ne(x => x.Lock, null),
+                    Builders<TEntity>.Filter.Eq(x => x.Lock.LockKey, entityLock.LockKey)
+                );
+                result = await Disk.UpdateOneAsync(errorFilter, update, OneOption<TEntity>.FirstOrDefault, session); //Use FirstOrDefault since it is atomic safe.
+                if (result?.Before == null)
+                {
+                    var current = await Disk.GetOneAsync(entity.Id);
+                    if (current == null) throw new InvalidOperationException($"Cannot set error state on entity of type {typeof(TEntity).Name} with id '{entity.Id}', it does not exist. [EntityActor: {entityLock.Actor}, EntityLockTime: {entityLock.LockTime}, EntityExpireTime: {entityLock.ExpireTime}, Now: {DateTime.UtcNow}]");
+                    throw new UnlockDifferentEntityException($"Cannot set error state on entity of type {typeof(TEntity).Name} with id '{entity.Id}', lock key missmatch. It is no longer locked by {entityLock.Actor}. [EntityLockTime: {entityLock.LockTime}, EntityExpireTime: {entityLock.ExpireTime}, CurrentActor: {current.Lock?.Actor}, CurrentLockTime: {current.Lock?.LockTime}, CurrentExpireTime: {current.Lock?.ExpireTime}, CurrentException: {current.Lock?.ExceptionInfo?.Message}, Now: {DateTime.UtcNow}]");
+                }
+            }
+            else
+            {
+                result = await Disk.UpdateOneAsync(entity.Id, update, session);
+            }
 
             lockAction = lockInfo?.ExceptionInfo != null ? LockAction.Exception : LockAction.Abandoned;
 
