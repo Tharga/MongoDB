@@ -122,6 +122,44 @@ public class SetErrorStateLeaseTests : LockableTestBase
     [Fact]
     [Trait("Category", "Database")]
     [Trait("Category", "RequiresReplicaSet")]
+    public async Task TransactionalCommitFailingOnTheSecondDecision_RollsBackTheFirstAndKeepsTheLock()
+    {
+        var sut = new LockableTestRepositoryCollection(_mongoDbServiceFactory);
+        var first = new LockableTestEntity { Id = ObjectId.GenerateNewId(), Data = "first" };
+        var second = new LockableTestEntity { Id = ObjectId.GenerateNewId(), Data = "second" };
+        await sut.AddAsync(first);
+        await sut.AddAsync(second);
+
+        await using var lease = await sut.LockManyAsync([first.Id, second.Id]);
+        lease.MarkForUpdate(lease.Documents.Single(x => x.Id == first.Id) with { Data = "first-updated" });
+        lease.MarkForUpdate(lease.Documents.Single(x => x.Id == second.Id) with { Data = "second-updated" });
+
+        // Someone takes the second document from us, so committing it fails after the first one has been written.
+        await sut.ReleaseOneAsync(second.Id, ReleaseMode.Any);
+        await using var otherOwner = await sut.LockAsync(second.Id, actor: "OtherActor");
+
+        Func<Task> commit = async () => await lease.CommitAsync(transactional: true);
+        await commit.Should().ThrowAsync<Exception>();
+
+        // The first update was rolled back with the transaction, and its lock is still ours to mark.
+        var postFirst = await sut.GetOneAsync(first.Id);
+        postFirst.Data.Should().Be("first");
+        postFirst.Lock.Should().NotBeNull();
+
+        var summary = await lease.SetErrorStateAsync(new InvalidOperationException("Merge failed"));
+
+        summary.ErrorState.Should().Be(1);
+        summary.Failures.Should().ContainSingle(x => x.Id == second.Id);
+        (await sut.GetOneAsync(first.Id)).Lock.ExceptionInfo.Message.Should().Be("Merge failed");
+
+        var otherLock = (await sut.GetOneAsync(second.Id)).Lock;
+        otherLock.Actor.Should().Be("OtherActor");
+        otherLock.ExceptionInfo.Should().BeNull();
+    }
+
+    [Fact]
+    [Trait("Category", "Database")]
+    [Trait("Category", "RequiresReplicaSet")]
     public async Task FailedTransactionalCommit_DisposeReleasesTheLocks()
     {
         var sut = new LockableTestRepositoryCollection(_mongoDbServiceFactory);
