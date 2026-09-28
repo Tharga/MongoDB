@@ -566,9 +566,17 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
         return LockManyAsync(Builders<TEntity>.Filter.Where(predicate), timeout, actor, cancellationToken, session);
     }
 
-    Task IDocumentLeaseTransactionRunner.RunInTransactionAsync(Func<IClientSessionHandle, CancellationToken, Task> body, CancellationToken cancellationToken)
+    async Task IDocumentLeaseTransactionRunner.RunInTransactionAsync(Func<IClientSessionHandle, CancellationToken, Task> body, CancellationToken cancellationToken)
     {
-        return _mongoDbServiceFactory.WithTransactionAsync(body, configurationName: ConfigurationName, cancellationToken: cancellationToken);
+        //NOTE: The session must come from this collection's own service. Resolving one from the configuration
+        //name alone drops DatabasePart, which lands the transaction on a different database than the writes -
+        //or on none at all when the connection string templates {part}.
+        using var session = await _mongoDbService.StartSessionAsync(cancellationToken: cancellationToken);
+        await session.WithTransactionAsync(async (s, ct) =>
+        {
+            await body(s, ct);
+            return true;
+        }, cancellationToken: cancellationToken);
     }
 
     private static async Task ReleaseAcquiredAsync(IEnumerable<DocumentLeaseEntry<TEntity, TKey>> entries, IClientSessionHandle session = null)
