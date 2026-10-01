@@ -568,9 +568,7 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
 
     async Task IDocumentLeaseTransactionRunner.RunInTransactionAsync(Func<IClientSessionHandle, CancellationToken, Task> body, CancellationToken cancellationToken)
     {
-        //NOTE: The session must come from this collection's own service. Resolving one from the configuration
-        //name alone drops DatabasePart, which lands the transaction on a different database than the writes -
-        //or on none at all when the connection string templates {part}.
+        //NOTE: The session comes from this collection's own service; resolving it from the configuration name alone drops DatabasePart and lands the transaction on another database, or none when the connection string templates {part}.
         using var session = await _mongoDbService.StartSessionAsync(cancellationToken: cancellationToken);
         await session.WithTransactionAsync(async (s, ct) =>
         {
@@ -999,26 +997,21 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
             var update = new UpdateDefinitionBuilder<TEntity>()
                 .Set(x => x.Lock, lockInfo);
 
-            if (exception != null)
+            //NOTE: Conditional on our own lock key, as the commit paths are, so a release never touches a lock held by someone else.
+            var ownLockFilter = Builders<TEntity>.Filter.And(
+                Builders<TEntity>.Filter.Eq(x => x.Id, entity.Id),
+                Builders<TEntity>.Filter.Ne(x => x.Lock, null),
+                Builders<TEntity>.Filter.Eq(x => x.Lock.LockKey, entityLock.LockKey)
+            );
+            result = await Disk.UpdateOneAsync(ownLockFilter, update, OneOption<TEntity>.FirstOrDefault, session); //Use FirstOrDefault since it is atomic safe.
+
+            if (result?.Before == null)
             {
-                //NOTE: Recording an exception must never overwrite a lock held by someone else, so the write is
-                //conditional on our own lock key - the same guard the commit paths use.
-                var errorFilter = Builders<TEntity>.Filter.And(
-                    Builders<TEntity>.Filter.Eq(x => x.Id, entity.Id),
-                    Builders<TEntity>.Filter.Ne(x => x.Lock, null),
-                    Builders<TEntity>.Filter.Eq(x => x.Lock.LockKey, entityLock.LockKey)
-                );
-                result = await Disk.UpdateOneAsync(errorFilter, update, OneOption<TEntity>.FirstOrDefault, session); //Use FirstOrDefault since it is atomic safe.
-                if (result?.Before == null)
-                {
-                    var current = await Disk.GetOneAsync(entity.Id);
-                    if (current == null) throw new InvalidOperationException($"Cannot set error state on entity of type {typeof(TEntity).Name} with id '{entity.Id}', it does not exist. [EntityActor: {entityLock.Actor}, EntityLockTime: {entityLock.LockTime}, EntityExpireTime: {entityLock.ExpireTime}, Now: {DateTime.UtcNow}]");
-                    throw new UnlockDifferentEntityException($"Cannot set error state on entity of type {typeof(TEntity).Name} with id '{entity.Id}', lock key missmatch. It is no longer locked by {entityLock.Actor}. [EntityLockTime: {entityLock.LockTime}, EntityExpireTime: {entityLock.ExpireTime}, CurrentActor: {current.Lock?.Actor}, CurrentLockTime: {current.Lock?.LockTime}, CurrentExpireTime: {current.Lock?.ExpireTime}, CurrentException: {current.Lock?.ExceptionInfo?.Message}, Now: {DateTime.UtcNow}]");
-                }
-            }
-            else
-            {
-                result = await Disk.UpdateOneAsync(entity.Id, update, session);
+                //NOTE: Gone, or locked by someone else: recording an exception says so, a plain release has nothing left to release.
+                if (exception != null) throw new UnlockDifferentEntityException($"Cannot set error state on entity of type {typeof(TEntity).Name} with id '{entity.Id}', lock key mismatch - it no longer exists or is no longer locked by {entityLock.Actor}. [EntityLockTime: {entityLock.LockTime}, EntityExpireTime: {entityLock.ExpireTime}, Now: {DateTime.UtcNow}]");
+
+                _logger?.LogDebug("Release of entity {entityId} of type {entityType} in collection {collection} skipped; it no longer exists or its lock is no longer held by {actor}.", entity.Id, typeof(TEntity).Name, ProtectedCollectionName, entityLock.Actor);
+                return false;
             }
 
             lockAction = lockInfo?.ExceptionInfo != null ? LockAction.Exception : LockAction.Abandoned;
@@ -1076,7 +1069,7 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
         {
             var item = await Disk.GetOneAsync(entity.Id);
             if (item == null) throw new InvalidOperationException($"Entity of type {typeof(TEntity).Name} with id '{entity.Id}' was not deleted on commit, it did not exist. [EntityActor: {entity.Lock?.Actor}, EntityLockTime: {entity.Lock?.LockTime}, EntityExpireTime: {entity.Lock?.ExpireTime}, EntityException: {entity.Lock?.ExceptionInfo?.Message}, Now: {DateTime.UtcNow}]");
-            throw new InvalidOperationException($"Entity of type {typeof(TEntity).Name} with id '{entity.Id}' was not deleted on commit, lock key missmatch. [EntityActor: {entity.Lock?.Actor}, EntityLockTime: {entity.Lock?.LockTime}, EntityExpireTime: {entity.Lock?.ExpireTime}, EntityException: {entity.Lock?.ExceptionInfo?.Message}, CurrentActor: {item.Lock?.Actor}, CurrentLockTime: {item.Lock?.LockTime}, CurrentExpireTime: {item.Lock?.ExpireTime}, CurrentException: {item.Lock?.ExceptionInfo?.Message}, Now: {DateTime.UtcNow}]");
+            throw new InvalidOperationException($"Entity of type {typeof(TEntity).Name} with id '{entity.Id}' was not deleted on commit, lock key mismatch. [EntityActor: {entity.Lock?.Actor}, EntityLockTime: {entity.Lock?.LockTime}, EntityExpireTime: {entity.Lock?.ExpireTime}, EntityException: {entity.Lock?.ExceptionInfo?.Message}, CurrentActor: {item.Lock?.Actor}, CurrentLockTime: {item.Lock?.LockTime}, CurrentExpireTime: {item.Lock?.ExpireTime}, CurrentException: {item.Lock?.ExceptionInfo?.Message}, Now: {DateTime.UtcNow}]");
         }
 
         FireAndForgetEvent(() => Task.FromResult(before), LockAction.CommitDeleted);

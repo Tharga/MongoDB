@@ -82,7 +82,7 @@ public class DocumentLeaseAppliedDecisionTests
         var exception = new InvalidOperationException("Merge failed");
         var summary = await lease.SetErrorStateAsync(exception);
 
-        summary.ErrorState.Should().Be(1);
+        summary.Marked.Should().Be(1);
         summary.Failures.Should().BeEmpty();
         calls.Should().HaveCount(2);
         calls[1].Should().BeEquivalentTo(new ReleaseCall(second.Id, null, exception));
@@ -129,7 +129,7 @@ public class DocumentLeaseAppliedDecisionTests
 
         var summary = await lease.SetErrorStateAsync(new InvalidOperationException("Merge failed"));
 
-        summary.ErrorState.Should().Be(1);
+        summary.Marked.Should().Be(1);
         summary.Failures.Should().ContainSingle(x => x.Id == first.Id);
         marked.Should().ContainSingle(x => x == second.Id);
     }

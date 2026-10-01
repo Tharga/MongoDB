@@ -28,7 +28,7 @@ public class SetErrorStateLeaseTests : LockableTestBase
 
         var summary = await lease.SetErrorStateAsync(new InvalidOperationException("Oups"));
 
-        summary.ErrorState.Should().Be(2);
+        summary.Marked.Should().Be(2);
         summary.Failures.Should().BeEmpty();
 
         foreach (var id in new[] { a.Id, b.Id })
@@ -58,6 +58,35 @@ public class SetErrorStateLeaseTests : LockableTestBase
 
     [Fact]
     [Trait("Category", "Database")]
+    public async Task Dispose_DoesNotReleaseALockHeldBySomeoneElse()
+    {
+        var sut = new LockableTestRepositoryCollection(_mongoDbServiceFactory);
+        var mine = new LockableTestEntity { Id = ObjectId.GenerateNewId(), Data = "mine" };
+        var stolen = new LockableTestEntity { Id = ObjectId.GenerateNewId(), Data = "stolen" };
+        await sut.AddAsync(mine);
+        await sut.AddAsync(stolen);
+
+        LockScope<LockableTestEntity, ObjectId> otherOwner;
+
+        await using (var lease = await sut.LockManyAsync([mine.Id, stolen.Id]))
+        {
+            // Someone force-releases one of our locks and takes it for themselves.
+            await sut.ReleaseOneAsync(stolen.Id, ReleaseMode.Any);
+            otherOwner = await sut.LockAsync(stolen.Id, actor: "OtherActor");
+        }
+
+        var otherLock = (await sut.GetOneAsync(stolen.Id)).Lock;
+        otherLock.Should().NotBeNull();
+        otherLock.Actor.Should().Be("OtherActor");
+
+        // Our own document is released as usual.
+        (await sut.GetOneAsync(mine.Id)).Lock.Should().BeNull();
+
+        await otherOwner.AbandonAsync();
+    }
+
+    [Fact]
+    [Trait("Category", "Database")]
     public async Task SetErrorState_DoesNotOverwriteALockHeldBySomeoneElse()
     {
         var sut = new LockableTestRepositoryCollection(_mongoDbServiceFactory);
@@ -74,7 +103,7 @@ public class SetErrorStateLeaseTests : LockableTestBase
 
         var summary = await lease.SetErrorStateAsync(new InvalidOperationException("Oups"));
 
-        summary.ErrorState.Should().Be(1);
+        summary.Marked.Should().Be(1);
         summary.Failures.Should().ContainSingle(x => x.Id == stolen.Id);
 
         (await sut.GetOneAsync(mine.Id)).Lock.ExceptionInfo.Message.Should().Be("Oups");
@@ -107,7 +136,7 @@ public class SetErrorStateLeaseTests : LockableTestBase
 
         var summary = await lease.SetErrorStateAsync(new InvalidOperationException("Merge failed"));
 
-        summary.ErrorState.Should().Be(2);
+        summary.Marked.Should().Be(2);
         summary.Failures.Should().BeEmpty();
 
         var postA = await sut.GetOneAsync(a.Id);
@@ -148,7 +177,7 @@ public class SetErrorStateLeaseTests : LockableTestBase
 
         var summary = await lease.SetErrorStateAsync(new InvalidOperationException("Merge failed"));
 
-        summary.ErrorState.Should().Be(1);
+        summary.Marked.Should().Be(1);
         summary.Failures.Should().ContainSingle(x => x.Id == second.Id);
         (await sut.GetOneAsync(first.Id)).Lock.ExceptionInfo.Message.Should().Be("Merge failed");
 

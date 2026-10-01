@@ -103,6 +103,10 @@ public record LockScope<T, TKey> : IAsyncDisposable, IDisposable
     /// <summary>
     /// Releases the lock and records an exception state on it (consistent with <see cref="EntityScope{T, TKey}.SetErrorStateAsync"/>).
     /// </summary>
+    /// <exception cref="UnlockDifferentEntityException">
+    /// The lock is no longer ours — the entity was released and locked by someone else, or no longer exists. Its
+    /// current lock is left untouched.
+    /// </exception>
     public Task SetErrorStateAsync(Exception exception)
     {
         return Release(_entity, mode: null, exception: exception);

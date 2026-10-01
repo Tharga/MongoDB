@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -166,8 +166,7 @@ public class DocumentLease<T, TKey> : IAsyncDisposable, IDisposable
         }
         catch
         {
-            // Nothing landed and the locks are still held. Remember that, so the caller can still reach
-            // SetErrorStateAsync, and so disposal releases the locks instead of leaving them to expire.
+            // Nothing landed and the locks are still held: SetErrorStateAsync stays reachable and disposal releases them.
             _commitFailed = true;
             throw;
         }
@@ -188,8 +187,7 @@ public class DocumentLease<T, TKey> : IAsyncDisposable, IDisposable
             {
                 var entityToCommit = markedUpdate ?? entry.Entity;
                 await entry.ReleaseAction.Invoke(entityToCommit, mode, null, session);
-                // A non-transactional decision is on disk the moment it succeeds, and the lock with it.
-                // A transactional one is rolled back if a later decision fails, so the lock is still ours.
+                // Non-transactional decisions are on disk the moment they succeed; transactional ones roll back, so those locks stay ours.
                 if (!allOrNothing) _applied.Add(id);
                 switch (mode)
                 {
@@ -249,6 +247,9 @@ public class DocumentLease<T, TKey> : IAsyncDisposable, IDisposable
     /// Call it instead of <see cref="CommitAsync"/>, or after a transactional <see cref="CommitAsync"/> has
     /// failed, while the locks are still held. A document whose lock is no longer ours is never overwritten;
     /// it is reported in <see cref="DocumentLeaseErrorStateSummary{TKey}.Failures"/> instead.
+    /// It cannot be called after a non-transactional <see cref="CommitAsync"/> that returned normally, even when
+    /// that commit collected <see cref="DocumentLeaseCommitSummary{TKey}.Failures"/>: those decisions were applied
+    /// one by one and the lease no longer knows which locks are still its own.
     /// Every document is attempted: <paramref name="cancellationToken"/> is honored before the first write and
     /// not between them, so the lease never ends up half-marked.
     /// When the lease was created with a bound session the writes join that transaction, which means they are
@@ -267,7 +268,7 @@ public class DocumentLease<T, TKey> : IAsyncDisposable, IDisposable
         _errorStateSet = true;
 
         var failures = new List<DocumentLeaseFailure<TKey>>();
-        var errorState = 0;
+        var marked = 0;
 
         foreach (var entry in _entries)
         {
@@ -275,7 +276,7 @@ public class DocumentLease<T, TKey> : IAsyncDisposable, IDisposable
             try
             {
                 await entry.ReleaseAction.Invoke(entry.Entity, null, exception, _boundSession);
-                errorState++;
+                marked++;
             }
             catch (Exception ex)
             {
@@ -290,7 +291,7 @@ public class DocumentLease<T, TKey> : IAsyncDisposable, IDisposable
 
         return new DocumentLeaseErrorStateSummary<TKey>
         {
-            ErrorState = errorState,
+            Marked = marked,
             Failures = failures,
         };
     }
@@ -309,8 +310,7 @@ public class DocumentLease<T, TKey> : IAsyncDisposable, IDisposable
 
         foreach (var entry in _entries)
         {
-            // Skip the ones a non-transactional commit already applied: their lock is gone, and releasing by id
-            // again would clear whatever lock another owner has taken on the document since.
+            // Skip the ones a non-transactional commit already applied; their lock is gone and the document may be someone else's by now.
             if (_applied.Contains(entry.Entity.Id)) continue;
 
             try
@@ -362,7 +362,7 @@ public record DocumentLeaseCommitSummary<TKey>
 public record DocumentLeaseErrorStateSummary<TKey>
 {
     /// <summary>Number of documents that were put into error state.</summary>
-    public required int ErrorState { get; init; }
+    public required int Marked { get; init; }
 
     /// <summary>
     /// Documents that could not be put into error state, typically because the lock is no longer ours.

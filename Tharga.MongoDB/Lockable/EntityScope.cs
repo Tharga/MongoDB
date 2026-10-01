@@ -84,6 +84,10 @@ public record EntityScope<T, TKey> : IAsyncDisposable, IDisposable
     /// </summary>
     /// <param name="exception"></param>
     /// <returns></returns>
+    /// <exception cref="UnlockDifferentEntityException">
+    /// The lock is no longer ours — the entity was released and locked by someone else, or no longer exists. Its
+    /// current lock is left untouched.
+    /// </exception>
     public async Task SetErrorStateAsync(Exception exception)
     {
         await Release(_entity, false, exception);
