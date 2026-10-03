@@ -120,4 +120,28 @@ public class InitiationLibraryTests
 
         library.RecheckInitiateIndex(Server, Database, Collection).Should().BeFalse();
     }
+
+    [Fact]
+    public void ResetIndexAssured_AllowsIndexAssureAgain_AndForgetsFailures()
+    {
+        var library = CreateInitiated();
+        library.ShouldInitiateIndex(Server, Database, Collection).Should().BeTrue();
+        library.AddFailedInitiateIndex(Server, Database, Collection, IndexFailOperation.Create, "ix", "boom");
+
+        library.ResetIndexAssured(Server, Database, Collection);
+
+        library.GetFailedIndices(Server, Database, Collection).Should().BeEmpty();
+        library.ShouldInitiate(Server, Database, Collection).Should().BeFalse("the collection stays initiated");
+        library.ShouldInitiateIndex(Server, Database, Collection).Should().BeTrue("the next write must assure the indexes again");
+    }
+
+    [Fact]
+    public void ResetIndexAssured_IsNoOp_WhenNotInitiated()
+    {
+        var library = new InitiationLibrary();
+
+        library.ResetIndexAssured(Server, Database, Collection);
+
+        library.ShouldInitiate(Server, Database, Collection).Should().BeTrue();
+    }
 }

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Microsoft.Extensions.Logging;
 using MongoDB.Driver;
+using Tharga.MongoDB.Configuration;
 
 namespace Tharga.MongoDB.Disk;
 
@@ -24,6 +25,7 @@ internal class GenericDiskRepositoryCollection<TEntity, TKey> : DiskRepositoryCo
     public override bool AutoClean => _proxy?.AutoClean ?? base.AutoClean;
     public override bool CleanOnStartup => _proxy?.CleanOnStartup ?? base.CleanOnStartup;
     public override int? FetchSize => _proxy?.FetchSize ?? base.FetchSize;
+    public override CreateStrategy CreateCollectionStrategy => _proxy?.CreateCollectionStrategy ?? base.CreateCollectionStrategy;
     public override IEnumerable<CreateIndexModel<TEntity>> Indices => _proxy?.Indices ?? base.Indices;
     public override IEnumerable<CreateIndexModel<TEntity>> CoreIndices => _proxy?.CoreIndices ?? base.CoreIndices;
     public override IEnumerable<Type> Types => _proxy?.Types ?? base.Types;

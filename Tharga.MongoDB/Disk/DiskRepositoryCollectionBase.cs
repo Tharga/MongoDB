@@ -1415,6 +1415,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         await RunInvocationInterceptorsAsync(nameof(DropCollectionAsync), Operation.Delete, CancellationToken.None).ConfigureAwait(false);
 
         await _mongoDbService.DropCollectionAsync(ProtectedCollectionName);
+        _initiationLibrary.ResetIndexAssured(ServerName, DatabaseName, ProtectedCollectionName);
         // Carry the resolved identity (same values used when the collection was reported) so the
         // monitor can match it in the cache and forward the drop to a central server precisely.
         ((MongoDbServiceFactory)_mongoDbServiceFactory).OnCollectionDropped(this,
@@ -1797,7 +1798,14 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             .Select(x => x.GetValue("name").AsString)
             .Count(x => !x.StartsWith("_id_"));
 
-        await collection.Indexes.DropAllAsync();
+        var defined = (CoreIndices ?? []).Concat(Indices ?? []).Select(IndexMetaConverter.ConvertToMetaPublic).ToArray();
+        var undeclared = UndeclaredIndexNames(await MongoDbService.BuildIndicesModel(collection), defined);
+
+        foreach (var indexName in undeclared)
+        {
+            await collection.Indexes.DropOneAsync(indexName);
+            _logger?.LogWarning("Index {indexName} was dropped in collection {collection} because it is not declared in code.", indexName, ProtectedCollectionName);
+        }
 
         var fingerprint = new CollectionFingerprint
         {
@@ -1945,12 +1953,32 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
     protected virtual async Task DropEmptyAsync(IMongoCollection<TEntity> collection)
     {
         if (CreateCollectionStrategy != CreateStrategy.DropEmpty) return;
+        if (DeclaresUniqueIndex()) return;
 
         var any = await collection.CountDocumentsAsync(x => true, new CountOptions { Limit = 1 }) != 0;
 
         if (any) return;
 
         await DropCollectionAsync();
+    }
+
+    private bool DeclaresUniqueIndex()
+    {
+        return (CoreIndices ?? []).Concat(Indices ?? []).Any(x => x?.Options?.Unique == true);
+    }
+
+    private static bool SameSchema(IndexMeta a, IndexMeta b)
+    {
+        return a.IsUnique == b.IsUnique && a.Fields.SequenceEqual(b.Fields);
+    }
+
+    private static string[] UndeclaredIndexNames(IEnumerable<IndexMeta> existing, IndexMeta[] defined)
+    {
+        return existing
+            .Where(x => !x.Name.StartsWith("_id_"))
+            .Where(x => defined.All(d => !SameSchema(d, x)))
+            .Select(x => x.Name)
+            .ToArray();
     }
 
     private async Task UpdateIndicesAsync(IMongoCollection<TEntity> collection, AssureIndexMode assureIndexMode, bool throwOnException)
@@ -2074,10 +2102,6 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         // ordering mismatch (it has its own enumeration logic).
         var definedIndiceModel = indices.Select(IndexMetaConverter.ConvertToMetaPublic).ToArray();
 
-        // Schema-only equality: ignore name, compare fields (ordered) and uniqueness
-        static bool SameSchema(IndexMeta a, IndexMeta b) =>
-            a.IsUnique == b.IsUnique && a.Fields.SequenceEqual(b.Fields);
-
         // Warn about same-schema duplicates — typically a copy-paste error since only one ends up applied.
         for (var i = 0; i < definedIndiceModel.Length; i++)
         {
@@ -2093,25 +2117,20 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         var hasChanged = false;
 
         //NOTE: Drop indexes not in list
-        foreach (var collectionIndexModel in existingIndiceModel)
+        foreach (var indexName in UndeclaredIndexNames(existingIndiceModel, definedIndiceModel))
         {
-            if (definedIndiceModel.All(x => !SameSchema(x, collectionIndexModel)))
+            try
             {
-                var indexName = collectionIndexModel.Name;
-
-                try
-                {
-                    _logger?.LogDebug("Index {indexName} will be dropped in collection {collection}.", indexName, ProtectedCollectionName);
-                    await collection.Indexes.DropOneAsync(indexName);
-                    _logger?.LogInformation("Index {indexName} was dropped in collection {collection}.", indexName, ProtectedCollectionName);
-                    ClearIndexFailure(IndexFailOperation.Drop, indexName);
-                    hasChanged = true;
-                }
-                catch (Exception e)
-                {
-                    LogIndexOperationFailure(IndexFailOperation.Drop, indexName, e);
-                    if (throwOnException) throw;
-                }
+                _logger?.LogDebug("Index {indexName} will be dropped in collection {collection}.", indexName, ProtectedCollectionName);
+                await collection.Indexes.DropOneAsync(indexName);
+                _logger?.LogInformation("Index {indexName} was dropped in collection {collection}.", indexName, ProtectedCollectionName);
+                ClearIndexFailure(IndexFailOperation.Drop, indexName);
+                hasChanged = true;
+            }
+            catch (Exception e)
+            {
+                LogIndexOperationFailure(IndexFailOperation.Drop, indexName, e);
+                if (throwOnException) throw;
             }
         }
 

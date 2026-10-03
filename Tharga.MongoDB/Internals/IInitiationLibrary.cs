@@ -8,6 +8,13 @@ public interface IInitiationLibrary
     bool ShouldInitiateIndex(string serverName, string databaseName, string collectionName);
 
     /// <summary>
+    /// Marks the collection's indexes as not assured and forgets its recorded index failures, so the next
+    /// write assures the declared indexes again. Called when the collection is dropped. No-op for a
+    /// collection that has not been initiated.
+    /// </summary>
+    void ResetIndexAssured(string serverName, string databaseName, string collectionName);
+
+    /// <summary>
     /// Records that the given index operation failed for this collection. Idempotent on
     /// (operation, name); repeated calls overwrite the captured <paramref name="errorMessage"/>
     /// with the latest one so consumers see the most recent reason.
