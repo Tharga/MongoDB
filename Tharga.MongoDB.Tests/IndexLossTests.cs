@@ -79,6 +79,38 @@ public class IndexLossTests : MongoDbTestBase
         (await IndexNamesAsync(collection)).Should().Contain(UniqueIndexName);
     }
 
+    [Fact]
+    [Trait("Category", "Database")]
+    public async Task DropIndex_DropsOnlyUndeclaredIndexes()
+    {
+        var sut = new DropEmptyCollection(MongoDbServiceFactory, DatabaseContext);
+        await sut.AddAsync(new TestEntity { Id = ObjectId.GenerateNewId(), Value = "first" });
+        var collection = (await sut.FetchCollectionAsync()).Value;
+        await collection.Indexes.CreateOneAsync(new CreateIndexModel<TestEntity>(Builders<TestEntity>.IndexKeys.Descending(x => x.Value), new CreateIndexOptions { Name = StrayIndexName }));
+
+        var (before, after) = await sut.DropIndex(collection);
+
+        before.Should().Be(2);
+        after.Should().Be(1);
+        (await IndexNamesAsync(collection)).Should().BeEquivalentTo("_id_", PlainIndexName);
+    }
+
+    [Fact]
+    [Trait("Category", "Database")]
+    public async Task DropIndex_Lockable_KeepsLockAndDeclaredIndexes()
+    {
+        var sut = new LockableCreateOnGetCollection(MongoDbServiceFactory, DatabaseContext);
+        await sut.AddAsync(new LockableTestEntity { Id = ObjectId.GenerateNewId(), Data = "first" });
+        var collection = (await sut.FetchCollectionAsync()).Value;
+        await collection.Indexes.CreateOneAsync(new CreateIndexModel<LockableTestEntity>(Builders<LockableTestEntity>.IndexKeys.Ascending(x => x.Count), new CreateIndexOptions { Name = StrayIndexName }));
+
+        var (before, after) = await sut.DropIndex(collection);
+
+        before.Should().Be(4);
+        after.Should().Be(3);
+        (await IndexNamesAsync(collection)).Should().BeEquivalentTo("_id_", nameof(LockableEntityBase.Lock), "LockStatus", UniqueIndexName);
+    }
+
     private const string UniqueIndexName = "UniqueData";
     private const string PlainIndexName = "PlainValue";
     private const string StrayIndexName = "Stray";

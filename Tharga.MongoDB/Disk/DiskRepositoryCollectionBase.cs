@@ -1798,7 +1798,14 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             .Select(x => x.GetValue("name").AsString)
             .Count(x => !x.StartsWith("_id_"));
 
-        await collection.Indexes.DropAllAsync();
+        var defined = (CoreIndices ?? []).Concat(Indices ?? []).Select(IndexMetaConverter.ConvertToMetaPublic).ToArray();
+        var undeclared = UndeclaredIndexNames(await MongoDbService.BuildIndicesModel(collection), defined);
+
+        foreach (var indexName in undeclared)
+        {
+            await collection.Indexes.DropOneAsync(indexName);
+            _logger?.LogWarning("Index {indexName} was dropped in collection {collection} because it is not declared in code.", indexName, ProtectedCollectionName);
+        }
 
         var fingerprint = new CollectionFingerprint
         {
@@ -1960,6 +1967,20 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         return (CoreIndices ?? []).Concat(Indices ?? []).Any(x => x?.Options?.Unique == true);
     }
 
+    private static bool SameSchema(IndexMeta a, IndexMeta b)
+    {
+        return a.IsUnique == b.IsUnique && a.Fields.SequenceEqual(b.Fields);
+    }
+
+    private static string[] UndeclaredIndexNames(IEnumerable<IndexMeta> existing, IndexMeta[] defined)
+    {
+        return existing
+            .Where(x => !x.Name.StartsWith("_id_"))
+            .Where(x => defined.All(d => !SameSchema(d, x)))
+            .Select(x => x.Name)
+            .ToArray();
+    }
+
     private async Task UpdateIndicesAsync(IMongoCollection<TEntity> collection, AssureIndexMode assureIndexMode, bool throwOnException)
     {
         switch (assureIndexMode)
@@ -2081,10 +2102,6 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         // ordering mismatch (it has its own enumeration logic).
         var definedIndiceModel = indices.Select(IndexMetaConverter.ConvertToMetaPublic).ToArray();
 
-        // Schema-only equality: ignore name, compare fields (ordered) and uniqueness
-        static bool SameSchema(IndexMeta a, IndexMeta b) =>
-            a.IsUnique == b.IsUnique && a.Fields.SequenceEqual(b.Fields);
-
         // Warn about same-schema duplicates — typically a copy-paste error since only one ends up applied.
         for (var i = 0; i < definedIndiceModel.Length; i++)
         {
@@ -2100,25 +2117,20 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         var hasChanged = false;
 
         //NOTE: Drop indexes not in list
-        foreach (var collectionIndexModel in existingIndiceModel)
+        foreach (var indexName in UndeclaredIndexNames(existingIndiceModel, definedIndiceModel))
         {
-            if (definedIndiceModel.All(x => !SameSchema(x, collectionIndexModel)))
+            try
             {
-                var indexName = collectionIndexModel.Name;
-
-                try
-                {
-                    _logger?.LogDebug("Index {indexName} will be dropped in collection {collection}.", indexName, ProtectedCollectionName);
-                    await collection.Indexes.DropOneAsync(indexName);
-                    _logger?.LogInformation("Index {indexName} was dropped in collection {collection}.", indexName, ProtectedCollectionName);
-                    ClearIndexFailure(IndexFailOperation.Drop, indexName);
-                    hasChanged = true;
-                }
-                catch (Exception e)
-                {
-                    LogIndexOperationFailure(IndexFailOperation.Drop, indexName, e);
-                    if (throwOnException) throw;
-                }
+                _logger?.LogDebug("Index {indexName} will be dropped in collection {collection}.", indexName, ProtectedCollectionName);
+                await collection.Indexes.DropOneAsync(indexName);
+                _logger?.LogInformation("Index {indexName} was dropped in collection {collection}.", indexName, ProtectedCollectionName);
+                ClearIndexFailure(IndexFailOperation.Drop, indexName);
+                hasChanged = true;
+            }
+            catch (Exception e)
+            {
+                LogIndexOperationFailure(IndexFailOperation.Drop, indexName, e);
+                if (throwOnException) throw;
             }
         }
 
