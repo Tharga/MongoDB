@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -52,9 +52,12 @@ public class DocumentLease<T, TKey> : IAsyncDisposable, IDisposable
     private readonly Dictionary<TKey, DocumentLeaseEntry<T, TKey>> _byId;
     private readonly List<TKey> _markOrder = new();
     private readonly Dictionary<TKey, (CommitMode? Mode, T Updated)> _marks = new();
+    private readonly HashSet<TKey> _applied = new();
     private readonly IClientSessionHandle _boundSession;
     private readonly IDocumentLeaseTransactionRunner _transactionRunner;
     private bool _committed;
+    private bool _commitFailed;
+    private bool _errorStateSet;
     private bool _disposed;
 
     internal DocumentLease(IReadOnlyList<DocumentLeaseEntry<T, TKey>> entries, IClientSessionHandle session = null, IDocumentLeaseTransactionRunner transactionRunner = null)
@@ -126,7 +129,8 @@ public class DocumentLease<T, TKey> : IAsyncDisposable, IDisposable
     /// When <c>true</c>, the entire commit pass runs inside a transaction so all decisions land atomically (or
     /// none do). If the lease was created with a bound session (caller is already inside an outer transaction)
     /// the bound session is reused. Any decision-time failure aborts the transaction and rethrows; on abort no
-    /// decisions land and the locks remain held on the documents.
+    /// decisions land and the locks remain held on the documents, so the caller can still reach
+    /// <see cref="SetErrorStateAsync"/>. Disposing the lease after such a failure releases them.
     /// </param>
     /// <param name="cancellationToken">Cancels between operations. Honored before each decision is applied.</param>
     public async Task<DocumentLeaseCommitSummary<TKey>> CommitAsync(bool transactional = false, CancellationToken cancellationToken = default)
@@ -135,28 +139,37 @@ public class DocumentLease<T, TKey> : IAsyncDisposable, IDisposable
         EnsureNotDisposed();
         _committed = true;
 
-        if (transactional)
+        try
         {
-            // Reuse the bound session if present; otherwise open a new transaction.
-            if (_boundSession != null)
+            if (transactional)
             {
-                return await ApplyDecisionsAsync(_boundSession, allOrNothing: true, cancellationToken);
+                // Reuse the bound session if present; otherwise open a new transaction.
+                if (_boundSession != null)
+                {
+                    return await ApplyDecisionsAsync(_boundSession, allOrNothing: true, cancellationToken);
+                }
+
+                if (_transactionRunner == null)
+                    throw new InvalidOperationException("DocumentLease cannot start a transaction — no transaction runner was provided. This typically means the lease was constructed outside of LockableRepositoryCollectionBase.");
+
+                DocumentLeaseCommitSummary<TKey> result = null;
+                await _transactionRunner.RunInTransactionAsync(
+                    async (session, ct) =>
+                    {
+                        result = await ApplyDecisionsAsync(session, allOrNothing: true, ct);
+                    },
+                    cancellationToken);
+                return result;
             }
 
-            if (_transactionRunner == null)
-                throw new InvalidOperationException("DocumentLease cannot start a transaction — no transaction runner was provided. This typically means the lease was constructed outside of LockableRepositoryCollectionBase.");
-
-            DocumentLeaseCommitSummary<TKey> result = null;
-            await _transactionRunner.RunInTransactionAsync(
-                async (session, ct) =>
-                {
-                    result = await ApplyDecisionsAsync(session, allOrNothing: true, ct);
-                },
-                cancellationToken);
-            return result;
+            return await ApplyDecisionsAsync(_boundSession, allOrNothing: false, cancellationToken);
         }
-
-        return await ApplyDecisionsAsync(_boundSession, allOrNothing: false, cancellationToken);
+        catch
+        {
+            // Nothing landed and the locks are still held: SetErrorStateAsync stays reachable and disposal releases them.
+            _commitFailed = true;
+            throw;
+        }
     }
 
     private async Task<DocumentLeaseCommitSummary<TKey>> ApplyDecisionsAsync(IClientSessionHandle session, bool allOrNothing, CancellationToken cancellationToken)
@@ -174,6 +187,8 @@ public class DocumentLease<T, TKey> : IAsyncDisposable, IDisposable
             {
                 var entityToCommit = markedUpdate ?? entry.Entity;
                 await entry.ReleaseAction.Invoke(entityToCommit, mode, null, session);
+                // Non-transactional decisions are on disk the moment they succeed; transactional ones roll back, so those locks stay ours.
+                if (!allOrNothing) _applied.Add(id);
                 switch (mode)
                 {
                     case CommitMode.Update: updated++; break;
@@ -202,6 +217,7 @@ public class DocumentLease<T, TKey> : IAsyncDisposable, IDisposable
             try
             {
                 await entry.ReleaseAction.Invoke(entry.Entity, null, null, session);
+                if (!allOrNothing) _applied.Add(entry.Entity.Id);
                 released++;
             }
             catch (Exception ex)
@@ -225,15 +241,78 @@ public class DocumentLease<T, TKey> : IAsyncDisposable, IDisposable
         };
     }
 
-    /// <summary>Releases any locks that have not been released by a prior <see cref="CommitAsync"/>.</summary>
+    /// <summary>
+    /// Records <paramref name="exception"/> on every document in the lease, putting them into error state — the
+    /// same state <see cref="EntityScope{T, TKey}.SetErrorStateAsync"/> produces for a single document.
+    /// Call it instead of <see cref="CommitAsync"/>, or after a transactional <see cref="CommitAsync"/> has
+    /// failed, while the locks are still held. A document whose lock is no longer ours is never overwritten;
+    /// it is reported in <see cref="DocumentLeaseErrorStateSummary{TKey}.Failures"/> instead.
+    /// It cannot be called after a non-transactional <see cref="CommitAsync"/> that returned normally, even when
+    /// that commit collected <see cref="DocumentLeaseCommitSummary{TKey}.Failures"/>: those decisions were applied
+    /// one by one and the lease no longer knows which locks are still its own.
+    /// Every document is attempted: <paramref name="cancellationToken"/> is honored before the first write and
+    /// not between them, so the lease never ends up half-marked.
+    /// When the lease was created with a bound session the writes join that transaction, which means they are
+    /// rolled back with it — a caller that wants the error state to survive must commit its own transaction,
+    /// or create the lease without a session.
+    /// </summary>
+    public async Task<DocumentLeaseErrorStateSummary<TKey>> SetErrorStateAsync(Exception exception, CancellationToken cancellationToken = default)
+    {
+        if (exception == null) throw new ArgumentNullException(nameof(exception));
+        EnsureNotDisposed();
+        if (_errorStateSet) throw new InvalidOperationException("Error state has already been set on this lease.");
+        if (_committed && !_commitFailed) throw new InvalidOperationException("Lease has already been committed.");
+        cancellationToken.ThrowIfCancellationRequested();
+
+        _committed = true;
+        _errorStateSet = true;
+
+        var failures = new List<DocumentLeaseFailure<TKey>>();
+        var marked = 0;
+
+        foreach (var entry in _entries)
+        {
+            if (_applied.Contains(entry.Entity.Id)) continue;
+            try
+            {
+                await entry.ReleaseAction.Invoke(entry.Entity, null, exception, _boundSession);
+                marked++;
+            }
+            catch (Exception ex)
+            {
+                failures.Add(new DocumentLeaseFailure<TKey>
+                {
+                    Id = entry.Entity.Id,
+                    IntendedDecision = null,
+                    Error = ex.Message,
+                });
+            }
+        }
+
+        return new DocumentLeaseErrorStateSummary<TKey>
+        {
+            Marked = marked,
+            Failures = failures,
+        };
+    }
+
+    /// <summary>
+    /// Releases any locks that have not been released by a prior <see cref="CommitAsync"/>, including the locks
+    /// still held after a <see cref="CommitAsync"/> that failed. With a bound session those releases join the
+    /// caller's transaction and are rolled back with it, leaving the locks in place until they expire.
+    /// </summary>
     public async ValueTask DisposeAsync()
     {
         if (_disposed) return;
         _disposed = true;
-        if (_committed) return;
+        if (_errorStateSet) return;
+        if (_committed && !_commitFailed) return;
 
         foreach (var entry in _entries)
         {
+            // Skip the ones a non-transactional commit already applied; their lock is gone and the document may be someone else's by now.
+            if (_applied.Contains(entry.Entity.Id)) continue;
+
             try
             {
                 await entry.ReleaseAction.Invoke(entry.Entity, null, null, _boundSession);
@@ -247,7 +326,8 @@ public class DocumentLease<T, TKey> : IAsyncDisposable, IDisposable
 
     public void Dispose()
     {
-        if (_disposed || _committed) return;
+        if (_disposed || _errorStateSet) return;
+        if (_committed && !_commitFailed) return;
         Task.Run(() => DisposeAsync().AsTask());
     }
 
@@ -275,6 +355,18 @@ public record DocumentLeaseCommitSummary<TKey>
     public required int ReleasedUnchanged { get; init; }
 
     /// <summary>Per-document commit failures collected during the sequential commit pass.</summary>
+    public required IReadOnlyList<DocumentLeaseFailure<TKey>> Failures { get; init; }
+}
+
+/// <summary>Summary returned from <see cref="DocumentLease{T, TKey}.SetErrorStateAsync"/>.</summary>
+public record DocumentLeaseErrorStateSummary<TKey>
+{
+    /// <summary>Number of documents that were put into error state.</summary>
+    public required int Marked { get; init; }
+
+    /// <summary>
+    /// Documents that could not be put into error state, typically because the lock is no longer ours.
+    /// </summary>
     public required IReadOnlyList<DocumentLeaseFailure<TKey>> Failures { get; init; }
 }
 
