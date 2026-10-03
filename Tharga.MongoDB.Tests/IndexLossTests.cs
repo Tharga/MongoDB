@@ -33,6 +33,52 @@ public class IndexLossTests : MongoDbTestBase
         (await IndexNamesAsync(collection)).Should().Contain(UniqueIndexName);
     }
 
+    [Fact]
+    [Trait("Category", "Database")]
+    public async Task DropCollection_NextAdd_RecreatesDeclaredIndexes()
+    {
+        var sut = new DropEmptyCollection(MongoDbServiceFactory, DatabaseContext);
+        await sut.AddAsync(new TestEntity { Id = ObjectId.GenerateNewId(), Value = "first" });
+        var collection = (await sut.FetchCollectionAsync()).Value;
+
+        await sut.DropCollectionAsync();
+        await sut.AddAsync(new TestEntity { Id = ObjectId.GenerateNewId(), Value = "second" });
+
+        (await IndexNamesAsync(collection)).Should().Contain(PlainIndexName);
+    }
+
+    [Fact]
+    [Trait("Category", "Database")]
+    public async Task DropEmpty_WithoutUniqueIndex_DropsAndNextAddRecreatesIndexes()
+    {
+        var sut = new DropEmptyCollection(MongoDbServiceFactory, DatabaseContext);
+        var entity = new TestEntity { Id = ObjectId.GenerateNewId(), Value = "first" };
+        await sut.AddAsync(entity);
+        var collection = (await sut.FetchCollectionAsync()).Value;
+
+        await sut.DeleteOneAsync(entity.Id);
+        var existsAfterDelete = await CollectionExistsAsync(collection);
+        await sut.AddAsync(new TestEntity { Id = ObjectId.GenerateNewId(), Value = "second" });
+
+        existsAfterDelete.Should().BeFalse();
+        (await IndexNamesAsync(collection)).Should().Contain(PlainIndexName);
+    }
+
+    [Fact]
+    [Trait("Category", "Database")]
+    public async Task DropEmpty_WithUniqueIndex_KeepsTheCollection()
+    {
+        var sut = new DropEmptyUniqueCollection(MongoDbServiceFactory, DatabaseContext);
+        var entity = new TestEntity { Id = ObjectId.GenerateNewId(), Value = "only" };
+        await sut.AddAsync(entity);
+        var collection = (await sut.FetchCollectionAsync()).Value;
+
+        await sut.DeleteOneAsync(entity.Id);
+
+        (await CollectionExistsAsync(collection)).Should().BeTrue();
+        (await IndexNamesAsync(collection)).Should().Contain(UniqueIndexName);
+    }
+
     private const string UniqueIndexName = "UniqueData";
     private const string PlainIndexName = "PlainValue";
     private const string StrayIndexName = "Stray";

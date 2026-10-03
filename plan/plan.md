@@ -2,9 +2,9 @@
 
 - [x] NuGet update check — `dotnet outdated`: no outdated dependencies, no deps commit.
 - [x] #167: test that a lockable `CreateOnGet` collection survives deleting its last document (fails first), then forward `CreateCollectionStrategy` in `GenericDiskRepositoryCollection`. — One-line forward; `Lockable_CreateOnGet_SurvivesDeletingItsLastDocument` failed before, passes after.
-- [~] #168a: test that after `DropCollectionAsync` the next add recreates declared indexes; add `IInitiationLibrary.ResetIndexAssured` and call it from `DropCollectionAsync`.
-- [ ] #168b: tests for `DropEmptyAsync` — kept when a unique index is declared, dropped otherwise; implement the guard.
-- [ ] #169: tests for `DropIndex` (plain and lockable collection); share the undeclared-index computation with `UpdateIndicesBySchemaAsync`, drop only those, log each drop.
+- [x] #168a: test that after `DropCollectionAsync` the next add recreates declared indexes; add `IInitiationLibrary.ResetIndexAssured` and call it from `DropCollectionAsync`. — Resets `IndexAssured` and clears failures instead of removing the entry (`ShouldInitiateIndex` requires the entry; the pool keeps the handle).
+- [x] #168b: tests for `DropEmptyAsync` — kept when a unique index is declared, dropped otherwise; implement the guard. — `DeclaresUniqueIndex()` checks `CoreIndices` ∪ `Indices`; `CreateStrategy.DropEmpty` XML doc updated.
+- [~] #169: tests for `DropIndex` (plain and lockable collection); share the undeclared-index computation with `UpdateIndicesBySchemaAsync`, drop only those, log each drop.
 - [ ] Full test suite, commit per issue.
 - [ ] Docs review (README, docs/articles, MCP README) — note DropEmpty unique-index behaviour change.
 - [ ] Push branch for testing.

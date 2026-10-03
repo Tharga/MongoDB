@@ -32,6 +32,16 @@ internal class InitiationLibrary : IInitiationLibrary
         return _initiated.TryUpdate($"{serverName}.{databaseName}.{collectionName}", updated, initiationInfo);
     }
 
+    public void ResetIndexAssured(string serverName, string databaseName, string collectionName)
+    {
+        var key = $"{serverName}.{databaseName}.{collectionName}";
+        while (_initiated.TryGetValue(key, out var initiationInfo))
+        {
+            var reset = initiationInfo with { IndexAssured = false, FailedIndices = new() };
+            if (_initiated.TryUpdate(key, reset, initiationInfo)) return;
+        }
+    }
+
     public void AddFailedInitiateIndex(string serverName, string databaseName, string collectionName, IndexFailOperation operation, string indexName, string errorMessage)
     {
         if (!_initiated.TryGetValue($"{serverName}.{databaseName}.{collectionName}", out var initiationInfo)) throw new InvalidOperationException($"Always call {nameof(ShouldInitiate)} before calling {nameof(ShouldInitiateIndex)}.");

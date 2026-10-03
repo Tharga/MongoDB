@@ -1415,6 +1415,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         await RunInvocationInterceptorsAsync(nameof(DropCollectionAsync), Operation.Delete, CancellationToken.None).ConfigureAwait(false);
 
         await _mongoDbService.DropCollectionAsync(ProtectedCollectionName);
+        _initiationLibrary.ResetIndexAssured(ServerName, DatabaseName, ProtectedCollectionName);
         // Carry the resolved identity (same values used when the collection was reported) so the
         // monitor can match it in the cache and forward the drop to a central server precisely.
         ((MongoDbServiceFactory)_mongoDbServiceFactory).OnCollectionDropped(this,
@@ -1945,12 +1946,18 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
     protected virtual async Task DropEmptyAsync(IMongoCollection<TEntity> collection)
     {
         if (CreateCollectionStrategy != CreateStrategy.DropEmpty) return;
+        if (DeclaresUniqueIndex()) return;
 
         var any = await collection.CountDocumentsAsync(x => true, new CountOptions { Limit = 1 }) != 0;
 
         if (any) return;
 
         await DropCollectionAsync();
+    }
+
+    private bool DeclaresUniqueIndex()
+    {
+        return (CoreIndices ?? []).Concat(Indices ?? []).Any(x => x?.Options?.Unique == true);
     }
 
     private async Task UpdateIndicesAsync(IMongoCollection<TEntity> collection, AssureIndexMode assureIndexMode, bool throwOnException)
