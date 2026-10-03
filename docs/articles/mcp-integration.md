@@ -51,7 +51,7 @@ Anything above the configured level is filtered out of `tools/list` and `resourc
 | `mongodb.touch` | Metadata | `databaseName`, `collectionName`, optional `configurationName` |
 | `mongodb.rebuild_index` | Metadata | `databaseName`, `collectionName`, optional `configurationName`, `force` |
 | `mongodb.restore_all_indexes` | Metadata | optional `configurationName` / `databaseName` filters |
-| `mongodb.drop_index` | Metadata | drops indexes not declared in code |
+| `mongodb.drop_index` | Metadata | `databaseName`, `collectionName`, optional `configurationName`; drops indexes not declared in code (keeps `_id_`, lock and declared indexes) and logs each drop |
 | `mongodb.reset_cache` | Metadata | resets the in-memory monitor cache |
 | `mongodb.clear_call_history` | Metadata | clears recent + slow call history |
 | `mongodb.find_duplicates` | DataRead | `databaseName`, `collectionName`, `indexName`; returns duplicate-key tuples |

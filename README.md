@@ -586,6 +586,13 @@ This makes it possible to use multiple databases from the same application.
 
 The properties `AutoClean`, `CleanOnStartup`, `CreateCollectionStrategy` and `ResultLimit` can be overridden by collection to be different from the configuration.
 
+`CreateCollectionStrategy` decides when a collection is created and whether it is dropped again:
+- `DropEmpty` (default) — created when a document is added, dropped when a delete leaves it empty. A collection that declares a **unique** index is never dropped: other processes cannot see the drop and would keep writing to the recreated collection without the index, and once duplicates exist the unique index can no longer be built.
+- `CreateOnAdd` — created when a document is added, never dropped automatically.
+- `CreateOnGet` — created on first access (read or write), never dropped automatically.
+
+When a collection is dropped (`DropCollectionAsync`, or `DropEmpty`), the next write from the same process assures its declared indexes again before the document is written.
+
 To automatically register known types when using multiple types in the same collection, provide a value for `Types`.
 
 Create `Indices` by overriding the property in your collection class.
@@ -1159,7 +1166,7 @@ Each tool/resource is tagged below with its required level. Anything above the c
 | `mongodb.touch` | Metadata | `databaseName`, `collectionName`, optional `configurationName` |
 | `mongodb.rebuild_index` | Metadata | `databaseName`, `collectionName`, optional `configurationName`, `force` |
 | `mongodb.restore_all_indexes` | Metadata | optional `configurationName` / `databaseName` filters; returns total/succeeded/failed/skipped counts |
-| `mongodb.drop_index` | Metadata | `databaseName`, `collectionName`, optional `configurationName`; drops indexes not declared in code |
+| `mongodb.drop_index` | Metadata | `databaseName`, `collectionName`, optional `configurationName`; drops indexes not declared in code (keeps `_id_`, lock and declared indexes) and logs each drop |
 | `mongodb.reset_cache` | Metadata | (no args) resets the in-memory monitor cache |
 | `mongodb.clear_call_history` | Metadata | (no args) clears recent + slow call history |
 | `mongodb.find_duplicates` | DataRead | `databaseName`, `collectionName`, `indexName`, optional `configurationName`; returns duplicate-key tuples |

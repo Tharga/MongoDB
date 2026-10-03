@@ -6,8 +6,8 @@
 - [x] #168b: tests for `DropEmptyAsync` — kept when a unique index is declared, dropped otherwise; implement the guard. — `DeclaresUniqueIndex()` checks `CoreIndices` ∪ `Indices`; `CreateStrategy.DropEmpty` XML doc updated.
 - [x] #169: tests for `DropIndex` (plain and lockable collection); share the undeclared-index computation with `UpdateIndicesBySchemaAsync`, drop only those, log each drop. — `SameSchema` / `UndeclaredIndexNames` shared; each drop logged at Warning.
 - [x] Full test suite, commit per issue. — 810 total, 0 failed, 8 skipped (known skips).
-- [~] Docs review (README, docs/articles, MCP README) — note DropEmpty unique-index behaviour change.
-- [ ] Push branch for testing.
+- [x] Docs review (README, docs/articles, MCP README) — note DropEmpty unique-index behaviour change. — README: `CreateCollectionStrategy` values, unique-index rule, re-assure after drop; `drop_index` row in README and mcp-integration.md. MCP README only lists tool names. `docs/api` is DocFX-generated.
+- [~] Push branch for testing.
 
 ## README / docs changes needed at completion
 - `CreateStrategy.DropEmpty`: does not drop a collection that declares a unique index.
