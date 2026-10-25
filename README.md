@@ -163,6 +163,15 @@ There are three implemented types of collections, *IDiskRepositoryCollection* an
 #### IDiskRepositoryCollection
 This is the main type of collection. It does what you expect, saving and loading data directly from the database.
 
+Every read and write method takes an optional `CancellationToken` as its last parameter and passes it to the driver.
+```csharp
+await collection.AddAsync(entity, cancellationToken: cancellationToken);
+await collection.UpdateOneAsync(id, update, cancellationToken: cancellationToken);
+```
+On a lockable collection, `DeleteOneAsync(id)` checks the token once before it locks the document; the lock-and-commit cycle that follows is not cancelled halfway, so the document is never left locked by a cancellation.
+
+> **Upgrading to 2.19:** the token was added to the write methods' existing signatures (`AddAsync`, `TryAddAsync`, `AddManyAsync`, `AddOrReplaceAsync`, `ReplaceOneAsync`, `UpdateOneAsync`, `UpdateManyAsync`, `DeleteOneAsync`, `DeleteManyAsync`). Source code compiles unchanged, but a package compiled against 2.18 that calls these methods throws `MissingMethodException` until it is rebuilt against 2.19. Also from 2.19, `UpdateOneAsync(predicate, update, options)` honours `options`; earlier releases ignored them for the predicate overload and always used `SingleOrDefault`.
+
 #### ILockableRepositoryCollection
 This is a write-protected collection that you can only update by requesting an exclusive lock.
 It can be used similar to a queue.
