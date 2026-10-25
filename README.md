@@ -168,7 +168,13 @@ Every read and write method takes an optional `CancellationToken` as its last pa
 await collection.AddAsync(entity, cancellationToken: cancellationToken);
 await collection.UpdateOneAsync(id, update, cancellationToken: cancellationToken);
 ```
-On a lockable collection, `DeleteOneAsync(id)` checks the token once before it locks the document; the lock-and-commit cycle that follows is not cancelled halfway, so the document is never left locked by a cancellation.
+On a lockable collection, `DeleteOneAsync(id)` checks the token once before it locks the document; the lock-and-commit cycle that follows is not cancelled halfway, so the document is never left locked by a cancellation. Index assurance and the drop of an emptied collection never take the token, so they always run to the end.
+
+What a cancellation does and does not tell you:
+- **Cancelled means the outcome is unknown, not that nothing happened.** If the token fires after the command has reached the server, the write may still be applied even though the call throws `OperationCanceledException` — the same as a timeout. Retry with something idempotent (a fixed `Id` on insert, a filter that only matches the old state on update).
+- **A single document is all or nothing.** Every one-document write ends in one atomic command; when it first reads to find the document, a cancellation before the write changes nothing.
+- **Writes that cover several documents are not atomic.** `AddManyAsync` (sent in batches when large), `UpdateManyAsync` and `DeleteManyAsync` can stop partway on a cancellation, as on any error. Pass a session in a transaction when you need all or nothing; cancelling then rolls the whole transaction back.
+- The document `UpdateOneAsync` returns as *after* is read back without the token, so `GetAfterAsync()` still works when the token was cancelled once the update had completed.
 
 > **Upgrading to 2.19:** the token was added to the write methods' existing signatures (`AddAsync`, `TryAddAsync`, `AddManyAsync`, `AddOrReplaceAsync`, `ReplaceOneAsync`, `UpdateOneAsync`, `UpdateManyAsync`, `DeleteOneAsync`, `DeleteManyAsync`). Source code compiles unchanged, but a package compiled against 2.18 that calls these methods throws `MissingMethodException` until it is rebuilt against 2.19. Also from 2.19, `UpdateOneAsync(predicate, update, options)` honours `options`; earlier releases ignored them for the predicate overload and always used `SingleOrDefault`.
 
