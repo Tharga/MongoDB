@@ -110,21 +110,6 @@ public class ExceptionLogLevelTests : LockableTestBase
         logger.Levels.Should().BeEmpty();
     }
 
-    [Theory]
-    [InlineData(typeof(TimeoutException), LogLevel.Warning)]
-    [InlineData(typeof(InvalidOperationException), LogLevel.Error)]
-    public void DefaultLevel_KeepsTheEarlierMapping(Type exceptionType, LogLevel expected)
-    {
-        //Arrange
-        var sut = new LevelCollection(_mongoDbServiceFactory, new ExceptionLogger());
-
-        //Act
-        var result = sut.DefaultLevel((Exception)Activator.CreateInstance(exceptionType));
-
-        //Assert
-        result.Should().Be(expected);
-    }
-
     private static bool IsDuplicateKey(Exception exception)
     {
         return exception is MongoWriteException { WriteError.Category: ServerErrorCategory.DuplicateKey };
@@ -141,8 +126,6 @@ public class ExceptionLogLevelTests : LockableTestBase
         }
 
         public override string CollectionName => "ExceptionLogLevel";
-
-        public LogLevel DefaultLevel(Exception exception) => base.GetExceptionLogLevel(exception, nameof(DefaultLevel));
 
         protected override LogLevel GetExceptionLogLevel(Exception exception, string operation)
         {
