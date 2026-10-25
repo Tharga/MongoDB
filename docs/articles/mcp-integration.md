@@ -44,6 +44,8 @@ Anything above the configured level is filtered out of `tools/list` and `resourc
 | `mongodb://clients` | Metadata | Connected remote monitoring agents |
 | `mongodb://monitoring` | DataRead | Recent + slow calls, summaries, error summary, connection-pool state, and `inFlightCalls` — what the limiter is holding right now (queued vs executing), grouped by collection / function / filter, for diagnosing a flood (calls embed filter values, hence the gating) |
 
+The `server` on a collection is the host list only (`cluster0.ab12.mongodb.net`, `host-a:27017,host-b:27017`). Before 2.18.3 it could include the user name and password from the connection string, which would let an MCP client connect to the database directly and bypass the access level; on upgrade, the monitor also removes them from entries it has already stored in `_monitor`.
+
 ## Tools
 
 | Tool | Level | Args |

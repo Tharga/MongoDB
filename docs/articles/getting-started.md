@@ -58,6 +58,19 @@ internal class WeatherForecastRepositoryCollection
 
 The collection is registered in DI automatically — by default `AddMongoDB()` scans assemblies whose name starts with the entry-point assembly's prefix. Add external assemblies via `o.AddAutoRegistrationAssembly(...)`.
 
+### Exceptions you expect
+
+The collection logs an exception from a database operation before it reaches your code — at Warning for connection, timeout and paused-pool errors, at Error for everything else. If you rely on a database error and handle it, such as a duplicate key from a unique index used to detect a lost race, override `GetExceptionLogLevel` so the handled case does not look like a fault. `LogLevel.None` skips the entry; the exception is still thrown and the call is still monitored.
+
+```csharp
+protected override LogLevel GetExceptionLogLevel(Exception exception, string operation)
+{
+    return exception is MongoWriteException { WriteError.Category: ServerErrorCategory.DuplicateKey }
+        ? LogLevel.Information
+        : base.GetExceptionLogLevel(exception, operation);
+}
+```
+
 ## Inject and use it
 
 ```csharp

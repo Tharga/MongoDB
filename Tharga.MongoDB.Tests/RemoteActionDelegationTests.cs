@@ -361,6 +361,41 @@ public class RemoteActionDelegationTests
     }
 
     [Fact]
+    public async Task IngestCollectionInfo_AgentSendsServerWithCredentials_StoresHostOnly()
+    {
+        var collection = CreateRemoteCollection() with { Server = "mongodb://user:secret@remote-server:27017/TestDb" };
+        IngestRemoteCollectionWithAgent(collection, "Agent-1/OrderService", "conn-123");
+
+        var result = await _monitor.GetInstanceAsync(new CollectionFingerprint
+        {
+            ConfigurationName = collection.ConfigurationName,
+            DatabaseName = collection.DatabaseName,
+            CollectionName = collection.CollectionName,
+        });
+
+        result.Server.Should().Be("remote-server:27017");
+    }
+
+    [Fact]
+    public void CollectionAccessEvent_ServerWithCredentials_StoresHostOnly()
+    {
+        CollectionInfo stored = null;
+        _cacheMock.Setup(c => c.AddOrUpdate(It.IsAny<string>(), It.IsAny<Func<string, CollectionInfo>>(), It.IsAny<Func<string, CollectionInfo, CollectionInfo>>()))
+            .Returns((string key, Func<string, CollectionInfo> add, Func<string, CollectionInfo, CollectionInfo> _) => stored = add(key));
+        var fingerprint = new CollectionFingerprint
+        {
+            ConfigurationName = "Default",
+            DatabaseName = "TestDb",
+            CollectionName = "AccessedWithCredentials",
+        };
+
+        _factoryMock.Raise(f => f.CollectionAccessEvent += null, this,
+            new CollectionAccessEventArgs(fingerprint, "mongodb+srv://user:secret@cluster0.abc.mongodb.net/TestDb", typeof(object), null));
+
+        stored.Server.Should().Be("cluster0.abc.mongodb.net");
+    }
+
+    [Fact]
     public async Task GetInstanceAsync_ReturnsRemoteCollection_WithStats()
     {
         // Ingest with stats

@@ -61,6 +61,28 @@ public abstract class RepositoryCollectionBase<TEntity, TKey> : RepositoryCollec
     public virtual IEnumerable<CreateIndexModel<TEntity>> CoreIndices => null;
     public virtual IEnumerable<Type> Types => null;
 
+    /// <summary>
+    /// The level at which the collection logs an exception thrown by a database operation. The log entry is
+    /// written before the exception reaches the caller, so override this to lower the level of exceptions the
+    /// caller expects and handles, such as a duplicate-key error from a unique index used to detect a lost race.
+    /// Return <see cref="LogLevel.None"/> to skip the entry. The exception is still thrown, and the call is
+    /// still recorded by the monitor.
+    /// </summary>
+    /// <param name="exception">The exception the operation threw.</param>
+    /// <param name="operation">The repository operation that threw, for example <c>AddAsync</c>.</param>
+    /// <returns>
+    /// By default <see cref="LogLevel.Warning"/> for connection, timeout and paused connection-pool errors,
+    /// and <see cref="LogLevel.Error"/> for everything else.
+    /// </returns>
+    protected virtual LogLevel GetExceptionLogLevel(Exception exception, string operation)
+    {
+        return exception is MongoConnectionException or TimeoutException or MongoConnectionPoolPausedException
+            ? LogLevel.Warning
+            : LogLevel.Error;
+    }
+
+    internal LogLevel ResolveExceptionLogLevel(Exception exception, string operation) => GetExceptionLogLevel(exception, operation);
+
     //Read
     public abstract IAsyncEnumerable<TEntity> GetAsync(Expression<Func<TEntity, bool>> predicate = null, Options<TEntity> options = null, CancellationToken cancellationToken = default);
     public abstract IAsyncEnumerable<TEntity> GetAsync(FilterDefinition<TEntity> filter, Options<TEntity> options = null, CancellationToken cancellationToken = default);

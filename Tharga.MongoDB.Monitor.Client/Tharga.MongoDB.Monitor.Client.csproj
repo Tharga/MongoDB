@@ -42,7 +42,9 @@
 
   <ItemGroup>
     <PackageReference Include="Tharga.Communication" Version="1.1.2" />
-    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="10.0.401">
+    <!-- Floors transitive Microsoft.AspNetCore.SignalR.Common 10.0.12 (from Tharga.Communication 1.1.2) above CVE-2026-70159 / GHSA-334f-vvp4-7g6p (denial of service; affected <= 10.0.12). Do not drop until Tharga.Communication itself ships SignalR >= 10.0.13. -->
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Common" Version="10.0.13" />
+    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="10.0.402">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>

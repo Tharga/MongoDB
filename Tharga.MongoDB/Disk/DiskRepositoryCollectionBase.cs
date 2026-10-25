@@ -249,28 +249,10 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             count = response.Result.Count;
             return response.Result.Data;
         }
-        catch (Exception e) when (e is MongoConnectionException || e is TimeoutException || e is MongoConnectionPoolPausedException)
-        {
-            exception = e;
-            _logger?.LogWarning(e, $"{e.GetType().Name} {{repositoryType}}. [action: Database, operation: {functionName}]", "DiskRepository");
-            InvokeAction(new ActionEventArgs.ActionData { Operation = functionName, Exception = e });
-            throw;
-        }
-        catch (MongoWaitQueueFullException e)
-        {
-            exception = e;
-            e.Data["Configuration"] = ConfigurationName ?? Constants.DefaultConfigurationName;
-            e.Data["Database"] = DatabaseName;
-            e.Data["Collection"] = CollectionName;
-            _logger?.LogError(e, $"{e.GetType().Name} {{repositoryType}}. [action: Database, operation: {functionName}]", "DiskRepository");
-            InvokeAction(new ActionEventArgs.ActionData { Operation = functionName, Exception = e });
-            throw;
-        }
         catch (Exception e)
         {
             exception = e;
-            _logger?.LogError(e, $"{e.GetType().Name} {{repositoryType}}. [action: Database, operation: {functionName}]", "DiskRepository");
-            InvokeAction(new ActionEventArgs.ActionData { Operation = functionName, Exception = e });
+            HandleOperationException(functionName, e);
             throw;
         }
         finally
@@ -1175,10 +1157,11 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
     }
 
     //Other
-    [Obsolete($"Use {nameof(ExecuteAsync)} instead. This method will be deprecated.")]
+    [Obsolete(Constants.GetCollectionObsoleteMessage)]
     public virtual IMongoCollection<TEntity> GetCollection()
     {
-        var item = FetchCollectionAsync().GetAwaiter().GetResult();
+        //Task.Run keeps the fetch off the caller's synchronization context, which this call blocks.
+        var item = Task.Run(() => FetchCollectionAsync()).GetAwaiter().GetResult();
         return item.Value;
     }
 
@@ -1251,7 +1234,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             catch (Exception e)
             {
                 exception = e;
-                HandleStreamCursorException(functionName, e);
+                HandleOperationException(functionName, e);
                 throw;
             }
 
@@ -1265,7 +1248,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                 catch (Exception e)
                 {
                     exception = e;
-                    HandleStreamCursorException(functionName, e);
+                    HandleOperationException(functionName, e);
                     throw;
                 }
 
@@ -1281,7 +1264,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                     catch (Exception e)
                     {
                         exception = e;
-                        HandleStreamCursorException(functionName, e);
+                        HandleOperationException(functionName, e);
                         throw;
                     }
                     count++;
@@ -1386,25 +1369,25 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         return response.Result;
     }
 
-    private void HandleStreamCursorException(string functionName, Exception e)
+    private void HandleOperationException(string functionName, Exception e)
     {
-        if (e is MongoConnectionException || e is TimeoutException || e is MongoConnectionPoolPausedException)
+        if (e is MongoWaitQueueFullException)
         {
-            _logger?.LogWarning(e, $"{e.GetType().Name} {{repositoryType}}. [action: Database, operation: {functionName}]", "DiskRepository");
-        }
-        else if (e is MongoWaitQueueFullException mwqe)
-        {
-            mwqe.Data["Configuration"] = ConfigurationName ?? Constants.DefaultConfigurationName;
-            mwqe.Data["Database"] = DatabaseName;
-            mwqe.Data["Collection"] = CollectionName;
-            _logger?.LogError(e, $"{e.GetType().Name} {{repositoryType}}. [action: Database, operation: {functionName}]", "DiskRepository");
-        }
-        else
-        {
-            _logger?.LogError(e, $"{e.GetType().Name} {{repositoryType}}. [action: Database, operation: {functionName}]", "DiskRepository");
+            e.Data["Configuration"] = ConfigurationName ?? Constants.DefaultConfigurationName;
+            e.Data["Database"] = DatabaseName;
+            e.Data["Collection"] = CollectionName;
         }
 
+        LogOperationException(functionName, e);
         InvokeAction(new ActionEventArgs.ActionData { Operation = functionName, Exception = e });
+    }
+
+    private void LogOperationException(string functionName, Exception e)
+    {
+        var level = GetExceptionLogLevel(e, functionName);
+        if (level == LogLevel.None) return;
+
+        _logger?.Log(level, e, $"{e.GetType().Name} {{repositoryType}}. [action: Database, operation: {functionName}]", "DiskRepository");
     }
 
     public override async Task DropCollectionAsync()
@@ -2277,7 +2260,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         }
         catch (Exception e)
         {
-            _logger?.LogError(e, $"Exception {{repositoryType}}. [action: Database, operation: {nameof(FindAsync)}]", "DiskRepository");
+            LogOperationException(nameof(FindAsync), e);
             InvokeAction(new ActionEventArgs.ActionData { Operation = nameof(FindAsync), Exception = e });
             throw;
         }
