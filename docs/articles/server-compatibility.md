@@ -15,6 +15,18 @@ Driver 3.10.0 marked server 4.2 end-of-life and raised `minWireVersion` to 9 (se
 
 **2.18.1 and 2.18.2 carried driver 3.12.0 by mistake** — a dependency update took the driver past the hold. They cannot connect to a 4.2 server; on Cosmos DB 4.2, skip to 2.18.3 or stay on 2.18.0.
 
+## Connection strings with several hosts
+
+A connection string may list the members of a replica set, as self-hosted replica sets and Atlas's *standard* (non-SRV) connection string do:
+
+```
+mongodb://user:password@host-a:27017,host-b:27017,host-c:27017/MyDb?replicaSet=rs0
+```
+
+Earlier releases failed on every operation with such a string, with `InvalidOperationException: Sequence contains more than one element` — they read the driver's single-server `Server` property, which throws when there is more than one. If you see that error, upgrade. SRV strings (`mongodb+srv://`), localhost and Cosmos DB list a single host and were never affected.
+
+The Atlas firewall is skipped only when every listed host is local, and the server shown in the monitor is the list of hosts.
+
 ## Azure Cosmos DB for MongoDB
 
 Cosmos DB is an emulation of the MongoDB wire protocol rather than MongoDB itself, and the two flavours behave differently:
