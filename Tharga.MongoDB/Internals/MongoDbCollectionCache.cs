@@ -13,6 +13,8 @@ namespace Tharga.MongoDB.Internals;
 
 internal class MongoDbCollectionCache : ICollectionCache
 {
+    private const string ServerField = "Server";
+
     private readonly IMongoDbServiceFactory _factory;
     private readonly IRepositoryConfiguration _repositoryConfiguration;
     private readonly DatabaseOptions _options;
@@ -65,6 +67,7 @@ internal class MongoDbCollectionCache : ICollectionCache
 
             var hadDeserializationError = false;
             var loadedKeys = new List<string>();
+            var serverRewrites = new List<(BsonValue Id, string Server)>();
             foreach (var doc in docs)
             {
                 var info = BsonToCollectionInfo(doc, configName);
@@ -76,6 +79,7 @@ internal class MongoDbCollectionCache : ICollectionCache
                 info.Discovery |= Discovery.Monitor;
                 _dict[info.Key] = info;
                 loadedKeys.Add(info.Key);
+                if (StoredServer(doc) != info.Server) serverRewrites.Add((doc["_id"], info.Server));
             }
 
             if (hadDeserializationError)
@@ -87,6 +91,32 @@ internal class MongoDbCollectionCache : ICollectionCache
                         _dict.TryRemove(key, out _);
                 }
             }
+            else
+            {
+                await TryRewriteServersAsync(col, serverRewrites, configName);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Persists the cleaned server name over values that earlier releases stored with the
+    /// connection-string credentials in them (#171). Best effort, like <see cref="TryDropMonitorAsync"/>: a
+    /// failure must not abort startup, and each document is cleaned on its next save anyway.
+    /// </summary>
+    private async Task TryRewriteServersAsync(IMongoCollection<BsonDocument> col, IReadOnlyCollection<(BsonValue Id, string Server)> rewrites, string configName)
+    {
+        if (rewrites.Count == 0) return;
+
+        try
+        {
+            var updates = rewrites.Select(x => new UpdateOneModel<BsonDocument>(
+                Builders<BsonDocument>.Filter.Eq("_id", x.Id),
+                Builders<BsonDocument>.Update.Set(ServerField, x.Server)));
+            await col.BulkWriteAsync(updates);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to rewrite the server name of {Count} _monitor documents for config '{ConfigName}'. They are cleaned in memory and on their next save.", rewrites.Count, configName);
         }
     }
 
@@ -165,6 +195,8 @@ internal class MongoDbCollectionCache : ICollectionCache
 
     internal static string BsonStr(BsonValue value) => value == null || value.IsBsonNull ? null : value.AsString;
 
+    internal static string StoredServer(BsonDocument doc) => BsonStr(doc.GetValue(ServerField, BsonNull.Value)) ?? string.Empty;
+
     internal static BsonArray IndexesToBson(IndexMeta[] indexes)
     {
         var arr = new BsonArray();
@@ -197,7 +229,7 @@ internal class MongoDbCollectionCache : ICollectionCache
             { "CollectionName", info.CollectionName },
             { "ConfigurationName", ToBson(info.ConfigurationName?.Value) },
             { "DatabaseName", ToBson(info.DatabaseName) },
-            { "Server", ToBson(info.Server) },
+            { ServerField, ToBson(info.Server) },
             { "DatabasePart", ToBson(info.DatabasePart) },
             { "Source", (int)info.Discovery },
             { "Registration", (int)info.Registration },
@@ -243,7 +275,7 @@ internal class MongoDbCollectionCache : ICollectionCache
                 ConfigurationName = configName,
                 DatabaseName = databaseName,
                 CollectionName = collectionName,
-                Server = BsonStr(doc.GetValue("Server", BsonNull.Value)) ?? string.Empty,
+                Server = ServerDisplayName.From(StoredServer(doc)),
                 DatabasePart = BsonStr(doc.GetValue("DatabasePart", BsonNull.Value)),
                 Discovery = (Discovery)doc.GetValue("Source", 0).ToInt32(),
                 Registration = registration,

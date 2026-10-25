@@ -20,6 +20,7 @@ internal class MongoDbService : IMongoDbServiceInternal
     private readonly MongoClient _mongoClient;
     private readonly IMongoDatabase _mongoDatabase;
     private readonly MongoUrl _mongoUrl;
+    private readonly string _serverDisplayName;
 
     public MongoDbService(IRepositoryConfigurationInternal configuration, IMongoDbFirewallStateService mongoDbFirewallStateService, IMongoDbClientProvider mongoDbClientProvider, IExecuteLimiter executeLimiter, ICollectionPool collectionPool, IInitiationLibrary initiationLibrary, ILogger logger)
     {
@@ -30,6 +31,7 @@ internal class MongoDbService : IMongoDbServiceInternal
         InitiationLibrary = initiationLibrary;
         _logger = logger;
         _mongoUrl = configuration.GetDatabaseUrl() ?? throw new NullReferenceException("MongoUrl not found in configuration.");
+        _serverDisplayName = ServerDisplayName.From(_mongoUrl.Url);
         _mongoClient = mongoDbClientProvider.GetClient(_mongoUrl);
         var settings = new MongoDatabaseSettings { WriteConcern = WriteConcern.WMajority };
         _mongoDatabase = _mongoClient.GetDatabase(_mongoUrl.DatabaseName, settings);
@@ -58,7 +60,7 @@ internal class MongoDbService : IMongoDbServiceInternal
             DatabaseName = _mongoDatabase.DatabaseNamespace.DatabaseName,
             CollectionName = name
         };
-        CollectionAccessEvent?.Invoke(this, new CollectionAccessEventArgs(fingerprint, _mongoUrl.Url, typeof(T), databaseContext.DatabasePart));
+        CollectionAccessEvent?.Invoke(this, new CollectionAccessEventArgs(fingerprint, _serverDisplayName, typeof(T), databaseContext.DatabasePart));
 
         return collection;
     }
@@ -76,7 +78,7 @@ internal class MongoDbService : IMongoDbServiceInternal
             DatabaseName = mongoDatabase.DatabaseNamespace.DatabaseName,
             CollectionName = collectionName
         };
-        CollectionAccessEvent?.Invoke(this, new CollectionAccessEventArgs(fingerprint, _mongoUrl.Url, typeof(BsonDocument), databaseContext.DatabasePart));
+        CollectionAccessEvent?.Invoke(this, new CollectionAccessEventArgs(fingerprint, _serverDisplayName, typeof(BsonDocument), databaseContext.DatabasePart));
 
         return collection;
     }
@@ -160,7 +162,6 @@ internal class MongoDbService : IMongoDbServiceInternal
         var collections = collectionsCursor.ToEnumerable();
 
         var dbName = mongoDatabase.DatabaseNamespace.DatabaseName;
-        var server = ToServerName(dbName);
 
         foreach (var collection in collections)
         {
@@ -173,7 +174,7 @@ internal class MongoDbService : IMongoDbServiceInternal
                     ConfigurationName = _configuration.GetConfigurationName(),
                     DatabaseName = dbName,
                     CollectionName = collectionName,
-                    Server = server,
+                    Server = _serverDisplayName,
                     DocumentCount = 0,
                     Size = 0,
                     Types = [],
@@ -197,7 +198,7 @@ internal class MongoDbService : IMongoDbServiceInternal
                 ConfigurationName = _configuration.GetConfigurationName(),
                 DatabaseName = dbName,
                 CollectionName = collectionName,
-                Server = server,
+                Server = _serverDisplayName,
                 DocumentCount = statsTask.Result.Count,
                 Size = statsTask.Result.Size,
                 Types = typesTask.Result.ToArray(),
@@ -231,15 +232,6 @@ internal class MongoDbService : IMongoDbServiceInternal
         }
 
         return indexModels;
-    }
-
-    private string ToServerName(string dbName)
-    {
-        var server = _mongoUrl.Url.TrimEnd(dbName);
-        server = server.Trim('/');
-        var p = server.LastIndexOf("//", StringComparison.Ordinal);
-        server = server.Substring(p + 2);
-        return server;
     }
 
     public async Task<bool> DoesCollectionExist(string name)
