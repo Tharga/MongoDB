@@ -48,7 +48,7 @@ public abstract class RepositoryCollectionBase<TEntity, TKey> : RepositoryCollec
     internal virtual IRepositoryCollection<TEntity, TKey> BaseCollection => this;
     private string DefaultCollectionName => typeof(TEntity).Name;
     protected string ProtectedCollectionName => CollectionName.ProtectCollectionName();
-    internal override string ServerName => _mongoDbService.GetDatabaseHostName();
+    internal override string ServerName => (_mongoDbService as IMongoDbServiceInternal)?.ServerName ?? _mongoDbService.GetDatabaseHostName();
     internal override string DatabaseName => _mongoDbService.GetDatabaseName();
     public override string CollectionName => _databaseContext?.CollectionName ?? DefaultCollectionName;
     public virtual string DatabasePart => _databaseContext?.CollectionName;

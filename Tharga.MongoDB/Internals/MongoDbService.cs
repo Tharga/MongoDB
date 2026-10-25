@@ -96,7 +96,7 @@ internal class MongoDbService : IMongoDbServiceInternal
 
     public async ValueTask<string> AssureFirewallAccessAsync(bool force = false)
     {
-        if (_configuration.GetDatabaseUrl().Server.Host.Contains("localhost", StringComparison.InvariantCultureIgnoreCase)) return null;
+        if (_configuration.GetDatabaseUrl().Servers.All(x => x.Host.Contains("localhost", StringComparison.InvariantCultureIgnoreCase))) return null;
         var message = await _mongoDbFirewallStateService.AssureFirewallAccessAsync(_configuration.GetConfiguration().AccessInfo, force);
         _logger.LogDebug(message);
         return message;
@@ -114,7 +114,7 @@ internal class MongoDbService : IMongoDbServiceInternal
 
     public string GetDatabaseAddress()
     {
-        return $"{_mongoClient.Settings.Server.Host}:{_mongoClient.Settings.Server.Port}";
+        return string.Join(",", _mongoClient.Settings.Servers.Select(x => $"{x.Host}:{x.Port}"));
     }
 
     public int GetMaxConnectionPoolSize()
@@ -129,8 +129,10 @@ internal class MongoDbService : IMongoDbServiceInternal
 
     public string GetDatabaseHostName()
     {
-        return _mongoClient.Settings.Server.Host;
+        return string.Join(",", _mongoClient.Settings.Servers.Select(x => x.Host));
     }
+
+    public string ServerName => _serverDisplayName;
 
     public Task DropCollectionAsync(string name)
     {
@@ -332,7 +334,7 @@ internal class MongoDbService : IMongoDbServiceInternal
 
     private string GetDatabaseDescription()
     {
-        return $"{_mongoDatabase.Client.Settings.Server.Host}/{_mongoDatabase.DatabaseNamespace.DatabaseName}";
+        return $"{_serverDisplayName}/{_mongoDatabase.DatabaseNamespace.DatabaseName}";
     }
 
     public void DropDatabase(string name)
