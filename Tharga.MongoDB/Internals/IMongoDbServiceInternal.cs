@@ -5,4 +5,5 @@ namespace Tharga.MongoDB.Internals;
 internal interface IMongoDbServiceInternal : IMongoDbService
 {
     IMongoDatabase BaseMongoDatabase { get; }
+    string ServerName { get; }
 }
