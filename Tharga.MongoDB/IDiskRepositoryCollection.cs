@@ -30,7 +30,7 @@ public interface IDiskRepositoryCollection<TEntity, TKey> : IRepositoryCollectio
     Task<long> DeleteManyAsync(FilterDefinition<TEntity> filter, IClientSessionHandle session = null);
 
     //Other
-    [Obsolete($"Use {nameof(ExecuteAsync)} instead. This method will be deprecated.")]
+    [Obsolete(Internals.Constants.GetCollectionObsoleteMessage)]
     IMongoCollection<TEntity> GetCollection();
 }
 

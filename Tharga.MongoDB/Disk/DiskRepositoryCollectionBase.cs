@@ -1175,10 +1175,11 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
     }
 
     //Other
-    [Obsolete($"Use {nameof(ExecuteAsync)} instead. This method will be deprecated.")]
+    [Obsolete(Constants.GetCollectionObsoleteMessage)]
     public virtual IMongoCollection<TEntity> GetCollection()
     {
-        var item = FetchCollectionAsync().GetAwaiter().GetResult();
+        //Task.Run keeps the fetch off the caller's synchronization context, which this call blocks.
+        var item = Task.Run(() => FetchCollectionAsync()).GetAwaiter().GetResult();
         return item.Value;
     }
 
