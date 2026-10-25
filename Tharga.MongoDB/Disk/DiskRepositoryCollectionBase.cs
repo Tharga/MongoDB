@@ -890,16 +890,16 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
     }
 
     //Create
-    public override async Task AddAsync(TEntity entity, IClientSessionHandle session = null)
+    public override async Task AddAsync(TEntity entity, IClientSessionHandle session = null, CancellationToken cancellationToken = default)
     {
         await ExecuteAsync(nameof(AddAsync), async (collection, sess, ct) =>
         {
             await collection.InsertOneMaybeAsync(sess, entity, ct);
             return (true, 1);
-        }, Operation.Create, session: session);
+        }, Operation.Create, cancellationToken, session: session);
     }
 
-    public override async Task<bool> TryAddAsync(TEntity entity, IClientSessionHandle session = null)
+    public override async Task<bool> TryAddAsync(TEntity entity, IClientSessionHandle session = null, CancellationToken cancellationToken = default)
     {
         return await ExecuteAsync(nameof(TryAddAsync), async (collection, sess, ct) =>
         {
@@ -913,21 +913,21 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                 return (false, 0);
             }
 
-        }, Operation.Create, session: session);
+        }, Operation.Create, cancellationToken, session: session);
     }
 
-    public override async Task AddManyAsync(IEnumerable<TEntity> entities, IClientSessionHandle session = null)
+    public override async Task AddManyAsync(IEnumerable<TEntity> entities, IClientSessionHandle session = null, CancellationToken cancellationToken = default)
     {
         await ExecuteAsync(nameof(AddManyAsync), async (collection, sess, ct) =>
         {
             var arr = entities.ToArray();
             await collection.InsertManyMaybeAsync(sess, arr, ct);
             return (true, arr.Length);
-        }, Operation.Create, session: session);
+        }, Operation.Create, cancellationToken, session: session);
     }
 
     //Update
-    public virtual async Task<EntityChangeResult<TEntity>> AddOrReplaceAsync(TEntity entity, IClientSessionHandle session = null)
+    public virtual async Task<EntityChangeResult<TEntity>> AddOrReplaceAsync(TEntity entity, IClientSessionHandle session = null, CancellationToken cancellationToken = default)
     {
         var filter = Builders<TEntity>.Filter.Eq(x => x.Id, entity.Id);
         return await ExecuteAsync(nameof(AddOrReplaceAsync), async (collection, sess, ct) =>
@@ -944,21 +944,21 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             }
 
             return (new EntityChangeResult<TEntity>(before, entity), 1);
-        }, Operation.Update, filter: filter, session: session);
+        }, Operation.Update, cancellationToken, filter: filter, session: session);
     }
 
-    public virtual Task<EntityChangeResult<TEntity>> ReplaceOneAsync(TEntity entity, OneOption<TEntity> options = null, IClientSessionHandle session = null)
+    public virtual Task<EntityChangeResult<TEntity>> ReplaceOneAsync(TEntity entity, OneOption<TEntity> options = null, IClientSessionHandle session = null, CancellationToken cancellationToken = default)
     {
         var filter = Builders<TEntity>.Filter.Eq(x => x.Id, entity.Id);
-        return ReplaceOneWithCheckAsync(entity, filter, options, session);
+        return ReplaceOneWithCheckAsync(entity, filter, options, session, cancellationToken);
     }
 
-    public virtual Task<EntityChangeResult<TEntity>> ReplaceOneAsync(TEntity entity, FilterDefinition<TEntity> filter, OneOption<TEntity> options = null, IClientSessionHandle session = null)
+    public virtual Task<EntityChangeResult<TEntity>> ReplaceOneAsync(TEntity entity, FilterDefinition<TEntity> filter, OneOption<TEntity> options = null, IClientSessionHandle session = null, CancellationToken cancellationToken = default)
     {
-        return ReplaceOneWithCheckAsync(entity, filter, options, session);
+        return ReplaceOneWithCheckAsync(entity, filter, options, session, cancellationToken);
     }
 
-    private async Task<EntityChangeResult<TEntity>> ReplaceOneWithCheckAsync(TEntity entity, FilterDefinition<TEntity> filter, OneOption<TEntity> options, IClientSessionHandle session = null)
+    private async Task<EntityChangeResult<TEntity>> ReplaceOneWithCheckAsync(TEntity entity, FilterDefinition<TEntity> filter, OneOption<TEntity> options, IClientSessionHandle session, CancellationToken cancellationToken)
     {
         if (entity == null) throw new ArgumentNullException(nameof(entity));
 
@@ -995,22 +995,22 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             var before = await collection.FindOneAndReplaceMaybeAsync(sess, filter, entity, cancellationToken: ct);
             return (new EntityChangeResult<TEntity>(before, entity), 1);
 
-        }, Operation.Update, filter: filter, session: session);
+        }, Operation.Update, cancellationToken, filter: filter, session: session);
     }
 
-    public virtual Task<EntityChangeResult<TEntity>> UpdateOneAsync(TKey id, UpdateDefinition<TEntity> update, IClientSessionHandle session = null)
+    public virtual Task<EntityChangeResult<TEntity>> UpdateOneAsync(TKey id, UpdateDefinition<TEntity> update, IClientSessionHandle session = null, CancellationToken cancellationToken = default)
     {
         var filter = Builders<TEntity>.Filter.Eq(x => x.Id, id);
-        return UpdateOneAsync(filter, update, session: session);
+        return UpdateOneAsync(filter, update, session: session, cancellationToken: cancellationToken);
     }
 
-    public virtual async Task<EntityChangeResult<TEntity>> UpdateOneAsync(Expression<Func<TEntity, bool>> predicate, UpdateDefinition<TEntity> update, OneOption<TEntity> options = null, IClientSessionHandle session = null)
+    public virtual async Task<EntityChangeResult<TEntity>> UpdateOneAsync(Expression<Func<TEntity, bool>> predicate, UpdateDefinition<TEntity> update, OneOption<TEntity> options = null, IClientSessionHandle session = null, CancellationToken cancellationToken = default)
     {
         var filter = Builders<TEntity>.Filter.Where(predicate);
-        return await UpdateOneAsync(filter, update, session: session);
+        return await UpdateOneAsync(filter, update, options, session, cancellationToken);
     }
 
-    public virtual async Task<EntityChangeResult<TEntity>> UpdateOneAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update, OneOption<TEntity> options = null, IClientSessionHandle session = null)
+    public virtual async Task<EntityChangeResult<TEntity>> UpdateOneAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update, OneOption<TEntity> options = null, IClientSessionHandle session = null, CancellationToken cancellationToken = default)
     {
         if (filter == null) throw new ArgumentException(nameof(filter));
         if (update == null) throw new ArgumentException(nameof(update));
@@ -1058,47 +1058,47 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             item = await collection.FindOneAndUpdateMaybeAsync(sess, itemFilter, update, cancellationToken: ct);
 
             return (new EntityChangeResult<TEntity>(item, async () => { return await collection.FindMaybe(sess, Builders<TEntity>.Filter.Where(x => x.Id.Equals(item.Id))).SingleAsync(ct); }), 1);
-        }, Operation.Update, filter: filter, session: session);
+        }, Operation.Update, cancellationToken, filter: filter, session: session);
 
         return response;
     }
 
-    public virtual async Task<long> UpdateManyAsync(Expression<Func<TEntity, bool>> predicate, UpdateDefinition<TEntity> update, IClientSessionHandle session = null)
+    public virtual async Task<long> UpdateManyAsync(Expression<Func<TEntity, bool>> predicate, UpdateDefinition<TEntity> update, IClientSessionHandle session = null, CancellationToken cancellationToken = default)
     {
         var filter = predicate != null ? Builders<TEntity>.Filter.Where(predicate) : FilterDefinition<TEntity>.Empty;
         return await ExecuteAsync(nameof(UpdateManyAsync), async (collection, sess, ct) =>
         {
             var result = await collection.UpdateManyMaybeAsync(sess, filter, update, ct);
             return (result.ModifiedCount, (int)result.ModifiedCount);
-        }, Operation.Update, filter: filter, session: session);
+        }, Operation.Update, cancellationToken, filter: filter, session: session);
     }
 
-    public async Task<long> UpdateManyAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update, IClientSessionHandle session = null)
+    public async Task<long> UpdateManyAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update, IClientSessionHandle session = null, CancellationToken cancellationToken = default)
     {
         return await ExecuteAsync(nameof(UpdateManyAsync), async (collection, sess, ct) =>
         {
             var result = await collection.UpdateManyMaybeAsync(sess, filter, update, ct);
             return (result.ModifiedCount, (int)result.ModifiedCount);
-        }, Operation.Update, filter: filter, session: session);
+        }, Operation.Update, cancellationToken, filter: filter, session: session);
     }
 
     //Delete
-    public override Task<TEntity> DeleteOneAsync(TKey id, IClientSessionHandle session = null)
+    public override Task<TEntity> DeleteOneAsync(TKey id, IClientSessionHandle session = null, CancellationToken cancellationToken = default)
     {
         var filter = new FilterDefinitionBuilder<TEntity>().Eq(x => x.Id, id);
-        return DeleteOneAsync(filter, session: session);
+        return DeleteOneAsync(filter, session: session, cancellationToken: cancellationToken);
     }
 
-    public Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate, OneOption<TEntity> options = null, IClientSessionHandle session = null)
+    public Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate, OneOption<TEntity> options = null, IClientSessionHandle session = null, CancellationToken cancellationToken = default)
     {
         var filter = predicate != null
             ? Builders<TEntity>.Filter.Where(predicate)
             : Builders<TEntity>.Filter.Empty;
 
-        return DeleteOneAsync(filter, options, session);
+        return DeleteOneAsync(filter, options, session, cancellationToken);
     }
 
-    public async Task<TEntity> DeleteOneAsync(FilterDefinition<TEntity> filter, OneOption<TEntity> options = null, IClientSessionHandle session = null)
+    public async Task<TEntity> DeleteOneAsync(FilterDefinition<TEntity> filter, OneOption<TEntity> options = null, IClientSessionHandle session = null, CancellationToken cancellationToken = default)
     {
         if (filter == null) throw new ArgumentNullException(nameof(filter));
 
@@ -1134,26 +1134,26 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             var itemFilter = new FilterDefinitionBuilder<TEntity>().Eq(x => x.Id, item.Id);
             await collection.FindOneAndDeleteMaybeAsync(sess, itemFilter, cancellationToken: ct);
             return (item, 1);
-        }, Operation.Delete, filter: filter, session: session);
+        }, Operation.Delete, cancellationToken, filter: filter, session: session);
     }
 
-    public async Task<long> DeleteManyAsync(Expression<Func<TEntity, bool>> predicate = null, IClientSessionHandle session = null)
+    public async Task<long> DeleteManyAsync(Expression<Func<TEntity, bool>> predicate = null, IClientSessionHandle session = null, CancellationToken cancellationToken = default)
     {
         var filter = predicate != null ? Builders<TEntity>.Filter.Where(predicate) : FilterDefinition<TEntity>.Empty;
         return await ExecuteAsync(nameof(DeleteManyAsync), async (collection, sess, ct) =>
         {
             var item = await collection.DeleteManyMaybeAsync(sess, filter, ct);
             return (item.DeletedCount, (int)item.DeletedCount);
-        }, Operation.Delete, filter: filter, session: session);
+        }, Operation.Delete, cancellationToken, filter: filter, session: session);
     }
 
-    public async Task<long> DeleteManyAsync(FilterDefinition<TEntity> filter, IClientSessionHandle session = null)
+    public async Task<long> DeleteManyAsync(FilterDefinition<TEntity> filter, IClientSessionHandle session = null, CancellationToken cancellationToken = default)
     {
         return await ExecuteAsync(nameof(DeleteManyAsync), async (collection, sess, ct) =>
         {
             var item = await collection.DeleteManyMaybeAsync(sess, filter, ct);
             return (item.DeletedCount, (int)item.DeletedCount);
-        }, Operation.Delete, filter: filter, session: session);
+        }, Operation.Delete, cancellationToken, filter: filter, session: session);
     }
 
     //Other

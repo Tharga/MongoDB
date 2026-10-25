@@ -12,22 +12,22 @@ public interface IDiskRepositoryCollection<TEntity, TKey> : IRepositoryCollectio
     where TEntity : EntityBase<TKey>
 {
     //Update
-    Task<EntityChangeResult<TEntity>> AddOrReplaceAsync(TEntity entity, IClientSessionHandle session = null);
-    Task<EntityChangeResult<TEntity>> ReplaceOneAsync(TEntity entity, OneOption<TEntity> options = null, IClientSessionHandle session = null);
+    Task<EntityChangeResult<TEntity>> AddOrReplaceAsync(TEntity entity, IClientSessionHandle session = null, CancellationToken cancellationToken = default);
+    Task<EntityChangeResult<TEntity>> ReplaceOneAsync(TEntity entity, OneOption<TEntity> options = null, IClientSessionHandle session = null, CancellationToken cancellationToken = default);
 
-    Task<EntityChangeResult<TEntity>> UpdateOneAsync(TKey id, UpdateDefinition<TEntity> update, IClientSessionHandle session = null);
-    Task<EntityChangeResult<TEntity>> UpdateOneAsync(Expression<Func<TEntity, bool>> predicate, UpdateDefinition<TEntity> update, OneOption<TEntity> options = null, IClientSessionHandle session = null);
-    Task<EntityChangeResult<TEntity>> UpdateOneAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update, OneOption<TEntity> options = null, IClientSessionHandle session = null);
+    Task<EntityChangeResult<TEntity>> UpdateOneAsync(TKey id, UpdateDefinition<TEntity> update, IClientSessionHandle session = null, CancellationToken cancellationToken = default);
+    Task<EntityChangeResult<TEntity>> UpdateOneAsync(Expression<Func<TEntity, bool>> predicate, UpdateDefinition<TEntity> update, OneOption<TEntity> options = null, IClientSessionHandle session = null, CancellationToken cancellationToken = default);
+    Task<EntityChangeResult<TEntity>> UpdateOneAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update, OneOption<TEntity> options = null, IClientSessionHandle session = null, CancellationToken cancellationToken = default);
 
-    Task<long> UpdateManyAsync(Expression<Func<TEntity, bool>> predicate, UpdateDefinition<TEntity> update, IClientSessionHandle session = null);
-    Task<long> UpdateManyAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update, IClientSessionHandle session = null);
+    Task<long> UpdateManyAsync(Expression<Func<TEntity, bool>> predicate, UpdateDefinition<TEntity> update, IClientSessionHandle session = null, CancellationToken cancellationToken = default);
+    Task<long> UpdateManyAsync(FilterDefinition<TEntity> filter, UpdateDefinition<TEntity> update, IClientSessionHandle session = null, CancellationToken cancellationToken = default);
 
     //Delete
-    Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate, OneOption<TEntity> options = null, IClientSessionHandle session = null);
-    Task<TEntity> DeleteOneAsync(FilterDefinition<TEntity> filter, OneOption<TEntity> options = null, IClientSessionHandle session = null);
+    Task<TEntity> DeleteOneAsync(Expression<Func<TEntity, bool>> predicate, OneOption<TEntity> options = null, IClientSessionHandle session = null, CancellationToken cancellationToken = default);
+    Task<TEntity> DeleteOneAsync(FilterDefinition<TEntity> filter, OneOption<TEntity> options = null, IClientSessionHandle session = null, CancellationToken cancellationToken = default);
 
-    Task<long> DeleteManyAsync(Expression<Func<TEntity, bool>> predicate = null, IClientSessionHandle session = null);
-    Task<long> DeleteManyAsync(FilterDefinition<TEntity> filter, IClientSessionHandle session = null);
+    Task<long> DeleteManyAsync(Expression<Func<TEntity, bool>> predicate = null, IClientSessionHandle session = null, CancellationToken cancellationToken = default);
+    Task<long> DeleteManyAsync(FilterDefinition<TEntity> filter, IClientSessionHandle session = null, CancellationToken cancellationToken = default);
 
     //Other
     [Obsolete(Internals.Constants.GetCollectionObsoleteMessage)]
