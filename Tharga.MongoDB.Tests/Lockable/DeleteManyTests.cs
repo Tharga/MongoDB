@@ -68,6 +68,7 @@ public class DeleteManyTests : LockableTestBase
         await sut.AddAsync(new LockableTestEntity { Id = generateNewId });
         await sut.AddAsync(new LockableTestEntity { Id = ObjectId.GenerateNewId() });
         await sut.PickForUpdateAsync(generateNewId, TimeSpan.Zero);
+        MongoClock.WaitForNextMillisecond();
 
         //Act
         var result = await sut.DeleteManyUnlockedAsync(x => true);
