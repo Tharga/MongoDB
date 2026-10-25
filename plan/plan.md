@@ -6,6 +6,7 @@
   - Implementation came before the tests this time; the tests could not have compiled without the new parameter.
 - [x] 3. Tests: `WriteCancellationTests` (16 write paths with a cancelled token + the options fix), `Lockable/DeleteOneCancellationTests`. The options test was checked against the old line: fails without the fix, passes with it. Full suite 853, 845 passed, 8 skipped.
 - [x] 4. Version 2.19 (`MAJOR_MINOR`), docs (README, getting-started), commits.
+- [x] 4b. Step-by-step safety review (user question). Library multi-step writes are safe: read-then-write steps write nothing when cancelled before the write; index assurance and `DropEmptyAsync` take no token; lockable pick/commit/release take none; limiter releases its slot in `finally`. Inherent: cancelled = unknown outcome once sent; multi-document writes not atomic (use a transaction). Introduced by this change and fixed: `UpdateOneAsync`'s lazy after-loader reused the caller's token, so `GetAfterAsync()` threw after a successful update once the token was cancelled; now `ReadAfterAsync` with `CancellationToken.None`. Test fails before (both result paths), passes after. README section on what a cancellation tells you. Full suite 855, 847 passed, 8 skipped.
 - [~] 5. Close-out: issue comment on #166 at release, Requests.md follow-up for the cascade (Team.MongoDB, Cache.MongoDB rebuild), archive plan, remove `plan/`, PR.
 
 ## Notes

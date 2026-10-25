@@ -1038,12 +1038,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                             IsUpsert = false
                         };
                         item = await collection.FindOneAndUpdateMaybeAsync(sess, filter, update, opt, ct);
-                        return (new EntityChangeResult<TEntity>(item, async () =>
-                        {
-                            if (item == null) return null;
-                            var after = await collection.FindMaybe(sess, Builders<TEntity>.Filter.Where(x => x.Id.Equals(item.Id))).SingleAsync(ct);
-                            return after;
-                        }), 1);
+                        return (new EntityChangeResult<TEntity>(item, async () => item == null ? null : await ReadAfterAsync(collection, sess, item.Id)), 1);
                     }
                 case EMode.First:
                     item = await findFluent.FirstAsync(ct);
@@ -1057,10 +1052,16 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             var itemFilter = new FilterDefinitionBuilder<TEntity>().Eq(x => x.Id, item.Id);
             item = await collection.FindOneAndUpdateMaybeAsync(sess, itemFilter, update, cancellationToken: ct);
 
-            return (new EntityChangeResult<TEntity>(item, async () => { return await collection.FindMaybe(sess, Builders<TEntity>.Filter.Where(x => x.Id.Equals(item.Id))).SingleAsync(ct); }), 1);
+            return (new EntityChangeResult<TEntity>(item, () => ReadAfterAsync(collection, sess, item.Id)), 1);
         }, Operation.Update, cancellationToken, filter: filter, session: session);
 
         return response;
+    }
+
+    //Runs after the write has completed, so it must not depend on the token the caller passed for the write.
+    private static async ValueTask<TEntity> ReadAfterAsync(IMongoCollection<TEntity> collection, IClientSessionHandle session, TKey id)
+    {
+        return await collection.FindMaybe(session, Builders<TEntity>.Filter.Where(x => x.Id.Equals(id))).SingleAsync(CancellationToken.None);
     }
 
     public virtual async Task<long> UpdateManyAsync(Expression<Func<TEntity, bool>> predicate, UpdateDefinition<TEntity> update, IClientSessionHandle session = null, CancellationToken cancellationToken = default)

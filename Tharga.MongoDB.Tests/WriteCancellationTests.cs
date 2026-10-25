@@ -68,6 +68,29 @@ public class WriteCancellationTests : GenericRepositoryCollectionBaseTestBase
         (await sut.GetAsync(x => x.ExtraValue == shared && x.Value == updated).ToArrayAsync()).Should().HaveCount(1);
     }
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData(EMode.FirstOrDefault)]
+    [Trait("Category", "Database")]
+    public async Task UpdateOneAsync_TokenCancelledAfterTheUpdate_AfterCanStillBeRead(EMode? mode)
+    {
+        //Arrange
+        var sut = await GetCollection();
+        var existing = InitialData.First();
+        var updated = Guid.NewGuid().ToString();
+        var update = Builders<TestEntity>.Update.Set(x => x.ExtraValue, updated);
+        var options = mode == null ? null : new OneOption<TestEntity> { Mode = mode.Value };
+        using var cancellation = new CancellationTokenSource();
+        var result = await sut.UpdateOneAsync(Builders<TestEntity>.Filter.Eq(x => x.Id, existing.Id), update, options, cancellationToken: cancellation.Token);
+        await cancellation.CancelAsync();
+
+        //Act
+        var after = await result.GetAfterAsync();
+
+        //Assert
+        after.ExtraValue.Should().Be(updated, "the update completed before the token was cancelled");
+    }
+
     private static Task InvokeAsync(string operation, DiskRepositoryCollectionBase<TestEntity, ObjectId> sut, TestEntity existing, CancellationToken cancellationToken)
     {
         var update = Builders<TestEntity>.Update.Set(x => x.Value, "changed");
