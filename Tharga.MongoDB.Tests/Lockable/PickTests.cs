@@ -119,6 +119,7 @@ public class PickTests : LockableTestBase
         var entity = new LockableTestEntity { Id = ObjectId.GenerateNewId() };
         await sut.AddAsync(entity);
         await PickAsync(type, sut, entity.Id, "first actor", TimeSpan.Zero);
+        MongoClock.WaitForNextMillisecond();
 
         //Act
         await using var result = await PickAsync(type, sut, entity.Id, "second actor");

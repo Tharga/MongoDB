@@ -32,6 +32,7 @@ public class GetUnlockedTests : LockableTestBase
         var entityThatTimedOut = new LockableTestEntity { Id = ObjectId.GenerateNewId() };
         await sut.AddAsync(entityThatTimedOut);
         await sut.PickForUpdateAsync(entityThatTimedOut.Id, TimeSpan.Zero);
+        MongoClock.WaitForNextMillisecond();
 
         await sut.AddAsync(new LockableTestEntity { Id = ObjectId.GenerateNewId() });
         await sut.AddAsync(new LockableTestEntity { Id = ObjectId.GenerateNewId() });

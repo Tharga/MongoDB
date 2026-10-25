@@ -45,6 +45,7 @@ public class GetLockedTests : LockableTestBase
         await sut.AddAsync(new LockableTestEntity { Id = ObjectId.GenerateNewId() });
         await sut.AddAsync(new LockableTestEntity { Id = ObjectId.GenerateNewId() });
         await sut.PickForUpdateAsync(lockableTestEntity.Id, TimeSpan.Zero);
+        MongoClock.WaitForNextMillisecond();
 
         //Act
         var items = await sut.GetExpiredAsync().ToArrayAsync();

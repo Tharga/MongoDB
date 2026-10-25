@@ -153,6 +153,7 @@ public class PickSortTests : LockableTestBase
         var sut = await SeedAsync(2, 1);
         var first = await sut.GetOneAsync(x => x.Count == 1);
         await sut.PickForUpdateAsync(first.Id, actor: "holder", timeout: TimeSpan.Zero);
+        MongoClock.WaitForNextMillisecond();
 
         //Act
         await using var scope = await sut.PickForUpdateAsync(x => true, new PickOptions<LockableTestEntity> { Sort = Ascending });

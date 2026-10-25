@@ -73,6 +73,7 @@ public class UpdateManyTests : LockableTestBase
         await sut.AddAsync(new LockableTestEntity { Id = ObjectId.GenerateNewId() });
         await sut.AddAsync(new LockableTestEntity { Id = ObjectId.GenerateNewId() });
         await using var scope = await sut.PickForUpdateAsync(generateNewId, TimeSpan.Zero);
+        MongoClock.WaitForNextMillisecond();
 
         var filter = new FilterDefinitionBuilder<LockableTestEntity>().Empty;
         var update = new UpdateDefinitionBuilder<LockableTestEntity>().Set(x => x.Count, 1);
