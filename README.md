@@ -5,7 +5,7 @@
 [![GitHub repo Issues](https://img.shields.io/github/issues/Tharga/MongoDB?style=flat&logo=github&logoColor=red&label=Issues)](https://github.com/Tharga/MongoDB/issues?q=is%3Aopen)
 
 ## Requirements
-Targets **.NET 10**. Reaches MongoDB Server **4.2 and later** — the package floors `MongoDB.Driver` at `3.9.0`, the last driver line that supports server 4.2, so Azure Cosmos DB for MongoDB accounts on 4.2 keep working. If all your servers are 4.4 or later you can reference a newer driver directly in your own project; the dependency is a floor, not a lock. See [Server compatibility](https://mongodb.tharga.net/articles/server-compatibility.html) for the full matrix, the Cosmos quirks, and how to check which server version you are on.
+Targets **.NET 10**. Reaches MongoDB Server **4.2 and later** — the package floors `MongoDB.Driver` at `3.9.0`, the last driver line that supports server 4.2, so Azure Cosmos DB for MongoDB accounts on 4.2 keep working. If all your servers are 4.4 or later you can reference a newer driver directly in your own project; the dependency is a floor, not a lock. Versions 2.18.1 and 2.18.2 carried driver 3.12.0 by mistake and cannot reach a 4.2 server. See [Server compatibility](https://mongodb.tharga.net/articles/server-compatibility.html) for the full matrix, the Cosmos quirks, and how to check which server version you are on.
 
 ## Get started
 Install the nuget package `Tharga.MongoDB`. It is available at [nuget.org](#https://www.nuget.org/packages/Tharga.MongoDB).
@@ -595,6 +595,16 @@ When a collection is dropped (`DropCollectionAsync`, or `DropEmpty`), the next w
 
 To automatically register known types when using multiple types in the same collection, provide a value for `Types`.
 
+Override `GetExceptionLogLevel` to choose how an exception from a database operation is logged. The library logs it before the exception reaches your code, so an exception you expect and handle — a duplicate-key error from a unique index used to detect a lost race, say — would otherwise show up as an Error. Return `LogLevel.None` to skip the entry. The exception is still thrown and the call still appears in the monitor. By default connection, timeout and paused-pool errors log at Warning and everything else at Error. Lockable collections can override it the same way.
+```csharp
+protected override LogLevel GetExceptionLogLevel(Exception exception, string operation)
+{
+    return exception is MongoWriteException { WriteError.Category: ServerErrorCategory.DuplicateKey }
+        ? LogLevel.Information
+        : base.GetExceptionLogLevel(exception, operation);
+}
+```
+
 Create `Indices` by overriding the property in your collection class.
 The list of `Indices` is applied befor the first record is added to the collection.
 It is also reviewed once every time the application starts, removing `Indices` that no longer exists and creates new ones if the code have changed.
@@ -1160,6 +1170,8 @@ Each tool/resource is tagged below with its required level. Anything above the c
 | `mongodb://clients` | Metadata | Connected remote monitoring agents |
 | `mongodb://monitoring` | DataRead | Recent and slow calls, summaries, error summary, connection pool state, and `inFlightCalls` (queued vs executing, grouped by collection/function/filter) — calls embed filter values |
 
+The `server` on a collection is the host list only (`cluster0.ab12.mongodb.net`, `host-a:27017,host-b:27017`). Before 2.18.3 it could include the user name and password from the connection string; on upgrade, the monitor also removes them from entries it has already stored in `_monitor`.
+
 ### Tools (System scope)
 | Tool | Level | Args |
 |---|---|---|
@@ -1254,6 +1266,8 @@ For arbitrary aggregation pipelines, use `ExecuteAsync` (materialising) or `Exec
 ## Custom queries
 
 Two methods hand you the underlying `IMongoCollection<T>` so you can write queries the repository doesn't expose directly — projections, aggregation pipelines, etc. Both run through the library's index management, concurrency limiter, and admin-UI call tracking.
+
+Use these instead of the obsolete `GetCollection()`, which blocks the calling thread until the collection has been fetched and initiated. Since 2.18.3 it no longer deadlocks when called from a synchronization context (a Blazor component, a WPF dispatcher), but it still ties up the thread.
 
 ### `ExecuteAsync` — materialised result
 Use when the result fits comfortably in memory.
