@@ -86,10 +86,12 @@ public class WeatherForecastService
     public IAsyncEnumerable<WeatherForecast> GetAsync()
         => _collection.GetAsync();
 
-    public Task AddAsync(WeatherForecast forecast)
-        => _collection.AddAsync(forecast);
+    public Task AddAsync(WeatherForecast forecast, CancellationToken cancellationToken = default)
+        => _collection.AddAsync(forecast, cancellationToken: cancellationToken);
 }
 ```
+
+Every read and write method takes an optional `CancellationToken` as its last parameter (the writes since 2.19), and passes it to the driver.
 
 ## Where next
 

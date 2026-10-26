@@ -179,19 +179,19 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
         => Disk.GetPageProjectionAsync(pageSize, position, projection, predicate, sortBy, ascending, cancellationToken);
 
     //Create
-    public override Task AddAsync(TEntity entity, IClientSessionHandle session = null)
+    public override Task AddAsync(TEntity entity, IClientSessionHandle session = null, CancellationToken cancellationToken = default)
     {
-        return Disk.AddAsync(entity, session);
+        return Disk.AddAsync(entity, session, cancellationToken);
     }
 
-    public override Task<bool> TryAddAsync(TEntity entity, IClientSessionHandle session = null)
+    public override Task<bool> TryAddAsync(TEntity entity, IClientSessionHandle session = null, CancellationToken cancellationToken = default)
     {
-        return Disk.TryAddAsync(entity, session);
+        return Disk.TryAddAsync(entity, session, cancellationToken);
     }
 
-    public override Task AddManyAsync(IEnumerable<TEntity> entities, IClientSessionHandle session = null)
+    public override Task AddManyAsync(IEnumerable<TEntity> entities, IClientSessionHandle session = null, CancellationToken cancellationToken = default)
     {
-        return Disk.AddManyAsync(entities, session);
+        return Disk.AddManyAsync(entities, session, cancellationToken);
     }
 
     //Update
@@ -208,8 +208,10 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
     }
 
     //Delete
-    public override async Task<TEntity> DeleteOneAsync(TKey id, IClientSessionHandle session = null)
+    public override async Task<TEntity> DeleteOneAsync(TKey id, IClientSessionHandle session = null, CancellationToken cancellationToken = default)
     {
+        //Checked once, before the pick: cancelling between the pick and the commit would leave the document locked until it expires.
+        cancellationToken.ThrowIfCancellationRequested();
         var scope = await PickForDeleteAsync(id, session: session);
         var item = await scope.CommitAsync();
         return item;

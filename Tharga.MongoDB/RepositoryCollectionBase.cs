@@ -129,12 +129,12 @@ public abstract class RepositoryCollectionBase<TEntity, TKey> : RepositoryCollec
         CancellationToken cancellationToken = default);
 
     //Create
-    public abstract Task AddAsync(TEntity entity, IClientSessionHandle session = null);
-    public abstract Task<bool> TryAddAsync(TEntity entity, IClientSessionHandle session = null);
-    public abstract Task AddManyAsync(IEnumerable<TEntity> entities, IClientSessionHandle session = null);
+    public abstract Task AddAsync(TEntity entity, IClientSessionHandle session = null, CancellationToken cancellationToken = default);
+    public abstract Task<bool> TryAddAsync(TEntity entity, IClientSessionHandle session = null, CancellationToken cancellationToken = default);
+    public abstract Task AddManyAsync(IEnumerable<TEntity> entities, IClientSessionHandle session = null, CancellationToken cancellationToken = default);
 
     //Delete
-    public abstract Task<TEntity> DeleteOneAsync(TKey id, IClientSessionHandle session = null);
+    public abstract Task<TEntity> DeleteOneAsync(TKey id, IClientSessionHandle session = null, CancellationToken cancellationToken = default);
 
     //Other
     public abstract Task DropCollectionAsync();
