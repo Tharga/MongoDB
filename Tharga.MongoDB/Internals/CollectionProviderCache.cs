@@ -1,40 +1,31 @@
 ﻿using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Threading;
 
 namespace Tharga.MongoDB.Internals;
 
 internal class CollectionProviderCache : ICollectionProviderCache
 {
-    private readonly ConcurrentDictionary<string, object> _cache = new();
-    private readonly SemaphoreSlim _lock = new(1, 1);
+    private readonly ConcurrentDictionary<string, Lazy<object>> _cache = new();
 
     public TCollection GetCollection<TCollection>(DatabaseContext databaseContext, Func<DatabaseContext, TCollection> loader)
         where TCollection : IReadOnlyRepositoryCollection
     {
         var key = $"{typeof(TCollection).FullName}.{databaseContext?.CollectionName}.{databaseContext?.DatabasePart}.{databaseContext?.ConfigurationName?.Value}";
 
-        if (_cache.TryGetValue(key, out var collection))
-        {
-            return (TCollection)collection;
-        }
+        //NOTE: One Lazy per key, so the loader runs once per key and concurrent callers wait for that one instance. A lock per key, not one for the whole cache, so a loader that resolves another collection cannot deadlock.
+        var lazy = _cache.GetOrAdd(key, _ => new Lazy<object>(() => loader.Invoke(databaseContext), LazyThreadSafetyMode.ExecutionAndPublication));
 
         try
         {
-            _lock.WaitAsync();
-
-            if (_cache.TryGetValue(key, out collection))
-            {
-                return (TCollection)collection;
-            }
-
-            collection = loader.Invoke(databaseContext);
-            _cache.TryAdd(key, collection);
-            return (TCollection)collection;
+            return (TCollection)lazy.Value;
         }
-        finally
+        catch
         {
-            _lock.Release();
+            //NOTE: A failed load is not cached; the next call tries again.
+            _cache.TryRemove(new KeyValuePair<string, Lazy<object>>(key, lazy));
+            throw;
         }
     }
 }
