@@ -374,7 +374,7 @@ Acquisition stays unchanged (sequential, fast); the commit pass runs inside an i
 
 #### Requirements
 - **Replica set or sharded cluster.** MongoDB transactions don't work on standalone deployments; the driver throws on `StartTransaction`.
-- All collections inside one transaction must be backed by the same `MongoClient` (same cluster). Cross-cluster transactions aren't supported by MongoDB.
+- All collections inside one transaction must be backed by the same `MongoClient`: the same cluster, reached with the same connection string apart from the database name (same user, pool size and options). Cross-cluster transactions aren't supported by MongoDB.
 - Default 60-second transaction timeout — don't try to work around it. For long workflows, do the deciding outside the transaction and only wrap the commit pass.
 
 #### Behavior under an active session
@@ -1453,7 +1453,7 @@ The built-in execute limiter queues database operations to prevent exhausting th
 It is always sized to the connection's `MaxConnectionPoolSize` (the driver default is 100) — no configuration needed.
 Set `MaxPoolSize` in the connection string, or use [`MaxPoolSizeOverride`](#per-configuration-pool-size) to control it per configuration.
 
-Operations sharing the same connection pool — the same set of servers **and** the same `MaxConnectionPoolSize` — share a single queue, regardless of how many configuration names point to that cluster. Configurations on the same cluster with **different** pool sizes get their own `MongoClient` and their own queue.
+Operations sharing the same connection pool — the same set of servers **and** the same `MaxConnectionPoolSize` — share a single queue, regardless of how many configuration names point to that cluster. Configurations on the same cluster with **different** pool sizes get their own `MongoClient` and their own queue. Configurations that differ only in other connection settings (user, `authSource`, TLS, read preference, ...) get their own `MongoClient` but share the queue.
 
 ### Configuration by `appsettings.json`
 ```json
@@ -1515,7 +1515,7 @@ Rejections are counted per pool on `IQueueMonitor.GetPerPoolState()` (`PoolQueue
 The monitor surfaces the limiter **per pool** (one per cluster): queue/exec and depth/wait graphs per pool, what is queued vs executing right now (`GetInFlightCalls()` / the MCP `inFlightCalls` resource), and actual open connections per cluster vs a configured limit (`GetClusterConnectionSummary()` + `Monitor.ClusterConnectionLimit`). See the [monitoring docs](https://github.com/Tharga/MongoDB/blob/master/docs/articles/monitoring.md).
 
 ### Per-configuration pool size
-`MaxConnectionPoolSize` is part of the `MongoClient` cache key, so two configurations pointing at the same cluster with different `MaxPoolSize` values each get their own client with the correct pool size — they no longer silently share whichever client was created first.
+A `MongoClient` is shared only by configurations whose connection strings are identical apart from the database name. Two configurations pointing at the same cluster with different `MaxPoolSize` values (or a different user or other connection option) each get their own client with their own settings — they never share whichever client was created first.
 
 To set the pool size per configuration name without separate connection strings, provide `MaxPoolSizeOverride`. It is applied to the connection URL **before** the `MongoClient` is created, so both the driver and the execute limiter see the same value:
 

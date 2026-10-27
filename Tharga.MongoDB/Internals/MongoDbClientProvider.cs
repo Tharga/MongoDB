@@ -3,6 +3,8 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Security.Cryptography;
+using System.Text;
 using System.Threading;
 using MongoDB.Driver;
 using MongoDB.Driver.Core.Configuration;
@@ -38,8 +40,9 @@ internal class MongoDbClientProvider : IMongoDbClientProvider
     public MongoClient GetClient(MongoUrl mongoUrl)
     {
         var key = GetServerKey(mongoUrl);
+        var clientKey = GetClientKey(mongoUrl);
 
-        var lazyClient = _cache.GetOrAdd(key, _ =>
+        var lazyClient = _cache.GetOrAdd(clientKey, _ =>
             new Lazy<MongoClient>(() =>
             {
                 var settings = MongoClientSettings.FromUrl(mongoUrl);
@@ -122,6 +125,20 @@ internal class MongoDbClientProvider : IMongoDbClientProvider
         // shares this key) instead of silently sharing whichever client was created first.
         var servers = string.Join(",", url.Servers.Select(s => s.ToString()).OrderBy(x => x));
         return $"{servers}|pool={url.MaxConnectionPoolSize}";
+    }
+
+    /// <summary>
+    /// The key a <see cref="MongoClient"/> is cached under. Two configurations share a client only when their
+    /// URLs are identical apart from the database name, so a client is never reused by a configuration with a
+    /// different user, password, authSource, TLS setting, read preference or other client option. The URL is
+    /// hashed so the key never holds the password. <see cref="GetServerKey"/> stays the per-cluster key for the
+    /// execute limiter and the monitor.
+    /// </summary>
+    internal static string GetClientKey(MongoUrl url)
+    {
+        var withoutDatabase = new global::MongoDB.Driver.MongoUrlBuilder(url.ToString()) { DatabaseName = null }.ToString();
+        var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(withoutDatabase)));
+        return $"{GetServerKey(url)}|client={hash}";
     }
 
     private const string PoolSizeSeparator = "|pool=";
