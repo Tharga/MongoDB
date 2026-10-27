@@ -603,6 +603,7 @@ The properties `AutoClean`, `CleanOnStartup`, `CreateCollectionStrategy` and `Re
 
 `CreateCollectionStrategy` decides when a collection is created and whether it is dropped again:
 - `DropEmpty` (default) — created when a document is added, dropped when a delete leaves it empty. A collection that declares a **unique** index is never dropped: other processes cannot see the drop and would keep writing to the recreated collection without the index, and once duplicates exist the unique index can no longer be built.
+  **Not safe with concurrent writes:** MongoDB cannot drop a collection only if it is still empty, so the check and the drop are two steps. A document added by another caller or process between them is lost with the dropped collection. Use `CreateOnAdd` for collections that are written while others delete from them, such as queues. Automatic dropping will be replaced by an explicit cleanup call in a coming minor version (#189).
 - `CreateOnAdd` — created when a document is added, never dropped automatically.
 - `CreateOnGet` — created on first access (read or write), never dropped automatically.
 
