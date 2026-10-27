@@ -41,7 +41,7 @@ Acquisition stays unchanged (sequential, fast); the commit pass runs inside an i
 ## Requirements
 
 - **Replica set or sharded cluster.** MongoDB transactions don't work on standalone deployments; the driver throws on `StartTransaction`.
-- All collections inside one transaction must be backed by the same `MongoClient` (same cluster). Cross-cluster transactions aren't supported by MongoDB.
+- All collections inside one transaction must be backed by the same `MongoClient`: the same cluster, reached with the same connection string apart from the database name (same user, pool size and options). Cross-cluster transactions aren't supported by MongoDB.
 - Default 60-second transaction timeout — don't try to work around it. For long workflows, do the deciding outside the transaction and only wrap the commit pass.
 
 ## Behaviour under an active session

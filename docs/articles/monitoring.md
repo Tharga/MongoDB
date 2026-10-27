@@ -127,8 +127,8 @@ then each registered callback in registration order, so a hook cannot switch the
 
 ## Connection pool, queue and in-flight calls
 
-Database operations pass through a per-pool concurrency limiter (one pool per `MongoClient`, keyed by the set of
-server hosts **and** the pool's `MaxConnectionPoolSize`). The queue is unbounded unless you bound it — see
+Database operations pass through a per-pool concurrency limiter (one pool per set of server hosts **and**
+`MaxConnectionPoolSize`, shared by every `MongoClient` with that combination). The queue is unbounded unless you bound it — see
 [Backpressure](#backpressure) below, which matters more than it sounds. The Blazor queue view surfaces this
 **per pool**, not as a single process-wide figure:
 
