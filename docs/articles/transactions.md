@@ -47,7 +47,6 @@ Acquisition stays unchanged (sequential, fast); the commit pass runs inside an i
 ## Behaviour under an active session
 
 - **Index DDL is skipped** when a session is active (MongoDB forbids index management inside a transaction). Indexes are assured by the next non-transactional call against the collection. If your transaction is the *first* call against a fresh collection on process startup, the index won't be assured until later — warm up the collection at startup with a cheap read.
-- `DropEmptyAsync` (auto-drop after the last delete) is similarly skipped under a session.
 
 ## Out of scope
 

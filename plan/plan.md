@@ -10,7 +10,8 @@
 - [x] 3. `DropIfEmptyAsync()` on `IRepositoryCollection`, `RepositoryCollectionBase`, disk and lockable. The drop itself moved to private `DropCollectionCoreAsync`, shared with `DropCollectionAsync`, so the inner drop is not intercepted a second time. Order: interceptors, unique guard, `GetCollectionAsync` (opens the firewall), existence, count with limit 1, drop. Tests: 6 in `IndexLossTests`, 2 in `InterceptorPipelineTests` (one interception when it drops; rejection keeps the collection).
 - [x] 4. `MAJOR_MINOR` → `2.20` in `.github/workflows/build.yml`.
 - [x] 5. Full test suite: 891, 0 failed, 8 skipped (baseline 878; +13 new).
-- [~] 6. Docs (`docs:` commit): README strategy section and configuration examples (also fixes the code example, which has JSON syntax inside a C# initializer), README and `docs/articles/transactions.md` session note, `docs/articles/collection-interceptors.md` nested-call caveat.
+- [x] 6. Docs (`docs:` commit): README strategy section rewritten around `DropIfEmptyAsync`; configuration examples use `CreateOnAdd`/`CreateOnGet`, the C# example is valid C# again, and `ResultLimit` (no longer a property) became `FetchSize` in those examples; session note removed from README and `docs/articles/transactions.md`; `docs/articles/collection-interceptors.md` caveat now says two operations drop a collection. Generated `docs/api` is gitignored and comes from the XML comments.
+  - Not touched: README `## MongoDB Result Limit` still documents a `ResultLimit` setting that no longer exists. Unrelated to #189.
 
 ## Close-out (when the user says done)
 
@@ -24,4 +25,4 @@ Covered by step 6.
 
 ## Last session
 
-2026-10-28: plan written, waiting on confirmation before code.
+2026-10-28: plan confirmed (keep the unique-index guard in `DropIfEmptyAsync`; make the configuration property nullable). Steps 0–6 done in three commits: assertions swap, fix, docs. Full suite 891 / 0 failed / 8 skipped. Branch not pushed yet: waiting for the user's go-ahead to push, then their test and "done" before close-out.

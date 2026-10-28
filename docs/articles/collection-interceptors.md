@@ -109,5 +109,5 @@ Use `ActionEvent` to watch. Use an interceptor to decide.
 ## Caveats
 
 - **Interceptors are effectively singletons.** They are resolved once when the service factory is built. Keep per-operation state in an `AsyncLocal`, not in the interceptor — in Blazor Server a DI scope is the circuit lifetime, not the operation, so a scoped holder would go stale on a context switch.
-- **`CreateStrategy.DropEmpty` nests a call.** When a delete empties a collection under that strategy, the package drops the collection, which raises its own `DropCollectionAsync` interception inside the delete. An interceptor that permits the delete but rejects the drop will throw *after* the delete has already been applied.
+- **Two operations drop a collection.** `DropCollectionAsync` and `DropIfEmptyAsync` each report their own name, with `OperationType` `Delete`, and the drop inside `DropIfEmptyAsync` is not reported a second time. A policy that forbids dropping collections, but not deleting documents, has to check both names.
 - **Rejected calls are invisible to the monitor.** The chain runs before the call is registered, so a rejected operation does not appear in the monitor, call history or `/developer/database`. It never touched the database. Audit rejections in your interceptor, which is where the reason lives.
