@@ -1,15 +1,15 @@
-﻿namespace Tharga.MongoDB.Configuration;
+﻿using System;
+
+namespace Tharga.MongoDB.Configuration;
 
 public enum CreateStrategy
 {
     /// <summary>
-    /// Create collection if it does not exist when a record is added and drop when the collection is empty.
-    /// A collection that declares a unique index is never dropped, since other processes would keep writing to it
-    /// without that index once it is recreated.
-    /// Not safe with concurrent writes: the emptiness check and the drop are separate steps, so a document added
-    /// between them is lost with the dropped collection. Use <see cref="CreateOnAdd"/> for collections that are
-    /// written while others delete from them.
+    /// Behaves as <see cref="CreateOnAdd"/>. Empty collections used to be dropped automatically, which lost documents
+    /// added between the emptiness check and the drop. Call <see cref="IRepositoryCollection.DropIfEmptyAsync"/> to
+    /// drop an empty collection.
     /// </summary>
+    [Obsolete("Empty collections are no longer dropped automatically, and this value behaves as CreateOnAdd. Call IRepositoryCollection.DropIfEmptyAsync to drop an empty collection.")]
     DropEmpty,
 
     /// <summary>

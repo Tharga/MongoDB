@@ -10,6 +10,21 @@ namespace Tharga.MongoDB;
 public interface IRepositoryCollection : IReadOnlyRepositoryCollection
 {
     Task DropCollectionAsync();
+
+    /// <summary>
+    /// Drops the collection if it holds no documents. Collections are never dropped automatically, so this is the
+    /// maintenance call for removing empty ones, such as per-part collections that are no longer used.
+    /// MongoDB cannot drop a collection only if it is still empty, so the count and the drop are two steps, and a
+    /// document added by another caller or process between them is lost with the collection. Call this only while
+    /// nothing writes to the collection.
+    /// A collection that declares a unique index is never dropped: other processes cannot see the drop and would
+    /// recreate the collection without the index on their next write. Use <see cref="DropCollectionAsync"/> to drop
+    /// it regardless.
+    /// </summary>
+    /// <returns>
+    /// True if the collection was dropped. False if it does not exist, holds documents, or declares a unique index.
+    /// </returns>
+    Task<bool> DropIfEmptyAsync();
 }
 
 public interface IRepositoryCollection<TEntity, TKey> : IReadOnlyRepositoryCollection<TEntity, TKey>, IRepositoryCollection

@@ -241,8 +241,6 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 
                 steps.Add(new StepResponse { Timestamp = actionEndTimestamp, Step = "Action", Message = actionMessage });
 
-                if (operation == Operation.Delete && session == null) await DropEmptyAsync(collection);
-
                 return response;
             }, _mongoDbService.GetServerKey(), _mongoDbService.GetMaxConnectionPoolSize(), BuildCallContext(callKey, functionName, operation, filter), cancellationToken);
 
@@ -1398,6 +1396,25 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         // collection as the one hole in the seam.
         await RunInvocationInterceptorsAsync(nameof(DropCollectionAsync), Operation.Delete, CancellationToken.None).ConfigureAwait(false);
 
+        await DropCollectionCoreAsync();
+    }
+
+    public override async Task<bool> DropIfEmptyAsync()
+    {
+        await RunInvocationInterceptorsAsync(nameof(DropIfEmptyAsync), Operation.Delete, CancellationToken.None).ConfigureAwait(false);
+
+        if (DeclaresUniqueIndex()) return false;
+
+        var collection = await _mongoDbService.GetCollectionAsync<TEntity>(ProtectedCollectionName);
+        if (!await _mongoDbService.DoesCollectionExist(ProtectedCollectionName)) return false;
+        if (await collection.CountDocumentsAsync(FilterDefinition<TEntity>.Empty, new CountOptions { Limit = 1 }) != 0) return false;
+
+        await DropCollectionCoreAsync();
+        return true;
+    }
+
+    private async Task DropCollectionCoreAsync()
+    {
         await _mongoDbService.DropCollectionAsync(ProtectedCollectionName);
         _initiationLibrary.ResetIndexAssured(ServerName, DatabaseName, ProtectedCollectionName);
         // Carry the resolved identity (same values used when the collection was reported) so the
@@ -1525,7 +1542,6 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
                 {
                     await AssureIndex(collection);
                     await CleanAsync(collection);
-                    await DropEmptyAsync(collection);
                 }
                 else if (CreateCollectionStrategy == CreateStrategy.CreateOnGet)
                 {
@@ -1932,18 +1948,6 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             CleanedAt = doc.GetValue("CleanedAt", DateTime.MinValue).ToUniversalTime(),
             DocumentsCleaned = doc.GetValue("DocumentsCleaned", 0).AsInt32
         };
-    }
-
-    protected virtual async Task DropEmptyAsync(IMongoCollection<TEntity> collection)
-    {
-        if (CreateCollectionStrategy != CreateStrategy.DropEmpty) return;
-        if (DeclaresUniqueIndex()) return;
-
-        var any = await collection.CountDocumentsAsync(x => true, new CountOptions { Limit = 1 }) != 0;
-
-        if (any) return;
-
-        await DropCollectionAsync();
     }
 
     private bool DeclaresUniqueIndex()

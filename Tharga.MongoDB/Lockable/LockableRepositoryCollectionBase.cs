@@ -270,6 +270,11 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
         return Disk.DropCollectionAsync();
     }
 
+    public override Task<bool> DropIfEmptyAsync()
+    {
+        return Disk.DropIfEmptyAsync();
+    }
+
     public override Task<T> ExecuteAsync<T>(Func<IMongoCollection<TEntity>, Task<T>> execute, Operation operation)
     {
         if (operation != Operation.Read && operation != Operation.Create) throw new InvalidOperationException($"Only operations {nameof(Operation.Read)} and {nameof(Operation.Create)} are allowed for lockable repository collections. {nameof(Operation.Update)} and {nameof(Operation.Delete)} must go through the lock-acquire/commit cycle.");
