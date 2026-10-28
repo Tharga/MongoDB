@@ -1,6 +1,6 @@
 using System;
 using System.Reflection;
-using FluentAssertions;
+using AwesomeAssertions;
 using Tharga.MongoDB.Configuration;
 using Tharga.MongoDB.Disk;
 using Xunit;

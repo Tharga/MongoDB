@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
+using AwesomeAssertions;
 using Tharga.MongoDB.Disk;
 using Tharga.MongoDB.Interception;
 using Tharga.MongoDB.Tests.Support;

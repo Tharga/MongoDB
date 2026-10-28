@@ -1,4 +1,4 @@
-using FluentAssertions;
+using AwesomeAssertions;
 using System;
 using System.Collections.Concurrent;
 using System.Threading;

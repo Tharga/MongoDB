@@ -1,4 +1,4 @@
-using FluentAssertions;
+using AwesomeAssertions;
 using System.Linq;
 using System.Threading.Tasks;
 using Tharga.MongoDB.Configuration;

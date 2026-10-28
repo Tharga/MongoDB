@@ -1,7 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.Threading.Tasks;
-using FluentAssertions;
+using AwesomeAssertions;
 using MongoDB.Bson;
 using Tharga.MongoDB.Configuration;
 using Tharga.MongoDB.Internals;
