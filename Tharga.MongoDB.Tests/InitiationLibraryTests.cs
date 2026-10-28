@@ -1,5 +1,5 @@
 using System.Linq;
-using FluentAssertions;
+using AwesomeAssertions;
 using Tharga.MongoDB;
 using Tharga.MongoDB.Internals;
 using Xunit;

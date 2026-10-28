@@ -138,6 +138,7 @@ public abstract class RepositoryCollectionBase<TEntity, TKey> : RepositoryCollec
 
     //Other
     public abstract Task DropCollectionAsync();
+    public abstract Task<bool> DropIfEmptyAsync();
 
     public abstract Task<T> ExecuteAsync<T>(Func<IMongoCollection<TEntity>, Task<T>> execute, Operation operation);
     public abstract Task<T> ExecuteAsync<T>(Func<IMongoCollection<TEntity>, CancellationToken, Task<T>> execute, Operation operation, CancellationToken cancellationToken);

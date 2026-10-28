@@ -1,5 +1,5 @@
 using System;
-using FluentAssertions;
+using AwesomeAssertions;
 using MongoDB.Bson;
 using Tharga.MongoDB.Paging;
 using Xunit;

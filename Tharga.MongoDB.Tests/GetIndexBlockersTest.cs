@@ -2,7 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Bogus;
-using FluentAssertions;
+using AwesomeAssertions;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Tharga.MongoDB.Disk;

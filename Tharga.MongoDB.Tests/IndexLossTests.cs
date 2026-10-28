@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using FluentAssertions;
+using AwesomeAssertions;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Tharga.MongoDB.Configuration;
@@ -49,26 +49,9 @@ public class IndexLossTests : MongoDbTestBase
 
     [Fact]
     [Trait("Category", "Database")]
-    public async Task DropEmpty_WithoutUniqueIndex_DropsAndNextAddRecreatesIndexes()
+    public async Task DeleteLastDocument_KeepsTheCollection()
     {
         var sut = new DropEmptyCollection(MongoDbServiceFactory, DatabaseContext);
-        var entity = new TestEntity { Id = ObjectId.GenerateNewId(), Value = "first" };
-        await sut.AddAsync(entity);
-        var collection = (await sut.FetchCollectionAsync()).Value;
-
-        await sut.DeleteOneAsync(entity.Id);
-        var existsAfterDelete = await CollectionExistsAsync(collection);
-        await sut.AddAsync(new TestEntity { Id = ObjectId.GenerateNewId(), Value = "second" });
-
-        existsAfterDelete.Should().BeFalse();
-        (await IndexNamesAsync(collection)).Should().Contain(PlainIndexName);
-    }
-
-    [Fact]
-    [Trait("Category", "Database")]
-    public async Task DropEmpty_WithUniqueIndex_KeepsTheCollection()
-    {
-        var sut = new DropEmptyUniqueCollection(MongoDbServiceFactory, DatabaseContext);
         var entity = new TestEntity { Id = ObjectId.GenerateNewId(), Value = "only" };
         await sut.AddAsync(entity);
         var collection = (await sut.FetchCollectionAsync()).Value;
@@ -76,7 +59,118 @@ public class IndexLossTests : MongoDbTestBase
         await sut.DeleteOneAsync(entity.Id);
 
         (await CollectionExistsAsync(collection)).Should().BeTrue();
+        (await IndexNamesAsync(collection)).Should().Contain(PlainIndexName);
+    }
+
+    [Fact]
+    [Trait("Category", "Database")]
+    public async Task FirstUse_OfAnExistingEmptyCollection_KeepsIt()
+    {
+        var sut = new DropEmptyCollection(MongoDbServiceFactory, DatabaseContext);
+        var collection = await MongoDbServiceFactory.GetMongoDbService(() => DatabaseContext).CreateCollectionAsync<TestEntity>(sut.CollectionName);
+
+        await sut.CountAsync(x => true);
+
+        (await CollectionExistsAsync(collection)).Should().BeTrue();
+    }
+
+    [Fact]
+    [Trait("Category", "Database")]
+    public async Task DropIfEmpty_EmptyCollection_DropsAndNextAddRecreatesIndexes()
+    {
+        var sut = new DropEmptyCollection(MongoDbServiceFactory, DatabaseContext);
+        var entity = new TestEntity { Id = ObjectId.GenerateNewId(), Value = "first" };
+        await sut.AddAsync(entity);
+        var collection = (await sut.FetchCollectionAsync()).Value;
+        await sut.DeleteOneAsync(entity.Id);
+
+        var dropped = await sut.DropIfEmptyAsync();
+        var existsAfterDrop = await CollectionExistsAsync(collection);
+        await sut.AddAsync(new TestEntity { Id = ObjectId.GenerateNewId(), Value = "second" });
+
+        dropped.Should().BeTrue();
+        existsAfterDrop.Should().BeFalse();
+        (await IndexNamesAsync(collection)).Should().Contain(PlainIndexName);
+    }
+
+    [Fact]
+    [Trait("Category", "Database")]
+    public async Task DropIfEmpty_WithDocuments_KeepsTheCollection()
+    {
+        var sut = new DropEmptyCollection(MongoDbServiceFactory, DatabaseContext);
+        await sut.AddAsync(new TestEntity { Id = ObjectId.GenerateNewId(), Value = "only" });
+        var collection = (await sut.FetchCollectionAsync()).Value;
+
+        var dropped = await sut.DropIfEmptyAsync();
+
+        dropped.Should().BeFalse();
+        (await CollectionExistsAsync(collection)).Should().BeTrue();
+    }
+
+    [Fact]
+    [Trait("Category", "Database")]
+    public async Task DropIfEmpty_WithUniqueIndex_KeepsTheCollection()
+    {
+        var sut = new DropEmptyUniqueCollection(MongoDbServiceFactory, DatabaseContext);
+        var entity = new TestEntity { Id = ObjectId.GenerateNewId(), Value = "only" };
+        await sut.AddAsync(entity);
+        var collection = (await sut.FetchCollectionAsync()).Value;
+        await sut.DeleteOneAsync(entity.Id);
+
+        var dropped = await sut.DropIfEmptyAsync();
+
+        dropped.Should().BeFalse();
+        (await CollectionExistsAsync(collection)).Should().BeTrue();
         (await IndexNamesAsync(collection)).Should().Contain(UniqueIndexName);
+    }
+
+    [Fact]
+    [Trait("Category", "Database")]
+    public async Task DropIfEmpty_MissingCollection_ReturnsFalse()
+    {
+        var sut = new DropEmptyCollection(MongoDbServiceFactory, DatabaseContext);
+
+        var dropped = await sut.DropIfEmptyAsync();
+
+        dropped.Should().BeFalse();
+    }
+
+    [Fact]
+    [Trait("Category", "Database")]
+    public async Task DropIfEmpty_Lockable_DropsAnEmptyCollection()
+    {
+        var sut = new LockableCollection(MongoDbServiceFactory, DatabaseContext);
+        var entity = new LockableTestEntity { Id = ObjectId.GenerateNewId(), Data = "only" };
+        await sut.AddAsync(entity);
+        var collection = (await sut.FetchCollectionAsync()).Value;
+        await using (var scope = await sut.PickForDeleteAsync(entity.Id))
+        {
+            await scope.CommitAsync();
+        }
+
+        var dropped = await sut.DropIfEmptyAsync();
+
+        dropped.Should().BeTrue();
+        (await CollectionExistsAsync(collection)).Should().BeFalse();
+    }
+
+    [Fact]
+    [Trait("Category", "Database")]
+    public async Task DropIfEmpty_LockableWithUniqueIndex_KeepsTheCollection()
+    {
+        var sut = new LockableCreateOnGetCollection(MongoDbServiceFactory, DatabaseContext);
+        var entity = new LockableTestEntity { Id = ObjectId.GenerateNewId(), Data = "only" };
+        await sut.AddAsync(entity);
+        var collection = (await sut.FetchCollectionAsync()).Value;
+        await using (var scope = await sut.PickForDeleteAsync(entity.Id))
+        {
+            await scope.CommitAsync();
+        }
+
+        var dropped = await sut.DropIfEmptyAsync();
+
+        dropped.Should().BeFalse();
+        (await CollectionExistsAsync(collection)).Should().BeTrue();
     }
 
     [Fact]
@@ -145,6 +239,17 @@ public class IndexLossTests : MongoDbTestBase
         ];
     }
 
+    private class LockableCollection : LockableRepositoryCollectionBase<LockableTestEntity, ObjectId>
+    {
+        public LockableCollection(IMongoDbServiceFactory factory, DatabaseContext databaseContext)
+            : base(factory, null, databaseContext)
+        {
+        }
+
+        protected override bool RequireActor => false;
+        public override string CollectionName => "IndexLossLockable";
+    }
+
     private class DropEmptyCollection : DiskRepositoryCollectionBase<TestEntity, ObjectId>
     {
         public DropEmptyCollection(IMongoDbServiceFactory factory, DatabaseContext databaseContext)
@@ -153,7 +258,9 @@ public class IndexLossTests : MongoDbTestBase
         }
 
         public override string CollectionName => "IndexLossDropEmpty";
+#pragma warning disable CS0618
         public override CreateStrategy CreateCollectionStrategy => CreateStrategy.DropEmpty;
+#pragma warning restore CS0618
 
         public override IEnumerable<CreateIndexModel<TestEntity>> Indices =>
         [

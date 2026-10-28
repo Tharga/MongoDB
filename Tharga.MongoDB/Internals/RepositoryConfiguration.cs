@@ -51,7 +51,7 @@ internal class RepositoryConfiguration : IRepositoryConfiguration
             FetchSize = c1?.FetchSize ?? c2?.FetchSize ?? c3.Value?.FetchSize ?? c4.Value?.FetchSize,
             AutoClean = c1?.AutoClean ?? c2?.AutoClean ?? c3.Value?.AutoClean ?? c4.Value?.AutoClean ?? true,
             CleanOnStartup = c1?.CleanOnStartup ?? c2?.CleanOnStartup ?? c3.Value?.CleanOnStartup ?? c4.Value?.CleanOnStartup ?? false,
-            CreateCollectionStrategy = c1?.CreateCollectionStrategy ?? c2?.CreateCollectionStrategy ?? c3.Value?.CreateCollectionStrategy ?? c4.Value?.CreateCollectionStrategy ?? CreateStrategy.DropEmpty,
+            CreateCollectionStrategy = c1?.CreateCollectionStrategy ?? c2?.CreateCollectionStrategy ?? c3.Value?.CreateCollectionStrategy ?? c4.Value?.CreateCollectionStrategy ?? CreateStrategy.CreateOnAdd,
         };
 
         return configuration;

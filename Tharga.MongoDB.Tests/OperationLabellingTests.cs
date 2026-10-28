@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using FluentAssertions;
+using AwesomeAssertions;
 using MongoDB.Driver;
 using Tharga.MongoDB.Disk;
 using Tharga.MongoDB.Tests.Support;

@@ -1,6 +1,6 @@
 using System;
 using System.Reflection;
-using FluentAssertions;
+using AwesomeAssertions;
 using MongoDB.Bson;
 using Tharga.MongoDB.Lockable;
 using Xunit;

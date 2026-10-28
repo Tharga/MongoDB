@@ -3,7 +3,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
+using AwesomeAssertions;
+using MongoDB.Bson;
 using Tharga.MongoDB.Disk;
 using Tharga.MongoDB.Interception;
 using Tharga.MongoDB.Internals;
@@ -108,6 +109,41 @@ public class InterceptorPipelineTests : MongoDbTestBase
         var call = interceptor.Calls.Should().ContainSingle().Subject;
         call.Operation.Should().Be("DropCollectionAsync");
         call.OperationType.Should().Be(Operation.Delete);
+    }
+
+    [Fact]
+    [Trait("Category", "Database")]
+    public async Task DropIfEmptyAsync_FiresInterceptorOnce_WhenItDrops()
+    {
+        var sut = new NonUniqueCollection(MongoDbServiceFactory, DatabaseContext);
+        var entity = TestEntityFactory.CreateTestEntity();
+        await sut.AddAsync(entity);
+        await sut.DeleteOneAsync(entity.Id);
+        var interceptor = new RecordingInterceptor();
+        UseInterceptors(interceptor);
+
+        var dropped = await sut.DropIfEmptyAsync();
+
+        dropped.Should().BeTrue();
+        var call = interceptor.Calls.Should().ContainSingle().Subject;
+        call.Operation.Should().Be("DropIfEmptyAsync");
+        call.OperationType.Should().Be(Operation.Delete);
+    }
+
+    [Fact]
+    [Trait("Category", "Database")]
+    public async Task Rejection_PreventsDropIfEmpty()
+    {
+        var sut = new NonUniqueCollection(MongoDbServiceFactory, DatabaseContext);
+        var entity = TestEntityFactory.CreateTestEntity();
+        await sut.AddAsync(entity);
+        await sut.DeleteOneAsync(entity.Id);
+        UseInterceptors(new RejectingInterceptor("no drops"));
+
+        var act = async () => await sut.DropIfEmptyAsync();
+
+        await act.Should().ThrowAsync<CollectionAccessDeniedException>();
+        (await MongoDbServiceFactory.GetMongoDbService(() => DatabaseContext).DoesCollectionExist(sut.CollectionName)).Should().BeTrue();
     }
 
     [Fact]
@@ -361,5 +397,11 @@ public class InterceptorPipelineTests : MongoDbTestBase
         {
             throw new InvalidOperationException("domain rule violated");
         }
+    }
+
+    private class NonUniqueCollection(IMongoDbServiceFactory factory, DatabaseContext databaseContext)
+        : DiskRepositoryCollectionBase<TestEntity, ObjectId>(factory, null, databaseContext)
+    {
+        public override string CollectionName => "InterceptDropIfEmpty";
     }
 }

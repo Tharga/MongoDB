@@ -1,4 +1,4 @@
-using FluentAssertions;
+using AwesomeAssertions;
 using Tharga.MongoDB.Monitor.Client;
 using Xunit;
 

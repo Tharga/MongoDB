@@ -379,7 +379,6 @@ Acquisition stays unchanged (sequential, fast); the commit pass runs inside an i
 
 #### Behavior under an active session
 - `OperationIndexManagement` is **skipped** when a session is active (Mongo forbids index DDL inside a transaction). Indexes are assured by the next non-transactional call against the collection. If your transaction is the *first* call against a fresh collection on process startup, the index won't be assured until later — warm up the collection at startup.
-- `DropEmptyAsync` (auto-drop after the last delete) is similarly skipped under a session.
 
 #### Out of scope
 - Cross-cluster transactions
@@ -455,8 +454,8 @@ This is the order used, value by value.
 1. Default values
 
 #### Example of configuration by `appsettings.json`.
-When the 'Default' database is used, the result limit will be 100, for the 'Other' database the result limit will be 200.
-If another database is implemented, the fallback of 1000 will be used as result limit.
+When the 'Default' database is used, the fetch size will be 100, for the 'Other' database the fetch size will be 200.
+If another database is implemented, the fallback of 1000 will be used as fetch size.
 
 The 'Default' database will have the firewall opened, if hosted in Atlas MongoDB.
 
@@ -472,18 +471,18 @@ The 'Default' database will have the firewall opened, if hosted in Atlas MongoDB
         "PrivateKey": "[PrivateKey]",
         "GroupId": "[GroupId]"
       },
-      "ResultLimit": 100,
+      "FetchSize": 100,
       "AutoClean": true,
       "CleanOnStartup": true,
-      "CreateCollectionStrategy": "DropEmpty"
+      "CreateCollectionStrategy": "CreateOnGet"
     },
     "Other": {
-      "ResultLimit": 200
+      "FetchSize": 200
     },
-    "ResultLimit": 1000
+    "FetchSize": 1000,
     "AutoClean": false,
     "CleanOnStartup": false,
-    "CreateCollectionStrategy": "DropEmpty"
+    "CreateCollectionStrategy": "CreateOnAdd"
   }
 ```
 
@@ -514,23 +513,23 @@ services.AddMongoDB(o =>
                         PrivateKey = "[PrivateKey]",
                         GroupId = "[GroupId]"
                     },
-                    ResultLimit = 100,
+                    FetchSize = 100,
                     AutoClean = true,
                     CleanOnStartup = true,
-                    "CreateCollectionStrategy": "DropEmpty"
+                    CreateCollectionStrategy = CreateStrategy.CreateOnGet
                 }
             },
             {
                 "Other", new MongoDbConfiguration
                 {
-                    ResultLimit = 200
+                    FetchSize = 200
                 }
             }
         },
-        ResultLimit = 1000,
+        FetchSize = 1000,
         AutoClean = false,
         CleanOnStartup = false,
-        "CreateCollectionStrategy": "DropEmpty"
+        CreateCollectionStrategy = CreateStrategy.CreateOnAdd
     };
 });
 ```
@@ -599,15 +598,18 @@ Read more about this in the section [MongoUrl Builder](#mongourlbuilder).
 Override property `ConfigurationName` to use different database than default (or set as default in `DatabaseOptions`).
 This makes it possible to use multiple databases from the same application.
 
-The properties `AutoClean`, `CleanOnStartup`, `CreateCollectionStrategy` and `ResultLimit` can be overridden by collection to be different from the configuration.
+The properties `AutoClean`, `CleanOnStartup`, `CreateCollectionStrategy` and `FetchSize` can be overridden by collection to be different from the configuration.
 
-`CreateCollectionStrategy` decides when a collection is created and whether it is dropped again:
-- `DropEmpty` (default) — created when a document is added, dropped when a delete leaves it empty. A collection that declares a **unique** index is never dropped: other processes cannot see the drop and would keep writing to the recreated collection without the index, and once duplicates exist the unique index can no longer be built.
-  **Not safe with concurrent writes:** MongoDB cannot drop a collection only if it is still empty, so the check and the drop are two steps. A document added by another caller or process between them is lost with the dropped collection. Use `CreateOnAdd` for collections that are written while others delete from them, such as queues. Automatic dropping will be replaced by an explicit cleanup call in a coming minor version (#189).
-- `CreateOnAdd` — created when a document is added, never dropped automatically.
-- `CreateOnGet` — created on first access (read or write), never dropped automatically.
+`CreateCollectionStrategy` decides when a collection is created. Collections are never dropped automatically.
+- `CreateOnAdd` (default) — created when a document is added.
+- `CreateOnGet` — created on first access (read or write).
+- `DropEmpty` — obsolete since 2.20 and behaves as `CreateOnAdd`. It used to drop a collection when a delete left it empty, which lost documents added between the emptiness check and the drop (#189).
 
-When a collection is dropped (`DropCollectionAsync`, or `DropEmpty`), the next write from the same process assures its declared indexes again before the document is written.
+To drop an empty collection, such as a per-part collection that is no longer used, call `DropIfEmptyAsync()`. It returns `true` when it dropped the collection, and `false` when the collection does not exist or holds documents.
+- **Call it only while nothing writes to the collection.** MongoDB cannot drop a collection only if it is still empty, so the count and the drop are two steps, and a document added by another caller or process between them is lost with the collection.
+- A collection that declares a **unique** index is never dropped this way, and the call returns `false`. Other processes cannot see a drop and would recreate the collection without the index, and once duplicates exist the unique index can no longer be built. Use `DropCollectionAsync()` to drop it regardless.
+
+When a collection is dropped (`DropCollectionAsync` or `DropIfEmptyAsync`), the next write from the same process assures its declared indexes again before the document is written.
 
 To automatically register known types when using multiple types in the same collection, provide a value for `Types`.
 

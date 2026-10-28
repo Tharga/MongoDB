@@ -31,7 +31,9 @@ public record MongoDbConfiguration
     public bool? CleanOnStartup { get; init; }
 
     /// <summary>
-    /// Default value is DropEmpty, meaning collections are created when the first entity is added and removed when the last entity is deleted. Change this behaviour with this configuration.
+    /// When collections are created. Collections are never dropped automatically; call
+    /// <see cref="IRepositoryCollection.DropIfEmptyAsync"/> to drop an empty one.
+    /// Default value is CreateOnAdd, meaning collections are created when the first entity is added.
     /// </summary>
-    public CreateStrategy CreateCollectionStrategy { get; init; }
+    public CreateStrategy? CreateCollectionStrategy { get; init; }
 }

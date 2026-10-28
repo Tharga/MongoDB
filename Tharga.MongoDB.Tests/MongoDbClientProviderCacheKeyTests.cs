@@ -1,4 +1,4 @@
-using FluentAssertions;
+using AwesomeAssertions;
 using MongoDB.Driver;
 using Tharga.MongoDB.Internals;
 using Xunit;

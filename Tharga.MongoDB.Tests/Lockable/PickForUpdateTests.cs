@@ -1,6 +1,6 @@
 ﻿using System;
 using System.Threading.Tasks;
-using FluentAssertions;
+using AwesomeAssertions;
 using Tharga.MongoDB.Tests.Support;
 using Xunit;
 using MongoDB.Bson;
