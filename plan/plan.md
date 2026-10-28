@@ -25,4 +25,4 @@ Covered by step 6.
 
 ## Last session
 
-2026-10-28: plan confirmed (keep the unique-index guard in `DropIfEmptyAsync`; make the configuration property nullable). Steps 0–6 done in three commits: assertions swap, fix, docs. Full suite 891 / 0 failed / 8 skipped. Branch not pushed yet: waiting for the user's go-ahead to push, then their test and "done" before close-out.
+2026-10-28: plan confirmed (keep the unique-index guard in `DropIfEmptyAsync`; make the configuration property nullable). Steps 0–6 done in three commits: assertions swap, fix, docs. Full suite 891 / 0 failed / 8 skipped. Pushed on the user's go-ahead and opened as **draft** PR #192 (draft so it cannot merge before the close-out commit removes `plan/`). Next: the user tests, says done, then close-out, then mark the PR ready.
