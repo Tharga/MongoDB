@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -12,18 +12,21 @@ namespace Tharga.MongoDB.Monitor.Client;
 /// Minimal <see cref="IHostApplicationBuilder"/> adapter used by the
 /// <see cref="MonitorClientRegistration.AddMongoDbMonitorClient(IServiceCollection, IConfiguration, string, string)"/>
 /// overload to delegate to the existing builder-based overload without duplicating
-/// any of its body. Exposes only <see cref="Services"/> and <see cref="Properties"/>
-/// because that is what <c>AddMongoDbMonitorClient</c> and Tharga.Communication's
-/// <c>AddThargaCommunicationClient</c> (0.1.5) actually use. Other members throw
+/// any of its body. Exposes only <see cref="Services"/>, <see cref="Properties"/> and
+/// <see cref="Configuration"/> (a read-only view of the supplied configuration) because that is what
+/// <c>AddMongoDbMonitorClient</c> and Tharga.Communication's <c>AddThargaCommunicationClient</c> (1.3.0) actually use. Other members throw
 /// <see cref="NotSupportedException"/> so future upstream changes that start using
 /// them fail loudly and visibly rather than silently misbehaving.
 /// </summary>
 internal sealed class ServicesOnlyHostApplicationBuilder : IHostApplicationBuilder
 {
-    public ServicesOnlyHostApplicationBuilder(IServiceCollection services)
+    private readonly ConfigurationManager _configuration = new();
+
+    public ServicesOnlyHostApplicationBuilder(IServiceCollection services, IConfiguration configuration = null)
     {
         Services = services ?? throw new ArgumentNullException(nameof(services));
         Properties = new Dictionary<object, object>();
+        if (configuration != null) _configuration.AddConfiguration(configuration);
     }
 
     public IServiceCollection Services { get; }
@@ -32,9 +35,9 @@ internal sealed class ServicesOnlyHostApplicationBuilder : IHostApplicationBuild
 
     private const string NotSupportedMessage =
         "ServicesOnlyHostApplicationBuilder is a services-only adapter used internally by AddMongoDbMonitorClient(IServiceCollection, ...). "
-        + "Only Services and Properties are supported.";
+        + "Only Services, Properties and Configuration are supported.";
 
-    public IConfigurationManager Configuration => throw new NotSupportedException(NotSupportedMessage);
+    public IConfigurationManager Configuration => _configuration;
 
     public IHostEnvironment Environment => throw new NotSupportedException(NotSupportedMessage);
 

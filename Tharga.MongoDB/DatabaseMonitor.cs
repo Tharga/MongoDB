@@ -307,7 +307,12 @@ internal class DatabaseMonitor : IDatabaseMonitor
 
             var mongoDbService = GetMongoDbService(fingerprint);
             if (await mongoDbService.DoesCollectionExist(fingerprint.CollectionName))
-                return cached;
+            {
+                var cleanInfo = await mongoDbService.ReadCleanInfoAsync(fingerprint.DatabaseName, fingerprint.CollectionName);
+                var enriched = EnrichCachedEntry(cached, fingerprint, cleanInfo);
+                _cache.Set(fingerprint.Key, enriched);
+                return enriched;
+            }
 
             _cache.TryRemove(fingerprint.Key, out _);
             return null;
@@ -795,7 +800,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
             }
         }
 
-        var entityType = collectionInfo.CollectionType != null ? ResolveEntityType(collectionInfo.CollectionType) : null;
+        var entityType = collectionInfo.CollectionType != null ? ResolveRegisteredEntityType(collectionInfo.CollectionType) : null;
         var entityProperties = entityType != null
             ? entityType.GetProperties(BindingFlags.Public | BindingFlags.Instance).Select(p => p.Name).ToHashSet(StringComparer.Ordinal)
             : new HashSet<string>(StringComparer.Ordinal);
@@ -1930,10 +1935,10 @@ internal class DatabaseMonitor : IDatabaseMonitor
             await dispatcher.ResetCacheAllAsync();
     }
 
-    private static string ComputeSchemaFingerprint(Type collectionType)
+    private string ComputeSchemaFingerprint(Type collectionType)
     {
         if (collectionType == null) return null;
-        var entityType = ResolveEntityType(collectionType);
+        var entityType = ResolveRegisteredEntityType(collectionType);
         return entityType != null ? SchemaFingerprint.Generate(entityType) : null;
     }
 
@@ -1988,33 +1993,12 @@ internal class DatabaseMonitor : IDatabaseMonitor
 
             if (_cache.TryGet(key, out var cached))
             {
-                // Enrich cache-loaded entries with code-derived info (defined indices, schema fingerprint)
-                var needsEnrich = cached.CurrentSchemaFingerprint == null
-                    || (cached.Index != null && (cached.Index.Defined == null || cached.Index.Defined.Length == 0));
-                if (needsEnrich)
+                cached = EnrichCachedEntry(cached, new CollectionFingerprint
                 {
-                    var fp = new CollectionFingerprint
-                    {
-                        ConfigurationName = meta.ConfigurationName,
-                        DatabaseName = meta.DatabaseName,
-                        CollectionName = meta.CollectionName
-                    };
-                    var codeEntry = BuildInitialEntry(fp, cached.Server, cached.DatabasePart, cached.EntityTypes?.FirstOrDefault());
-                    cached = cached with
-                    {
-                        CurrentSchemaFingerprint = SchemaFingerprint.IsCurrentVersion(cached.CurrentSchemaFingerprint)
-                            ? cached.CurrentSchemaFingerprint
-                            : codeEntry.CurrentSchemaFingerprint,
-                        Index = cached.Index != null
-                            ? new IndexInfo { Current = cached.Index.Current, Defined = codeEntry.Index?.Defined ?? cached.Index.Defined, UpdatedAt = cached.Index.UpdatedAt }
-                            : codeEntry.Index,
-                        Registration = codeEntry.Registration != Registration.NotInCode ? codeEntry.Registration : cached.Registration,
-                        Discovery = cached.Discovery | codeEntry.Discovery,
-                    };
-                }
-
-                // Always refresh CleanInfo from _clean (single source of truth)
-                cached = cached with { Clean = cleanInfo };
+                    ConfigurationName = meta.ConfigurationName,
+                    DatabaseName = meta.DatabaseName,
+                    CollectionName = meta.CollectionName
+                }, cleanInfo);
                 _cache.Set(key, cached);
                 yield return cached;
             }
@@ -2036,6 +2020,29 @@ internal class DatabaseMonitor : IDatabaseMonitor
         }
     }
 
+    private CollectionInfo EnrichCachedEntry(CollectionInfo cached, CollectionFingerprint fingerprint, CleanInfo cleanInfo)
+    {
+        var needsEnrich = cached.CurrentSchemaFingerprint == null
+            || (cached.Index != null && (cached.Index.Defined == null || cached.Index.Defined.Length == 0));
+        if (needsEnrich)
+        {
+            var codeEntry = BuildInitialEntry(fingerprint, cached.Server, cached.DatabasePart, cached.EntityTypes?.FirstOrDefault());
+            cached = cached with
+            {
+                CurrentSchemaFingerprint = SchemaFingerprint.IsCurrentVersion(cached.CurrentSchemaFingerprint)
+                    ? cached.CurrentSchemaFingerprint
+                    : codeEntry.CurrentSchemaFingerprint,
+                Index = cached.Index != null
+                    ? new IndexInfo { Current = cached.Index.Current, Defined = codeEntry.Index?.Defined ?? cached.Index.Defined, UpdatedAt = cached.Index.UpdatedAt }
+                    : codeEntry.Index,
+                Registration = codeEntry.Registration != Registration.NotInCode ? codeEntry.Registration : cached.Registration,
+                Discovery = cached.Discovery | codeEntry.Discovery,
+            };
+        }
+
+        return cached with { Clean = cleanInfo };
+    }
+
     private static async Task<object> FetchMongoCollection(Type ct, IRepositoryCollection collection, bool initiate)
     {
         var fetchMethod = ct.GetMethod(nameof(DiskRepositoryCollectionBase<EntityBase>.FetchCollectionAsync), BindingFlags.Instance | BindingFlags.NonPublic);
@@ -2049,7 +2056,18 @@ internal class DatabaseMonitor : IDatabaseMonitor
         return mongoDbCollection;
     }
 
-    private static Type ResolveEntityType(Type collectionType)
+    internal static Type ResolveRegisteredEntityType(Type serviceType, Type implementationType)
+    {
+        return ResolveEntityType(implementationType) ?? ResolveEntityType(serviceType);
+    }
+
+    private Type ResolveRegisteredEntityType(Type serviceType)
+    {
+        _mongoDbInstance.RegisteredCollections.TryGetValue(serviceType, out var implementationType);
+        return ResolveRegisteredEntityType(serviceType, implementationType);
+    }
+
+    internal static Type ResolveEntityType(Type collectionType)
     {
         var type = collectionType;
         while (type != null)
@@ -2111,11 +2129,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
 
             if (!isDynamic)
             {
-                var genericParam = registeredCollection.Key
-                    .GetInterfaces()
-                    .Where(i => i.IsGenericType)
-                    .Select(i => i.GetGenericArguments().FirstOrDefault())
-                    .FirstOrDefault();
+                var genericParam = ResolveRegisteredEntityType(registeredCollection.Key, registeredCollection.Value);
 
                 var instance = _serviceProvider.GetService(registeredCollection.Key) as RepositoryCollectionBase;
                 if (instance == null) throw new InvalidOperationException($"Cannot create instance of '{registeredCollection.Key}'.");
@@ -2148,11 +2162,7 @@ internal class DatabaseMonitor : IDatabaseMonitor
 
             if (isDynamic)
             {
-                var genericParam = registeredCollection.Key
-                    .GetInterfaces()
-                    .Where(i => i.IsGenericType)
-                    .Select(i => i.GetGenericArguments().FirstOrDefault())
-                    .FirstOrDefault();
+                var genericParam = ResolveRegisteredEntityType(registeredCollection.Key, registeredCollection.Value);
 
                 var colType = _mongoDbInstance.RegisteredCollections.FirstOrDefault(x => x.Key.Name == registeredCollection.Key.Name).Key;
                 foreach (var databaseContext in ctx)
