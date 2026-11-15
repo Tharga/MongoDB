@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Linq;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -90,7 +90,7 @@ public static class MonitorClientRegistration
             services.AddSingleton(configuration);
         }
 
-        var builder = new ServicesOnlyHostApplicationBuilder(services);
+        var builder = new ServicesOnlyHostApplicationBuilder(services, configuration);
         builder.AddMongoDbMonitorClient(sendTo, apiKey);
         return services;
     }
