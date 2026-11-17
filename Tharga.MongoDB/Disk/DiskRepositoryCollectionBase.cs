@@ -1181,7 +1181,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         {
             var response = await execute.Invoke(collection, ct);
             return (response, 1);
-        }, operation, CancellationToken.None);
+        }, operation, cancellationToken);
 
         return response;
     }
