@@ -37,7 +37,7 @@ internal class MongoDbFirewallService : IMongoDbFirewallService
             name ??= $"{Environment.MachineName}-Auto";
 
             var items = await GetFirewallListAsync(access).ToArrayAsync();
-            var existing = items.FirstOrDefault(x => x.CidrBlock.StartsWith(ipAddress.ToString()));
+            var existing = items.FirstOrDefault(x => CidrContains(x.CidrBlock, ipAddress));
             if (existing != null)
             {
                 _logger?.LogTrace("Firewall already open for '{ipAddress}' with name {name}.", ipAddress, existing.Comment);
@@ -66,7 +66,7 @@ internal class MongoDbFirewallService : IMongoDbFirewallService
             var ipAddress = await _externalIpAddressService.GetExternalIpAddressAsync();
 
             var items = await GetFirewallListAsync(access).ToArrayAsync();
-            var existing = items.FirstOrDefault(x => x.CidrBlock.StartsWith(ipAddress.ToString()));
+            var existing = items.FirstOrDefault(x => CidrContains(x.CidrBlock, ipAddress));
             if (existing != null)
             {
                 return (true, $"Access with name '{existing.Comment}'.");
@@ -80,7 +80,7 @@ internal class MongoDbFirewallService : IMongoDbFirewallService
         }
     }
 
-    public async IAsyncEnumerable<WhiteListItem> GetFirewallListAsync(MongoDbApiAccess access)
+    public virtual async IAsyncEnumerable<WhiteListItem> GetFirewallListAsync(MongoDbApiAccess access)
     {
         if (access == null) throw new ArgumentNullException(nameof(access));
 
@@ -113,7 +113,7 @@ internal class MongoDbFirewallService : IMongoDbFirewallService
         }
     }
 
-    public async Task AddToFirewallAsync(MongoDbApiAccess access, string name, IPAddress ipAddress)
+    public virtual async Task AddToFirewallAsync(MongoDbApiAccess access, string name, IPAddress ipAddress)
     {
         if (access == null) throw new ArgumentNullException(nameof(access));
 
@@ -125,5 +125,32 @@ internal class MongoDbFirewallService : IMongoDbFirewallService
         using var result = await atlasHttp.Client.PostAsync($"groups/{access.GroupId}/accessList", content);
         result.EnsureSuccessStatusCode();
         _logger.LogInformation("Firewall opened for ip '{ipAddress}' with comment '{name}'.", ipAddress, name);
+    }
+
+    /// <summary>
+    /// True when the address is inside the CIDR block. A block without a prefix length is an exact match.
+    /// Entries that cannot be parsed never match, so a malformed entry cannot hide a missing one.
+    /// </summary>
+    internal static bool CidrContains(string cidrBlock, IPAddress ipAddress)
+    {
+        if (string.IsNullOrWhiteSpace(cidrBlock) || ipAddress == null) return false;
+
+        var parts = cidrBlock.Trim().Split('/');
+        if (parts.Length > 2 || !IPAddress.TryParse(parts[0], out var network)) return false;
+
+        var networkBytes = network.GetAddressBytes();
+        var ipBytes = ipAddress.GetAddressBytes();
+        if (networkBytes.Length != ipBytes.Length) return false;
+
+        var prefixLength = networkBytes.Length * 8;
+        if (parts.Length == 2 && (!int.TryParse(parts[1], out prefixLength) || prefixLength < 0 || prefixLength > networkBytes.Length * 8)) return false;
+
+        for (var i = 0; i < networkBytes.Length && prefixLength > 0; i++, prefixLength -= 8)
+        {
+            var mask = prefixLength >= 8 ? 0xFF : 0xFF << (8 - prefixLength) & 0xFF;
+            if ((networkBytes[i] & mask) != (ipBytes[i] & mask)) return false;
+        }
+
+        return true;
     }
 }

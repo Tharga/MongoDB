@@ -540,19 +540,10 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 
             using var cursor = await collection.FindAsync(usedFilter, findOptions, ct);
 
-            var count = 0;
+            //NOTE: The result is bounded by Limit, as in GetManyAsync. FetchSize is a batch size, not a result limit.
             while (await cursor.MoveNextAsync(ct))
             {
-                foreach (var current in cursor.Current)
-                {
-                    count++;
-                    if (FetchSize != null && count > FetchSize)
-                    {
-                        throw new ResultLimitException(FetchSize.Value);
-                    }
-
-                    items.Add(current);
-                }
+                items.AddRange(cursor.Current);
             }
 
             var totalCount = items.Count;
@@ -1181,7 +1172,7 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
         {
             var response = await execute.Invoke(collection, ct);
             return (response, 1);
-        }, operation, CancellationToken.None);
+        }, operation, cancellationToken);
 
         return response;
     }
@@ -1535,23 +1526,32 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
             {
                 //_logger?.LogTrace($"Starting to initiate {{collection}}. [action: Database, operation: {nameof(FetchCollectionAsync)}]", ProtectedCollectionName);
                 //InvokeAction(new ActionEventArgs.ActionData { Operation = nameof(FetchCollectionAsync), Message = "Starting to initiate.", Level = LogLevel.Trace });
-                RegisterTypes();
-
-                var exists = await _mongoDbService.DoesCollectionExist(ProtectedCollectionName);
-                if (exists)
+                try
                 {
-                    await AssureIndex(collection);
-                    await CleanAsync(collection);
-                }
-                else if (CreateCollectionStrategy == CreateStrategy.CreateOnGet)
-                {
-                    collection = await _mongoDbService.CreateCollectionAsync<TEntity>(ProtectedCollectionName);
-                    await AssureIndex(collection);
-                }
+                    RegisterTypes();
 
-                await InitAsync(collection);
-                //_logger?.LogTrace($"Initiate {{collection}} is completed. [action: Database, operation: {nameof(FetchCollectionAsync)}]", ProtectedCollectionName);
-                //InvokeAction(new ActionEventArgs.ActionData { Operation = nameof(FetchCollectionAsync), Message = "Initiation completed.", Level = LogLevel.Trace });
+                    var exists = await _mongoDbService.DoesCollectionExist(ProtectedCollectionName);
+                    if (exists)
+                    {
+                        await AssureIndex(collection);
+                        await CleanAsync(collection);
+                    }
+                    else if (CreateCollectionStrategy == CreateStrategy.CreateOnGet)
+                    {
+                        collection = await _mongoDbService.CreateCollectionAsync<TEntity>(ProtectedCollectionName);
+                        await AssureIndex(collection);
+                    }
+
+                    await InitAsync(collection);
+                    //_logger?.LogTrace($"Initiate {{collection}} is completed. [action: Database, operation: {nameof(FetchCollectionAsync)}]", ProtectedCollectionName);
+                    //InvokeAction(new ActionEventArgs.ActionData { Operation = nameof(FetchCollectionAsync), Message = "Initiation completed.", Level = LogLevel.Trace });
+                }
+                catch
+                {
+                    //NOTE: Initiation did not complete. Forget it, so that the next access retries.
+                    _initiationLibrary.ResetInitiation(ServerName, DatabaseName, ProtectedCollectionName);
+                    throw;
+                }
 
                 //initiateAction = InitiateAction.InitiationPerformed;
                 message = "Initiated collection.";

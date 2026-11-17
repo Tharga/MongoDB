@@ -35,8 +35,9 @@ internal class ExternalIpAddressService : IExternalIpAddressService
                     if (result.IsSuccessStatusCode)
                     {
                         var externalIpString = (await result.Content.ReadAsStringAsync(CancellationToken.None)).Replace("\\r\\n", "").Replace("\\n", "").Trim();
-                        var externalIp = IPAddress.Parse(externalIpString);
-                        return externalIp;
+                        if (IPAddress.TryParse(externalIpString, out var externalIp)) return externalIp;
+
+                        _logger.LogWarning("The response from '{uri}' is not an IP address. Trying next.", uri);
                     }
                 }
                 catch (TaskCanceledException e)

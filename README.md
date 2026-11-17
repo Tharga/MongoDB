@@ -1540,13 +1540,7 @@ The delegate receives the service provider, the configuration name, and the `Max
 ---
 
 ## MongoDB Result Limit
-It is possible to se t a hard limit for the number of documents returned. If the limit is reached `ResultLimitException` is thrown.
+`GetManyAsync` and `GetManyProjectionAsync` return at most `Options.Limit` items. When no `Limit` is given, `Options.FetchSize`, then the configured `FetchSize`, then an automatically calculated size (or 1000) is used as the limit, and a warning is logged.
+`FetchSize` is also the batch size of the driver cursor. It is not a hard limit, so a `Limit` above the `FetchSize` returns the requested number of items.
+`TotalCount` in the result is the number of matching documents when the limit was reached.
 For large result-sets, use `GetManyAsync` with an explicit `Limit` to fetch a bounded page, or stream through `GetAsync` / `GetProjectionAsync` / `ExecuteManyAsync` — all three use a driver cursor under the hood and stream batches without paying a skip penalty.
-
-```
-{
-  "MongoDB": {
-    "ResultLimit": 500
-  }
-}
-```

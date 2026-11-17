@@ -212,7 +212,9 @@ public class LockableRepositoryCollectionBase<TEntity, TKey> : RepositoryCollect
     {
         //Checked once, before the pick: cancelling between the pick and the commit would leave the document locked until it expires.
         cancellationToken.ThrowIfCancellationRequested();
-        var scope = await PickForDeleteAsync(id, session: session);
+        var scope = await PickForDeleteAsync(id, actor: nameof(DeleteOneAsync), session: session);
+        if (scope == null) return null;
+
         var item = await scope.CommitAsync();
         return item;
     }

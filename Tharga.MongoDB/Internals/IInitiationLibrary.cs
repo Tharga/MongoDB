@@ -5,6 +5,13 @@ namespace Tharga.MongoDB.Internals;
 public interface IInitiationLibrary
 {
     bool ShouldInitiate(string serverName, string databaseName, string collectionName);
+
+    /// <summary>
+    /// Forgets that the collection was initiated, so the next <see cref="ShouldInitiate"/> returns true again.
+    /// Called when initiation throws, so the next access retries instead of running on an uninitiated collection.
+    /// </summary>
+    void ResetInitiation(string serverName, string databaseName, string collectionName);
+
     bool ShouldInitiateIndex(string serverName, string databaseName, string collectionName);
 
     /// <summary>
