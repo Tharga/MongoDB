@@ -540,19 +540,10 @@ public abstract class DiskRepositoryCollectionBase<TEntity, TKey> : RepositoryCo
 
             using var cursor = await collection.FindAsync(usedFilter, findOptions, ct);
 
-            var count = 0;
+            //NOTE: The result is bounded by Limit, as in GetManyAsync. FetchSize is a batch size, not a result limit.
             while (await cursor.MoveNextAsync(ct))
             {
-                foreach (var current in cursor.Current)
-                {
-                    count++;
-                    if (FetchSize != null && count > FetchSize)
-                    {
-                        throw new ResultLimitException(FetchSize.Value);
-                    }
-
-                    items.Add(current);
-                }
+                items.AddRange(cursor.Current);
             }
 
             var totalCount = items.Count;
