@@ -79,18 +79,6 @@ public class InitiationFailureTests : IDisposable
         initCount.Should().Be(2, "a successful initiation is not repeated");
     }
 
-    [Fact]
-    public void ResetInitiation_AllowsShouldInitiateAgain()
-    {
-        var library = new InitiationLibrary();
-        library.ShouldInitiate("s", "d", "c").Should().BeTrue();
-        library.ShouldInitiate("s", "d", "c").Should().BeFalse();
-
-        library.ResetInitiation("s", "d", "c");
-
-        library.ShouldInitiate("s", "d", "c").Should().BeTrue();
-    }
-
     private sealed class FailingInitCollection : DiskRepositoryCollectionBase<TestEntity, ObjectId>
     {
         private readonly string _collectionName;

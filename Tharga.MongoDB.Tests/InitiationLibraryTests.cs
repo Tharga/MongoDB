@@ -26,6 +26,17 @@ public class InitiationLibraryTests
     }
 
     [Fact]
+    public void ResetInitiation_AllowsShouldInitiateAgain()
+    {
+        var library = CreateInitiated();
+        library.ShouldInitiate(Server, Database, Collection).Should().BeFalse();
+
+        library.ResetInitiation(Server, Database, Collection);
+
+        library.ShouldInitiate(Server, Database, Collection).Should().BeTrue("a failed initiation must be retried");
+    }
+
+    [Fact]
     public void GetFailedIndices_ReturnsEmpty_WhenNoFailuresRecorded()
     {
         var library = CreateInitiated();
