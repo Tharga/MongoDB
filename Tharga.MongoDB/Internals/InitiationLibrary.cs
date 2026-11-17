@@ -22,6 +22,11 @@ internal class InitiationLibrary : IInitiationLibrary
             });
     }
 
+    public void ResetInitiation(string serverName, string databaseName, string collectionName)
+    {
+        _initiated.TryRemove($"{serverName}.{databaseName}.{collectionName}", out _);
+    }
+
     public bool ShouldInitiateIndex(string serverName, string databaseName, string collectionName)
     {
         if (!_initiated.TryGetValue($"{serverName}.{databaseName}.{collectionName}", out var initiationInfo)) throw new InvalidOperationException($"Always call {nameof(ShouldInitiate)} before calling {nameof(ShouldInitiateIndex)}.");
